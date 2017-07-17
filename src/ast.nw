@@ -1,0 +1,209 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode; comment-column: 48 -*-
+% $Id: ast.nw,v 1.10 1998/11/11 21:59:09 nr Exp $
+\chapter{Abstract syntax for toolkit}
+
+\section{Specification elements}
+We have the following elements of specifications:
+<<sig>>=
+datatype input_file 
+  = SPEC of spec list
+  | CODEFILE of codefile
+and spec
+  <<specification elements>>
+  <<more datatypes>>
+withtype name = string
+  <<spec withs>>
+@ 
+Number of bits skipped when we increment the program counter.
+<<specification elements>>=
+= PC_unit_bits of int * region                  (* # of bits in PC units *)
+@ 
+Number of bits in a word on the target machine (and also, we assume on
+the host??)
+<<specification elements>>=
+| WORDSIZE of int                               (* # of bits in machine word *)
+@
+We specify a token by giving its name, width and listing all its
+fields.
+For a field we need the name and upper and lower bounds on the bits.
+<<specification elements>>=
+| TOKENDEF of name * int * fieldspec list * region (* define token & its fields *)
+<<spec withs>>=
+and  fieldspec = name * int * int option * region  (* name & lo & hi bit positions *)
+@ 
+We can specify little-endian or big-endian bit numbering.
+<<specification elements>>=
+| BIT_zero_significance of significance * region   (* bit numbering *)
+<<more datatypes>>=
+and significance = MOST | LEAST
+@ 
+We can designate operands relocatable:
+<<specification elements>>=
+| RELOCATABLE of name list
+@ 
+We can specify a placeholder for a token.
+Expression must be a pattern.
+<<specification elements>>=
+| PLACEHOLDER of name * exp * region            (* pattern placeholder for token *)
+@ 
+We give a variety of information about fields.
+<<specification elements>>=
+| FIELDINFO of (name * region) list * fielditem list (* items apply to all fields *)
+@ We attach every [[fielditem]] on the right to every named field on
+the left.
+<<more datatypes>>=
+and fielditem
+  = FIELDNAME of name_table
+  | CHECKING of fieldchecking
+and                                             (* field checking attributes *)
+  fieldchecking = CHECKED | UNCHECKED | GUARANTEED
+and name_table
+  = SPARSE_NAMES of (name * exp) list           (* sparse list of field names *)
+  | DENSE_NAMES of name list                    (* dense list of field names *)
+@ We have sparse and dense ways to name field values, plus three
+properties that tell us how much checking of field values to do.
+@ 
+We can adjust a specification by removing or keeping constructors
+<<specification elements>>=
+| DISCARD of opcode list                        (* discard these constructors *)
+| KEEP    of opcode list                        (* discard all but these constructors *)
+@ 
+We can tell how to fetch and store things in a decoder.
+If a width is given, a [[FETCH]] template is used only for that width;
+otherwise it becomes the default.
+<<specification elements>>=
+| FETCH of int option * string                  (* fetch template for one or any *)
+| ADDRESS_add of string                         (* template to add to addresses *)
+| ADDRESS_type of string                        (* type to represent an address *)
+| ADDRESS_convert of string                     (* template to cvt address to int *)
+@
+We can bind patterns:
+<<specification elements>>=
+| PATBINDING of patterns_lhs * exp 		(* name each of a list of patterns *)
+<<more datatypes>>=
+and patterns_lhs = ONE_NAME of name * region | TABLE of (name * region) list
+@ 
+We can define constructors
+<<specification elements>>=
+| CONSTRUCTOR of opcode * operand list * name option * branch list
+<<more datatypes>>=
+and operand = LITERAL_operand of string 
+            | OPERAND of (name * region) * bool            (* bool iff signed *)
+and opcode' = LITERAL_opcode of string
+            | OPCODE of name
+<<spec withs>>=
+and equations = exp list
+and branch = equations * exp option	(* RHS could be omitted *)
+and opcode = opcode' list * region
+@
+\section{Assembly syntax}
+<<specification elements>>=
+| ASM_operand   of (name * region) list * operand_syntax
+                                                (* value->string map for operands *)
+| ASM_component of globbing * glob_target	(* mapping for opcode components *)
+| ASM_opcode    of globbing * glob_target	(* mapping for full opcodes *)
+| ASM_syntax    of opcode * operand list	(* operand order & syntactic noise *)
+<<more datatypes>>=
+and operand_syntax
+  = STRING_operand of string * operand_name_spec option (* string [using spec] *)
+  | NAMED_operand  of operand_name_spec 
+and operand_name_spec
+  = OPERAND_name_table of name_table
+  | OPERAND_like_field of name
+@ 
+<<spec withs>>=
+and globbing = glob list
+and glob_target = globt list
+<<more datatypes>>=
+and glob 
+  = GLOB_wildcard                                       (* * *)
+  | GLOB_alternatives of globbing list                  (* {...,...} *)
+  | GLOB_literal of string
+and globt
+  = GLOBT_dollar of int
+  | GLOBT_literal of string
+@ 
+\section{Expressions, including patterns}
+I don't encode arity in the representation.
+This is an experiment in keeping the number of cases down.
+<<more datatypes>>=
+(* and exp = EXP of raw_exp * location *)
+and exp (* raw_exp *)
+  = NARY of operator * exp list
+  | APP of opcode * exp list
+  | IDENT of name
+  | INT of int
+  | LITERAL_exp of string	(* used only in constructor apps *)
+  | MARK_EXP of region * exp
+@ 
+We have a large collection of operators:
+<<more datatypes>>=
+and operator
+   (* n-ary *)
+  = OR | AND | CONCAT                           (* pattern operators *)
+  | LIST                                        (* list of exps in brackets *)
+  | GEN_to                                      (* { x to y [cols z] } *)
+   (* binary *)
+  | RELOP of Relop.relop                        (* relationals, also constraints *)
+  | PLUS | MINUS | TIMES | DIV			(* minus also unary *)
+  | SLICE                                       (* e@[n:m] or e@[n] *)
+   (* unary *)
+  | PREFIX_DOTS                                 (* ellipses *)
+  | POSTFIX_DOTS 
+  | EXTEND                                      (* sign extenseion *)
+  | SOME_token                                  (* argument must name token *)
+   (* nullary *)
+  | WILDCARD					(* arbitrary variable *)
+  | PLABEL of name				(* pattern label *)
+@ 
+<<function declarations>>=
+val expRegion : exp -> region 
+val markApps  : exp -> exp   (* wrap mark around every app of operator or opcode *)
+val unmarkExp : exp -> exp
+@ 
+Here's a bunch of stuff to deal with marking and regions in expressions.
+<<functions>>=
+fun expRegion (NARY (_, exps)) = expsRegion exps
+  | expRegion (APP  (_, exps)) = expsRegion exps
+  | expRegion (MARK_EXP (rgn, _)) = rgn
+  | expRegion _ = SourceMap.nullRegion
+and expsRegion es = foldl SourceMap.span SourceMap.nullRegion (map expRegion es)
+@ 
+[[markApps]] actually only marks down to the next mark, then stops.
+<<functions>>=
+fun markApps (e as NARY ($, es)) = MARK_EXP(expRegion e, NARY($, map markApps es))
+  | markApps (e as APP  ($, es)) = MARK_EXP(expRegion e, APP ($, map markApps es))
+  | markApps e = e
+<<functions>>=  
+fun unmarkExp (NARY (rator, es)) = NARY(rator, map unmarkExp es)
+  | unmarkExp (APP (opcode, es)) = APP(opcode, map unmarkExp es)
+  | unmarkExp (MARK_EXP(_, e)) = unmarkExp e
+  | unmarkExp e = e
+@ 
+\section{Matching statements}
+<<spec withs>>=
+and code = string list * region
+and arm = exp * equations * name option * code
+and match = code * name option * arm list * code option
+				                (* pc, successor, arms, else arm *)
+and codefile = code * (match * code) list      (* header, matching stmts + trailers *)
+@ 
+\section{Boilerplate}
+<<ast.sig>>=
+signature AST = sig
+  type region = SourceMap.region
+  <<sig>>
+  <<function declarations>>
+  val compare'code  : code * code -> order
+end
+@ 
+<<ast.ord>>=
+structure Ast : AST = struct 
+  type region = SourceMap.region
+  <<sig>> 
+  <<functions>>
+%%
+  type code = string list * SourceMap.region
+%%
+end
+@ 

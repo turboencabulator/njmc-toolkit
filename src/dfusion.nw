@@ -1,0 +1,135 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\section{Disjunct fusion}
+
+Every collection of $n$~range constraints defines an interval in
+$n$-dimensional space, and every such interval is defined by such a
+collection.
+When the union of two intervals is also an interval, it may be possible to
+fuse two disjuncts into a single disjunct.
+This fusion is advantageous because the cost of match compilation
+rises as the number of disjuncts and the number of unique
+1-dimensional intervals increase.
+We therefore attempt this first for absolute disjuncts.
+@
+<<dfusion.sig>>=
+signature DISJUNCT_FUSION = sig
+  structure Patterns : PATTERNS
+  val fuseDisjuncts : Patterns.Absolute.pattern -> Patterns.Absolute.pattern
+end
+@ 
+
+Two lists of constraints are fusible if, when set in correspondence, 
+all but one pair are identical, and the remaining pair overlap.
+A missing constraint is equivalent to one constraining to the full range.
+We use [[search]] when all pairs seen so far are identical, [[found]]
+when we've seen two and made their union.
+<<functions>>=
+fun cfusion (l1, l2) =
+  let val tbl = cons2map l2  (* map fields of l2 to the corresponding constraints *)
+      fun search(seen', []) = SOME (rev seen') (* identical absolute disjuncts *)
+	| search(seen', (f, r)::t) =
+	    case AFM.find(tbl, f)
+	      of NONE => found(seen', t)
+	       | SOME r' =>
+		   if r = r' then
+		     search((f, r) :: seen', t)
+		   else
+		     case RangeSet.possibleUnion (r, r')
+		       of SOME u => if isMax(f, u) then found(seen', t)
+				    else found ((f, u) :: seen', t)
+			| NONE => NONE (* can't fuse *)
+      and found(seen', []) = SOME (rev seen')
+	| found(seen', (f, r) :: t) =
+	    case AFM.find(tbl, f)
+	      of NONE => if isMax(f, r) then found(seen', t) else NONE
+	       | SOME r' =>
+		   if r = r' then
+		     found((f, r) :: seen', t)
+		   else
+		     NONE
+  in  search([], l1)
+  end
+@ Note the case in which [[AFM.find(tbl, f)]] returns [[NONE]].
+In that case, the absolute field is not constrained in the previous
+disjunct, so this is equivalent to finding the field constrained to
+the maximum range.
+This is max, and therefore we drop the constraint.
+@
+I use a map to handle the correspondence.
+<<auxiliary functions>>=
+fun cons2map l = 
+  let fun add ((f, range), tbl) = 
+        case AFM.find (tbl, f)
+	  of SOME _ => Impossible.impossible "duplicate fields in abs disjunct"
+	   | NONE => AFM.insert(tbl, f, range)
+  in  foldl add AFM.empty l
+  end
+@ 
+We want to be able to identify constraints that cover full ranges, so
+we can drop them entirely.
+<<auxiliary functions>>=
+fun isMax(f, {lo, hi}) = lo = 0 andalso Word.fromInt hi = Field.afmax f
+@ 
+Next, we'll see if two absolute disjuncts can fuse.
+<<functions>>=
+fun dfusion ( P.DIS (name,  conditions,  (constraints,  bindings,  length ))
+	    , P.DIS (name', conditions', (constraints', bindings', length'))
+	    ) =
+  if length = length' andalso name = name'
+  andalso P.Exp.Set.equal(conditions, conditions')
+  andalso StringMap.collate bitsCompare (bindings, bindings') = EQUAL
+  then 
+    case cfusion(constraints, constraints')
+      of SOME c => SOME (P.DIS(name, conditions, (c, bindings, length)))
+       | NONE => NONE
+  else
+    NONE
+<<auxiliary functions>>=
+fun bitsCompare ({bits=n}, {bits=n'}) = Int.compare (n, n')
+@ 
+Finally, let's fuse all the disjuncts we can.
+A fundamental operation is to try to fuse disjunct with every item on
+a list.  
+If successful, this operation returns the new disjunct and the
+(reduced) list.
+<<selection and fusion combined>>=
+fun findFusion (d : P.absolute_disjunct, l : P.absolute_disjunct list) =
+  let fun find (old', []) = NONE
+        | find (old', h::t) = 
+            case dfusion(d, h)
+	      of SOME d' => SOME(d', revapp(old', t))
+	       | NONE => find(h :: old', t)
+      and revapp([], l) = l
+	| revapp(h::t, l) = revapp(t, h::l)
+  in  find ([], l)
+  end
+@ 
+The invariant is: no disjunct in [[old']] can be fused with any other
+disjunct in [[old']] or with any disjunct in [[new]].
+<<functions>>=
+fun fuseDisjuncts(P.PAT(name, ds)) = 
+  let <<selection and fusion combined>>
+      fun fuse(old', []) = rev old'
+        | fuse(old', h::new) =
+	    case findFusion(h, new)  (* by invariant, need not search old *)
+	      of NONE => fuse(h :: old', new)
+	       | SOME (d, new) =>
+                   let val (d, old') = repeatedFusions(d, old')
+		   in  fuse(old', d::new)  (* note check d against new *)
+		   end
+      and repeatedFusions(d, l) =
+	    case findFusion(d, l)
+	      of NONE => (d, l)
+	       | SOME (d', l') => repeatedFusions(d', l')
+  in  P.PAT(name, fuse([], ds))
+  end
+@ 		   
+<<dfusion.sml>>=
+functor DisjunctFusionFun(Patterns : PATTERNS) : DISJUNCT_FUSION = struct
+  structure Patterns = Patterns
+  structure P = Patterns
+  structure AFM = AbsoluteFieldMap
+  <<auxiliary functions>>
+  <<functions>>
+end

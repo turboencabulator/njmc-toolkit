@@ -1,0 +1,94 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+\section{Disjunct and field fusion for matching statements}
+<<mfusion.sig>>=
+signature MATCH_FUSION = sig
+  structure Match : MATCH
+  val fuseMatch : 'a Match.match -> 'a Match.match
+end
+@ 
+<<mfusion.sml>>=
+functor MatchFusionFun (
+  structure Match : MATCH
+  structure DFusion : DISJUNCT_FUSION
+    sharing Match.Patterns = DFusion.Patterns
+  val announceFusion : Match.Patterns.Absolute.pattern * Match.Patterns.Absolute.pattern -> unit
+) : MATCH_FUSION = struct
+  structure Match = Match
+  structure M = Match
+  structure CO = ConstraintOrderFun(M.Patterns)
+  structure FF = FieldFusionFun(CO)
+  <<functions>>
+end
+@ 
+<<functions>>=
+fun dfuseMatch (M.MATCH { value = v, succptr = s, arms = a's,
+			 sourcemap = smap , region = rgn }) =
+  M.MATCH { value = v, succptr = s, arms = map fuseArm a's,
+	    sourcemap = smap , region = rgn }
+and fuseArm (M.ARM (p, spec)) = 
+  let val p' = DFusion.fuseDisjuncts p
+      val _ = announceFusion(p, p')
+  in  M.ARM(p', spec)
+  end
+@ 
+For the basic fusion, I have to restrict candidates to adjacent
+patterns---the match compiler cannot currently cope with the idea of
+fusing non-adjacent fields.
+<<functions>>=
+open ConstraintEdge
+infix 9 <*
+
+fun adjacent ((f, k) <* (f', k') : FF.edge) =
+  k = k' andalso #class f = #class f' andalso #hi (#range f') = #lo (#range f)
+@ The corresponding interference check is a simple conservative one:
+edges interfere unless they're from tokens at different offsets.
+We only have to look at one offset, because the two fields of an edge are in the same
+token if they got this far.
+<<functions>>=
+fun sameOffset ((_, k) <* _, (_, k') <* _) = k = k'
+@
+Here's pattern manipulation within arms.
+<<functions>>=
+fun pat (M.ARM (p, spec)) = p
+fun patmap f (M.ARM (p, spec)) = (M.ARM (f p, spec))
+
+<<functions>>=
+<<announcements>>
+fun fuseArms arms = FF.fullFusion
+  { restriction = adjacent
+  , acceptableCost = fn { cost = FF.INFINITY, ... } => false
+                      | { cost = FF.FINITE n, benefit = k } => n <= 1024 andalso k >= n
+  , interferes = sameOffset
+  , announce = showEdge
+  , patmap = patmap
+  , pat = pat
+  }
+  arms
+
+fun ffuseMatch (M.MATCH { value = v, succptr = s, arms = a's,
+			  sourcemap = smap , region = rgn }) =
+  M.MATCH { value = v, succptr = s, arms = fuseArms a's,
+            sourcemap = smap , region = rgn }
+@ 
+<<functions>>=
+fun fuseMatch m = ffuseMatch (dfuseMatch m)
+<<announcements>>=
+local
+  fun afield ({name, ...} : Field.field, n) = [name, " at ", Int.toString n]
+  fun number (FF.FINITE n) = Int.toString n
+    | number (FF.INFINITY) = "<infinity>"
+  fun cost { cost = c, benefit = b } = ["cost ", number c, " benefit ", Int.toString b]
+  
+  fun edgeStrings (f1 <* f2) = afield f1 @ [" <* "] @ afield f2 
+
+  fun spaceGain (_, {cost = FF.INFINITY, ...}) = ["(this can't happen)"]
+    | spaceGain (f1 <* f2, {cost = FF.FINITE c, benefit = b}) =
+    let val g = real c - real b / real (Word.toInt (Field.afmax f1))
+    in  [" (estimated space gain ", Real.fmt (StringCvt.FIX (SOME 1)) g, " words)"]
+    end
+in 
+  fun showEdge (e, c) = 
+    app (app print) [["Fusing fields "], edgeStrings e, [" at "], cost c,
+                     spaceGain (e, c), ["\n"]]
+end
+  

@@ -1,0 +1,486 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+\section{Field Fusion}
+
+\subsection{The problem and algorithm}
+
+\subsubsection{Review}
+
+The New Jersey Machine-Code Toolkit automatically produces efficient
+recognizers for machine instructions.
+These recognizers are written in a style reminiscent of \emph{yacc}
+specifications.
+The programmer writes a \emph{matching statement}.
+This is a list of alternative \emph{arms}.
+An arm contains a \emph{pattern}, which may match one or more
+instructions, and a \emph{semantic action}, which contains arbitrary code.
+A preprocessor reads a SLED (Specification Language for Encoding and
+Decoding) specification \cite{ramsey:specifying}, which gives meaning
+to the patterns, and generates a recognizer written in~C, or perhaps
+some other language.
+
+For each arm of a matching statement, the preprocessor computes a
+predicate on the \emph{fields} of the instruction.
+The predicate combines different \emph{range tests}.
+In general, a range test is a test that a field lies in a half-open
+interval, e.g., $l \le f < h$ (or equivalently, $f \in [l,
+h)$).
+For the special case $k \le f < k+1$, we use the abbreviation $f = k$.
+
+The Toolkit puts predicates into a disjunctive normal form.
+For example, the predicate for recognizing a SPARC [[fcmps]]
+instruction is
+$$ \mathit{op} = 10_2 \land \mathit{op3} = 110101_2 \land 
+  \mathit{opf} = 001010001_2.$$
+Matching statements could be implemented naively by evaluating the
+predicates sequentially until a predicate is satisfied.
+This implementation would be very inefficient, because the same field could be
+tested over and over.
+The Toolkit uses a much more efficient technique; it compiles the
+entire matching statement into a \emph{decision tree}.
+A decision tree is a finite automaton that tests each field at most
+  once.
+It halts as soon as it has enough information to know which arm of the
+  statement is matched (or that none is matched).
+
+The distinction between a decision tree and an ordinary finite
+automaton (used in string matching) is that the decision tree is free
+to test fields in any order, whereas an ordinary automaton is limited
+to a strict left-to-right order.
+Choosing the optimal order in which to test fields is believed to be
+an NP-complete problem \cite{baudinet:tree}.
+
+Each internal node of a decision tree can be implemented by a case
+statement.
+A simple decision tree recognizing the [[fcmps]] instruction above
+would use three (nested) case statements to recognize the instruction.
+Because case statements are relatively expensive on modern processors
+(bounds check, table lookup, and indirect branch), it is worth
+searching for ways to reduce the number of case statements required to
+recognize instructions.
+A companion document (\emph{Representation Optimization for
+Instruction Decoding}) discusses a potential optimization for
+eliminating case statements just above the leaves of the decision tree.
+This document presents an idea, \emph{field fusion}, for eliminating
+case statements nearer the root.
+
+
+\newcommand\fuseop{\star}
+\newcommand\fuse[2]{{#1\fuseop #2}}
+
+\subsubsection{The field-fusion transformation}
+
+
+The idea of field fusion is to replace a sequence of tests with a
+single test.
+Each field fusion eliminates a layer of nodes in a decision tree.
+Field fusion is defined here by example.
+Suppose we have two fields $f_1$, of size~$n_1$ and $f_2$, of
+size~$n_2$.
+Define the \emph{fused field}~$f_\fuse12$ by
+$$
+f_\fuse12 \equiv 2^{n_2}f_1 + f_2.$$
+Then we can replace tests as follows:
+\begin{eqnarray*}
+f_1 = k_1 \land l_2 \le f_2 < h_2& \Rightarrow & 
+2^{n_2} k_2 + l_2 \le f_\fuse12 < 2^{n_2} k_2 + h_2 \\
+f_1 = k_1& \Rightarrow & 2^{n_2} k_1 \le f_\fuse12 < 2^{n_2} (k_1+1) \\
+l_1 \le f_1 < h_1& \Rightarrow & 2^{n_2} l_1 \le f_\fuse12 < 2^{n_2} h_1 \\
+l_1 \le f_1 < h_1\land l_2 \le f_2 < h_2& \Rightarrow&
+\bigvee_{l_1 \le k_1 < h_1} f_1 = k_1 \land l_2 \le f_2 < h_2\\
+l_2 \le f_2 < h_2& \Rightarrow&
+0 \le f_1 < 2^{n_1} \land l_2 \le f_2 < h_2\\
+\end{eqnarray*}
+Here $f_1 = k_1$ is actually a special case of $l_1 \le f_1 <
+h_1$, but I have shown it in full for clarity.
+This ``fusion transformation''  replaces a pair of constraints
+with a single constraint, except when $f_1$~is
+constrained to fall in a non-singleton interval.
+Luckily, this case is rare in real machines.
+@
+To implement this, apply [[f]] to each new constraint and to~[[z]].
+[[f]]~is guaranteed to be applied at least once.
+<<field fusion>>=
+fun foldFusedConstraints {msf, lsf = (f2, _)} =
+  let val n2 = Word.fromInt (Field.fwidth f2)
+      fun twoN k = Word.toInt (Word.<<(Word.fromInt k, n2))
+      fun fold f z cpair =
+        let fun fuse (NONE, NONE) = Impossible.impossible "missing fusion constraints"
+              | fuse (SOME {lo, hi}, NONE) = f ({lo = twoN lo, hi = twoN hi}, z)
+              | fuse (NONE, SOME c) = loop(0, Word.toInt (Field.afmax msf), c, z)
+              | fuse (SOME {lo, hi}, SOME c) = loop(lo, hi, c, z)
+            and loop (k1, limit, r2 as {lo, hi}, z) = 
+              if k1 = limit then z
+              else
+                let val c = {lo = twoN k1 + #lo r2, hi = twoN k1 + #hi r2}
+                in  loop(k1+1, limit, r2, f(c, z))
+                end
+        in  fuse cpair
+        end
+  in  fold
+  end
+@
+The current code can only fuse adjacent fields, because the later
+stages (match compilation) expect ``the thing tested'' to be an
+absolute field.  This restriction would be fairly easy to lift.
+<<field fusion>>=
+fun fuseFields {msf=({name=n1, range=r1 : Field.range, class=c1}, k1),
+                lsf=({name=n2, range=r2 : Field.range, class=c2}, k2)} =
+  if c1 <> c2 orelse k1 <> k2 orelse #lo r1 <> #hi r2 then
+    Impossible.impossible "attempted to fuse non-adjacent fields"
+  else
+    ({name = n1 ^ "*" ^ n2, range = {hi = #hi r1, lo = #lo r2}, class = c1}, k1) 
+@   
+
+The rewrite rules above show that any two fields can be fused, but we
+would like to avoid the unpleasant case where the number of
+constraints becomes the size of the interval $[l_1, h_1)$.
+The common cases for real machines are that $f$~is constrained to fall
+in a singleton interval ($f = k$) or that $f$ is unconstrained.
+Let us assume for the moment that such fields the only candidates for
+field fusion.
+
+\subsubsection{Choosing which fields to fuse}
+
+Every matching statement defines a \emph{constraint ordering} on
+fields such that $f_i \prec f_j$ if and only if every matching
+statement that constrains~$f_j$ also constrains $f_i$.
+This is a partial order,%
+\footnote{no! not antisymmetric!}
+ and if $f_i \prec f_j$ then these fields are
+good candidates for replacement with the fused field $f_\fuse i j$.
+Many machines will have multiple candidates for fusion; to identify
+the best such candidates, it is important to identify fields that
+``occupy adjacent positions'' in the binary representation---for such
+fields $f_\fuse i j$ can be extracted directly from the binary
+representation, eliminating the need to compute $f_i$, $f_j$, and
+$2^{n_j}f_i + f_j$.
+
+
+\subsubsection{When to stop field fusion}
+
+If all fields have an ordering relation, it would be possible in
+principle to fuse every field in a match.
+Of course, when the fusion grows larger than a host word, it can no
+longer be switched on.
+Even before then, the jump tables may get too big.
+(There are some cases, namely when $f_i \prec f_j \land f_j \prec
+f_i$, where field fusion always makes jump tables smaller, but
+in general it increases the total size of all jump tables in the
+matcher.)
+There should probably be a cap on field fusion related to the size
+and/or density of jump tables; such a cap should perhaps be determined
+empirically (and it might even depend on the compiler).
+
+\subsubsection{Miscallaneous thoughts}
+
+In cases where fields are not fused, it might be interesting to use
+the constraint ordering $\prec$ as a cheap heuristic for which field
+to look at next.
+
+If
+field fusion is successful and cheap, it should probably be extended
+to potentially overlapping fields.
+This would work by breaking up fields that might overlap, then fusing
+the pieces.
+This would fix a long-standing loss of information from overlapping
+fields, though I doubt it would be useful in practice.
+@
+\subsection{Computing the constraint ordering relation}
+We use the following kinds of edges to represent the constraint
+ordering relation.
+<<consord.sig>>=
+structure ConstraintEdge = struct
+  datatype 'a edge = <* of 'a * 'a  (* pronounce `precedes` *)
+end
+@ 
+The function [[order]] computes the intersection of the constraint
+ordering relation with the relation given by the [[edge]] predicate.
+<<consord.sig>>=
+signature CONSTRAINT_ORDER = sig
+  structure Patterns : PATTERNS
+  type edge = Field.absolute_field ConstraintEdge.edge
+  val order : ('a -> Patterns.Absolute.pattern) * (edge -> bool) * 'a list -> edge list
+end
+@ 
+<<consord.sml>>=
+functor ConstraintOrderFun(Patterns : PATTERNS) : CONSTRAINT_ORDER = struct
+  open ConstraintEdge
+  infix 9 <*
+  type edge = Field.absolute_field ConstraintEdge.edge
+  structure Patterns = Patterns
+  structure F = Field
+  structure P = Patterns
+  structure AFM = AbsoluteFieldMap
+  structure AFS = AbsoluteFieldSet
+  <<folding over absolute patterns>>
+  <<constraint ordering>>
+end
+@ 
+\newcommand\implies{\Rightarrow}
+\newcommand\constrains[2]{{\mbox{$#1$ constrains $#2$}}}
+All we care about are the absolute disjuncts, each of which has a
+collection of (absolute) range constraints.
+So first, let's get the rest of the inputs out of the way.
+<<folding over absolute patterns>>=
+type field = Field.absolute_field
+type constraint = field Patterns.range_constraint'
+datatype disjunct = D of constraint list
+val foldAbs : ('a -> P.Absolute.pattern) ->
+              (disjunct * 'b -> 'b) -> 'b -> 'a list -> 'b =
+  fn extract => fn f =>
+    let fun pat (P.PAT (_, ds), x) = foldr dis x ds
+        and dis (P.DIS (_, _, (constraints, _, _)), x) = f (D constraints, x)
+        fun alpha (?, x) = pat (extract ?, x)
+    in  foldr alpha
+    end
+@ 
+So, how do we compute the relation, given a list of disjuncts?
+By definition
+$f_i \prec f_j$ iff $\forall d . \constrains d {f_j} \implies
+\constrains d {f_i}$.
+Therefore
+\begin{eqnarray*}
+f_i \prec f_j &=&
+ \lnot \exists d . \lnot(\constrains d {f_j} \implies \constrains d {f_i})\\
+&=& \lnot \exists d . \constrains d {f_j} \land \lnot \constrains d
+ {f_i}\\
+\end{eqnarray*}
+So what we'll do is start out with a complete graph in which every
+field is followed by every other field, and then we'll delete edges
+that don't belong.
+So, for every field $f_j$ that is constrained, and for every $f_i$
+that is a predecessor of $f_j$, if $f_i$ is not constrained, we remove
+$f_i$ from the predecessor list.
+We do this by filtering the predecessor list to include only those
+fields that are constrained.
+@
+<<constraint ordering>>=
+fun stripGraph (D constraints, g) =
+  let fun isConstrained f = List.exists (fn (f', range) => f = f') constraints
+      fun newPredecessors (f, preds) =
+        if isConstrained f then
+          List.filter isConstrained preds
+        else
+          preds
+  in  AFM.filter (not o null) (AFM.mapi newPredecessors g)
+  end
+@
+To begin with, use a graph that keeps predecessor lists.
+<<constraint ordering>>=
+type graph = field list AFM.map
+val graphSatisfying : (edge -> bool) * field list -> graph =
+  fn (keep, fields) => 
+    foldl (fn (f, m) => AFM.insert(m, f, List.filter (fn p => keep (p <* f)) fields))
+          AFM.empty fields
+@ 
+Now, to find all the fields:
+<<constraint ordering>>=
+fun disjunctFields (D cs, fields) =
+  foldl (fn ((f, range), s) => AFS.add(s, f)) fields cs
+@ 
+And putting it all together.
+<<constraint ordering>>=
+fun order (extract, initialRelation, arms) = 
+  let val fields = foldAbs extract disjunctFields AFS.empty arms
+      val graph = graphSatisfying (initialRelation, AFS.listItems fields)
+      val graph = foldAbs extract stripGraph graph arms
+      fun addEdge (f, preds, edges) = foldr (fn (p, e) => p <* f :: e) edges preds
+  in  AFM.foldri addEdge [] graph
+  end
+@ 
+\subsection{Estimating cost of field fusion}
+The cost of fusion is the increase in total size of jump tables.
+Some fusions actually result in a tiny decrease in the total size of
+jump tables (average decrease $1 \over 2^n$, where $n$~is the width of
+one of the fields), but we ignore that decrease and treat it as zero
+(hence the ``estimating'').
+The benefit of fusion is measured as the number of constraints removed
+from the list of patterns.
+<<ffusion.sig>>=
+signature FIELD_FUSION = sig
+  structure ConstraintOrder : CONSTRAINT_ORDER
+  structure Patterns : PATTERNS
+    sharing Patterns = ConstraintOrder.Patterns
+
+  datatype number = INFINITY | FINITE of int
+  type cost = { cost : number, benefit : int }
+  val compare'cost : cost * cost -> order
+
+  type edge = Field.absolute_field ConstraintEdge.edge
+  type pattern = Patterns.Absolute.pattern
+  type fusion = { msf : Field.absolute_field, lsf : Field.absolute_field }
+
+  val costEstimate : ('a -> pattern) -> fusion * 'a list -> cost
+  val fuse : fusion * pattern -> pattern
+  val fullFusion :
+    { restriction    : edge -> bool              (* pairs we will consider *)
+    , acceptableCost : cost -> bool              (* pairs worth fusing *)
+    , interferes     : edge * edge -> bool       (* both pairs fusible? *)
+    , announce : edge * cost -> unit
+    , patmap : (pattern -> pattern) -> 'a -> 'a
+    , pat    : 'a -> pattern
+    } -> 'a list -> 'a list
+end
+@ 
+<<ffusion.sml>>=
+functor FieldFusionFun(ConstraintOrder : CONSTRAINT_ORDER) : FIELD_FUSION = struct
+  structure ConstraintOrder = ConstraintOrder
+  structure Patterns = ConstraintOrder.Patterns
+  open ConstraintEdge
+  infix 9 <*
+  type fusion = { msf : Field.absolute_field, lsf : Field.absolute_field }
+  datatype number = INFINITY | FINITE of int
+  type cost = { cost : number, benefit : int }
+  type edge = Field.absolute_field ConstraintEdge.edge
+  type pattern = Patterns.Absolute.pattern
+  <<cost utilities>>
+  structure F = Field
+  structure P = Patterns
+  structure AFM = AbsoluteFieldMap
+  structure AFS = AbsoluteFieldSet
+  structure CO = ConstraintOrder
+  <<folding over absolute patterns>>
+  <<utilities>>
+  <<field fusion>>
+end
+@ 
+Fusing fields $f_m$ and $f_l$ gives $2^n f_m + f_l$, where $n$ is the
+width of field~$f_l$.  I call $2^n$~[[lfactor]].
+<<field fusion>>=
+fun costEstimate extract ({msf, lsf}, patterns) =
+  let val lwidth = fwidth lsf
+      val lfactor = Word.toInt(Word.<<(0w1, Word.fromInt lwidth))
+      val mwidth = fwidth msf
+      val mfactor = Word.toInt(Word.<<(0w1, Word.fromInt mwidth))
+      <<define [[addCost]] to add cost of one disjunct>>
+  in  foldAbs extract addCost { cost = FINITE 0, benefit = 0 } patterns
+  end
+@ 
+\newcommand\hi{{\mathit{hi}}}
+\newcommand\lo{{\mathit{lo}}}
+The tricky case is the cost of a disjunct where both fields are
+constrained, i.e., $m_\lo \le f_m < m_\hi \land l_\lo \le f_l < l_\hi$.
+The post-fusion, combined table has $(m_\hi-m_\lo) \times (l_\hi - l_\lo)$
+entries.
+It might appear that the  pre-fusion jump table has the same number of
+entries, but in fact the entries for~$m$ are likely to be  shared
+among~$2^n$ disjuncts, and so the real pre-fusion size is
+${(m_\hi - m_\lo)\over 2^n} +
+(m_\hi-m_\lo)
+\times (l_\hi - l_\lo)$.
+Thus, the true increase is somewhere between 0~and~$- {1\over 2^n}$.
+Rather than mess with fractions, we simply treat the increase as zero,
+and we note the improvement in the number of tests.
+<<define [[addCost]] to add cost of one disjunct>>=
+fun addCost (D constraints, { cost=c, benefit=b }) =
+  let fun constraint f = Option.map #2 (List.find (fn (f', r) => f = f') constraints)
+  in  case (constraint msf, constraint lsf)
+        of (NONE,          NONE) => { cost = c, benefit = b }
+         | (SOME {hi, lo}, NONE) => { cost = c ++ (lfactor - 1) * (hi - lo)
+                                    , benefit = b
+                                    }
+         | (NONE, SOME {hi, lo}) => { cost = c ++ (mfactor - 1) * (hi - lo)
+                                    , benefit = b
+                                    }
+         | (SOME _, SOME _)      => { cost = c, benefit = b + 1 }
+  end
+@ 
+We need field width and addition of weird numbers.
+<<utilities>>=
+fun fwidth ({name, range={hi, lo}, class}, _) = hi - lo
+infix 6 ++
+fun (FINITE n) ++ m = (FINITE (n + m) handle Overflow => INFINITY)
+  | INFINITY   ++ _ = INFINITY
+@ 
+\subsection{Fusing a single pattern}
+<<field fusion>>=
+fun fuse (fusion as {msf, lsf}, p) =
+  let val ffused = fuseFields fusion
+      val fuser = foldFusedConstraints fusion
+      fun pat (p as P.PAT (n, ds)) = P.PAT(n, foldr dis [] ds)
+      and dis (d as P.DIS (n, cs, (constraints, bindings, len)), ds) =
+            let fun fuse (mc, lc, other, (f, r) :: t) =
+                      if      f = msf then fuse(SOME r, lc, other, t)
+                      else if f = lsf then fuse(mc, SOME r, other, t)
+                      else fuse(mc, lc, (f, r) :: other, t)
+                  | fuse (NONE, NONE, other, []) = d :: ds
+                  | fuse (mc, lc, other, []) = fuser (addConstraint other) ds (mc, lc)
+                and addConstraint other (c, ds) = 
+                      P.DIS (n, cs, ((ffused, c)::other, bindings, len)) :: ds
+            in  fuse (NONE, NONE, [], constraints)
+            end
+  in  pat p
+  end
+@ 
+\subsection{Full fusion}
+The general idea is:
+\begin{itemize}
+\item
+Use constraint ordering (with some additional restriction) to identify
+likely candidates for fusion.
+This means we need not search all pairs.
+Possible [[restriction]] functions might include: fields in the same
+token, fields adjacent, fields not identical.
+\item
+Estimate costs of all candidates, and reject all candidates with
+unacceptably high costs.
+\item
+Choose the candidate with least cost (if any).
+Eliminate all other \emph{interfering} candidates.
+(A second candidate interferes with the first if using the first
+precludes using the second---e.g., they share a field---or if using
+the first might change the cost of the second.)
+If we restrict candidates to fields in the same token, for example,
+then candidates from other tokens will not interfere.
+If any non-interfering candidates are left, choose another least-cost
+candidate, and so on until no more remain.
+\item
+Fuse all the chosen candidates, developing a new match list, and
+repeat.
+\end{itemize}
+<<field fusion>>=
+fun fullFusion
+    { restriction    : edge -> bool              (* pairs we will consider *)
+    , acceptableCost : cost -> bool              (* pairs worth fusing *)
+    , interferes     : edge * edge -> bool       (* both pairs fusible? *)
+    , announce : edge * cost -> unit
+    , patmap : (pattern -> pattern) -> 'a -> 'a
+    , pat    : 'a -> pattern
+    } =
+  let fun step matches = 
+        let val graph = Util.timed "constraint order" CO.order (pat, restriction, matches)
+            fun addCost (e as a <* b) = (e, costEstimate pat ({msf=a, lsf=b}, matches))
+            val graph = Util.timed "cost estimation" (map addCost) graph
+            val graph = List.filter (acceptableCost o #2) graph
+            fun fusibleEdges [] = []
+              | fusibleEdges (h::t : (edge * cost) list) =
+                  let val (e as hi <* lo, c : cost) = foldl cheaperEdge h t
+                      val _ = announce (e, c)
+                      fun ok (e', cost) = not (interferes (e, e'))
+                  in  { msf = hi, lsf = lo } :: fusibleEdges (List.filter ok t)
+                  end
+            val fusions = fusibleEdges graph
+            fun fusePat p = foldl fuse p fusions
+        in  if null fusions then matches
+            else step (map (patmap fusePat) matches)
+        end
+  in  step
+  end
+@ 
+<<cost utilities>>=
+fun compare'number (INFINITY, INFINITY) = EQUAL
+  | compare'number (INFINITY, FINITE _) = GREATER
+  | compare'number (FINITE _, INFINITY) = LESS
+  | compare'number (FINITE n, FINITE m) = Int.compare (n, m)
+
+fun compare'cost x = 
+  Order.lexical [ Order.mk (compare'number, fn {cost, benefit} => cost)
+                , Order.mk (Int.compare, ~ o #benefit)
+                ] x
+@ 
+<<cost utilities>>=
+fun cheaperEdge (e1 as (_, c1), e2 as (_, c2)) =
+  case compare'cost (c1, c2)
+    of GREATER => e2
+     | _ => e1
+val _ = cheaperEdge : (edge * cost) * (edge * cost) -> (edge * cost)

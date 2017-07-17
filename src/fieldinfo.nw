@@ -1,0 +1,190 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: fieldinfo.nw,v 1.8 1999/09/06 16:07:55 nr Exp $
+% l2h ignore change {
+\chapter{Field-dependent information}
+\section{Field categories}
+There are a number of things one wants to know about each field,
+depending on whether one is to assemble, disassemble, or generate C
+code for assembly.
+Here's a tentative classification:
+\begin{itemize}
+\item How to disassemble
+ \begin{itemize}
+ \item array of names
+ \item enumeration (for sparsely populated fields)
+ \item {\tt printf} format string (e.g. for MIPS [[spec03]])?
+ \end{itemize} 
+\item Type of argument to pass to C or Modula-3 procedure (could be
+      enumeration or subrange type, for example).  Different types may
+      require different value checking within the procedure.
+\item Literals
+  \begin{itemize}
+  \item C {\tt enum}s or constants
+  \item use in assembly code (syntactic category?)
+  \end{itemize} 
+\end{itemize} 
+@
+If field names are specified, they are kept in a name-to-value table.
+That table is associated with the field in the global table [[fnt]] 
+(standing for ``field-name table'').
+@
+<<exported types>>=
+type field = Field.field
+type checking = Ast.fieldchecking
+type namespec = int StringMap.map * bool  (* flag for full name table *)
+type info =
+  { checking : checking FieldMap.map
+  , names    : namespec FieldMap.map
+  }
+<<exported values>>=
+val emptyInfo    : info
+val setChecking  : field * checking * info -> info
+val getChecking  : field * info -> checking
+val setAllNames  : field * string list * info -> info
+val setSomeNames : field * (string * int) list * info -> info
+val namesOf : field * info -> namespec
+@
+<<values>>=
+val emptyInfo = { checking = FieldMap.empty, names = FieldMap.empty } : info
+<<values>>=
+fun setChecking (field, check, {checking, names} : info) =
+  {checking=FieldMap.insert(checking, field, check), names=names} : info
+fun getChecking (f, {checking,...}: info) =
+  case FieldMap.find(checking, f) of SOME c => c | NONE => Ast.CHECKED
+@ 
+<<values>>=
+local
+  structure E = Error
+  fun bindSpec(f, spec, {names,checking}:info) =
+    case FieldMap.find(names, f)
+      of SOME _ => E.error ("Field names for field " ^ #name f ^ " already specified")
+       | NONE => {names=FieldMap.insert(names, f, spec), checking=checking} : info
+  fun fieldmax ({range={lo,hi},...}:field) = Util.twoRaised(hi-lo)
+  fun ok(f, x) = x >= 0 andalso x < fieldmax f
+  <<mapping functions>>
+in
+  fun setAllNames (f, l, i) = bindSpec(f, allSpec (f, l), i)
+  fun setSomeNames(f, l, i) = bindSpec(f, someSpec(f, l), i)
+end
+fun namesOf (f, {names,...}:info) = 
+  case FieldMap.find(names, f) of SOME n => n
+                                | NONE => (StringMap.empty, false)
+@
+Field values may be assigned mnemonic names that are used during disassembly
+of instructions.
+The names bound to field values within an enumeration are used to
+synthesize the sames of opcodes.
+
+We might wind up exporting these functions to the assemby-emitting stuff.
+<<mapping functions>>=
+fun someSpec(f : field, pairs) =
+  let fun bindName((name, x), tab) =
+        if ok(f, x) then
+	  case StringMap.find(tab, name)
+	    of NONE => StringMap.insert(tab, name, x)
+	     | SOME _ => Error.errorl ["Duplicate definitions for value ", name,
+				       " of field ", #name f]
+	else
+	  E.errorl ["Value ", Int.toString x, " won't fit in field ", #name f]
+  in   (foldl bindName StringMap.empty pairs, false)
+  end
+@
+<<mapping functions>>=
+fun allSpec (f : field, names) =
+  let fun bind(name::names, x, tab) = bind(names, x+1,
+	     case StringMap.find(tab, name)
+	       of NONE => StringMap.insert(tab, name, x)
+		| SOME _ => E.errorl ["Duplicate definitions for value ", name,
+                                      " of field ", #name f])
+	| bind([], limit, tab) =
+	    if limit = fieldmax f then tab
+	    else E.errorl ["Field ", #name f, " has ", Int.toString(fieldmax f),
+                           " values, but spec gave ", Int.toString limit, " names"]
+  in  (bind(names, 0, StringMap.empty), true)
+  end
+@
+\section{Emitting field names}
+We concoct a [[namearray]] and pass it to [[pretty]].
+<<*>>=
+procedure emit_fieldnames(base)
+  local header, data, fields
+  data := open(base || implementation_extension, "w")
+  header := open(base || interface_extension, "w");
+  if interface_extension == ".h" then
+    write(data, "#include \"", base, interface_extension, "\"")
+  pp := PPnew(data);
+  <<make [[fields]] an array of all fields sorted by name>>
+  every PPxwrite(pp, pretty(Gdeclnamearray(fieldnamearray(!fields))), ";")
+  every write(header, "extern char *", (!fields).name, "_names[];")
+  every close(data | header)
+  return
+end
+<<make [[fields]] an array of all fields sorted by name>>=
+t := table()
+fields := []
+every f := !symtab & type(f) == "field" do t[f.name] := f
+every put(fields, (!sort(t))[2])
+@
+To build a name array, we first create a table of all invalid field values.
+The valid ones are then overwritten using names from 
+[[fieldname_table(f)]].
+{\hfuzz=2.1pt\par}
+<<*>>=
+procedure fieldnamearray(f)
+  return name_array_from_table(\fieldname_table(f), 2^fwidth(f), f.name)
+end
+procedure name_array_from_table(t, limit, fieldname)
+  local name
+  limit <= 1024 |
+    error("Tried to enumerate ", limit, " names for field or operand ", fieldname)
+  na := namearray(field, table(), limit, fieldname || "_names", "")
+  every i := 0 to na.hi - 1 do
+    na.tbl[i] := bad_operand_name(fieldname, i)
+  every name := key(t) do
+    na.tbl[t[name]] := name
+  return na
+end
+procedure bad_operand_name(name, value)
+  return "??" || name || "=" || value || "?!"
+end
+@ 
+For use in identifying fields with identical naming patterns, we have
+to turn a name table into a suitable string.  This means covering the
+keys in order.
+<<*>>=
+procedure nametablekey(nametab)
+  local min, max
+  static cache
+  initial cache := table()
+  if \cache[nametab] then return cache[nametab]
+  if /nametab then return cache[f] := "(no name table)"
+  u := table()
+  every k := key(nametab) do u[nametab[k]] := k
+  <<make [[min]] and [[max]] smallest and largest values in [[nametab]]>>  
+  s := ""
+  every i := min to max do
+    s ||:= \u[i] || "@" || i || "\0"
+  return cache[f] := s
+end
+<<make [[min]] and [[max]] smallest and largest values in [[nametab]]>>=
+min := max := !nametab | 0
+every min >:= !nametab
+every max <:= !nametab
+@
+<<fieldinfo.sig>>=
+signature FIELD_INFO = sig
+  <<exported types>>
+  <<exported values>>
+end
+<<fieldinfo.sml>>=
+structure FieldInfo : FIELD_INFO = struct
+  <<exported types>>
+  <<values>>
+end
+<<fieldmap.sml>>=
+structure FieldKey : ORD_KEY = struct
+  type ord_key = Field.field
+  val compare = Field.compare'field
+end
+structure FieldMap = BinaryMapFn(FieldKey)
+structure FieldSet = BinarySetFn(FieldKey)

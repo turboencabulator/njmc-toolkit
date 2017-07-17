@@ -1,0 +1,1535 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: grammar.nw,v 1.11 1998/11/11 21:59:17 nr Exp $
+% l2h ignore change {
+\chapter{Grammar for the specification language}
+<<grammar.g>>=
+%attribute region yes
+<<terminal symbols>>
+open Ast 
+fun fst(x, _) = x
+fun snd(_, y) = y
+<<toplevel>>
+%%
+# EBNF grammar for toolkit specification language
+<<grammar>>
+%%
+@
+Two parsers are generated from this grammar: that for a specification,
+and that for a code file containing pattern-matching statements.
+No client ever uses [[Parsers]] directly; they use [[P_Spec]] or [[P_CodeFile]],
+but the union makes it possible for both parsers to handle end-of-file properly.
+The silly tokens avoid parsing conflicts.
+(Incidentally, the lexer for a [[CodeFile]] starts out in a different state, but
+that shouldn't matter to the parser generator.)
+<<grammar>>=
+Parsers   : "bogusspecmarker " Spec | "boguscodemarker " CodeFile;
+@ %def Parsers
+
+The parts of a specification may appear in any order.
+I assume each part returns a list.
+<<grammar>>=
+Spec      : { Fieldspec | Patterns | Constructors | Placeholder 
+            | FetchSpec | PCSpec   | RelocSpec    | AsmSpec 
+            | BitSpec   
+            } /* SPEC (foldr op @ [] ii1) */ ;
+@ %def Spec
+<<refman: spec>>=
+The start symbol for the grammar describing a specification is
+\nt{Specification}.
+Definitions must appear before uses, but otherwise
+the parts of a specification may appear in any order.
+The grammar for a complete specification is therefore
+\begin{production}{Specification}\sequence{\nt{spec}}\end{production}
+<<grammar>>=
+PCSpec : "pc_unit_bits" T_INT /* [PC_unit_bits (ii2,rr2)] */;
+<<refman: spec: misc>>=
+\nextsection{Addressing units for the program counter}
+The specification\indexlit{pc_unit_bits}
+\begin{production}{spec}
+\lit{pc\_unit\_bits} \nt{width}
+\end{production}
+says that the program counter measures units of \nt{width} bits.
+For example, if \verb+pc_unit_bits+ is 8 (the default), a 16-bit token
+in a sequence causes the program counter to be advanced by~2.
+The mechanism of the advance is the second argument to \verb+emit+
+(when encoding) or the offset passed to the template for address
+arithmetic (when decoding).
+We also use these units when converting labels to integers. (We use the
+difference, in increments of \verb+pc_unit_bits+, between the label
+and the program counter).
+The size of any token that appears in a sequence must be exactly
+divisible by \verb+pc_unit_bits+.
+
+@ 
+\section{Fields and field information}
+Fields declared in the same [[fields]] declaration are members of the same equivalence class.
+Fields in the same equivalence class share the same {\em shape}, i.e., 
+the width of the unit in which they are defined.
+Constraints on fields with different classes may not be combined with [[&]], even
+if the classes have the same shape.
+% Equivalence classes are an effective way of specifying the names of fields
+% that appear in the same instructions, e.g. [[rd]], [[rs]], and [[rt]] or 
+% [[fd]], [[fs]], and [[ft]].
+% false, not so!
+Equivalence classes are useful for distinguishing CISC instruction fragments that 
+must be combined to form a complete instruction.
+
+Internally, the toolkit uses little-endian bit numbering---that is,
+bit~0 is always the least significant bit.
+
+<<grammar>>=
+Fieldspec : "fields" "of" Ident "(" Integer ")" 
+            { Ident Integer [":" Integer]  /* (ii1, ii2, ii3, rr1) */ }
+            /* [TOKENDEF (ii3, ii5, ii7, rr3)] */
+          ;
+@ %def Fieldspec
+<<refman: spec: fields>>=
+The specification\indexlit{fields}
+\begin{production}{spec}
+\lit{fields of} \term{token-name} \lit( \term{width} \lit) \nt{field-specs}
+\end{production}
+\productionglue
+\begin{production}{field-specs} 
+\sequence{\term{field-name} \term{low-bit}:\term{high-bit}}
+\end{production}
+defines a token named \term{token-name} that is \term{width} bits
+wide, as well as all the fields that may be used to refer to parts of
+that token.
+Bits are numbered from~0.
+By default, bit~0 is the least significant bit, but the significance of bit~0 
+can be changed with the \lit{bit 0} directive (Section~\ref{section:bit-0}).
+@ 
+\section{Bit numbering}
+<<grammar>>=
+BitSpec      : "bit" Zero "is" Significance Significant
+                 /* [BIT_zero_significance ii4] */
+             ;
+Zero         : Integer /* ii1 = 0 orelse 
+                        synerror(T_INT ii1, rr1, "Significance", ["expected `0'"]) */;
+Significance : Ident
+                /* (case ii1 
+                      of "most" => MOST | "least" => LEAST
+                       | _ => synerror(T_IDENT ii1, rr1, "Significance", 
+                                       ["expected `most' or `least'"]),
+                    rr1)
+                 */;
+Significant  : Ident /* ii1 = "significant" orelse 
+                        synerror(T_IDENT ii1, rr1, "Significance", 
+                                 ["expected `significant'"]) */;
+<<refman: spec: misc>>=
+\nextsection{Bit numbering}
+\label{section:bit-0}
+By default, bits used to specify fields and bit-slices are numbered with bit~0
+as the least significant bit.
+This choice can be awkward for machines that number the bits starting with
+bit~0 as the most significant bit.
+The \lit{bit 0} directive sets the bit numbering:
+\begin{production}{spec}
+\lit{bit 0 is} \alternate{\lit{most} | \lit{least}} \lit{significant}
+\end{production}
+This declaration changes the bit numbering used to interpret 
+any \lit{fields} declarations and bit slices that follow it.
+We recommend against changing bit numberings in mid-specification.
+
+Only the default bit numbering has been tested.
+@
+\section{Placeholders}
+Placeholders are emitted for instructions that refer to unresolved 
+relocatable addresses.
+They are associated with the equivalence class of the fields used in 
+the instruction.
+A placeholder is defined by a pattern with the same
+length (but not necessarily the same shape) as the equivalence class
+for which it is a placeholder.
+By construction, a placeholder can't refer to constructors that might use it,
+because no such constructor can have been defined yet.
+In other words,
+the definitions of placeholders must precede the definition of
+an instruction that outputs a pattern with fields in the associated
+equivalence classes.
+<<grammar>>=
+Placeholder : "placeholder" "for" Ident "is" Pattern 
+              /* [PLACEHOLDER (ii3, ii5, rr3)] */
+	    ;
+@ %def Placeholder
+<<refman: spec: misc>>=
+\nextsection{Placeholders}
+The specification\indexlit{placeholder}
+\begin{production}{spec}
+\lit{placeholder for} \term{token-name} \lit{is} \nt{pattern}
+\end{production}
+Tells the toolkit's generator to use \nt{pattern} when it needs to
+emit a placeholder for the named token.
+Placeholders are emitted whenever a relocatable address is
+needed but not yet known.
+
+@
+[[fieldinfo]] associates {\em name, value} pairs with one or more fields.
+The values of [[checked]]([[unchecked]]) fields are (are not) checked at
+run time.
+A [[sparse]] binding of field names is used to specify that only a small
+set of values of the field are meaningful.  The bindings associate a 
+string name with a field value.
+The [[names]] construct binds string names to each possible value of a field.
+In both cases [[Fieldinfo]] can convert the specification into a table
+mapping names to values. 
+<<grammar>>=
+Fieldspec     : "fieldinfo" { Fieldinfo } ;
+Fieldinfo     : IdentBinding "is" "[" { Fielditem } "]" /*  FIELDINFO(ii1, ii4) */;
+IdentBinding  : IdentRgn /* [ii1] */ | "[" { IdentRgn } "]";
+Fielditem     : FieldChecking /* CHECKING ii1 */ | NameTable /* FIELDNAME ii1 */;
+NameTable     : "sparse" "[" NameBindings "]" /* SPARSE_NAMES ii3 */ 
+              | "names" "[" {String|Ident} "]" /* DENSE_NAMES ii3 */ 
+              ;
+NameBindings  : NameBinding {"," NameBinding}  /* ii1::ii2 */;
+NameBinding   : (String|Ident) "=" IntExp /* (ii1, ii3) */ ;
+FieldChecking : Ident /* case ii1 
+			   of "guaranteed" => GUARANTEED
+			    | "checked"    => CHECKED
+			    | "unchecked"  => UNCHECKED
+ 	 		    | i => synerror(T_IDENT ii1, rr1, "fieldinfo", 
+                                            ["unknown field attribute ", i]) */;
+@ %def Fieldinfo Fielditem IdentBinding Bindlist
+@ 
+<<refman: spec: fields>>=
+
+A \lit{fieldinfo}\indexlit{fieldinfo} specification gives auxiliary
+information about a field or list of fields.
+(It is useful to describe several fields simultaneously
+when, for example, they all refer to the
+same set of registers.)
+Such auxiliary information might include special names used to refer
+to values of the fields (as when they describe data formats or
+registers) or information about what kind of checking should be done
+when an application supplies a putative value for a field.
+
+The syntax of \lit{fieldinfo} specifications is:
+\begin{production}{spec}
+\lit{fieldinfo} \sequence{\nt{fieldinfo-spec}}
+\end{production}
+\productionglue
+\begin{production} {fieldinfo-spec} 
+  \nt{field-specifier} \lit{is} \lit[ \sequence{\nt{field-item}} \lit]
+\end{production}
+\productionglue
+\begin{production} {field-specifier}
+\term{field-name} \vbar\ \lit[ \sequence{\term{field-name}} \lit]
+\end{production}
+\productionglue
+\begin{production} {field-item}
+ \lit{checked}
+| 	\lit{unchecked}
+| 	\lit{guaranteed}
+|         \lit{sparse [} \nt{binding} \sequence{\lit, \nt{binding}}
+				\lit]
+|         \lit{names [} \sequence{\term{Ident} | \term{String}} \lit]
+\end{production}
+\productionglue
+\begin{production} {binding}
+ \alternate{\term{Ident} | \term{String}} \lit= \term{integer}
+\end{production}
+The terms \lit{checked}, \lit{unchecked}, and \lit{guaranteed} denote
+three possible levels of checking in generated encoding procedures:
+\begin{itemize}
+\item 
+If $f$ is a checked field, the encoding procedure checks to make sure
+its value falls within range.  If not, it calls an error handler.\indexlit{checked}
+\item
+If $f$ is an unchecked field, the encoding procedure does not check its
+value, but it does mask out high bits, ensuring that other parts of
+the token can't be corrupted by a bad value of~$f$.\indexlit{unchecked}
+\item
+If $f$ is a guaranteed field, the encoding procedure simply uses its
+value without any checking or masking at all.%
+\indexlit{guaranteed}%
+\footnote{Signed field parameters must always be masked, but most
+field parameters are unsigned.}
+This option is useful mainly for situations in which $f$ denotes a
+register, and the register allocator promises never to use a bogus
+register.
+\end{itemize}
+
+\lit{sparse}\indexlit{sparse} and \lit{names}\indexlit{names} are both
+ways of specifying names of fields.
+\lit{names} is used when all the names are known; 
+\lit{sparse} is used otherwise.
+Identifiers can be used to specify names on most targets, but names containing
+special characters can only be specified using string literals.
+Note that the toolkit accepts the C literal syntax for characters in
+place of integer literals; this property may be useful when writing
+\lit{sparse} bindings.
+The use of commas to separate lists of bindings is not
+consistent with our other representations of lists, but they look
+funny without the commas.
+
+@
+I lump the word size of the target machine into the field specs, not because it
+makes all that much sense, but because I didn't know where else to put it.
+<<grammar>>=
+Fieldspec : "wordsize" Integer /* [WORDSIZE ii2] */;
+<<refman: spec: misc>>=
+\nextsection{Word size}
+There are a few situations in which we use the word size of the
+machine for which we are generating code---mostly to see whether
+certain values will fit.
+It defaults to 32~bits, but it can be specified by
+\begin{production}{spec}
+\lit{wordsize}\indexlit{wordsize} \term{width}
+\end{production}
+where \term{width} is the width in bits.
+
+@
+\section{Pattern definitions}
+Patterns parse into abstract syntax; patbinding makes them concrete and binds them
+to identifiers.
+We use a little inherited attribute to get to suitable bindings.
+<<grammar>>=
+Patterns  : "patterns" { PatBinding } /* foldr op @ [] ii2 */;
+PatBinding: IdentRgn "is" BindingRHS /* ii3 (ONE_NAME ii1) */
+          | "[" {IdentRgn} "]" "is" Pattern /* [PATBINDING(TABLE ii2, ii5)] */
+          ;
+BindingRHS: Pattern /* fn lhs => [PATBINDING(lhs, ii1)] */
+          | "any" "of" "[" {IdentRgn} "]" "," "which" "is" Pattern
+              /* let fun notWild (id, rgn) = id <> "_"
+                 in  fn lhs => 
+                       [PATBINDING(TABLE ii4, ii9),
+ 	                PATBINDING(lhs, 
+                           mark(rr4,
+				    NARY(OR, map identExp (List.filter notWild ii4))))]
+                 end
+               */
+          ;
+<<refman: spec: pattern bindings>>=
+Patterns can be named using pattern-binding
+declarations:\index{pattern bindings}
+\begin{production}{spec}\lit{patterns} \sequence{\nt{pattern-binding}}\end{production}
+\productionglue
+\begin{production}{pattern-binding}
+  \term{pattern-name} \lit{is} \nt{pattern}
+| \lit[ \sequence{\term{pattern-name}} \lit] \lit{is} \nt{pattern}
+| \term{pattern-name} \lit{is any of [} \sequence{\term{pattern-name}}
+     	                        \rlap{\lit{], which is} \nt{pattern}}
+\end{production}
+The first form names a single pattern.
+
+The second,  most common form binds a list of names on the left to a
+list of patterns on the right.
+The number of names must match the number of patterns; the special
+name ``\verb+_+'' can be used to match uninteresting patterns on the
+right.
+This form requires the use of generating expressions (or an explicit list of
+patterns) to produce a list of patterns.
+It is typically used to create opcode tables.
+In this situation, the name ``\verb+_+'' simply indicates an unused opcode.
+
+The third form extends the second to handle a common idiom.
+The sequence of pattern names and the pattern on the far right act
+just as they do in the second form, but in addition, the single name
+on the left is bound to the disjunction of all the patterns on the
+right that are bound to names other than ``\verb+_+''.
+Examples can be found in the SPARC and 486 specifications given by
+\authorcite{ramsey:tk-architecture}.
+
+The name to which a pattern is bound remains associated with that
+pattern, and that name may be used in the formation of opcode names.
+When a disjunction is bound, the individual disjuncts retain their
+names, if any.
+This behavior can be exploited when writing 
+constructor specifications, in which 
+disjuncts are enumerated when patterns appear in opcodes.
+@ 
+Parsing labels relies on a grotesque hack to keep things LL(1); we
+allow an arbitrary sequent to precede colon, then patch things up
+semantically afterwards.
+<<grammar>>=
+Pattern   : Disjunct      { "|" Disjunct }     /* mark(rr0, NARY(OR, ii1::ii2)) */;
+Disjunct  : Sequent       { ";" Sequent /* (ii2, false, rr1) */
+                          | ":" Sequent /* (ii2, true, rr1) */
+                          }  
+                          /* mark(rr0, NARY(CONCAT, colons_to_labels(ii1,ii2))) */
+          ;
+Sequent   : Conjunct      { "&" Conjunct }    /* mark(rr0, NARY(AND, ii1::ii2)) */;
+
+Conjunct  : "..." DotsR    /* mark(rr0, NARY(PREFIX_DOTS, [ii2])) */
+          | DotsR 
+          ;
+DotsR     : Atomic ["..."]  
+		 /* case ii2 of NONE => ii1
+	                      | SOME _ => mark(rr0, NARY(POSTFIX_DOTS, [ii1])) */;
+
+Atomic    : UAtomic /* mark(rr1, ii1) */;
+UAtomic   : IdentRgn
+            (                       /* fn (i, r) => IDENT i */
+            | Relop (Generator | Expr)       
+	                            /* fn id => NARY(RELOP ii1, [identExp id, ii2]) */
+            | {"^" Opname} "(" Explist ")"   
+	                            /* fn id => APP(mkopcode(idcode id,ii1), ii3) */
+            ) /* ii2 ii1 */
+          | StringRgn {"^" Opname} "(" Explist ")" 
+                                    /* APP(mkopcode(strcode ii1,ii2), ii4) */
+          | "(" Pattern ")"
+          | "[" {IdentRgn /* identExp ii1 */} "]"   /* NARY(LIST,ii2) */
+          ;
+Explist   : Expr {"," Expr} /* ii1::ii2 */
+          | /* [] */
+          ;
+@ 
+We used to ``explode'' compound constructor names at this syntactic step,
+but this turned out to be not what we wanted on the RHS of constructor
+definitions.  For example, in
+\begin{verbatim} 
+pattern load is ld | lb
+constructor load^"2" a,b,c,d is load(a,b); load(c,d)
+\end{verbatim}
+we cannot evaluate [[Papp(name, args)]] for the [[load]]s on the
+right-hand side until we have an environment telling use whether
+[[load]] stands for [[ld]] or [[lb]] in this particular context.
+(The original semantics made it stand for [[ld|lb]], which we decided
+was rarely what anyone wanted.)
+@
+Here's the colon fix:
+<<toplevel>>=
+fun colons_to_labels (s, tail) =
+  let exception NotLabel
+      fun rawlabel (NARY(AND, [IDENT l])) = NARY(PLABEL l, [])
+        | rawlabel _ = raise NotLabel
+      fun tolabel e = MARK_EXP(expRegion e, rawlabel (unmarkExp e))
+      fun cvt(s, [], r) = rev (s::r)
+        | cvt(l, (s,true,colonRgn) ::tail, r) = (cvt(s, tail, tolabel l :: r)
+		handle NotLabel => 
+                   synerror(R'COLON, colonRgn, "Pattern", 
+                            ["Colon must be preceded by an identifier"]))
+        | cvt(l, (s,false,_)::tail, r) = cvt(s, tail, l :: r)
+  in  cvt(s, tail, [])
+  end
+@ 
+<<refman: spec: patterns>>=
+Patterns can be defined both in terms of themselves or in terms of simpler elements.
+We discuss the base cases of the recursion first.
+
+\section{Simple patterns}
+Simple patterns can be described by any of the
+following syntaxes:\index{patterns!simple} 
+\begin{production}{pattern}
+  \term{name}&
+	\term{name} of \rlap{pattern, field, or constructor type}
+| \nt{opcode} \lit( \nt{arguments} \lit)&
+	Constructor application
+| \nt{field-binding}&
+	Binds field to variable
+| \nt{constraint}&	
+        Constrains field
+<<refman: other atomic patterns>>
+| \lit[ \sequence{name} \lit]&  
+	List of patterns
+\end{production}
+\productionglue
+\begin{production}{field-binding}
+\term{field-name} \lit= \nt{expr}
+\end{production}
+\productionglue
+\begin{production}{constraint}
+\term{field-name} \nt{relational-operator} 
+		\rlap{\alternate{\term{integer} | \nt{generating-expression}}}
+\end{production}
+\productionglue
+\begin{production}{relational-operator}
+\lit{<} \vbar{} \lit{<=} \vbar{} \lit{=} \vbar{} \lit{!=} \vbar{}
+\lit{>} \vbar{} \lit{>=} 
+\end{production}
+Unless a list of pattern names or a generating expression is used, the pattern
+denotes a single pattern; otherwise it denotes a list.
+Lists are ordinarily used to describe opcode tables.
+The \nt{arguments} in a constructor application may include expressions, 
+literal strings (which must be field names), or other constructor applications.
+Section \ref{section:expr} describes the syntax of expressions (\nt{expr}).
+Expressions in a \nt{field-binding} may contain free variables.
+Such variables may be operands,  or they may 
+be computed by the solver.
+
+
+When an identifier is used as a pattern, its meaning depends on
+context.
+Pattern names defined with the \lit{patterns} pattern-binding statement can
+always be used in later patterns.
+On the right-hand side of a constructor
+definition, the names of operands that represent fields or constructor
+types may also be used as patterns.
+The name of a field operand~\lit{f} is short for
+\begin{quote}
+\lit{f =} {\em the value of the operand \lit{f}}.
+\end{quote}
+Similarly, the name of a constructor-type operand~\lit T is short for
+its value, which must be a pattern because the result of applying a
+constructor is always a pattern.
+
+<<refman: constructor applications>>
+
+<<refman: spec: generating expressions>>
+
+\section{Combining patterns}
+
+The recursive part of the definition of patterns makes it possible to
+combine patterns using the following
+operators:\index{patterns!complex}\index{pattern operators}
+\begin{production}{pattern}
+\nt{pattern} \lit{...}&                Loosens rules restricting conjunction.
+| \lit{...} \nt{pattern}&              Loosens rules restricting conjunction.
+| \nt{pattern} \lit{\&} \nt{pattern}&  Conjunction.
+| \nt{pattern} \lit; \nt{pattern}&     Sequence.
+| \nt{pattern} \litbar\ \nt{pattern}&     Disjunction.
+\end{production}
+Operators listed first have higher precedence.
+
+\section{Pattern labels}
+
+One can refer to a  location within a pattern by using a \emph{pattern label}.
+The syntax is
+\begin{production}{pattern}
+\term{label-name} \nt{pattern}
+\end{production}
+The appearance of \term{label-name} is a binding instance; its scope
+is the \indexedlit{patterns} declaration or the constructor branch in
+which it appears.
+Within that scope, it refers to the location in the instruction stream
+immediately preceding the pattern it labels.
+That location can be converted to an integer in the same way as a
+relocatable address.
+Labelling has the same precedence as the sequencing operator, so, for
+example, to refer to the location at the end of an instruction, one
+can use the idiom
+\begin{quote}
+\nt{pattern}\lit{; L: epsilon}
+\end{quote}
+
+
+
+<<refman: description of pattern operators>>
+
+<<refman: constructor applications>>=
+The \nt{opcode} used in a constructor application may denote a single
+constructor or a group of constructors with identical operands.
+It works the same way in a constructor specification, as described in
+Section~\ref{sec:opcode}.
+Strictly speaking, applying a constructor to create a pattern is not
+``simple,'' because patterns themselves are used to define
+constructors.
+It is actually part of a mutual recursion between the definitions of
+patterns and constructors.
+<<grammar>>=
+Relop      : "="   /* Relop.EQ */
+           | "!="  /* Relop.NE */
+           | "<="  /* Relop.LE */
+           | ">="  /* Relop.GE */
+           | "<"   /* Relop.LT */
+           | ">"   /* Relop.GT */;
+Generator  : UGenerator /* mark(rr1, ii1) */;
+IntExp     : Integer /* mark(rr0, INT ii1) */;
+UGenerator : "{" IntExp "to" IntExp [ "columns" IntExp /* ii2 */ ] "}"  
+                /* NARY(GEN_to, [ii2, ii4] @ 
+                                 (case ii5 of NONE => [] | SOME n => [n])) */
+           | "[" { IntExp } "]"     /* NARY(LIST, ii2) */
+           ;
+<<refman: spec: generating expressions>>=
+A {\em generating expression}\index{generating expression} can be used
+instead of an integer in field constraints.
+The resulting constraint denotes a list of patterns, one for each
+value of the generating expression.
+There are three forms of generating expression:
+\begin{production} {generating-expression}
+  \lit\lbr{} \term{lo} \lit{to} \term{hi} \lit\rbr
+| \lit\lbr{} \term{lo} \lit{to} \term{hi} \lit{columns} \term{n} \lit\rbr
+| \lit[ \sequence{\term{integer}} \lit]
+\end{production}
+The first form generates the integers from \term{lo} to \term{hi}
+inclusive, in order.
+The second form generates the same integers, but in an order suited to
+an \term{n}-column layout, e.g. $\term{lo}, \term{lo}+\term{n},
+\term{lo}+2\term{n}, \ldots$, wrapping around as needed.
+The third form simply lists the integers generated; it is suitable for
+sparse tables.
+
+@
+There are a couple of special patterns.
+These alone produce patterns directly, not an AST.
+([[pnf]], for example, isn't prepared to cope with a pattern with an
+empty sequence).
+<<grammar>>=
+UAtomic : "epsilon" /* IDENT "epsilon" */
+        | "some" IdentRgn /* NARY(SOME_token, [identExp ii2]) */
+        ;
+<<refman: other atomic patterns>>=
+| \lit{epsilon}\indexlit{epsilon}&The empty sequence.
+| \lit{some}\indexlit{some} \term{token-name}&
+	Matches a single token \rlap{of the class named.}
+@
+\subsection{Pattern syntax}
+A generator is represented by a [[LIST]].  The list of values is either given 
+explicitly or generated on the spot by [[GEN_to]].
+@
+<<refman: constructors>>=
+The constructor specifications are the most complicated in
+the toolkit; they can use compound opcodes, equations,
+assembly-language syntax, and conditional assembly.
+Constructor specifications are the only ones in which newlines are
+significant.
+We make newlines significant so that we can use them in the very
+common case in which the output pattern of the constructor is implicit.
+
+
+<<refman: constructor-spec syntax>>
+
+<<refman: opcodes and operands>>
+
+<<refman: branches of constructors>>
+@
+\section{Constructors}
+A constructor consists of an [[Opcode]], one or more [[Operand]]s,
+an optional constructor type [[ConstType]], and one or more [[Branches]].
+The default type of a constructor is [[instruction]].
+One-branch syntax is radically different from multibranch syntax and I haven't
+the time to explain the details now.
+Each branch consists of a set of [[Equations]]
+followed by a required output [[Pattern]].
+Branches are evaluated in order: the constructor's value
+is the output pattern of the first branch whose constraints
+are satisfied.
+<<grammar>>=
+Constructors : "constructors" (/*see_newline()*/) 
+                    { Constructor /* see_newline(); ii1 */} 
+                    /* ignore_newlines(); ii3 */;
+Constructor  : Opcode Operands [ ":" AddressIdent ] NLBranches
+                 /* CONSTRUCTOR (ii1, ii2, ii3, ii4) */
+               ;
+AddressIdent : "address" | Ident;
+Operands : SeeWhite {Operand} StopWhite /* process_operands ii2 */;
+@ 
+To process operands, we combine adjacent literals and remove trailing
+white space.
+[[striprev]] is the first step; it strips trailing white space and
+incidentally reverses the list.
+[[mergerev]] is the second step; it reverses the list again, merging
+adjacent literals.
+<<toplevel>>=
+fun process_operands ops =
+  let val iswhitec = fn #" " => true | #"\t" => true | #"\n" => true | _ => false
+      fun forall f [] = true
+        | forall f (h::t) = f h andalso forall f t
+      val iswhite = forall iswhitec o explode
+      fun striprev([rand as LITERAL_operand w], r) = if iswhite w then r else rand :: r
+        | striprev([], r) = r
+        | striprev(h::t, r) = striprev(t, h::r)
+      fun mergerev(LITERAL_operand o1 :: LITERAL_operand o2 :: t, r) =
+		mergerev(LITERAL_operand (o2^o1) (* reversed! *) :: t, r)
+	| mergerev(h::t, r) = mergerev(t, h::r)
+        | mergerev([], r) = r
+  in  mergerev(striprev(ops, []), [])
+  end : operand list
+<<refman: constructor-spec syntax>>=
+The syntax of constructor specifications is\indexlit{constructors}
+\begin{production}{spec}
+\lit{constructors} \sequence{\nt{constructor}}
+\end{production}
+\productionglue
+\begin{production}{constructor}
+  \nt{opcode} \sequence{\nt{operand}} \optional{ \lit: \term{type-name} } $\star$
+			\optional{\nt{branches}}
+\end{production}
+Because both type and branches are optional, we use the newline to
+separate the last operand of the current constructor from the opcode
+of the following constructor.
+The newline is significant only in the position marked~$\star$, and
+only the first newline is significant.  It is OK to include the
+newline even when explicit branches are present.
+
+<<refman: constructor types>>
+<<grammar>>=
+NLBranches   : Branches
+             | NEWLINE (Branches | /* [ ([], NONE) ] */)
+             ;
+Branches     : SingleBranch /* [ii1] */
+             | WhenBranch {WhenBranch | OtherwiseBranch}
+                /* ii1 :: ii2 */
+             ;
+SingleBranch : "{" Equations "}" [ "is" Pattern ] /* (ii2, ii4) */ 
+             | "is" Pattern                       /* ([], SOME ii2) */ 
+             ;
+WhenBranch      : "when" "{" Equations "}" "is" Pattern /* (ii3, SOME ii6) */;
+OtherwiseBranch : "otherwise" "is" Pattern              /* ([], SOME ii3) */;
+<<refman: branches of constructors>>=
+The branches given with a constructor determine its output pattern.
+Most commonly, each constructor produces a unique sequence of tokens
+when applied, so its right-hand side is specified by one pattern
+containing a single disjunct:
+\begin{production}{branches}
+  \optional{\lit\lbr \nt{equations} \lit\rbr} 
+  \optional{\lit{is} \nt{pattern}}
+\end{production}
+The equations (Section~\ref{sec:equations}) are solved to produce a
+set of {\em conditions}, which are predicates sufficient to guarantee
+that the
+equations have a solution, and to produce {\em bindings} for
+the variables solved for.
+When encoding,
+the field- and integer-valued operands to the constructor provide the
+inputs to the equation solver; when decoding, it is the variables
+bound to fields in \nt{pattern} which perform that function.
+Equations can be omitted if not needed.
+
+The output pattern, which describes the binary representation 
+of the constructor,
+can also be omitted, in which case
+all the field names, pattern names, and
+constructor-type names in the opcode and operands are conjoined to
+produce an {\em implicit} output pattern.
+Omitting both equations and output pattern 
+yields a very concise constructor specification; 
+we use this idiom heavily in our MIPS and SPARC descriptions.
+
+The toolkit checks a constructor's output pattern for 
+consistency.  
+It generates an error if a field in a token is overconstrained
+or if fields overlap.
+For an untyped constructor, it
+generates a warning if there are
+unspecified bits in the constructor's output pattern,
+and it initializes unspecified bits to zero.
+
+Sometimes we want to choose an output pattern based on some properties
+of the operands (conditional assembly).
+In that case, we can give multiple branches, each with its own set of
+equations.
+\begin{production}{branches}
+  \sequence{\lit{when} \lit\lbr{} \nt{equations} \lit\rbr{} \lit{is} \nt{pattern}}
+  \optional{\lit{otherwise is} \nt{pattern}}
+\end{production}
+The sequence of \lit{when} branches may not be empty, 
+and output patterns cannot be omitted when multiple branches are used.
+
+When using this constructor in encoding, the toolkit chooses the first
+branch whose conditions are known to be satisfied.
+This conservative approach means that the toolkit can always produce
+correct code in a single pass, but that, for example, branches to
+unknown labels are always encoded in the most general way.
+It would be pleasant if we got around to incorporating standard
+multi-pass algorithms for conditional assembly, but don't look for it
+soon. 
+<<grammar>>=
+Opcode    : Opname { "^" Opname }  /* mkopcode(ii1, ii2) */ ;
+Opname    : IdentRgn  /* idcode ii1 */ | StringRgn /* strcode ii1 */;
+<<toplevel>>=
+fun idcode  (name, rgn) = (OPCODE         name, rgn)
+fun strcode (name, rgn) = (LITERAL_opcode name, rgn)
+fun mkopcode((firstop, firstreg), rest) =
+  let val region  = foldr (fn ((s, r), r') => SourceMap.span(r, r')) firstreg rest
+      val opnames = firstop :: map fst rest
+  in  (opnames, region)
+  end
+<<refman: opcodes and operands>>=
+\label{sec:opcode}
+The opcode and operand notations used in constructor specifications
+are designed to enable concise specifications that resemble assembly
+language.
+In fact, the toolkit uses these notations to infer an
+assembly-language syntax for each instruction, and the toolkit can
+generate encoding procedures which emit that assembly language.
+As noted above, the constructor specification begins with opcode and
+operands.
+The list of operands is terminated by the first newline, or by any of
+the tokens that introduce later constructs.%
+\footnote{Computers are better than I at computing follow sets, but
+certainly the colon that introduces a constructor type, the brace that
+introduces equations, and the keyword \lit{is} all terminate lists of
+operands.}
+
+Opcodes are formed from three kinds of units: literal strings, pattern
+names, and field names.
+Literal strings simply contribute to the opcode name, but patterns and
+fields introduce an implicit iteration: patterns iterate over
+disjuncts, and fields iterate over named values.
+Each iteration results in the specification of a separate constructor.
+For a pattern, the name of the disjunct is substituted for
+the pattern name in the opcode, and the disjunct is used to stand for
+the pattern on the right-hand side.
+\bogon{At the moment, that value isn't used properly in equations.
+This is an outstanding bug; the value should be equivalent to an
+integer literal in the equations.}
+For a field, the name of the field's value%
+\footnote{As given by  \lit{names} or \lit{sparse} in a \lit{fieldinfo}
+declaration.}
+is substituted for the 
+the field name on the opcode, and the pattern binding the field to
+that value is used to stand for
+the field on the right-hand side.
+Any pattern so introduced on the right-hand side is conjoined into the
+{\em implicit output pattern}, which is the one used in the
+constructor specification when branches are omitted.
+For examples, see \authorcite{ramsey:jersey}.
+The basic idea is for any pattern or field on the left to be re-used
+on the right --- typically it will be conjoined in, in which case it
+is used implicitly.
+
+The elements of an opcode
+are joined with a hat (\lit{\char`\^}).
+The syntax for an opcode is
+\begin{production}{opcode}
+\nt{opname} \sequence{\lit{\char`\^} \nt{opname}}
+\end{production}
+\productionglue
+\begin{production}{opname}
+\term{string} \vbar{}  \term{pattern-name} \vbar{} \term{field-name}
+\end{production}
+Most opcodes use just a single name.
+It's permissible to use an unbound identifier as an \nt{opname},
+which has the same effect as a literal string.%
+\footnote{This is hokey language
+design, but it makes the specifications look nice.
+It's unlikely to lead to errors, because a misspelling, which would
+result in an unbound identifier, would also result in that
+identifier's being unbound on the right-hand side, which would be
+flagged as an error.
+(We don't expect users to write specifications in which pattern or
+field names are used on the left without also being used on the right,
+and we issue a warning message if they do.)}
+
+@ 
+<<grammar>>=
+Operand      : (IdentRgn | AddressAsIdentRgn) ["!"]
+                    /* OPERAND(ii1, case ii2 of NONE => false | _ => true) */
+             | (Literal | GlobOperator | White) /* LITERAL_operand ii1 */
+             ;
+AddressAsIdentRgn : "address" SeeWhite /* (ii1, rr1) */;
+  # reserved word automatically causes newlines to be ignored, so fix it
+Literal      : String | Integer /* Int.toString ii1 */ | "=>" 
+             | "=" | "!=" | "<=" | ">=" | "<" | ">"   
+             | "[" | "]" | "(" | ")" | "+" | "-" | "/" 
+             | "&" | "@" | "#" | "%" | ";" | "|" 
+             ;
+GlobOperator : "*" | "$" | ","
+             ;
+<<refman: opcodes and operands>>=
+Our operand syntax is unusual in that we permit arbitrary ``noise
+words'' to enable the specification writer to mimic assembly-language
+syntax.
+We call such noise words \nt{literal}s.
+We use literals to help create encoding procedures that emit
+assembly language.
+For binary encoding and decoding, literals are ignored completely.
+We permit any integer or quoted string, plus a variety of special
+characters that are common in assembly languages but don't conflict
+with our usage in specifications:
+\begin{production}{literal}
+\term{string} \vbar{} \term{integer}
+| any of these characters: \verb^<>=[]()+-/&@#%;*$,^\litbar
+\end{production}
+
+<<refman: constructor operands by name>>
+
+<<refman: constructor types>>=
+Constructors specified by the toolkit are {\em typed} or {\em untyped\/},
+depending on whether a \term{type-name} appears.
+All constructors are applied to operands to produce patterns, 
+but the encoding procedures that the toolkit generates for a
+constructor have different effects depending on typing.
+Untyped constructors emit tokens into the current instruction stream,
+but typed constructors produce opaque values encapsulating patterns.
+The values are opaque in the sense that their only use is to be passed
+as operands to other constructors.%
+\footnote{We recognize that this restriction is a defect in the
+toolkit, and that application writers might like to match on or
+manipulate the opaque values produced by typed constructors.
+We welcome suggestions about how such a facility should be designed,
+implemented, or made available to applications.}
+A new constructor type is defined simply by using a new \term{type-name}
+in a specification.
+All constructors of a type must be defined before the type is used,
+for example, as an operand to another constructor.
+This restriction prevents circular definitions.%
+\footnote{It also prevents recursive constructor types.
+We avoid recursive constructors for two reasons.
+For efficiency, the toolkit's generator ``inlines'' constructor
+operands by enumerating all possible patterns, a technique that works
+only when the enumeration is finite.
+When decoding, the toolkit can use a simple recognition algorithm
+instead of having to create a parser, which might be ambiguous.}
+
+<<refman: constructor operands by name>>=
+The real operands of a constructor are all given by name.
+Constructor operands may have several different types, but we don't
+want to clutter up our notation with type information, so we use
+special names shamefully:
+\begin{production}{operand}
+\term{field-name} \optional{\lit!}&
+	Field, possibly signed
+| \term{constructor-type-name}&
+	Result of applying typed \rlap{constructor}
+| \term{relocatable-name}&
+	Relocatable address
+| \term{unbound-name}&
+	Integer operand
+| \nt{literal}&
+	Ignored for encoding and decoding
+\end{production}
+Constructor inputs may have underscores and
+digits appended; they can be used to distinguish multiple inputs of
+the same type.
+Field and constructor inputs are available to be used as output
+patterns; fields stand for the pattern binding that field to the value
+of the operands, and constructor inputs stand for themselves---the
+result of applying a constructor is always a pattern. 
+Relocatable addresses and integers can be used in equations, in field
+constraints, or both.
+A \term{relocatable-name} is an identifier declared with the 
+\lit{relocatable} directive described in Section~\ref{section:relocatable}.
+ 
+The toolkit always treats field values as unsigned.
+When a field is actually signed, specification writers must use an
+exclamation point as an explicit sign-extension operator.
+Indulging in a minor abuse of notation, we interpret
+ the exclamation point after a field name in an operand list to mean
+ that the parameter to an encoding procedure is a signed
+integer, which should be narrowed to produce the value of the field.
+@ 
+Here's all the relocation goo.
+<<grammar>>=
+RelocSpec : "relocatable" Ident {Ident} /* [RELOCATABLE (ii2::ii3)] */;
+<<refman: misc: relocatable>>=
+\label{section:relocatable}.
+To write specifications that use relocatable addresses, you must
+declare which operand names refer to relocatable addresses.
+Write
+\begin{production}{spec}
+\indexedlit{relocatable} \sequence{\term{identifier}}
+\end{production}
+to mark one or more identifiers as relocatable addresses.
+In subsequent constructor definitions, such identifiers denote
+relocatable addresses when used as operands.
+@
+\subsection{Deleting constructors}
+For tests, or for other purposes, we may want to delete constructors from
+a specification.  There are two ways: say what we want to keep, or say what we 
+want to throw away.
+<<grammar>>=
+Constructors : "discard" {Opcode} /* [DISCARD ii2] */
+             | "keep"    {Opcode} /* [KEEP ii2] */
+             ;
+<<refman: misc: discard and keep>>=
+You may want to delete constructors from
+a specification, reducing the number of encoding procedures generated.
+You may say what to keep or what to throw away.
+\begin{production}{spec}
+\indexedlit{keep} \sequence{\nt{opcode}}
+| \indexedlit{discard} \sequence{\nt{opcode}}
+\end{production}
+Constructors (or groups thereof) are named by their opcode specifications.
+
+@
+\section{Equations}
+Extensions and ranges are guaranteed unique within a set of equations,
+and they are reset before each set of equations.
+The grammar is bit awkward because we're trying to keep it LL(1).
+<<grammar>>=
+Equations : Equation { "," Equation } /* (ii1::ii2) */
+          |  /* [] */ ;
+Equation  : Expr Relop Expr /* NARY(RELOP ii2, [ii1, ii3]) */;
+<<refman: equations>>=
+\label{sec:equations}
+Equations are written by relating two expressions using the relational
+operators.
+Multiple equations are separated by commas.
+\begin{production}{equations}
+\nt{equation} \sequence{\lit, \nt{equation}}
+\end{production}
+\productionglue
+\begin{production} {equation}
+\nt{expr} \nt{relational-operator} \nt{expr}
+\end{production}
+Only the \lit= operator truly contributes information to a set of
+equations to be solved.
+All inequalities in a list of equations are simply added to the list
+of {\em conditions} that must be satisfied if the equations are to
+have a solution.
+
+\iffalse
+(Labels...
+During encoding, it is a relocatable address, which can be treated as
+an integer by the usual mechanism.
+During decoding, it has to be converted to an integer by a special
+template (see Section~\ref{sec:address-to-pc}).
+\fi
+@
+<<grammar>>=
+Expr      : Term { AOp Term /* (ii1, ii2) */ } 
+		/* foldl (fn ((rator, rand), e) => NARY(rator, [e, rand])) ii1 ii2 */;
+Term      : UTerm /* mark(rr0, ii1) */;
+UTerm     : Factor { Mop Factor  /* (ii1, ii2) */ } 
+		/* foldl (fn ((rator, rand), e) => NARY(rator, [e, rand])) ii1 ii2 */;
+AOp       : "+" /* PLUS */  | "-" /* MINUS */ ; 
+Mop       : "*" /* TIMES */ | "/" /* DIV */ ; 
+Factor    : UFactor /* mark(rr0, ii1) */
+          | "(" Expr ")"        
+          ;
+UFactor   : Integer /* INT ii1 */
+          | String  /* LITERAL_exp ii1 */   # legal only in constructor apps
+          | "_"     /* NARY(WILDCARD, []) */
+          | (T_IDENT | "address")
+              ( [ Bitrange ] [ "!" ]    /* fn id => mkfactor(id, ii1, ii2) */
+              | "(" Expr {"," Expr} ")" 
+	                          /* fn id => APP(mkopcode(idcode id,[]), ii2::ii3) */
+              ) /* ii2 (ii1,rr1) */
+          | "-" Factor /* NARY(MINUS, [ii2]) */
+          ;
+Bitrange  : "@" "[" IntExp [":" IntExp] "]"
+		 /* ii3 :: (case ii4 of SOME i => [i] | _ => []) */;
+@ Can't use a square-bracket syntax for bit ranges because it creates parsing conflict
+with list of names on left-hand side of pattern binding, list of patterns in square
+brackets, and optional name in arm of case statement.
+@
+We mark identifiers and integers.
+<<toplevel>>=
+fun identExp (id, rgn) = MARK_EXP (rgn, IDENT id)
+fun mark (rgn, e as MARK_EXP _) = e
+  | mark (rgn, e) = MARK_EXP(rgn, e)
+<<toplevel>>=
+fun mkfactor (id, bits, range) =
+  let val e   = identExp id
+      val e'  = case bits  of NONE => e  | SOME r => NARY(SLICE, e::r)
+      val e'' = case range of NONE => e' | _ => NARY(EXTEND, [e'])
+  in  e''
+  end
+<<refman: expressions>>=
+\label{section:expr}
+The expression syntax uses the standard binary operators, unary minus,
+and special
+postfix syntax for bit slicing and sign extension:
+\begin{production}{expr}
+\term{integer}
+| \term{identifier} \optional{\nt{bit-slice}} \optional{\lit!}
+| \nt{expr} \nt{binary-operator} \nt{expr}
+| \lit( \nt{expr} \lit)
+\end{production}
+\productionglue
+\begin{production}{binary-operator}
+\lit+ \vbar{} \lit- \vbar{} \lit* \vbar{} \lit/
+\end{production}
+\begin{production}{bit-slice}
+	\lit@\lit[ \term{lo-bit} \optional{\lit: \term{hi-bit}} \lit]\\
+\end{production}
+The special identifier \lit{\_} is a ``wildcard.''
+It stands for a ``don't care'' value, and every instance stands for 
+a different variable.
+
+The binary operators have the standard precedence.
+Using explicit division is almost certain to cause the solver to
+complain.
+Multiplying two unknowns will also break the solver---you should only
+multiply by integer literals.
+
+A bit slice denotes the range of bits from \term{lo-bit} to
+\term{hi-bit}, inclusive.%
+\footnote{The current syntax for bit slices differs from that used in earlier versions
+of the toolkit.  The old syntax led to parsing conflicts when restrictions on the use
+of expressions were relaxed.}
+By default, bit~0 is the least significant bit, but the significance of bit~0 
+can be changed with the \lit{bit 0} directive (Section~\ref{section:bit-0}).
+If \term{hi-bit} is omitted, it defaults to \term{lo-bit}, that is,
+the slice is one bit wide.%
+\footnote{It is a defect in the toolkit that there is no way to notate
+a slice from bit $k$ up to the most significant bit, whatever that may
+be (e.g., 31 or 64).  
+If you want this defect remedied, suggest a suitable notation.}
+Any quantity may be sliced.
+Only slices and fields may be sign-extended, because they are the only
+quantities whose widths are known.
+
+The toolkit's equation solver is simple-minded, and it gives
+terrible error messages.\index{equation solver!apology
+for}\index{error messages!quality of}
+@
+\section{Code containing matching statements}
+Using the global value [[succptr]] is OK for now, but it will break horribly
+if we ever permit nested matching statements.
+<<grammar>>=
+CodeFile      : Code { Casestmt Code /* (ii1, ii2) */ } /* CODEFILE (ii1, ii2) */;
+Casestmt      : CASELINE { Casearm } [ElseArm] "endmatch" 
+		      /* let val ((pc, rgn), optname) = ii1
+                         in  (([pc], rgn), optname, ii2, ii3)
+                  	 end */;
+Casearm       : "|" Pattern OptEquations OptName "=>" Code
+                      /* (ii2, ii3, ii4, ii6 : code) */;
+ElseArm       : "else" Code;
+OptName       : [ "[" Ident "]" ];
+OptEquations  : "{" Equations "}" | /* [] */;
+Code : /* ([], nullRegion) */
+     | Codeline {Codeline} /* mkopcode(ii1, ii2) : code */
+     ;
+Codeline : CODELINE /* (ii1, rr1) */;
+<<refman: matching grammar>>=
+The toolkit's matching statements are inspired by pattern matching in
+Standard~ML \cite{milner:definition}.
+Matching statements are embedded directly in C or Modula-3 code.
+<<refman: how matching statements begin>>
+The body of a matching statement contains a series of arms,
+and the matching statement ends with \lit{endmatch} on a line by
+itself.
+
+The first line of an arm begins with a \litbar{} and has the following
+syntax:
+\begin{quote}
+\litbar\ \nt{pattern} \optional{\lit\lbr\ \nt{equations} \lit\rbr} 
+                   \optional{\lit[ \term{name} \lit]} \lit{=>} \term{code}
+\end{quote}
+Free variables of \nt{pattern} or \nt{equations} are available to be
+used in the \term{code} on the right-hand side.
+Free variables from \nt{pattern} can come from field constraints or
+from constructor applications; in either case, all such variables
+represent binding instances.
+If a free variables is an integer-typed argument to a constructor or
+it  appears in  field bindings, it is an integer.
+If a free variable is a constructor-typed argument to a constructor,
+then on the right-hand side of the \lit{=>} it stands for the location
+in the instruction stream where that argument matches.
+It's as if the name of the argument were written as a label preceding
+each constructor of the appropriate type.
+The location is converted to an integer by the usual mechanism
+(arithmetic from the matched address in units of
+\indexedlit{pc_unit_bits}). 
+
+The special variable \verb+_+ can be used in constructor applications
+to stand for operands whose values are uninteresting.
+The optional \term{name}, if present, is an identifier that is bound
+to the name of the \nt{pattern}.
+This name may be a name introduced by a \verb+patterns+ declaration,
+or it may be the name of a constructor that was applied to produce the
+pattern. 
+The \term{code} may occupy multiple lines; the toolkit takes all the
+text between the \lit{=>} and the next initial \litbar, or the end of
+the matching statement.
+
+The last arm of a matching statement may be written
+\begin{quote}
+\lit{else} \term{code}
+\end{quote}
+which is syntactic sugar for
+\begin{quote}
+\lit{| epsilon =>} \term{code}
+\end{quote}
+
+
+<<refman: summary of matching grammar>>
+
+
+The decoder generated by the toolkit has the effect of checking
+each arm of the matching statement in turn.
+As soon as it finds an arm whose pattern matches and whose equations
+have a solution,%
+\footnote{Note that patterns obtained by constructor application may
+carry along some equations implicitly.} it binds all the free
+identifiers on the left-hand side of the arm, then executes the code
+on the right-hand side.
+The decoders the toolkit generates are actually much more efficient,
+testing inputs against all arms at once, but the sequential model accurately
+describes the semantics.
+
+<<refman: list of known bugs>>=
+\item
+The toolkit generates lots of dead code in decoders.
+For efficiency, we need to assume the compiler does dead-code
+elimination and copy propagation.
+@
+\section{Specifications for fetching words}
+I introduce the nonterminal [[Address]] in order to avoid making
+[[address]] a reserved word.
+<<grammar>>=
+FetchSpec : "fetch" (Integer /* SOME ii1 */ | "any" /* NONE */) "using" String 
+		/* [FETCH (ii2, ii4)] */
+          | "address" (Add "using" String             /* [ADDRESS_add ii3] */
+                      | "type" "is" String            /* [ADDRESS_type ii3] */
+		      | "to" IntIdent "using" String  /* [ADDRESS_convert ii4] */
+                      )
+          ;
+Add      : Ident /* ii1 = "add" orelse
+                    synerror(T_IDENT ii1, rr1, "address-spec", 
+                             ["expected `add', `type', or `to'"]) */;
+IntIdent : Ident /* ii1 = "integer" orelse
+                    synerror(T_IDENT ii1, rr1, "address-spec",
+			     ["expected \"integer\""]) */;
+<<refman: fetching templates>>=
+\label{sec:address-to-pc}
+Decoders generated by the toolkit's translator instantiate code
+templates to get access to the tokens of the instruction stream being
+decoded.
+The toolkit treats addresses and instruction streams
+as abstract data types; these templates give the operations.
+\begin{production}{spec}
+  \indexedlit{fetch} \alternate{\term{width} | \lit{any}} \lit{using}
+		\term{template}
+| \indexedlit{address type} \lit{is} \term{template}
+| \indexedlit{address add} \lit{using} \term{template}
+| \indexedlit{address to integer} \lit{using} \term{template}
+\end{production}
+Each \term{template} is a string.
+\lit{fetch} templates are used to fetch words from an instruction
+stream.
+Some applications may be able to give a single \lit{fetch} templates
+that works with any width; others may have to give a different
+\lit{fetch} template for each width used in the specification.
+\lit{address type} identifies the type the application uses to
+represent a location in an instruction stream;
+the \lit{address add} template is used for address arithmetic, which
+moves through the stream.
+\lit{address to integer} is used to convert an address to an integer; it is
+used to assign values  to labels.\index{labels!template for conversion}
+<<refman: meaning of fetchtab strings>>
+<<refman: fetch template>>
+<<refman: address add template>>
+<<refman: address to integer template>>
+The \lit{address type} template doesn't use any escapes.
+@ 
+\section{Assembly syntax}
+<<refman: assembly syntax>>=
+You can write perfectly interesting encoding and decoding applications 
+without specifying an assembly-language syntax, so you may want to skip this section
+on first reading and go on to \secn{following-asm-syntax}
+
+A constructor's 
+left-hand side, i.e., the constructor's name, its operands, and
+some syntactic sugar, is often sufficient to specify the constructor's 
+syntax in the assembly language recognized by a vendor's assembler. 
+This is the case for most instructions on the MIPS and SPARC when
+assembled by Unix assemblers.
+Other architectures, like the Pentium, 
+are targets of multiple assemblers, each of
+which may recognize a distinct assembly syntax.
+Multiple syntaxes prevent the specification writer
+from using one constructor to specify all variant syntaxes.
+Moreover, some assemblers overload instruction names,
+% Some assemblers overload instruction names, 
+using context to determine which instruction is meant.  
+For example, the Pentium
+\verb|add| can mean any of five different instructions, depending on
+the sizes and locations of the operands.  The toolkit cannot do
+this kind of overloading; it must use different names for
+different instructions (constructors).  The reason is that the
+toolkit must generate a different encoding procedure for each
+instruction, and in most programming languages, different
+procedures must have different names.  
+\iffalse
+This is untrue.  Name resolution in C++, Self, Cecil, etc.,
+is extremely powerful and completely confounding.
+
+Even in languages that do
+support overloading, we might not be able to use the same name,
+because the name-resolution mechanisms used in programming
+languages are not as powerful as what an assembler uses (LR
+parsing).
+\fi
+
+We solve this problem by requiring each constructor to have a
+different name.  Typically, the specification writer distinguishes
+variants by adding suffixes to the base name of the constructor.
+For example, the Pentium \verb|add| instructions include constructors
+called \verb|addb|, \verb|addib|, \verb|addiowb|, \verb|addmrb|, and
+\verb|addrmb|.  To get from these names back to assembly language,
+we have to define an appropriate mapping.  
+These mappings, and others for operand syntax, are
+defined separately from the main specification, because different
+vendors use different syntaxes for their assembly languages.
+
+%To support various syntaxes and , 
+%the toolkit provides assembly specifications separate from
+%the constructor specifications.
+An assembly specification includes three parts:
+a mapping of constructor names to assembly opcodes,
+the assembly format for each constructor operand,
+and the assembly syntax for each constructor.
+We use the Pentium specification of 
+the assembly language supported by the
+GNU assembler to illustrate assembly specifications.
+First, we describe assembly name mappings, then operand format and
+constructor assembly syntax.
+\begin{production}{spec}
+  \nt{assembly-opcode-syntax}
+| \nt{assembly-operand-syntax}
+| \nt{assembly-syntax}
+\end{production}
+<<grammar>>=
+AsmSpec : "assembly"
+   ( "operand" {IdentBinding "is" OperandSyntaxSpec /* ASM_operand (ii1, ii3) */}
+   | "component"  {Globbing "is" GlobTarget  /* ASM_component(ii1, ii3) */}
+   | "opcode"  {Globbing "is" GlobTarget  /* ASM_opcode (ii1, ii3) */}
+   | "syntax"  (/*see_newline()*/) { AsmSyntax /* see_newline(); ii1 */} 
+		/* ignore_newlines(); ii3 */
+   );
+@
+<<refman: assembly syntax>>=
+\nextsection{Assembly names for opcodes}
+A constructor's name may contain multiple parts derived from pattern
+names and constant strings.
+Each part may or may not contribute to the assembly name.
+For example, the constructor name \verb|add^"mrb"| contains two parts, 
+the first derived from the pattern \verb|add| and the second from the
+string \verb|"mrb"|.  The assembly name for this constructor is
+\verb|addb|, so the pattern \verb|add| contributes its name and the suffix 
+\verb|"mrb"| is mapped to the string \verb|"b"|.
+This example illustrates how the constructor \verb|addmrb| has a more specific name to
+disambiguate it from other overloaded variants of \verb|addb|.
+
+{\hfuzz=12pt % make room for wide production
+\verb|assembly opcode| introduces mappings from complete
+constructor names (strings) to their assembly names (strings).
+\verb|assembly component| introduces mappings from parts 
+of constructor names to their assembly names.
+\begin{production}{assembly-opcode-syntax}
+\indexedlit{assembly} \indexedlit{opcode} \nt{glob-pattern} \lit{is} \nt{glob-target}
+| \indexedlit{assembly} \indexedlit{component} \nt{glob-pattern} \lit{is} \nt{glob-target}
+\end{production}
+Complete mapping simply enables a specification writer to rename entire constructors. 
+We also provide component-wise mapping because it improves
+factoring of assembly names among constructors that
+share common suffixes and prefixes.  For example, the suffix
+\verb|B.Eb.Ib| always maps to \verb|b| in every constructor name
+where it appears.  That mapping is specified by
+\begin{verbatim}
+  assembly component B.Eb.Ib is b
+\end{verbatim}
+\par}
+
+Here's how we disambiguate the two mapping mechanisms.
+If a complete name mapping exists for a constructor name, it is
+applied, and componentwise mappings are ignored.
+If no complete mapping exists, 
+mappings are applied individually to {\em each} part of a
+constructor's name and the resulting strings are concatenated into the
+complete assembly name.
+@
+<<refman: assembly syntax>>=
+\nextsection{Globbing expressions}
+There is redundancy in the mapping of constructor names, so we
+use a regular expression syntax to group related names.
+The regular expression syntax is the same as the syntax for C-shell
+``globbing'' expressions~\cite{joy:c-shell}.
+For example, the  mappings applied to the parts of the constructor
+name \verb|add^"mrb"| are:
+\begin{verbatim}
+assembly component
+    add	    is	add
+    *b      is 	b
+\end{verbatim}
+The first rule maps \verb|add| to itself 
+and the second maps any string that matches \verb|*b|
+to \verb|b|.
+The least general rule that matches a string is applied.
+\remark{What do we mean by ``least general?''}
+
+It is often useful to define a default mapping, 
+i.e., for the pattern ``\verb|*|''.
+On the supported targets, 
+most constructor names map directly to assembly names, 
+so the default maps a name to itself, i.e., 
+\verb|assembly component {*} is $1|.
+
+In globbing expressions, ``*'' matches any string.
+Any other 
+character, including the dot, matches itself.
+The concatenation operator is implicit, so adjacent characters are concatenated.
+Alternatives are comma-separated lists of strings delimited by ``\lit\lbr''
+and ``\lit\rbr''.
+
+The string on the right-hand side may contain elements of the form
+{\tt\$}$n$, where $n$ is the $n$-th braced expression on the
+left-hand side. 
+{\tt\$\$} stands for a single dollar sign.
+\begin{production}{glob-pattern}
+  \sequence{\lit{*} | \term{string} | \nt{glob-alternatives}}
+\end{production}
+\begin{production}{glob-alternatives}
+  \lit{\lbr} \nt{glob-pattern} \sequence{\lit{,} \nt{glob-pattern}} \lit{\rbr}
+\end{production}
+\begin{production}{glob-target}
+  \sequence{\term{string} | \lit{\$}\term{integer} | \lit\$\lit\$}
+\end{production}
+For example, the rules below specify that the 
+suffixes \verb|ow| and \verb|aw| map to the assembly name \verb|w|, 
+and that \verb|od| and \verb|ad| map to \verb|l|.
+\begin{verbatim}
+assembly component
+    {o,a}w   is w
+    {o,a}d   is l
+\end{verbatim}
+@ 
+<<refman: assembly syntax>>=
+\nextsection{Assembly formats for operands}
+\verb|assembly operand| introduces mappings from operands to formatted strings
+that specify how to print the operands in assembly code.
+Operands may be fields, integer inputs, relocatable addresses, or
+constant strings. 
+We use \verb|printf|-style syntax for formatted strings.
+
+\begin{production}{assembly-operand-syntax}
+\indexedlit{assembly operand} \term{Ident} \lit{is} \nt{operandsyntax}
+\end{production}
+\begin{production}{operandsyntax}
+  \term{format-string} \lit{using} \nt{operandname}
+| \nt{operandname}
+\end{production}
+\begin{production}{operandname}
+  \lit{sparse [} \nt{binding} \sequence{\lit, \nt{binding}} \lit]
+| \lit{names [} \sequence{\term{Ident} | \term{String}} \lit]
+| \lit{field} \term{Ident}
+\end{production}
+<<grammar>>=
+OperandSyntaxSpec : String ["using" OperandNameSpec ] /* STRING_operand(ii1, ii2) */
+                  | OperandNameSpec                   /* NAMED_operand ii1 */
+                  ;
+OperandNameSpec	  : NameTable     /* OPERAND_name_table ii1 */
+                  | "field" Ident /* OPERAND_like_field ii2 */
+               	  ;
+@
+<<refman: assembly syntax>>=
+The first \verb|assembly operand| rule below specifies that immediate operands
+are prefixed by ``\$'' and are printed as integers.
+The second rule specifies that the listed field operands are prefixed by
+``\%'' and printed as strings, using the names provided in their
+\verb|fieldinfo| declarations.
+%The third rules specifies that the operands are printed as strings,
+%using the assembly names of field \verb|base|.
+\begin{verbatim}
+assembly operand
+    [count i8 i16 i32]           is "$%d"
+    [r32 sr16 r16 r8 base index] is "%%%s"
+\end{verbatim}
+
+Some inputs are not declared as fields but should be printed in the
+same format as fields.   For example, the input \verb|reg| should be
+printed using the names associated with the field \verb|base|.  
+The following rule uses the optional \verb|using |{\em field}
+clause to specify that \verb|reg|, \verb|reg8|, etc. should
+be printed using the fieldinfo associated with \verb|base|.
+\begin{verbatim}
+assembly operand
+    [reg reg8 sreg cr dr]      	is "%%%s" using field base
+\end{verbatim}
+@
+<<refman: assembly syntax>>=
+\nextsection{Assembly syntax for constructors}
+The default assembly syntax for a constructor appears in the
+constructor's specification;
+an alternate syntax may be specified with \verb|assembly syntax|.
+Providing assembly syntax in a constructor specification can help a
+specification writer or user read and identify a constructor, and it
+is concise when only one assembly syntax is required.
+An alternate syntax may be needed, however, if more than one assembly language
+is used on the target.
+
+\verb|assembly syntax| uses the same syntax as the \verb|constructors| directive:
+a constructor name followed by a list of operands.
+\begin{production}{assembly-syntax}
+  \indexedlit{assembly syntax} \term{opcode} \term{operands}
+\end{production}
+@ 
+<<grammar>>=
+AsmSyntax: Opcode Operands NEWLINE /* ASM_syntax(ii1, ii2) */;
+@
+<<refman: assembly syntax>>=
+The assembly-syntax specification must use 
+the same set of operands that the constructor
+uses, but the operands may appear in any order and with any
+syntactic sugar.
+For example, 
+the GNU assembly language reverses the order of some 
+constructor's operands, such as \verb|arithI^"d"| below. 
+\begin{verbatim}
+assembly syntax
+  arithI^"d"     i32!, Eaddr
+  MOV.Eb.Iv^od   i32!, Eaddr
+\end{verbatim}
+Some constructors have implicit operands, such as the floating-point stack 
+constructors.  Assemblers require those operands to distinguish
+between overloaded floating point instructions.
+\begin{verbatim}
+assembly syntax
+  fstack^Sstack  "%st", "%st"(idx)
+\end{verbatim}
+
+The GNU syntax for effective addresses
+bears no resemblance to the DOS syntax, but it can be specified in only a
+few lines.
+\begin{verbatim}
+assembly syntax
+  Indir       (reg)
+  Disp32      d(reg)
+  Index       (base,index,ss)
+  Index32     d(base,index,ss)
+  ShortIndex  d(,index,ss)
+\end{verbatim}
+@
+<<refman: assembly syntax>>=
+@ 
+\subsection{Globbing expressions}
+A globbing expression
+is a string, a list (concatenation), a wildcard, or a list
+of alternatives in braces.
+<<grammar>>=
+Globbing         : SeeWhite GlobPattern StopWhite White /* ii2 */;
+GlobPattern      : {GlobAlternatives 
+                   | Literal /* GLOB_literal ii1 */
+                   | Ident   /* GLOB_literal ii1 */
+                   } 
+                 ;
+GlobAlternatives : "{" GlobPattern {"," GlobPattern } "}" 
+			/* GLOB_alternatives (ii2::ii3) */
+                 | "*"  /* GLOB_wildcard */
+                 ;
+<<grammar>>= 
+GlobTarget       : SeeWhite GlobTargets StopWhite White /* ii2 */;
+GlobTargets      : {GlobTargetSpecial | GlobTargetLiteral /* GLOBT_literal ii1 */} 
+						/* cat_adjacent_strings(ii1) */;
+GlobTargetSpecial: "$" (Integer /* GLOBT_dollar ii1 */ 
+                       | "$"    /* GLOBT_literal "$" */
+                       )
+                 ;
+GlobTargetLiteral: Literal | Ident | "*" | "{" | "}" | "," ;
+@
+<<toplevel>>=
+fun cat_adjacent_strings (GLOBT_literal l1 :: GLOBT_literal l2 :: r) =
+		cat_adjacent_strings(GLOBT_literal (l1^l2) :: r)
+  | cat_adjacent_strings(h::t) = h :: cat_adjacent_strings t
+  | cat_adjacent_strings [] = []
+@ 
+\section{Lexical elements}
+<<terminal symbols>>=
+%term T_STRING   (string)
+%term T_IDENT    (string)
+%term T_INT      (int)
+%term CASELINE   ((string * (int*int)) * string option)
+%term CODELINE   (string)
+%term NEWLINE
+%term WHITESPACE (string)
+@ %def T_IDENT T_INT CASELINE CODELINE NEWLINE WHITESPACE
+<<grammar>>=
+Ident     : T_IDENT | "_";
+IdentRgn  : Ident /*(ii1,rr1)*/;
+String    : T_STRING;
+StringRgn : String /*(ii1,rr1)*/;
+Integer   : T_INT | "'" /* charconst(explode ii1, rr1) */;
+White     : WHITESPACE;
+SeeWhite  : /* see_whitespace() */;
+StopWhite : /* ignore_whitespace() */;
+@ %def Ident String
+<<toplevel>>=
+fun see_newline ()      = seeing_newlines := true
+fun ignore_newlines()   = seeing_newlines := false
+fun see_whitespace()    = seeing_ws := true
+fun ignore_whitespace() = seeing_ws := false
+<<terminal symbols>>=
+%attribute arg-pat {seeing_newlines : bool ref, seeing_ws : bool ref}
+%attribute arg-pat
+<<toplevel>>=
+fun charconst ([c], _) = ord c
+  | charconst (l, rgn) = synerror(R'TICK, rgn, "char", 
+                           ["character constant of length <> 1 : '", implode l, "'"])
+
+type ast = spec list list
+val nullRegion = SourceMap.nullRegion
+@ 

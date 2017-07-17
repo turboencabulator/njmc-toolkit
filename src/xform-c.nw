@@ -1,0 +1,392 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: xform-c.nw,v 1.14 1998/11/11 21:56:01 nr Exp $
+\chapter{Transforming interfaces and implementations for~C}
+For now, I ignore object transformations.
+I'm only interested in two transformations:
+\begin{itemize}
+\item
+Replacing discriminated union types with suitably tagged unsafe
+unions.
+\item
+Introducing temporaries for unsafe union and structure values.
+\end{itemize}
+<<xform-c.sig>>=
+signature REWRITER = sig
+  structure Code : CODE  
+  val interface : Code.interface -> Code.interface
+  val implementation : Code.implementation -> Code.implementation
+end
+@ 
+\section{Using records and unsafe unions to implement discriminated unions}
+<<xform-c.sig>>=
+signature UNSAFE_UNION = sig
+  structure Code : CODE
+  val unsafeUnion : (*(string -> Type.ty) ->*) Type.ty -> Type.ty
+end
+<<xform-c.sml>>=
+functor UnsafeUnionFun(Code : CODE) = struct
+  structure Code = Code
+  <<rewriting union types to go to unsafe unions>>
+end
+@ 
+Unions should go to a pair of tag and unsafe union.
+<<rewriting union types to go to unsafe unions>>=
+fun unsafeUnion (*Gamma*) t =
+  let open Type
+      fun ty (UNION members) = 
+		let val tagtype = UNION (map (fn (n, _) => (n, UNIT)) members)
+		    val utype = UNSAFE_UNION (tylist2 members)
+		in  RECORD [("tag", tagtype), ("u", utype)]
+		end
+	| ty (t as INTEGER _) = t
+	| ty (t as BOOLEAN) = t
+	| ty (t as STRING) = t
+	| ty (t as CHAR) = t
+	| ty (RELOCATABLE t) = RELOCATABLE (ty t)
+	| ty (RECORD fields) = RECORD (tylist2 fields)
+	| ty (ARRAY (t, len)) = ARRAY (ty t, len)
+	| ty (OBJECT ob) = OBJECT (obj ob)
+	| ty (UNSAFE_UNION members) = UNSAFE_UNION (tylist2 members)
+	| ty (FUNCTION f) = FUNCTION (function f)
+	| ty (t as VAR v) = t (*Gamma v*)
+	| ty (t as INSTANCE _) = t
+	| ty (t as ANY_POINTER) = t
+	| ty (RECURSIVE tys) = RECURSIVE (tylist2 tys)
+	| ty (t as UNIT) = t
+      and function {parms, varargs, return} =
+	     {parms=tylist2 parms, varargs=varargs, return=ty return}
+      and tylist2 tys' = map (fn (name, t) => (name, ty t)) tys'
+      and obj ROOT = ROOT
+	| obj (SUBCLASS {parent, fields, methods}) =
+		 SUBCLASS {parent=obj parent, fields=tylist2 fields,
+			   methods=map (fn (s, f) => (s, function f)) methods}
+  in  ty t
+  end
+@ 
+Rewriting the values is too hard to do in a language-independent way,
+so for the time being I merge it with the C~code emitter.
+Here's a vague schematic way of getting across the general idea:
+$$
+\begin{array}{rcl}
+\mbox{[[UNION {name, ty} e]]}&$\mapsto$&
+  \mbox{[[RECORD [("tag", tagValue name),]]}\\
+&&\mbox{[[        ("u",   UNSAFE_UNION {name=name, ty=uType ty} e]]}
+\end{array}$$
+I cheat on the type of the unsafe union, since I know it will never be
+looked at.
+<<exp>>=
+fun rewrite e = 
+  let fun exp(U.UNSAFE_UNION (e, uspec)) =
+	    let val tmp = freshTemp "union"
+		val u = E.unsafeUnion(rewrite e, uspec)
+	    in  SOME (newSutmp(tmp, u))
+	    end
+	| exp(U.UNION (e, {name, ty=t})) =
+            let val sty = UU.unsafeUnion (*Gamma*) t : Type.ty
+                val tag = E.var (tagName name)
+                val tmp = freshTemp "union"
+                val u = E.unsafeUnion(rewrite e, {name=name, ty=Type.UNIT})
+                val ut = newSutmp(E.select(tmp, "u"), u)    
+                val pair = E.record([tag, ut], {fields=["tag", "u"], ty=sty})
+            in  SOME (newSutmp(tmp, pair))
+            end
+        | exp(U.RECORD (es, fieldspec)) =
+            let val tmp = freshTemp "record"
+                val record = E.record(map rewrite es, fieldspec)
+            in  SOME (newSutmp(tmp, record))
+            end
+        | exp _ = NONE
+  in  U.topDownRewrite exp e
+  end
+<<old exp>>=
+fun exp (*Gamma*) e =
+  let fun exp (E.EXP e) = E.EXP (olc e)
+      and olc(e as E.OLC.CONST _) = e
+        | olc(E.OLC.SUM(n, el, e)) = E.OLC.SUM(n, elem el, olc e)
+      and elem (E.VAR s) = (E.VAR s)
+        | elem (e as E.NULLARY _) = e
+        | elem (E.UNARY(O.UNION {name, ty=t}, e)) =
+             let val sty = UU.unsafeUnion (*Gamma*) t : Type.ty
+                 val tag = E.variable (tagName name)
+                 val tmp = freshTemp "union"
+                 val u = E.unsafeUnion(E.EXP (olc e), {name=name, ty=Type.UNIT})
+                 val ut = newSutmp(E.select(tmp, "u"), u)    
+                 val pair = E.record([tag, ut], {fields=["tag", "u"], ty=sty})
+             in  unelem (newSutmp(tmp, pair))
+             end
+        | elem (E.UNARY(O.UNSAFE_UNION {name, ty=t}, e)) =
+             let val tmp = freshTemp "union"
+                 val u = E.unsafeUnion(E.EXP (olc e), {name=name, ty=t})
+             in  unelem (newSutmp(tmp, u))
+             end
+        | elem (E.UNARY($, e)) = E.UNARY($, olc e)
+        | elem (E.BINARY($, e1, e2)) = E.BINARY($, olc e1, olc e2)
+        | elem (E.NARY(O.RECORD fieldspec, es)) =
+             let val tmp = freshTemp "record"
+                 val es = map (E.EXP o olc) es
+                 val record = E.record(es, fieldspec)
+             in  unelem (newSutmp(tmp, record))
+             end
+        | elem (E.NARY($, es)) = E.NARY($, map olc es)
+  in  exp e
+  end
+@ 
+Here's an optimization: If we have
+\begin{quote}
+[[SUTMP(s1, R [a=1, b=SUTMP(s2, ...])])]]
+\end{quote}
+We can eliminate the second temporary by:
+\begin{quote}
+[[SUTMP(s1, R [a=1, b=SUTMP(s1.b, ...)])]]
+\end{quote}
+We do it at the time of forming the outer [[SUTMP]].
+<<utilities>>=
+local 
+  fun rewriteInnerTmp (selection, e as U.SUTMP(U.VAR x, _)) = U.subst(x, selection) e
+    | rewriteInnerTmp (_, e) = e
+in 
+  fun newSutmp (outertmp, src) =
+    let val src = case src
+		    of U.RECORD(exps, fieldspec as {fields, ty}) =>
+	                 let fun replaceInner (fieldname, e) =
+				    rewriteInnerTmp (U.select(outertmp, fieldname), e)
+			 in  U.record (map replaceInner
+				       (ListPair.zip (fields, exps)), fieldspec)
+			 end
+		   | U.UNSAFE_UNION (e, uspec as {name, ty}) =>
+		         U.unsafeUnion
+		             (rewriteInnerTmp (U.select(outertmp, name), e), uspec)
+  	  	   | _ => Impossible.impossible "sutmp of non struct/union" (*was src*)
+    in  U.sutmp(outertmp, src)
+    end
+end
+@ where we have also implemented
+\begin{quote}
+[[SUTMP(u1, U [name=SUTMP(s2, ...)])]]
+\end{quote}
+We can eliminate the second temporary by:
+\begin{quote}
+[[SUTMP(u1, U [name=SUTMP(u1.member, ...)])]]
+\end{quote}
+<<old utilities>>=
+fun matchVariable olc =
+  case E.OLC.project olc of SOME (E.VAR x) => SOME x | _ => NONE
+  
+local 
+  type olc = E.exp_element E.OLC.olc
+  val _ : O.binop * olc * olc -> E.exp_element = E.BINARY
+  fun rewriteInnerTmp (selection, e) =
+    case E.OLC.project e
+      of SOME(E.BINARY(O.SUTMP, innertmp, _)) =>
+	   (case E.OLC.project innertmp
+	      of SOME (E.VAR x) => unexp (E.subst(x, selection) (E.EXP e))
+	       | _ => e)
+       | _ => e
+in 
+  fun newSutmp (outertmp, src) =
+  let val src = case E.OLC.project (unexp src)
+		  of SOME(E.NARY(O.RECORD (fieldspec as {fields, ty}), exps)) =>
+		       let fun replaceInner (fieldname, e) =
+                             rewriteInnerTmp (E.select(outertmp, fieldname), e)
+                       in  E.record (map (E.EXP o replaceInner)
+                                         (ListPair.zip (fields, exps)), fieldspec)
+                       end
+                   | SOME(E.UNARY(O.UNSAFE_UNION (uspec as {name, ty}), e)) =>
+		       E.unsafeUnion
+		         (E.EXP (rewriteInnerTmp (E.select(outertmp, name), e)), uspec)
+		   | _ => ErrorMsg.impossible "sutmp of non struct/union" (* was src *)
+  in  E.sutmp(outertmp, src)
+  end
+end
+@
+[[tagName]] transforms the name of a union member into the name of a
+tag in an enumeration type.
+<<xform-c.sml>>=
+functor XformCFun(structure Code : CODE where type Exp.exp = UnifiedExp.exp
+                  val tagName : string -> string) : REWRITER = struct
+  structure UU = UnsafeUnionFun(Code)
+  structure Code = UU.Code
+  structure E = Code.Exp
+  structure U = UnifiedComplete
+  open Code
+  val newty = UU.unsafeUnion
+  <<utilities>>
+  <<exp>>
+  val exp = rewrite
+  <<sutmps>>
+  <<functions>>
+  and stmt s = 
+    let <<stmt>>
+	val s = stmt s
+    in  case sutmps s of [] => s | ds => BLOCK (ds, [s])
+    end
+  fun implementation {name, parameters, imports, exports, body} =
+    {name=name, parameters=parameters, imports=imports, exports=exports,
+     body=map top_defn body} : implementation
+  fun interface { name, parameters, imports, exports } : interface = 
+    {name=name, parameters=parameters, imports=imports, exports=map export exports }
+end
+@ 
+<<functions>>=
+fun export (name, exported) = <<export>>
+and function { parms, varargs, return } = 
+  { parms = map (fn (s, t) => (s, newty t)) parms,
+    varargs = varargs, return = newty return }
+<<defn>>
+@ 
+\subsection{Interface- and implementation-level code}
+The real question is what to do with exports.
+<<export>>=
+let val newOpt = fn NONE => NONE | (SOME ty) => (SOME (newty ty))
+    fun e(e as EXPORTED_TYPE NONE) = e
+      | e(EXPORTED_TYPE (SOME ty)) = EXPORTED_TYPE (SOME (newty ty))
+      | e(e as EXPORTED_CONSTANT (c, NONE))    = e
+      | e(     EXPORTED_CONSTANT (c, SOME ty)) = 
+	                                   EXPORTED_CONSTANT (c, SOME (newty ty))
+      | e(EXPORTED_VARIABLE ty) = EXPORTED_VARIABLE (newty ty)
+      | e(EXPORTED_FUNCTION f)  = EXPORTED_FUNCTION (function f)
+      | e(EXPORTED_EXCEPTION t) = EXPORTED_EXCEPTION (newOpt t)
+in  (name, e exported)
+end
+@ 
+\subsection{Definitions}
+This is actually remarkably easy; we just put together machinery
+defined elsewhere.
+<<defn>>=
+and defn (*Gamma*) (name, d) = 
+  let fun optMap f NONE = NONE
+	| optMap f (SOME x) = SOME (f x)
+      fun defn(VAR (t, e))  = VAR (optMap UU.unsafeUnion t, optMap exp e)
+        | defn(CONST(e, t)) = CONST (exp e, optMap UU.unsafeUnion t)
+        | defn(TYPEDEF ty)  = TYPEDEF (UU.unsafeUnion ty)
+        | defn(FUNCTION (f, body)) = FUNCTION (function f, stmt body)
+        | defn(EXCEPTION e) = EXCEPTION e
+  in  (name, defn d)
+  end
+and top_defn (e, d) = (e, defn d)
+@
+\subsection{Statements}
+<<stmt>>=
+fun stmt (STATEMENT' (smap, rgn, s)) = STATEMENT' (smap, rgn, stmt s)
+  | stmt (s as BLOCK_COMMENT _) = s
+  | stmt (COMMENTED_STMT (s, comment)) = COMMENTED_STMT (stmt s, comment)
+  | stmt (s as RESYNCH_STMT _) = s
+  | stmt (EMIT tokens) =
+      let fun token {value,width,offset} = {value=exp value, width=width,offset=offset}
+      in  EMIT (map token tokens)
+      end
+  | stmt (BLOCK (defns, stmts)) =
+      let val stmts = map stmt stmts
+	  val tmps = foldl (fn (s, tmps) => sutmps s @ tmps) [] stmts
+      in  BLOCK(defns @ tmps, stmts)
+      end
+  | stmt (IF arms) = IF (map (fn (e, s) => (exp e, stmt s)) arms)
+  | stmt (TAGCASE (instance, ty, arms)) =
+      TAGCASE(exp instance, ty, map (fn (c, s) => (c, stmt s)) arms)
+  | stmt (INTCASE (value, arms)) =
+      INTCASE(exp value, map (fn (r, s) => (r, stmt s)) arms)
+  | stmt (s as SKIP) = s
+  | stmt (FAIL (fmt, vals)) = FAIL (fmt, map exp vals)
+  | stmt (RAISE (e, es)) = RAISE (exp e, map exp es)
+  | stmt (s as ALLOC_CLOSURE ()) = s
+  | stmt (RETURN (U.FAIL s)) = EVAL (U.FAIL s)
+  | stmt (RETURN e) = RETURN (exp e)
+  | stmt (s as RAW _) = s
+  | stmt (s as ARM _) = s
+  | stmt (MATCH {defns, decider, arms}) = 
+      MATCH { defns = defns, decider = stmt decider, arms = IntMap.map stmt arms }
+@ 
+The game here is to eliminate a temporary when we're making an assignment.
+<<stmt>>=
+  | stmt (ASGN (dst, src)) =
+      let val dst = exp dst
+	  val src = exp src
+      in  ASGN (dst, src) (* needs work *)
+(*
+case E.OLC.project (unexp src)
+	    of SOME(E.BINARY(O.SUTMP, _, src)) =>
+		       ASGN(dst, newSutmp(dst, E.EXP src)))
+	     | _ =>  ASGN(dst,src)
+*)
+      end
+  | stmt (EVAL e) = EVAL (exp e)
+  | stmt (METHOD_CALL (obj, method, args)) = METHOD_CALL(exp obj, method, map exp args)
+@ 
+<<utilities>>=
+fun freshTemp n = Code.Exp.var (Util.freshName ("tmp_" ^ n))
+@ 
+\subsection{Finding temporaries}
+<<sutmps>>=
+fun sutmps s =
+  let fun etmps(e, defns) = <<[[defns]] with tmps of [[e]] consed on>>
+      fun tmps (STATEMENT'(_, _, s), defns) = tmps(s, defns)
+        | tmps (BLOCK_COMMENT _, defns) = defns
+	| tmps (COMMENTED_STMT (s, comment), defns) = tmps(s, defns)
+	| tmps (s as RESYNCH_STMT _, defns) = defns
+	| tmps (EMIT tokens, defns) =
+	    let fun token ({value,width,offset}, defns) = etmps(value, defns)
+	    in  foldl token defns tokens
+	    end
+	| tmps (BLOCK (defns, stmts), defns') =
+	    let val inner = foldl tmps [] stmts
+		fun declared name = List.exists (fn (n, _) => n = name) defns
+		val escapes = List.filter (fn (n, _) => not (declared n)) inner
+	    in  escapes @ defns'
+	    end
+	| tmps (IF arms, defns) =
+	    foldl (fn ((e, s), defns) => tmps(s, etmps(e, defns))) defns arms
+	| tmps (TAGCASE (instance, ty, arms), defns) =
+	    foldl (fn ((c, s), defns) => tmps(s, defns)) (etmps(instance, defns)) arms
+	| tmps (INTCASE (value, arms), defns) =
+	    foldl (fn ((r, s), defns) => tmps(s, defns)) (etmps(value,    defns)) arms
+	| tmps (s as SKIP, defns) = defns
+	| tmps (FAIL (fmt, vals), defns) = foldl etmps defns vals
+	| tmps (s as ALLOC_CLOSURE (), defns) = defns
+	| tmps (RETURN e, defns) = etmps(e, defns)
+	| tmps (ASGN (dst, src), defns) = etmps(dst, etmps(src, defns))
+	| tmps (EVAL e, defns) = etmps(e, defns)
+	| tmps (METHOD_CALL (obj, method, args), defns) =
+	    foldl etmps (etmps (obj, defns)) args
+	| tmps (RAISE (e, es), defns) = foldl etmps (etmps (e, defns)) es
+	| tmps (s as RAW _, defns) = defns
+	| tmps (s as ARM _, defns) = defns
+        | tmps (MATCH {defns, decider, arms}, defns') =
+	    let val inner = IntMap.foldl tmps (tmps(decider, [])) arms
+		fun declared name = List.exists (fn (n, _) => n = name) defns
+		val escapes = List.filter (fn (n, _) => not (declared n)) inner
+	    in  escapes @ defns'
+	    end
+  in  
+      tmps (s, [])
+  end
+<<[[defns]] with tmps of [[e]] consed on>>=
+let fun addTmp (U.SUTMP (U.VAR x, U.RECORD (exps, {ty, ...})), defns) =
+           (x, Code.VAR(SOME ty, NONE)) :: defns
+      | addTmp (U.SUTMP (U.VAR x, U.UNSAFE_UNION (e, {ty, ...})), defns) =
+           (x, Code.VAR(SOME ty, NONE)) :: defns
+      | addTmp (U.SUTMP (U.VAR x, _), defns) = Impossible.impossible "sutmp"
+      | addTmp (_, defns) = defns
+    and consTmps (e, defns) = U.foldExps addTmp defns e
+in  consTmps (e, defns)
+end
+<<old [[defns]] with tmps of [[e]] consed on>>=
+let fun olc (E.OLC.SUM(n, el, e), defns) = olc(e, elem(el, defns))
+      | olc (E.OLC.CONST _, defns) = defns
+    and elem (E.VAR _, defns) = defns
+      | elem (E.NULLARY _, defns) = defns
+      | elem (E.UNARY (_, e), defns) = olc(e, defns)
+      | elem (E.NARY (_, es), defns) = foldl olc defns es
+      | elem (E.BINARY (O.SUTMP, tmp, src), defns) = 
+	  (case E.OLC.project tmp
+	     of SOME (E.VAR x) =>
+		  (case E.OLC.project src
+		     of SOME(E.NARY(O.RECORD {ty, ...}, _)) =>
+			  (x, Code.VAR(SOME ty, NONE)) :: defns
+		      | SOME(E.UNARY(O.UNSAFE_UNION {ty, ...}, _)) =>
+			  (x, Code.VAR(SOME ty, NONE)) :: defns
+		      | _ => ErrorMsg.impossible "sutmp")
+	      | _ => defns)
+      | elem (E.BINARY (_, e1, e2), defns) = olc(e2, olc(e1, defns))
+in  olc(e, defns)
+end
+@ 

@@ -1,0 +1,8 @@
+; $Id: image-sigs.cm,v 1.3 1999/09/06 16:02:54 nr Exp $
+; module emit
+group is
+  sledspec.cm
+  pp.cm
+
+  denotable-image.sig@images.nw
+  images.sig@images.nw

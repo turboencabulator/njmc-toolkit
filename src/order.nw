@@ -1,0 +1,46 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: order.nw,v 1.9 1998/11/28 01:19:57 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+<<order.sml>>=
+structure Order = struct
+  type 'a T = 'a * 'a -> order
+
+  (* functions to build your own ordering functions *)
+  fun mk (comparator, extractor) (l, r) = comparator (extractor l, extractor r)
+  fun lexical [] _ = EQUAL
+    | lexical (h::t) (l, r) =
+        case h (l, r)
+          of EQUAL => lexical t (l, r)
+           | diff => diff
+
+
+  val compare'string = String.compare
+  val compare'char   = Char.compare
+  val compare'int    = Int.compare
+  fun compare'bool (false, false) = EQUAL
+    | compare'bool (false, true) = LESS
+    | compare'bool (true, false) = GREATER
+    | compare'bool (true, true) = EQUAL
+  fun compare'list compare''a (nil, nil) = EQUAL
+    | compare'list compare''a (nil, op :: _) = LESS
+    | compare'list compare''a (op :: _, nil) = GREATER
+    | compare'list compare''a (op :: (L1, L2), op :: (R1, R2)) =  
+	(case compare'list compare''a (L2, R2) 
+	  of LESS    => LESS
+	   | GREATER => GREATER
+	   | EQUAL   =>  
+		(case compare''a (L1, R1) 
+		  of LESS    => LESS
+		   | GREATER => GREATER
+		   | EQUAL   => EQUAL))
+  fun compare'unit ((), ()) = EQUAL
+  fun compare'option compare''a (NONE, NONE) = EQUAL
+    | compare'option compare''a (NONE, SOME _) = LESS
+    | compare'option compare''a (SOME _, NONE) = GREATER
+    | compare'option compare''a (SOME L, SOME R) = compare''a (L, R)
+  fun compare'pair (compare''a, compare''b) ((L1, L2), (R1, R2)) =  
+        (case compare''a (L1, R1) 
+          of EQUAL   => compare''b (L2, R2)
+           | diff    => diff)
+end

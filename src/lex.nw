@@ -1,0 +1,409 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: lex.nw,v 1.12 1998/11/11 21:59:18 nr Exp $
+% l2h ignore change {
+% l2h ignore change {
+\chapter{Lexical analysis}
+
+[[token]] describes the category of the token, and [[tval]] is its value.
+[[token == tval]] except for integers and identifiers.
+[[file]] and [[line]] describe the source file and line number from which 
+the token came.
+@
+<<lex.lex+>>=
+open Token
+type lexresult = token * SourceMap.region
+type lexarg = {yystack : int list ref<<,arg fields>>}
+fun eof yypos _ = (EOF, (yypos, yypos))
+<<toplevel>>
+%%
+%arg ({yystack : int list ref<<,arg fields>>});
+%inner (<<aux funs>>);
+<<definitions>>
+%%
+<<rules>>
+@ 
+We have to be able to create an initial argument to these things.
+We supply a source map, and we tell the lexer whether it should be
+lexing a specification or a matching statement.
+<<toplevel>>=
+fun lexarg (sourcemap, matchingStmt, impossible) = 
+  { yystack = ref [] <<lex arg init>> } : lexarg 
+@ 
+<<aux funs>>=
+fun yypush state = (yystack := !yybegin :: !yystack; YYBEGIN state)
+fun yypop () = 
+  case !yystack 
+    of (new::stack) => (yystack := stack; yybegin := new)
+     | []           => let exception Impossible in raise Impossible end
+				(* Bug in lexer -- state stack underflow *)
+@ 
+<<aux funs>>=
+fun error (lo, hi) msgs =
+  let val {fileName, line, column} = SourceMap.filepos sourcemap lo
+  in  TextIO.output(TextIO.stdErr, concat [
+         fileName, ":", Int.toString line, ".", Int.toString column, "... : " ]);
+      TextIO.output(TextIO.stdErr, concat msgs)
+  end
+<<refman: lexical structure>>=
+The lexical structure used in specifications is similar to that of C,
+except that dots as well as underscores are treated as letters for
+purposes of finding identifiers.
+In particular, all names are case-sensitive; for example,
+{\tt Address} is not the same as {\tt address}. 
+Strings are delimited with double quotes, but the C ``backslash
+escapes'' aren't used---instead, a double quote within a string is
+represented by two consecutive double quotes, as in Pascal.
+The toolkit supports the C-style
+\lit{0x} and ``leading zero'' notations used to give integer literals in
+hexadecimal or octal bases.
+It also provides a \lit{0b} notation, analogous to \lit{0x}, for specifying 
+integer literals in binary.
+Integer literals may also be specified as C-style character constants.
+For reasons that make no sense whatever, these constants {\em do} use
+the C ``backslash escapes.''
+
+The toolkit reserves the following words as keywords:
+\begin{center}
+<<refman: reserved-word table>>
+\end{center}
+These words cannot be used to name constructors, fields, patterns, etc.
+@ 
+@ 
+The usual.
+<<definitions>>=
+letters=[A-Za-z];
+alpha=[A-Za-z_.];
+digits=[0-9];
+hexdigits=[0-9a-fA-F];
+octdigits=[0-7];
+bindigits=[01];
+alphanum=({alpha}|{digits});
+ident={letters}{alphanum}*;
+ws=[\ \t];
+@
+The real complexity here is introduced by the fact that I use one
+lexer to parse specifications and matching statements.
+The states are therefore 
+\begin{quote}
+\begin{tabularx}{\textwidth}{>{\strut}lX<{\strut}}
+[[INITIAL]]&
+A do-nothing, placeholder state used to select [[SPEC]] or [[CODE]].\\
+[[SPEC]]&
+Ordinary lexer state used to parse specifications.\\
+[[CODE]]&
+Used to read code in files containing matching statements.
+Occurences of matching statements cause a transition to [[CASEPAT]].\\
+[[CASEPAT]]&
+Reads the pattern in a matching statement.
+When it sees the [[=>]] it makes a transition to [[CASEARM]]\\
+[[CASEARM]]&
+Reads code up to the next arm of a matching statement (or to the
+end).\\
+\noalign{\noindent\strut And finally we have a bit of more ordinary
+state hacking:}
+[[CASETAIL]]&
+A hack to work around the ``longest match'' rule when distinguishing
+code from case arms.\\
+[[STRING]]&
+Read string literals.\\
+[[COMMENT]]&
+Read comments.\\
+[[RESYNCH]]&
+Read [[#line]] and its relatives.\\
+\end{tabularx}
+\end{quote}
+<<definitions>>=
+%s SPEC CODE CASEPAT CASEARM CASETAIL CASEEMPTY STRING COMMENT RESYNCH;
+@
+There's a ghastly hack that makes exactly one newline visible after every 
+opcode of a constructor spec.
+What we do is, before parsing a constructor spec, we turn ``newline-vision''
+on if the next token is an identifier.
+Encountering a newline or reserved word or [[{]] or other stuff turns it off again.
+<<,arg fields>>=
+, seeing_newlines : bool ref
+, seeing_ws : bool ref
+<<aux funs>>=
+fun ignore_newlines() = seeing_newlines := false
+fun possible_whitespace (yytext, yyrgn, cont) = 
+	if !seeing_ws then (UserDeclarations.WHITESPACE yytext, yyrgn) else cont()
+fun possible_newline (yyrgn, cont) = 
+	if !seeing_newlines then (ignore_newlines(); (UserDeclarations.NEWLINE, yyrgn))
+        else possible_whitespace ("\n", yyrgn, cont)
+<<lex arg init>>=
+, seeing_newlines = ref false
+, seeing_ws = ref false
+@ 
+Line-number tracking:
+<<,arg fields>>=
+, sourcemap : SourceMap.sourcemap
+, resynch : (string option * int) option ref
+<<aux funs>>=
+fun eol pos = 
+  case !resynch 
+    of NONE => SourceMap.newline sourcemap pos
+     | SOME(file, line) => 
+         (SourceMap.resynch sourcemap (pos+1, {fileName=file, line=line, column=NONE});
+          resynch := NONE)
+fun posteol(pos, yytext) =
+  let val n = size yytext 
+      exception Impossible
+  in  if n > 0 andalso substring(yytext, n-1, 1) = "\n" then eol (pos + n - 1)
+      else raise Impossible
+  end
+<<lex arg init>>=
+, sourcemap = sourcemap
+, resynch   = ref NONE 
+@ 
+To govern the start state:
+<<,arg fields>>=
+, lexMatchingStmt : bool
+<<lex arg init>>=
+, lexMatchingStmt = matchingStmt
+@ 
+<<rules>>=
+<INITIAL>.{0} => (YYBEGIN (if lexMatchingStmt then CODE else SPEC); continue());
+<<rules>>=
+<CODE>^{ws}*"match"{ws}+(\[{ws}*{ident}{ws}*\]{ws}*).*{ws}"to"{ws}*\n => (
+	posteol (yypos, yytext);
+	YYBEGIN CASEPAT; 
+        (CASELINE (parseCaseline(true, yypos, explode yytext, impossible)), yyrgn));
+<CODE>^{ws}*"match"{ws}+.*{ws}"to"{ws}*\n => (
+	posteol (yypos, yytext);
+	YYBEGIN CASEPAT; 
+        (CASELINE (parseCaseline(false, yypos, explode yytext, impossible)), yyrgn));
+<CODE>.*\n => (posteol (yypos, yytext); (CODELINE yytext, yyrgn));
+<<,arg fields>>=
+, impossible : string -> unit  (* must not return *)
+<<lex arg init>>=
+, impossible = impossible
+<<aux funs>>=
+fun parseCaseline (brackets, yypos, chars, impossible) =
+  let exception Impossible
+      val impossible = (fn s => (fn _ => raise Impossible) (impossible s))
+      fun dropTail (#" " ::t) = dropTail t
+	| dropTail (#"\t"::t) = dropTail t
+	| dropTail (#"\n"::t) = dropTail t
+	| dropTail (#"o" :: #"t" :: t) = rev (#1 (dropWhite (t, 0)))
+        | dropTail l = impossible ("case line -- no to in " ^ implode (rev l) ^
+				   "(" ^ String.toString (implode l) ^ ")")
+      and dropWhite(#" " ::t, pos) = dropWhite (t, pos+1)
+	| dropWhite(#"\t"::t, pos) = dropWhite (t, pos+1)
+	| dropWhite ? = ?
+      fun trimMatch(#"m" :: #"a" :: #"t" :: #"c" :: #"h" :: t) = t
+        | trimMatch _ = impossible "case line -- no match"
+      fun succ (#"[" :: t, pos) = succTail(t, [], pos+1, pos+1)
+	| succ _ = impossible "case line -- no ["
+      and succTail(#"]"::t, succ', start, finish) =
+	    (t, finish+1, SOME (implode (rev succ')))
+        | succTail(c::t, succ', start, finish) = succTail(t, c::succ', start, finish+1)
+	| succTail _ = impossible "case line -- no ]"
+      val chars = dropTail (rev chars)
+      val (chars, yypos) = dropWhite (chars, yypos)
+      val (chars, yypos) = (trimMatch chars, yypos + size "match")
+      val (chars, yypos) = dropWhite (chars, yypos)
+      val (chars, yypos, succ) = if brackets then succ(chars, yypos)
+				 else (chars, yypos, NONE)
+      val (chars, yypos) = dropWhite (chars, yypos)
+      val pc = (implode chars, (yypos, yypos + length chars))
+  in  (pc, succ)
+  end
+@ 
+<<refman: how matching statements begin>>=
+A matching statement begins with
+\begin{quote}
+\lit{match} \term{code} \lit{to}
+\end{quote}
+on a line by itself.
+The \term{code} is an expression that computes a value of type
+``address,'' as specified by the \lit{address type} template.
+This address points into an instruction stream at the point where
+decoding is done.
+<<rules>>=
+<CASEARM>^{ws}*"|"{ws}        => (YYBEGIN CASEPAT; (R'BAR, yyrgn));
+<CASEARM>^{ws}*"else"{ws}     => (YYBEGIN CASETAIL; (R'ELSE, yyrgn));
+<CASEARM>^{ws}*"endmatch"{ws} => (YYBEGIN CODE; (R'ENDMATCH, yyrgn));
+<CASEARM>^{ws}*"|"\n          => (posteol(yypos, yytext); YYBEGIN CASEPAT; (R'BAR, yyrgn));
+<CASEARM>^{ws}*"else"\n       => (posteol(yypos, yytext); YYBEGIN CASEEMPTY; (R'ELSE, yyrgn));
+<CASEARM>^{ws}*"endmatch"\n   => (posteol(yypos, yytext); YYBEGIN CODE; (R'ENDMATCH, yyrgn));
+<CASEARM>.{0} => (YYBEGIN CASETAIL; continue());
+<CASETAIL>.*\n => (posteol(yypos, yytext); YYBEGIN CASEARM; (CODELINE yytext, yyrgn));
+<CASEEMPTY>.{0} => (YYBEGIN CASEARM; (CODELINE yytext, (yypos-1, yypos-1)));
+@ [[CASETAIL]] is a dreadful hack to work around the longest-match
+rule.
+This way, unless we hit one of the three specials, we can just match
+to the end of the line.
+Note that we go to [[CASEEMPTY]] after an [[else]]
+and a trailing newline.
+This is so we wind up with some code there (and therefore a region), 
+even if the next line is [[endmatch]].
+I lie about the region so as to put it at the previous newline, so
+that line numbers will be OK.
+@ 
+<<rules>>=
+<SPEC,CASEPAT>{ws}+ => (possible_whitespace (yytext, yyrgn, continue));
+<SPEC,CASEPAT>\n => (eol yypos; possible_newline (yyrgn, continue));
+<SPEC,CASEPAT>0x{hexdigits}+ => ((T_INT(intval yytext), yyrgn));
+<SPEC,CASEPAT>0{octdigits}*  => ((T_INT(intval yytext), yyrgn));
+<SPEC,CASEPAT>[1-9]{digits}* => ((T_INT(intval yytext), yyrgn));
+<SPEC,CASEPAT>0b{bindigits}+ => ((T_INT(intval yytext), yyrgn));
+<SPEC,CASEPAT>{alpha}{alphanum}* => (
+	 case reserved yytext 
+           of SOME R'ADDRESS => R'ADDRESS (* grammar hack did not suffice *)
+            | SOME t => (ignore_newlines(); t)
+            | NONE   => T_IDENT yytext,
+	 yyrgn);
+<SPEC,CASEPAT>"!=" => ((R'BANG_EQ, yyrgn));
+<SPEC,CASEPAT>"<=" => ((R'LE, yyrgn));
+<SPEC,CASEPAT>">=" => ((R'GE, yyrgn));
+<SPEC>"=>" => ((R'DARROW, yyrgn));
+<CASEPAT>"=>" => (YYBEGIN CASETAIL; (R'DARROW, yyrgn));
+<SPEC,CASEPAT>"..." => ((R'DOT_DOT_DOT, yyrgn));
+<SPEC,CASEPAT>"'"[^\\]"'" => ((T_IDENT "impossible-char-not-implemented",(0,0)));
+<SPEC,CASEPAT>[^#\"] =>  (
+	if yytext = "{" orelse yytext = "." then ignore_newlines() else ();
+        (case reserved yytext 
+          of SOME t => t
+           | NONE => T_IDENT ("bogus-char-" ^ yytext)
+	, yyrgn));
+<<toplevel>>=
+fun rgn (yypos, yytext) = (yypos, yypos + size yytext)
+fun rgnpair (p as (yypos, yytext)) = (yytext, rgn p)
+@ 
+For strings, consecutive double quotes become a double quote, as in Pascal:
+We use state to hold the fragments of a string.
+<<,arg fields>>=
+, stringstart : int ref
+, charlist : string list ref
+<<lex arg init>>=
+, stringstart = ref 0
+, charlist = ref []
+<<rules>>=
+<SPEC,CASEPAT>"\"" => (charlist := [""]; stringstart := yypos; 
+                          yypush STRING; continue());
+<STRING>[^\"\n]+ => (addString(charlist, yytext); continue());
+<STRING>\n => (error (!stringstart, yypos) ["unclosed string"]; eol yypos; 
+               yypop(); (T_STRING (makeString charlist), (!stringstart, yypos)));
+<STRING>"\"\""   => (addString(charlist, "\""); continue()); 
+<STRING>"\""     => (yypop();
+		     (T_STRING (makeString charlist), (!stringstart, yypos+1)));
+<<toplevel>>=
+fun addString (charlist,s:string) = charlist := s :: (!charlist)
+fun makeString charlist = (concat(rev(!charlist)) before charlist := nil)
+@ 
+Nasty rules---have to track other states
+<<rules>>=
+<SPEC,CASEPAT>^#line{ws}+ => (yypush RESYNCH; continue());
+<SPEC,CASEPAT>#           => (yypush COMMENT; continue());
+<COMMENT>.*\n                => (posteol(yypos, yytext); yypop(); 
+                                 possible_newline (yyrgn, continue));
+<RESYNCH>[0-9]+({ws}+"\""[^\\\"]+"\"")?{ws}*\n 
+			     => (resynch := resynch_of yytext; posteol(yypos, yytext); 
+                                 yypop(); continue());
+@ 
+This is a flagrant cheat, since I don't allow any escapes in file
+names.  It will fail instantly on a DOS pathname, for example.
+<<toplevel>>=
+fun digit d = if (d < #"A")
+	    then (Char.ord d - Char.ord #"0")
+	    else if (d < #"a")
+	      then (10 + (Char.ord d - Char.ord #"A"))
+	      else (10 + (Char.ord d - Char.ord #"a"))
+      
+fun stripwhite(#" " :: l) = stripwhite l
+  | stripwhite(#"\t" :: l) = stripwhite l
+  | stripwhite(#"\n" :: l) = stripwhite l
+  | stripwhite l = l
+
+fun resynch_of text =
+  let fun digits([], n) = (n, [])
+        | digits(d::rest, n) =  
+              if #"0" <= d andalso d <= #"9" then digits(rest, 10*n + digit d) 
+              else (n, rest)
+      val (line, rest) = digits (explode text, 0)
+      val rest = stripwhite rest
+      fun in_quotes (#"\"" :: l, s) = implode (rev s)
+        | in_quotes (c :: l, s) = in_quotes(l, c::s)
+        | in_quotes([], s) = implode(rev s)  (* should be impossible *)
+      val file = if null rest then NONE else SOME (in_quotes (tl rest, []))
+  in  SOME (file, line)
+  end
+@ 
+<<toplevel>>=
+fun intval l =
+  let fun cvt(base, digits) = foldl (fn(d, n) => base*n + digit d) 0 digits
+  in  case explode l 
+        of #"0" :: #"x" :: l => cvt(16, l)
+         | #"0" :: #"b" :: l => cvt(2,  l)
+         | #"0" :: l => cvt(8,  l)
+         | l => cvt(10, l)
+  end
+@
+\section{Support for character constants}
+<<old junk>>=
+procedure charconst()
+   local ns, c
+
+   return if ="\\" then {<<backslash escape>>} else move(1)
+end
+<<backslash escape>>=   
+c := map(move(1)) | fail # backslash newline fails
+case c of {
+   "b":  "\b"
+   "d":  "\d"
+   "e":  "\e"
+   "f":  "\f"
+   "l":  "\n"
+   "n":  "\n"
+   "r":  "\r"
+   "t":  "\t"
+   "v":  "\v"
+   "'":  "'"
+   "\"":  "\""
+   "\\" : "\\"
+   "x":  hexchar()
+   !"01234567":  octcode()
+   default:  error("bad backslash escape \\", c, tab(0))
+}
+<<old junk>>=
+procedure hexcode()
+   local i, s
+   static hdigits
+   initial hdigits := ~'0123456789ABCDEFabcdef'
+   
+   move(i := 2 | 1) ? s := tab(upto(hdigits) | 0)
+   move(*s - i)
+   return char("16r" || s)
+end
+<<old junk>>=
+procedure octcode()
+   local i, s
+   static odigits
+   initial odigits := ~'01234567'
+   
+   move(-1)
+   move(i := 3 | 2 | 1) ? s := tab(upto(odigits) | 0)
+   move(*s - i)
+   if s > 377 then {    # back off if too large
+      s := s[1:3]
+      move(-1)
+      }
+   return char("8r" || s)
+end
+@ 
+\subsection{Testing}
+<<oldlextest.sml>>=
+structure LexTest = struct
+  fun inputc stream = fn n => TextIO.inputN(stream, n)
+  fun lexfrom filename =
+    let val stream = TextIO.openIn filename
+        val arg = Mlex.UserDeclarations.lexarg filename
+    in  (arg, Mlex.makeLexer (inputc stream) arg)
+    end
+end
+
+(*
+val (arg, lexer) = LexTest.lexfrom "mips.spec";
+fun grab 0 f = []
+  | grab k f = let val x = f () in x :: grab (k-1) f end;
+*)

@@ -1,0 +1,13 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: impossible.nw,v 1.4 1998/11/11 21:59:18 nr Exp $
+<<impossible.sml>>=
+structure Impossible = struct
+  exception Impossible of string
+  fun impossible msg =
+      let open TextIO
+          fun shout s = (output (stdErr, s); flushOut stdErr) 
+      in  app shout  ["Error: Toolkit bug: impossible ", msg, "\n"];
+	  raise (Impossible msg)
+      end
+  fun unimp msg = impossible (msg ^ " not implemented")
+end

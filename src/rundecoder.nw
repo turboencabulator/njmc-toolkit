@@ -1,0 +1,155 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Running the decoder generator}
+
+This encapsulates (almost?) everything one might like to need to
+create decoders.
+<<rundecoder.sig>>=
+signature RUN_DECODER = sig
+  structure Gencode : GENCODE
+  structure Code : CODE
+    sharing Gencode.Code = Code
+  structure Decoder : DECODER
+    sharing Decoder.Match = Gencode.Dag.Tree.Match
+
+
+  type cons = Decoder.recognized_constructor
+  type decoder
+  val decoders : Decoder.Match.SledSpec.espec -> decoder list Error.error
+  val constype : decoder -> Code.Constructor.constype
+  val matcher  : decoder -> cons Gencode.Dag.Tree.Match.match
+  val tree     : decoder -> cons Gencode.Dag.Tree.node
+  val dag      : decoder -> cons Gencode.Dag.dag
+
+  type defn = Code.top_defn
+  val defaultTemplates : Gencode.templates
+  val imperativeImplementation :
+    { prefix    : string
+    , templates : Gencode.templates
+    , effect    : cons -> Code.statement
+    , ty        : Code.Constructor.constype -> Code.ty
+    } -> decoder -> defn
+
+  val emitC     : string list * defn list * string -> unit
+                                               (* (imports, body, filename) *)
+  val emitDags  : decoder list * string -> unit
+  val emitTrees : decoder list * string -> unit
+end
+@ 
+<<rundecoder.sml>>=
+functor RunDecoderFun(
+  structure Gencode : GENCODE
+  structure Decoder : DECODER
+  structure MatchFusion : MATCH_FUSION
+  structure ReadSLED : READ_SLED
+    sharing Decoder.Match = MatchFusion.Match = Gencode.Dag.Tree.Match
+    sharing Decoder.Match.SledSpec = ReadSLED.SledSpec
+  val defaultTemplates : Gencode.templates
+  val expToSx : Gencode.Code.exp -> Sx.sx
+  structure EmitC : CODE_GENERATOR
+  structure EmitML : CODE_GENERATOR
+  structure XformC : REWRITER
+    sharing EmitC.Code = Gencode.Code = EmitML.Code = XformC.Code
+) : RUN_DECODER = struct
+  structure Decoder = Decoder
+  structure Gencode = Gencode
+  structure Dag = Gencode.Dag
+  structure Tree = Dag.Tree
+  structure Match = Tree.Match
+  structure Code = Gencode.Code
+  structure Exp = Code.Exp
+  structure Constructor = Code.Constructor
+  val defaultTemplates = defaultTemplates
+  val fuse = GlobalState.Match.fuse
+  type cons = Decoder.recognized_constructor
+  <<functions>>
+end
+@ 
+<<functions>>=
+type decoder = 
+  Code.Constructor.constype * 
+  cons Gencode.Dag.Tree.Match.match * 
+  cons Gencode.Dag.Tree.node * 
+  cons Gencode.Dag.dag
+
+fun constype (ct, m, t, d) = ct
+fun matcher  (ct, m, t, d) = m
+fun tree     (ct, m, t, d) = t
+fun dag      (ct, m, t, d) = d
+<<functions>>=
+fun decoders espec =
+  let fun addTree {constype, matcher=match} = 
+        let val match =
+              if !fuse then Util.timed "match fusion" MatchFusion.fuseMatch match
+              else match
+            val t = Tree.mkTree (fn _ => SourceMap.nullRegion) match
+        in  (constype, match, t) before Tree.warnTree(match, t) 
+        end
+      fun addDag (constype, m, t) = (constype, m, t, Dag.tree2dag t)
+      val trees = Util.timed "tree building" (map addTree) 
+      val dags  = Util.timed "dag building" (map addDag) 
+  in  (Error.emap dags o Error.emap trees o Decoder.decoder) espec
+  end
+@ 
+<<functions>>=
+type defn = Code.top_defn
+
+fun imperativeImplementation {prefix, templates, effect, ty}
+                             (constype, matcher, tree, dag) =
+  let val addressType = #addressType templates
+      val procname = prefix ^ getOpt(Constructor.typeName constype, "instruction")
+      val func = { parms = [("PC", addressType)] (* should be pointer to address *)
+                 , varargs = false
+                 , return = ty constype
+                 }
+      val advance = Code.ASGN (Exp.var "PC", Exp.var "successor")
+      val compile = 
+        fn leaf => Code.BLOCK ([], [ Code.COMMENTED_STMT (advance, "Advance the PC")
+                                   , effect leaf])
+      val gencase = Gencode.gencase templates
+                    {optimizeTwoLeaves = true, compile = compile}
+      val matchStmt = gencase (matcher, dag)
+      val body = Code.BLOCK (
+         [("successor", Code.VAR (SOME addressType, NONE))],
+         [matchStmt])
+      fun export x = ({exported=true}, x)
+  in  export (procname, Code.FUNCTION (func, body))
+  end
+@ 
+<<functions>>=
+structure TSx = TreeDagSxFun(structure Dag = Dag
+                             val exp = expToSx)
+
+fun nls p tail = p :: PP.Short.nl :: PP.Short.nl :: tail
+
+fun sxopt f NONE = Sx.NIL
+  | sxopt f (SOME x) = f x
+fun show name ty sx =
+  SxUtil.list [SxUtil.list [Sx.ATOM "constype",
+                            sxopt Sx.ATOM (Constructor.typeName ty)],
+               SxUtil.list [Sx.ATOM name, sx]]
+
+fun pptree (ty, m, t, d) = PPSx.ppsx (show "tree" ty (TSx.tree Decoder.tosx t))
+fun ppdag  (ty, m, t, d) = PPSx.ppsx (show "dag"  ty (TSx.dag  Decoder.tosx d))
+
+fun ppitems f l = PP.LIST (foldr (fn (x, tail) => nls (f x) tail) [] l)
+
+structure EC = EmitCode
+fun emitTrees (ds, filename) = EC.ppWrite EC.nosynch 78 filename (ppitems pptree ds)
+fun emitDags  (ds, filename) = EC.ppWrite EC.nosynch 78 filename (ppitems ppdag ds)
+@ 
+<<functions>>=
+val cEmitters = EmitCode.emitters (EmitCode.C, EmitC.printers,
+                                   {ximp=XformC.implementation, xint=XformC.interface})
+
+fun emitC (names, defns, filename) =
+  let fun named n = Code.NAMED_INTERFACE {name = n, signature' = ""}
+      val imports = Code.MC_LIBRARY :: EmitC.matchImports @ map named names
+      val imp = { name = NONE, parameters = [], imports = imports, exports = [],
+                  body = defns
+                }
+      val {emitBoth, ...} = cEmitters {imps=[imp], ints=[]}
+  in  emitBoth filename
+  end
+
+

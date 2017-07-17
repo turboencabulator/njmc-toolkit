@@ -1,0 +1,9 @@
+; module semantic
+group is
+  newcons.cm
+  pattern.cm
+
+  conskey.sml@newcons.nw
+  sledcons.sig@newcons.nw
+  sledcons.sml@newcons.nw
+  smlnj-lib.cm

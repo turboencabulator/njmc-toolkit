@@ -1,0 +1,12 @@
+; module emit
+group 
+  structure Sx
+  signature Sx_SIG
+  structure SxUtil
+  signature SX_UTIL
+is
+  ;;;  /usr/local/asdlGen/lib/asdlGen/sml/asdl-base.cm
+
+  sx.nw
+  sxutil.sig@sx.nw
+  sxutil.sml@sx.nw

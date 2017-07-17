@@ -1,0 +1,579 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: encinter.nw,v 1.25 2000/02/28 23:46:02 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+@
+\section{Creating an encoding interface}
+<<encinter.sig>>=
+signature ENCODING_CONTROL = sig
+  type ty (* intended to be Code.ty for some structure Code : CODE *)
+  val instanceTypeName : string option -> string  (* constype name -> instance type *)
+  val counterName : string -> string (* consname -> counter *)
+  val printerType : {interface:string option, name:string} * ty
+  val resetCounters : string
+  val dumpCounters : string
+  datatype emitters_for = EMIT_ALL | EMIT_INSTRUCTIONS | EMIT_NONE
+  val emitters : emitters_for
+end
+
+signature CLOSURE = sig
+  structure Encoder : ENCODER
+  val closure : Encoder.closure -> Encoder.Code.statement
+end
+(* fun closure (d, cons) = Code.BLOCK_COMMENT "should have closure creation here" *)
+<<encinter.sml>>=
+functor OriginalEncodingFun (Code: CODE) : ENCODING_CONTROL = struct
+  type ty = Code.ty
+  fun instanceTypeName (SOME ctname) = ctname ^ "Instance"
+    | instanceTypeName NONE = "(anonymous instruction type)" 
+  fun counterName consname = consname ^ "_ctr"
+  val printerType = 
+     ({interface=SOME "SledLibrary", name="Printer"},
+(*
+      Code.FUNCTIONTY { parms = [("closure", Code.ANY_POINTER), ("fmt", Code.STRINGTY)],
+		      varargs = true, return = NONE }
+*)
+     Type.OBJECT (Type.SUBCLASS { parent=Type.ROOT, 
+        fields=[], methods=[("print", {parms = [("fmt", Type.STRING)],
+				       varargs = true, return = Type.UNIT })] }))
+  val resetCounters = "reset_cons_counters"
+  val dumpCounters = "dump_cons_counters"
+  datatype emitters_for = EMIT_ALL | EMIT_INSTRUCTIONS | EMIT_NONE
+  val emitters = EMIT_INSTRUCTIONS
+end
+@ 
+Specification of the encoding interface generator.
+I make it quite limited for now---there may be components I want to
+expose later.
+<<encinter.sig>>=
+signature ENCODING_GENERATOR = sig
+  structure Code : CODE
+  structure Instance : INSTANCE
+    sharing Instance.Code = Code
+  structure Control : ENCODING_CONTROL 
+    sharing type Code.ty = Control.ty
+
+  type emitter = Code.exp * {width:int} -> Code.statement
+    (* ability to emit token of given width *)
+  type basic_info = 
+       { constructors : Code.Constructor.constructor list
+       , instructionType : Code.Constructor.constype
+       , names : string
+       , instance : Instance.definition
+       , redefineInImplementation : bool   (* redefine imported types, etc *)
+(*            { machine : string *)
+(*            , instanceCreationInt : string *)
+(*            , instructionRepInt : Code.interface_spec *)
+(*            } *)
+       }
+
+<<encinter.sig>>=
+  type rtl_body = 
+    { constructor : string, attribute : string option} * Code.Constructor.operand list
+    -> Code.Exp.exp * Code.ty * (string * char list option) list
+  val rtlCreationInt : basic_info * bool * rtl_body -> Code.interface
+  val rtlCreationImp : basic_info * bool * rtl_body -> Code.implementation
+<<encinter.sig>>=
+  (* instance creation and representation *)
+  val instanceCreationInt : basic_info * {opaqueTypes : bool} -> Code.interface
+  val instanceCreationImp : basic_info * {opaqueTypes : bool} -> Code.implementation
+  val instanceRepresentationInt : basic_info -> Code.interface
+  val instanceRepresentationImp : basic_info -> Code.implementation
+  val instanceEncodingImp : basic_info * {encodername:string} -> Code.implementation
+
+ (***** these should be subsumed by the above, controlled by the setting
+        of Control.emitters
+
+  (* direct encoding by side effects --- no instances at top level *)
+  val encodingInt : basic_info * {counters:bool} -> Code.interface
+  val encodingImp : basic_info * emitter * {counters:bool} -> Code.implementation
+********)
+
+end
+@ 
+The [[instructionType]] says what encoder to emit when emitting none.
+<<[[encoding_spec]] (for saying what and how to encode)>>=
+type encoding_spec = 
+       { constructors : Code.Constructor.constructor list
+       , counters : bool
+       , instructionType : Code.Constructor.constype
+       , machineName : string     (* used to name interfaces *)
+       , putInstanceConstructorsInInterface : bool
+       , defineInstanceTypesInImplementation : bool
+       , makeInstanceTypesAnonymous : bool
+       , emittername : string   (* to emit instance of anonymous inst type *)
+       }
+<<encinter.sml>>=
+functor EncodingInterfaceFun(
+  structure Closure : CLOSURE
+  structure Control : ENCODING_CONTROL where type ty = Closure.Encoder.Code.ty
+  structure Instance : INSTANCE
+    sharing Closure.Encoder.Code = Instance.Code
+) : ENCODING_GENERATOR = struct
+  structure Control = Control
+  structure Instance = Instance
+  structure Encoder = Closure.Encoder
+  structure Code = Encoder.Code
+  structure Constructor = Code.Constructor
+  structure Exp = Code.Exp
+  type emitter = Code.exp * {width:int} -> Code.statement
+  type basic_info = 
+       { constructors : Code.Constructor.constructor list
+       , instructionType : Code.Constructor.constype
+       , names : string
+       , instance : Instance.definition
+       , redefineInImplementation : bool   (* redefine imported types, etc *)
+(*            { machine : string *)
+(*            , instanceCreationInt : string *)
+(*            , instructionRepInt : Code.interface_spec *)
+(*            } *)
+       }
+  <<utilities>>
+  structure Elements = struct
+    <<elements>>
+  end
+  structure E = Elements
+  <<functions>>
+end
+@ 
+Elements include:
+\begin{itemize}
+\item
+Instance stuff???
+\end{itemize}
+<<elements>>=
+fun instanceType {ty, instance, match} ct = (typeName' ct, ty ct)
+<<utilities>>=
+fun typeName' ty = Control.instanceTypeName (Constructor.typeName ty)
+@ Note we no longer [[enforceInstance]] on the argument, because for
+some (pure symbolic) apps we want to build instances even for full
+instructions. 
+@
+We can get type definitions of instances in both interfaces and implementations.
+<<elements>>=
+fun instanceTypeExports ? {opaque} constructors =
+  let val exportedType = if opaque then (fn _ => NONE) else SOME
+      val ct = mapRight (Code.EXPORTED_TYPE o exportedType) o instanceType ?
+      fun addDecl (ty, decls) = if sideEffect' ty then decls else ct ty :: decls
+  in  foldr addDecl [] (typesUsed constructors)
+  end
+fun instanceTypeDefinitions ? constructors =
+  let val ct = (mapRight Code.TYPEDEF o instanceType ?) 
+  in  map ct (typesUsed constructors)
+  end
+fun instanceTypeRedefinitions ? constructors =
+  let fun redef (name, ty) =
+        (name, Code.TYPEDEF (Type.VAR {interface=SOME "I",name=name}))
+  in  map (redef o instanceType ?) (typesUsed constructors)
+  end
+@
+\subsection{The encoding interface}
+<<old functions>>=
+<<counters>>
+<<encoding declarations>>
+fun encodingInterface ({counters, indirect, constructors, emittername,
+                        makeInstanceTypesAnonymous, machineName,
+		        putInstanceConstructorsInInterface, ...} : encoding_spec)  =
+  let val _ = ErrorMsg.verbose ["Computing encoding interface"]
+      val imports = [Code.MC_LIBRARY]
+      val parameters = [Code.RELOCATABLE_ADDRESSES]
+      val instances = instanceTypeExports constructors
+      val ctrs = if counters then counterExports () else []
+      val encodingExport = mapRight Code.EXPORTED_FUNCTION o encodingFunction
+      val implicitFunctions =
+	if Control.emitters = Control.EMIT_NONE then
+	    [(emittername, Code.EXPORTED_FUNCTION (instructionInstanceEmitterProto()))]
+	else
+	    []
+      fun addDecl (cons, decls) =
+	if putInstanceConstructorsInInterface orelse sideEffect cons then
+	  encodingExport cons :: decls
+	else
+	  decls
+      val functions = foldr addDecl implicitFunctions constructors
+  in  {name=SOME (StringUtil.allCaps machineName^"_INSTRUCTION"),
+       parameters=parameters, imports=imports, exports=instances @ ctrs @ functions}
+  end
+@ 
+@ This code is bogus for types all of whose members have been
+discarded.  A better plan would be to loop through [[constructors]] in
+order and use only those types that appear.
+@
+If we're supporting counters, we declare a printer type, and functions
+to reset and dump the counters.
+<<elements>>=
+val printer = Type.VAR (#1 Control.printerType)
+val resetFun = (Control.resetCounters, Type.proctype [])
+val dumpFun  = (Control.dumpCounters,  Type.proctype [("print", printer)])
+
+val counterExports =
+  (case Control.printerType
+     of ({name,interface},ty) => (name, Code.EXPORTED_TYPE (SOME ty))) ::
+  map (mapRight Code.EXPORTED_FUNCTION) [resetFun, dumpFun]
+@ {\bf Bogosity alert!  [[dumpFun]]'s parameter ought to be treated at
+a higher level, as an object, and then we could reduce it to a pair or
+function as needed\ldots} 
+@
+<<elements>>=
+fun counterDefinitions constructors =
+  let fun counterDefn cons =
+        Code.hidden (Control.counterName (consname cons),
+		     Code.VAR (SOME (Type.unsignedTy), SOME (Exp.const 0)))
+      fun counterDump cons =
+        let val {ty, name, ...} = Constructor.info cons
+	    val ctr = Exp.var (Control.counterName name)
+            val fmt = "%d " ^ name ^ " : " ^ typeName' ty ^ "\\n"
+	in  Code.METHOD_CALL (Exp.var "print", "print", [Exp.string fmt, ctr])
+	end
+      fun counterReset cons =
+	Code.ASGN(Exp.var (Control.counterName (consname cons)), Exp.const 0)
+      fun allBody f = Code.BLOCK([], map f constructors)
+  in  map counterDefn constructors @
+      [Code.exported (Control.resetCounters,
+                      Code.FUNCTION(#2 resetFun, allBody counterReset)),
+       Code.exported (Control.dumpCounters,
+                      Code.FUNCTION(#2 dumpFun,  allBody counterDump))]
+  end
+@ 
+<<refman: counter functions>>=
+The C procedure
+\begin{quote}
+\tt void reset\_cons\_counters(void);
+\end{quote}
+resets the counters; the procedure
+\begin{quote}
+\tt
+typedef void (*Printer)(void *closure, char *fmt, ...);\\
+void dump\_cons\_counters(Printer p, void *closure);
+\end{quote}
+dumps the values of all the counters.
+The user must provide a function of type {\tt Printer}, a variadic
+function which
+accepts a closure, a {\tt printf}-style format, and additional arguments.
+The closure encapsulates any information needed by the
+user's printing function.
+For example, the standard C~function {\tt fprintf} may be used as a {\tt Printer},
+in which case a file pointer acts as a closure.
+@
+\subsubsection{Declarations for encoding procedures}
+In an RTL creation procedure, some operands may be locations.
+<<elements>>=
+val locationType = Type.VAR {interface = SOME "Rtl", name = "Rtl_ty_loc"}
+local
+  fun encodingProto' argtype (result, cons) =
+    let val args = map (fn opr as (n, _, _) => (n, argtype opr))
+                       (#operands (Constructor.info cons))
+    in  { parms=args, varargs=false, return=result } : Code.function
+    end
+  fun encodingProto ? = encodingProto' Encoder.argType ?  (*damn value restriction*)
+  fun rtlArgType constraints (opr as (n, _, _)) =
+    if List.exists (fn (n', _) => n = n') constraints then
+      locationType
+    else
+      Encoder.argType opr
+<<elements>>=
+in
+  fun operandMap cons = #operands (Constructor.info cons)
+(*
+    let val { ty, name, operands, ... } = Constructor.info cons
+        val constraints = []  (* bogus *)
+        fun isLocation rand = List.exists (fn (n, _) => n = rand) constraints
+        fun opInfo (name, Constructor.INTEGER _, {relocatable, field})=
+              if isLocation name then LOC else INT {early = not relocatable}
+          | opInfo (name, Constructor.INSTANCE t, _) =
+              ATT (valOf (Constructor.typeName (Constructor.typeFromId t)))
+              handle Option =>  Impossible.impossible "untyped constructor as operand"
+    in  foldl (fn (rand as (n, _, _), m) => StringMap.insert(m, n, opInfo rand))
+        StringMap.empty operands
+    end
+*)
+  fun instructionTypeNamed s = Type.VAR {interface=SOME "I" (* bogus *), name=s}
+  fun localType s = Type.VAR {interface=NONE (* bogus *), name=s}
+  fun createInstanceProto cons =
+    encodingProto(localType (typeName' (constype cons)), cons)
+  fun createRtlProto (old, rtl) cons = 
+    let val (_, ty, constraints) =
+          rtl ({constructor=consname cons, attribute=NONE}, operandMap cons)
+    in  encodingProto' (rtlArgType constraints) (ty, cons)
+    end
+  fun emitterProto cons = encodingProto(Type.UNIT, cons)
+end
+<<elements>>=
+fun encodingFunction cons =
+  (consname cons, (if sideEffect cons then emitterProto else createInstanceProto) cons)
+@
+If we create instances of instruction, it's good to provide an emitter
+for the instances.
+<<elements>>=
+fun instructionInstanceEmitterProto() =
+  {parms=[("instruction", instructionTypeNamed (Control.instanceTypeName NONE))],
+   varargs=false, return=Type.UNIT} : Code.function
+@ 
+One day we will again support encoding procedures inside structures.
+@ 
+In C or Modula-3, 
+we shouldn't put definitions of instance types in the implementation,
+because we can expect to inherit them from the interface.
+But in ML, we should!
+<<old functions>>=
+fun encodingImplementation ({counters, indirect, constructors, emittername,
+			     instructionType, machineName,
+			     defineInstanceTypesInImplementation, ...} : encoding_spec)
+                           {exports, importedInterface} =
+  let val _ = ErrorMsg.verbose ["Computing encoding implementation"]
+      fun import name = Code.NAMED_INTERFACE {name=name, signature'="INSTRUCTION"}
+      val imports = case importedInterface of SOME i => [import i]
+                                            | NONE => []
+      val imports = Code.MC_LIBRARY :: Code.SIGN_EXTENSION :: imports
+      val parameters = [Code.RELOCATABLE_ADDRESSES]
+      (* writing tag definitions should be unnecessary *)
+      <<let [[instances]] be definitions of all instance types>>
+      val instances = if defineInstanceTypesInImplementation then instances
+	              else []
+      val ctrs = if counters then counterDefinitions constructors else []
+      <<encoding definitions>>
+      val functions = map encodingDefn constructors
+      val OK = ErrorXXX.OK
+<<old functions>>=
+      val functions =
+	if Control.emitters = Control.EMIT_NONE then
+          OK (emittername, Code.FUNCTION (
+			      instructionInstanceEmitterProto(),
+			      Encoder.instructionEmitterBody
+				Closure.closure
+				instructionType
+			        {emittername=emittername, argname="instruction"}))
+          :: functions
+	else
+	  functions
+      fun exported l = map (ErrorXXX.emap Code.exported) l
+      val body = exported (map OK instances) @ map OK ctrs @ exported functions
+<<old functions>>=
+  in  ErrorXXX.emap (fn body => {name=SOME (StringUtil.mixedCaps machineName ^ "Encoder"),
+                              imports=imports, exports=exports,
+                              parameters=parameters, body=body, exportedInterfaces=[]})
+      (ErrorXXX.errorList body) : Code.implementation ErrorXXX.error
+  end
+@ 
+Note that even when encoding, some constructors are used to create instances.
+<<encoding definitions>>=
+fun encodingDefn cons =
+  let val (name, funct) = encodingFunction cons
+      val _ = ErrorMsg.verbose ["Encoder for constructor ", name]
+      val body = (if sideEffect cons then
+		      Encoder.emitterBody Closure.closure
+	          else
+		      ErrorXXX.OK o createInstanceBody) cons
+  in  ErrorXXX.emap (fn body => (name, Code.FUNCTION (funct, body))) body
+  end      
+@
+\subsection{Creating instances}
+Instance creation is simple-minded---check the widths of the field inputs, and
+stuff all the inputs into the instance.
+Need:
+\begin{itemize}
+\item some way of ensuring static when doing indirect
+\end{itemize}
+<<elements>>=
+fun createInstanceBody instance cons = 
+  let val { ty, name, ... } = Constructor.info cons
+      val funct as { parms, return, ... } = createInstanceProto cons : Code.function
+      val argnames = map #1 parms
+      val instance = instance cons (map (Exp.var o #1) parms)
+  in  Code.BLOCK ([],
+                  [Encoder.protectWithInputWidthChecks(cons,[],Code.RETURN instance)])
+  end
+fun createInstanceFunction instance cons =
+  (consname cons, Code.FUNCTION (createInstanceProto cons,
+                                 createInstanceBody instance cons))
+@ 
+\subsection{Creating RTL}
+Arguments have to be converted to RTL expressions.
+Moreover, if there are arguments that are locations, we have to check
+their constraints.
+<<elements>>=
+fun createRtlBody (oldStyle, rtlBody) cons = 
+  let val { ty, name, operands, ... } = Constructor.info cons
+      val (rtl, _, constraints) =
+        rtlBody ({ constructor=name, attribute=NONE }, operandMap cons )
+      fun addConstraint((rand, NONE), tail) = tail
+        | addConstraint((rand, SOME spaces), tail) =
+            (<<check that [[rand]] is in  [[spaces]]>>) :: tail
+<<previous version of elements>>=
+      fun addOp ((name, Constructor.INTEGER { signed, ... }, {relocatable, field}), m)=
+            if isLocation name then
+              m
+            else
+              let val f = if relocatable then "Rtl_relAddr"
+                          else if signed then "Rtl_int"
+                          else "Rtl_uint"
+                  val e = if oldStyle then Exp.call [Exp.var f, Exp.var name]
+                          else Exp.var name
+              in  StringMap.insert(m, name, e)
+              end
+        | addOp ((name, Constructor.INSTANCE _, _), m) = m
+      val m = foldl addOp StringMap.empty operands
+      val rtl = Exp.multiSubst (fn s => StringMap.find(m, s)) rtl
+<<elements>>=
+      val body = Encoder.protectWithInputWidthChecks
+                   (cons, map #1 constraints, Code.RETURN rtl)
+      val body = foldr addConstraint [body] constraints
+  in  Code.BLOCK ([], body)
+  end
+<<elements>>=
+fun createRtlFunction rtl cons =
+  (consname cons, Code.FUNCTION (createRtlProto rtl cons, createRtlBody rtl cons))
+<<check that [[rand]] is in  [[spaces]]>>=
+let fun eq (a, b) = Exp.condition (a, Relop.EQ, b)
+    fun check s = eq(Exp.call [Exp.var "Rtl_space_of", Exp.var rand], Exp.char s)
+in  Code.IF [(Exp.not' (Exp.orelse' (map check spaces)), 
+              Code.FAIL (String.concat ["Location ", rand,
+                                        " is in a forbidden storage space"], []))]
+end
+@
+\section{Putting together interfaces and implementations}
+
+\subsection{Instance-based interfaces}
+I could include counters in the instance-creation interface, but I've
+chosen not to.
+This depends only on relocatable addresses.
+<<functions>>=
+fun instanceCreationInt ({constructors, instructionType, names, instance, ...}
+                                :basic_info,
+			 {opaqueTypes}) =
+  let val _ = ErrorMsg.verbose ["Computing instance creation interface"]
+      val types = E.instanceTypeExports instance {opaque=opaqueTypes} constructors
+      fun mk cons = (consname cons, Code.EXPORTED_FUNCTION(E.createInstanceProto cons))
+      val funs = map mk constructors
+  in  {name=SOME (StringUtil.allCaps names^"_INSTRUCTION"),
+       parameters=[Code.RELOCATABLE_ADDRESSES], imports=[], exports=types@funs}
+  end
+@ 
+To create instances, we want a parameterized module.
+<<utilities>>=
+fun repIntName n = StringUtil.allCaps n^"_INSTRUCTION_REP"
+fun repInt n = Code.NAMED_INTERFACE {name="I", signature'=repIntName n}
+fun stdInterface name = 
+  Code.NAMED_INTERFACE {name=StringUtil.mixedCaps name,
+                        signature'=StringUtil.allCaps name}
+<<functions>>=
+fun instanceCreationImp
+    ({constructors, instructionType, names, redefineInImplementation, instance},
+     {opaqueTypes}) =
+  let val _ = ErrorMsg.verbose ["Computing instance creation implementation"]
+      val ival = #instance instance
+      val funs = map (Code.exported o E.createInstanceFunction ival) constructors
+      val redefns =
+        if redefineInImplementation then
+          map Code.exported (E.instanceTypeRedefinitions instance constructors)
+        else
+          []
+  in  {name=SOME (StringUtil.mixedCaps names^"_Instruction"),
+       exports=[stdInterface (names^"_Instruction")],
+       parameters=[repInt names], imports=[], body=redefns @ funs} 
+  end
+@ 
+<<functions>>=
+fun instanceRepresentationInt 
+      ({constructors, instructionType, instance, names, ...}:basic_info)=
+  let val _ = ErrorMsg.verbose ["Computing instance representation interface"]
+      val types = E.instanceTypeExports instance {opaque=false} constructors
+  in  {name=SOME (repIntName names),
+       parameters=[Code.RELOCATABLE_ADDRESSES], imports=[], exports=types}
+  end
+<<functions>>=
+fun instanceRepresentationImp
+    {constructors, instructionType, names, instance, redefineInImplementation} =
+  let val _ = ErrorMsg.verbose ["Computing instance representation implementation"]
+      val types = map Code.exported (E.instanceTypeDefinitions instance constructors)
+  in  {name=SOME (StringUtil.mixedCaps names^"Instruction"),
+       exports=[stdInterface (repIntName names)],
+       parameters=[Code.RELOCATABLE_ADDRESSES], imports=[], body=types}
+  end
+@ 
+Here's an interface that just encodes instances.
+<<functions>>=
+fun instanceEncodingImp
+      ({constructors, instructionType, names, instance, redefineInImplementation},
+       {encodername}) =
+  let val _ = ErrorMsg.verbose ["Computing instance encoding implementation"]
+      val encode =
+            (encodername, Code.FUNCTION (
+			      E.instructionInstanceEmitterProto(),
+			      Encoder.instructionEmitterBody
+				Closure.closure
+				instructionType
+			        {argname="instruction"}))
+  in  {name=SOME (StringUtil.mixedCaps names^"EmitInstance"), exports=[],
+       parameters=[repInt names], imports=[], body=[Code.exported encode]}
+  end
+@ 
+\subsection{RTL-based interfaces}
+<<functions>>=
+type rtl_body = 
+  { constructor : string, attribute : string option} * Constructor.operand list
+  -> Code.Exp.exp * Code.ty * (string * char list option) list
+fun rtlCreationInt ({constructors, instructionType, names, ...}:basic_info, old, rtlbody) =
+  let val _ = ErrorMsg.verbose ["Computing RTL creation interface"]
+      val _ = rtlbody : rtl_body
+      fun mk cons = (consname cons,
+                     Code.EXPORTED_FUNCTION(E.createRtlProto (old, rtlbody) cons))
+      val funs = map mk constructors
+  in  {name=SOME (names^"_RTL"), parameters=[], imports=[], exports=funs}
+  end
+@ 
+<<functions>>=
+fun rtlCreationImp
+    ({constructors, instructionType, names, redefineInImplementation, instance},
+     old, rtlBody) =
+  let val _ = ErrorMsg.verbose ["Computing RTL creation implementation"]
+      val funs = map (Code.exported o E.createRtlFunction (old, rtlBody)) constructors
+      val redefns =
+        if redefineInImplementation then
+          map Code.exported (E.instanceTypeRedefinitions instance constructors)
+        else
+          []
+  in  {name=SOME (names^"_Rtl"),
+       exports=[stdInterface (names^"_RTL")],
+       parameters=[], imports=[], body=redefns @ funs} 
+  end
+@
+\section{Leftovers}
+<<junk>>=
+  (* direct encoding by side effects --- no instances at top level *)
+  val encodingInt : basic_info * {counters:bool} -> Code.interface
+  val encodingImp :
+    basic_info * (Code.ty -> Code.Exp.exp) * {counters:bool} -> Code.implementation
+         (* second parm gives procedure for emitting value of type Code.ty,
+            which had better be an unsigned integer of known width *)
+
+
+
+@ 
+<<utilities>>=
+fun consname cons = #name (Constructor.info cons)
+fun constype cons = #ty   (Constructor.info cons)
+@ 
+Here it's useful to accumulate only those types used in a set of
+constructors.
+<<utilities>>=
+fun typesUsed l =
+  let fun add (c, (types, ids)) =
+        let val ty = constype c
+	    val id = Constructor.typeid ty
+	in  if ConstypeSet.member (ids, id) then (types, ids)
+	    else (ty :: types, ConstypeSet.add(ids, id))
+	end
+  in  #1 (foldr add ([], ConstypeSet.empty) l)
+  end
+@
+<<utilities>>=
+fun sideEffect cons = sideEffect' (constype cons)
+and sideEffect' ty =
+  case Control.emitters
+    of Control.EMIT_ALL => true
+     | Control.EMIT_INSTRUCTIONS => Constructor.typeName ty = NONE
+     | Control.EMIT_NONE => false
+@ 
+<<utilities>>=
+fun mapRight f (x, y) = (x, f y)

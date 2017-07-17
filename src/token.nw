@@ -1,0 +1,17 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: token.nw,v 1.4 1998/11/11 21:59:25 nr Exp $
+<<tokenstring.sml>>=
+structure TokenString = struct
+  local open Token
+  in
+    fun tokenString (T_STRING (s)) = "\"" ^ s ^ "\""
+      | tokenString (T_IDENT (s)) = "identifier " ^ s
+      | tokenString (T_INT (n)) = "integer " ^ Int.toString n
+      | tokenString (WHITESPACE _) = "white space"
+      | tokenString t = 
+           case unReserved t of SOME s => "\"" ^ s ^ "\""
+			      | NONE => "unknown token"
+  end
+end
+
+

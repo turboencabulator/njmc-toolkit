@@ -1,0 +1,592 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: match.nw,v 1.29 1999/09/06 16:09:01 nr Exp $
+% l2h ignore change {
+\chapter{Support for pattern-matching statements}
+
+Much of what happens here is the dual of what is done in
+{\tt constructors.nw}.
+Abstract syntax is converted to patterns, but this time the free variables
+must be discovered, and they become the inputs to, not the outputs from, the
+equation-solving process.
+
+\section{Pattern syntax in decoding}
+Free variables induce field or constructor bindings (although we have no support
+yet for constructor bindings).
+What we really want is for all the constructor stuff to DWIM.
+Whatever that is.
+All patterns are resolved into absolute normal form (q.v.).
+<<match.sig>>=
+signature MATCH = sig
+  structure Patterns : PATTERNS
+  structure SledSpec : SLED_SPEC
+    sharing SledSpec.Patterns = Patterns
+  <<matcher data types>>
+  val elaborate : SourceMap.sourcemap -> Ast.codefile * SledSpec.espec
+                  -> (Ast.code * (Ast.code match * Ast.code) list) Error.error
+  val foldExpsArm : (Patterns.Exp.exp * 'a -> 'a) -> 'a -> 'b arm_spec -> 'a
+    (* visit all expressions *)
+  type 'a ast_arm = Ast.exp * Ast.equations * string option * 'a
+  val elabArm : 
+    SourceMap.sourcemap * SledSpec.espec * int * string option  (*uid, successor var*)
+    -> 'a ast_arm -> 'a arm list Error.error
+
+  val map : ('a -> 'b) -> 'a match -> 'b match
+end
+functor FooM(structure ? : MATCH) = struct val d = 3 end
+@ 
+A matching statement has a {\em value}, a sequence
+of {\em arms}, and a {\em trailer}.
+Each arm has a pattern, and code to be executed.
+When the matching statement is executed, it chooses the first arm whose
+pattern matches the value, then executes the corresponding code, then
+executes the trailer.
+The [[succptr]] field, if present, is the identifier to which we
+should bind the location following the pattern that matched.
+
+The [[value]] field is a hack---at the time of elaboration, we don't
+yet want to know what type will be used to represent addresses.
+The trade-off is that we can't substitute into [[value]].  
+Time will tell if this is a problem.
+<<matcher data types>>=
+datatype 'code match = MATCH of
+  { value   : Type.ty -> Patterns.Exp.exp  (* computes value to match on *)
+  , succptr : string option     (* compute location of successor *)
+  , arms    : 'code arm list
+  , sourcemap : SourceMap.sourcemap
+  , region : SourceMap.region (* the whole matching statement *)
+  }
+and 'code arm = ARM of Patterns.Absolute.pattern * 'code arm_spec
+withtype 'code arm_spec =
+  { original : { code : 'code  (* strings and region *)
+               , smap : SourceMap.sourcemap
+               , uid  : int (* integer unique within one match only *)
+               } (* for error messages *)
+  , answers : Patterns.Exp.exp StringMap.map  (* free vars *)
+  , conditions : Patterns.Exp.Set.set (* must hold if to match *)
+  , patlen : int option               (* length of pattern, iff succ given, in bits*)
+  , name : string option              (* identifier in square brackets, if given *)
+  , code : 'code                      (* right-hand side  *)
+  , patRegion : SourceMap.region      (* location of left-hand side *)
+  }
+@ The arms of the matching statement have some extra information.
+The pattern is split out from the rest of the information in order to
+reduce the amount of copying necessary when the matching statement is
+transformed into a decision tree.
+The original arm gives the arm from which the current arm is derived,
+and is useful for many of the heuristics.
+
+[[answer]] and [[conditions]] are associated with identifiers
+that appear as field bindings or constructor operands in the pattern.
+These identifiers are the {\em inputs} to the equations in the
+matching statements.
+This construct is a little odd, because the meanings of bound
+identifiers and the conditions that need to be satisfied are more
+naturally associated with disjuncts, not arms.
+We ``raise the differences'' by splitting arms until each arm as a
+unique such ``implicit solution.''
+The reason for going to all this trouble is to simplify the task of
+dagging the eventual decision tree: we'll be able to unify nodes just
+comparing the [[answers]] and [[conditions]] fields (along with a few
+other goodies, of course).
+
+If [[succptr]] was requested in the corresponding matching statement, [[patlen]] 
+gives the length of the pattern in the arm.  We split arms as needed to 
+make lengths unique.
+If [[succptr]] wasn't requested, [[patlen]] is [[NONE]].
+@
+<<match.sml>>=
+functor MatchFun (structure ElabExp : ELAB_EXP
+		      where type Denotable.Patterns.Exp.exp = UnifiedExp.exp
+		  structure SledSpec : SLED_SPEC
+		      sharing SledSpec.Denotable = ElabExp.Denotable
+                  structure Solver : MAL_SOLVER
+                  structure Absolute : ABSOLUTE_PATTERN
+		      sharing Absolute = SledSpec.Patterns.Absolute
+                  val simplify : Absolute.pattern -> Absolute.pattern
+                  val superSimplify : Absolute.Exp.exp -> Absolute.Exp.exp
+                  sharing type ElabExp.Denotable.Patterns.Exp.exp = Solver.Exp.exp
+                             = Absolute.Exp.exp
+                  sharing type ElabExp.Denotable.Patterns.Exp.Set.set
+		             = Solver.Exp.Set.set
+                             = Absolute.Exp.Set.set
+                  structure AbsoluteFieldVars : ABSOLUTE_FIELD_VARS
+		  val expimage : Solver.Exp.exp -> PP.pretty
+                 ) : MATCH =
+struct
+<<match.sml>>=
+  structure SledSpec = SledSpec
+  structure D = ElabExp.Denotable
+  structure Patterns = D.Patterns
+  structure P = Patterns
+  structure L = P.Labelled
+  structure Exp = P.Exp
+  structure Absolute = Absolute
+  structure A = Absolute
+  structure U = UnifiedExp
+  structure AFV = AbsoluteFieldVars
+  type code = Ast.code
+  val prettyprint = 
+    ignore o PPDynamic.set (PPDynamic.standardEmitLine TextIO.stdErr, fn _ => 0, 78)
+           o PPNormal.normalize
+  structure NoisySolver = NoisySolverFun(structure Solver = Solver
+					 val image = expimage
+					 val ppconsumer = prettyprint)
+<<match.sml>>=
+  <<matcher data types>>
+  <<utilities>>
+  <<functions>>    
+  <<function [[elaborate]]>>
+  val map = mmap
+end
+@ 
+<<function [[elaborate]]>>=
+fun elaborate 
+  smap 
+  ((header, matches) : Ast.codefile,
+   espec as {symtab, constructors=constab, family, fieldInfo, ...}: SledSpec.espec
+  )
+=
+  let fun catch f = Error.catch (smap, ErrorMsg.defaultConsumer()) f
+      fun rgn (_, r) = r
+      fun match matchRegion (m as (pc, succptr, arms, elsearm), trailer) =
+        let val pc = fn ty => Exp.raw (pc, smap, ty)
+            val matchTail =
+	      case elsearm
+		of NONE => []
+		 | SOME elsearm =>
+		     let val originalElse = { code = elsearm, smap = smap, uid = 0 }
+		     in  [ARM (Absolute.epsilon,
+			       { original = originalElse, answers = StringMap.empty,
+				 name = NONE, code = elsearm, patRegion = rgn elsearm, 
+			         conditions = Absolute.Exp.Set.empty,
+			         patlen = optmap (fn _ => 0) succptr })]
+		     end
+<<function [[elaborate]]>>=
+	    val (emap, strip, errorList) = (Error.emap, Error.strip, Error.errorList)
+	    fun arm uid = elabArm (smap, espec, uid, succptr)
+            fun armPlus ([], uid) = []
+              | armPlus (a::arms, uid) =
+                  catch (armRegion a) (arm uid) a :: armPlus(arms, uid+1)
+	    val arms = emap (foldr op @ matchTail) (errorList (armPlus (arms, 1)))
+            fun inject arms = MATCH {value=pc, succptr=succptr, arms=arms, 
+                                     sourcemap=smap, region=matchRegion}
+	in  emap (fn arms => (inject arms, trailer)) arms
+	end
+      val match = fn arg as (m as (pc as (_, rgn), succptr, arms, elsearm), trailer) =>
+                    let val region = foldl SourceMap.span rgn (map armRegion arms)
+                        val region = case elsearm
+				       of NONE => region
+					| SOME (_, rgn) => SourceMap.span(region, rgn)
+		    in  catch region (match region) arg
+		    end
+  in  Error.emap (fn ms => (header, ms)) (Error.errorList (map match matches))
+  end
+<<aux functions>>=
+fun optmap f (SOME x) = SOME (f x) | optmap f NONE = NONE
+<<utilities>>=
+fun armRegion (e, eqns, armName, code as (lines, region)) =
+  SourceMap.span(Ast.expRegion e, region)
+@
+In resolving an arm, the first step is to find all the free identifiers, so we can 
+do some suitable injection with them.  
+We'll also identify the subset of those identifiers that become the binding instances 
+that might be used in equations.
+We can then put the pattern first into normal form, then into absolute normal form.
+
+At that point, we have our usual encoding-type pattern, with fields bound to 
+expressions, which is emphatically no good for decoding.
+The next step is to introduce fresh variables to the field bindings for which we need
+expressions, creating a set of equations used solely to invert the field bindings. 
+We'll solve that set of equations, giving us our goo solely in 
+terms of the absolute fields. 
+We'll then be able to apply it to any conditions.
+
+Eventually we'll also have to deal with any explicit equations, including
+identifying any additional binding instances 
+of identifiers that appear only in such equations.
+
+Only identifiers that are bound in every disjunct can reliably be used in code or in 
+equations.
+
+{\em old: In principle, an identifier
+could  be bound to different fields in different disjuncts.
+I resolve that problem by forbidding the construct; a single
+identifier must always be bound to the same field, although it may
+appear in different positions and therefore in different absolute}
+fields.
+<<functions>>=
+<<aux functions>>
+type 'a ast_arm = Ast.exp * Ast.equations * string option * 'a
+fun elabArm (smap, espec, uid, succptr) =
+  Error.strip o Error.errorEnvOption
+                (elabArm' (smap, espec, uid, succptr))
+		(fn n => StringMap.find(#symtab espec, n))
+<<functions>>=
+and elabArm' 
+  (smap, {fieldInfo=fi, family, symtab, constructors=constab, ...} : SledSpec.espec, 
+   uid, succptr
+  ) find (arm as (e, eqns, armName, code) : 'a ast_arm) 
+=
+  let val ctxt = (smap, ErrorMsg.defaultConsumer()) (* error context *)
+      fun lookupConstructor name =
+        case StringMap.find(constab, name)
+          of SOME x => x
+           | NONE => Error.error (name ^ " undefined")
+      val expRegion = Ast.expRegion e
+      val eqnsRegion = case map Ast.expRegion eqns
+			 of [] => expRegion
+			  | h :: t => foldl SourceMap.span h t
+      <<bind [[eqns]] to elaborated [[eqns]]>>
+<<functions>>=
+      (* eliminate FORCE from eqns? *)
+      fun warning l = ErrorMsg.warning smap (SourceMap.span (expRegion, eqnsRegion), l)
+      val original = { code = code, smap = smap , uid = uid }
+      fun doPat eqns (p as P.PAT(name, ds)) = 
+        let val P.PAT(name, d's) = P.anf p : P.Absolute.proto_pattern
+            (* eliminate FORCE from d's? *)
+	    val d's = map moveConstantBindingsToConstraints d's
+	    type adisjunct = P.absolute_disjunct 
+	    <<bind [[allLabels]] to the labels appearing in all disjuncts>>
+	    <<bind [[allFree]] to free identifiers appearing in all disjuncts>>
+	    (*****
+  a.pattern := gsubst(a.pattern, always_fail)  	# remove wildcards and instances,
+						# turn latent to real labels
+*****)
+	    (*val P.PAT(name, ds) = simplify P.PAT(name, ds)???*)
+	    <<fun [[splitArm]]: convert field bindings to answers, split arm as needed, and return>>
+	in  splitArm ()
+        end
+<<functions>>=
+      fun lookup n = Error.OK (getOpt(find n, D.TMP (Exp.var n, NONE)))
+      val elabArg = {fieldInfo=fi, lookup=lookup, lookupGlobal=lookup,
+		     elaborationContext=ElabExp.MATCHING, 
+		     lookupConstructor=lookupConstructor, errorContext=ctxt}
+      val {elabPat, elabBool, ...} = ElabExp.elab elabArg
+      val actualize = P.actualizeLatents {actualsOK=true} 
+  in  Error.strip 
+        (Error.emap
+	  (fn eqns => Error.emap 
+                        (doPat eqns o actualize o ElabExp.insistSingle) (elabPat e))
+	  eqns)
+  end
+@ 
+In equations, identifiers must stand only for themselves.
+I think.  Really.
+<<bind [[eqns]] to elaborated [[eqns]]>>=
+local
+  fun optionalField n =
+    case StringMap.find(symtab, n) of SOME (Error.OK (D.FIELD f)) => SOME f | _ => NONE
+	   (* could lead to spurious error messages :-( *)
+  fun lookupSolver n = (Error.OK o D.TMP) (Exp.var n, optionalField n)
+  val {elabBool, ...} = ElabExp.elab {lookup=lookupSolver, lookupGlobal=lookupSolver,
+				      lookupConstructor=lookupConstructor,
+				      elaborationContext=ElabExp.MATCHING,
+				      errorContext=ctxt, fieldInfo=fi}
+in
+  val eqns = Error.errorList (map elabBool eqns)
+end
+<<bind [[allLabels]] to the labels appearing in all disjuncts>>=
+fun warn n = warning ["Ignoring binding identifier ", n,
+		      " because it doesn't appear in every disjunct",
+		      " (source location may be bogus)"]
+fun foldIds f = StringMap.foldli (fn (l, n, z) => f(l, z))
+fun labelOffsets (P.DIS(name, conds, (_, labels, _)), bbs) = labels
+val allLabels = intersectIds (foldIds, map labelOffsets d's, warn)
+@ 
+The concept of ``free identifier'' does \emph{not} include wildcards.
+<<bind [[allFree]] to free identifiers appearing in all disjuncts>>=
+val wild = Wildcard.wildVars()
+fun warn n = 
+  if StringSet.member(wild, n) then ()
+  else warning ["Ignoring binding instance ", n,
+		" because it doesn't appear in every disjunct"]
+fun foldCons f zero (bbs, ccs, labels, patlen) = 
+  foldl (fn ((field, e), zero) => f(e, zero)) zero bbs
+fun foldDis' f zero (P.DIS(name, cs, ?), bbs) =
+  foldl (fn ((field, e), zero) => f(e, zero)) zero bbs
+fun foldPat'Ids f zero d =
+  foldDis' (fn (e, z) => Exp.foldFreeVariables f z e) zero d
+val allFree = intersectIds (foldPat'Ids, d's, warn)
+val allFree = StringSet.difference(allFree, wild)
+@ 
+Even a binding instance is usable on the right-hand side only if it
+appears in all disjuncts.
+<<aux functions>>=
+fun intersectIds (foldId, [], warn) = StringSet.empty
+  | intersectIds (foldId, d::ds, warn) =
+      let fun addQuietly (item, (initialSet, w)) = (StringSet.add(initialSet, item), w)
+          fun warn' n warned =
+            if StringSet.member(warned, n) then warned
+            else (warn n; StringSet.add(warned, n))
+          fun next (d, (intersection, warned)) =
+             let fun addId(n, (s, w)) = if StringSet.member(intersection, n) then
+                                          (StringSet.add(s, n), w)
+                                        else 
+                                          (s, warn' n w)
+                 val (intersection', warned) = foldId addId (StringSet.empty, warned) d
+                 val missing = StringSet.difference(intersection, intersection')
+                 val _ = StringSet.app warn missing
+             in  (intersection', warned)
+             end
+      in  #1 (foldl next (foldId addQuietly (StringSet.empty, StringSet.empty) d) ds)
+      end
+type ss = StringSet.set * StringSet.set
+val intersectIds 
+  : ((string * ss -> ss) -> ss -> 'a -> ss) * 'a list * (string -> unit) -> StringSet.set
+  = intersectIds
+@ 
+Like the old version, this code simplifies constant
+field bindings into constraints.  This simplification is necessary
+because constructors can be applied to constants.
+<<aux functions>>=
+fun moveConstantBindingsToConstraints (P.DIS(name, conds, (ccs, labs, len)), bbs) =
+  let fun move([],          bbs, ccs) = (bbs, ccs)
+        | move((bb as (f, e)) :: t, bbs, ccs) =
+            case Exp.unConst (superSimplify e)
+	      of SOME n => move(t, bbs, (f, {lo=n, hi=n+1}) :: ccs)
+	       | NONE   => move(t, bb :: bbs, ccs)
+      val (bbs, ccs) = move(bbs, [], ccs)
+  in  (P.DIS(name, conds, (ccs, labs, len)), bbs)
+  end
+@
+Note that we're letting field names be used either to stand for patterns or to be
+binding instances of integers (just like predefined identifiers).
+We think it's OK to allow both, but we're not sure.  In any case, it was too
+annoying not to allow filed names as binding instances in constructor applications.
+<<inject [[idents]] into [[rho]]>>=
+every i := !idents do 
+  case type(symtab[i]) of {
+    "field"    : add_to_rho(i, inject(constraints2pattern(fieldbinding(symtab[i], i)),
+                                      i, &null), rho)
+    "pattern"  : add_to_rho(i, inject(symtab[i], &null, &null), rho)
+    "constype" : 
+       add_to_rho(
+          i, 
+          inject(seqpx(label2pattern(i),
+                       consinput_pattern(ipt := input(Ewildcard(i), symtab[i]))),
+                 &null, 
+                 ipt), 
+          rho)
+    "null"     : add_to_rho(i, inject(&null, i, &null), rho)
+    default    : error("I can't make sense of ", image(i), " (a ", type(symtab[i]), 
+                       ") within a pattern")
+  }
+<<*>>=
+procedure always_fail()
+  fail
+end
+@
+<<*>>=
+procedure free_var_or_patlabelbinding_name(d)
+  suspend free_variables(d) | key(\d.patlabelbindings)
+end
+@ 
+Using [[patlen : int option]] instead of the length built into each
+disjunct means we can ignore the lengths (and merge disjuncts of
+different lengths) whenever nothing depends on the length.
+N.B. unlike as in the Icon code, [[lasta]] stores disjuncts in
+\emph{reverse} order.
+<<fun [[splitArm]]: convert field bindings to answers, split arm as needed, and return>>=
+<<function [[fieldbindingsToSoln]]>>
+fun splitArm () =
+  let fun dis ((d as (P.DIS (name, conds, (ccs,labs,len)), bbs))::ds, acount, lasta) =
+            let val (s as (soln, conds), dd) = fieldbindingsToSoln(d, allLabels)
+		      (* bindings become conditions, both move to arm *)
+		val d = () (* make sure not to use this any more *)
+                val patlen = case succptr of NONE => NONE | _ => SOME len
+            in  case lasta
+		  of NONE => dis(ds, acount, SOME (dd, patlen, s))
+		   | SOME ([], _, _) => Impossible.impossible "empty lasta"
+                   | SOME (last as (d' :: d's, patlen', impSoln')) =>
+                       let val P.DIS (_, _, (_, labs', _)) = d' : P.absolute_disjunct
+			   fun bitscomp ({bits=b1},{bits=b2}) = Int.compare(b1, b2)
+                       in  if patlen = patlen' 
+			   andalso StringMap.collate bitscomp (labs, labs') = EQUAL
+			   andalso sameSoln(impSoln', s)
+			   then 
+			     dis(ds, acount, SOME (dd @ d' :: d's, patlen', impSoln'))
+			   else
+			     mkArm last :: dis(ds, acount+1, SOME(dd, patlen, s))
+		       end
+	    end
+	| dis ([], acount, SOME last) = [mkArm last]
+	| dis ([], _, NONE) = []
+      and mkArm (disjuncts', patlen, (soln, conds)) =
+        ARM (P.PAT(name, rev disjuncts' : P.absolute_disjunct list),
+	     { answers=soln, conditions=conds, patRegion=expRegion,
+	       original=original, patlen=patlen, name=armName, code=code} )
+       before () (*
+          if acount > 1 then 
+          write(\mdebug, "split case arm at ", image(a.file), ", line ", a.line, 
+                 " because of varying implicit solutions or pattern lengths")
+		  *)
+  in  dis (d's, 0, NONE)
+  end
+<<show last answers and conditions>>=
+write(\mdebug, "Answers and conditions (", image(\lasta), ") at length ", 
+               (\lasta).patlen,
+               " (", image((\lasta).imp_soln), "):", solnimage((\lasta).imp_soln))
+@
+For each disjunct, we turn field bindings into answers and conditions, using the
+following steps:
+\begin{enumerate}
+\item
+Remove all the field bindings from the constraints, making a new
+equation for each field binding.
+Because the solver works with variables, use [[AFV.varFor]]
+to map each absolute field to its corresponding
+variable.
+[[AFV.fieldFor]] is used later to perform the inverse mapping.
+The variables introduced by [[AFV.varFor]] stand for the absolute
+fields in the bindings, and they (plus pattern labels) are the
+variables that are 
+the inputs to the equations.
+\item
+Solve the equations, and build the answers table by using
+the values they give to the identifiers in [[idents]].
+At this point we inverse-map the variables, so the results are free
+in absolute fields, not in these auxiliary variables.
+\item
+Add any constraints produced by the equations to the conditions of the
+disjunct, performing the same inverse mapping.
+\end{enumerate}
+<<function [[fieldbindingsToSoln]]>>=
+<<inequality transformation>>
+fun fieldbindingsToSoln ((P.DIS(name, conds, (ccs, labels, len)), bbs), inputs) =
+  let val inputs = StringMap.foldli (fn (l, _, s) => StringSet.add(s, l)) inputs labels
+      fun addBinding ((f, e), (eqns, varstate, inputs)) =
+        let val (varstate, v) = AFV.varFor (varstate, f)
+	    val eqns = Exp.condition(e, Relop.EQ, Exp.var v) :: eqns
+	    val inputs = StringSet.add(inputs, v)
+	in  (eqns, varstate, inputs)
+	end
+      val (eqns, varstate, inputs) = foldl addBinding (eqns, AFV.new, inputs) bbs
+      val bbs = []  (* no bindings in the new pattern *)
+      val eqns = Exp.Set.foldl op :: eqns conds (* add disjunct conditions *)
+      <<rebind [[eqns]] to [[eqns]] with forces removed>>
+      val eqnsIn = {eqns=eqns, inputs=inputs}
+      val eqnsOut as { constraints, answers, unsolved } = Solver.solve eqnsIn
+      val _ = null unsolved orelse <<show equations unsolved>>
+      (* <make sure there's an answer for every non-label in [[idents]]>
+          --- think I may have gone wrong somewhere ... *)
+<<function [[fieldbindingsToSoln]]>>=
+      fun addLabel (l, {bits=n}, result) = 
+	if StringSet.member(allLabels, l) then
+	  StringMap.insert(result, l, P.addBitsToPC n)
+	else
+	  result
+      val result = StringMap.foldli addLabel StringMap.empty labels
+      fun cvt x =
+	superSimplify (Exp.multiSubst (optmap Exp.afield o AFV.fieldFor varstate) x)
+      fun addVar (v, result) =
+         let val answer = getOpt(StringMap.find(answers, v),
+				 Exp.var ("could not solve for " ^ v))
+	 in  StringMap.insert(result, v, cvt answer)
+	 end
+<<function [[fieldbindingsToSoln]]>>=
+      val result = StringSet.foldl addVar result allFree
+      val cvt' = Exp.multiSubst (fn n => StringMap.find(answers, n)) o cvt
+      val cvt' = cvt o Exp.multiSubst (fn n => StringMap.find(answers, n))
+      val conds = Exp.Set.map cvt' constraints
+      val d = P.DIS(name, Exp.Set.empty, (ccs, labels, len))
+      val (conds, P.PAT(_, dd)) = inequalitiesToPat len (conds, P.PAT(NONE, [d]))
+  in  ((result, conds), dd)
+  end
+<<make sure there's an answer for every non-label in [[idents]]>>=
+if (id := !idents, not member(\d.patlabelbindings, id), /soln.answers[id]) then {
+  PPxwrite(PPnew(&errout),"Error: trouble with disjunct ${$t$o", ppexpimage(d), "$b$}")
+  <<make [[l]] list of [[idents]] not in [[soln.answers]]>>
+  error("Can't solve for ", commafy(sort(l)), envimage(soln.answers, "soln.answers"))
+}
+<<rebind [[eqns]] to [[eqns]] with forces removed>>=
+val eqns = 
+  let fun unForce1 (UnifiedExp.FORCE e) = SOME (unforce e)
+        | unForce1 _ = NONE
+      and unforce e = UnifiedExpFuns.topDownRewrite unForce1 e
+  in  map unforce eqns
+  end
+@ 
+Better error message:\change{15}
+<<make [[l]] list of [[idents]] not in [[soln.answers]]>>=
+l := []
+every /soln.answers[x := !idents] & not member(\d.patlabelbindings, x) do 
+  put(l, x)
+@ 
+Here, I search for conditions that are inequalities on absolute
+fields, and I turn them into suitable constraints so I can handle them
+in a decision tree instead of in explicit conditions.
+I haven't actually implemented this transformation yet.
+<<inequality transformation>>=
+fun inequalitiesToPat len (conds, p) = 
+  let <<field condition test>>
+      fun addCond(c, (conds, p)) =
+        case unFieldCondition c
+	  of SOME (f, relop, n) => (conds, A.andp [p, A.constraint len (f, relop, n)])
+           | NONE               => (Exp.Set.add(conds, c), p)
+  in  Exp.Set.foldl addCond (Exp.Set.empty, p) conds
+  end
+<<field condition test>>=
+fun unFieldCondition (U.CONDITION(U.AFIELD f, relop, U.CONST n)) = SOME (f, relop, n)
+  | unFieldCondition (U.CONDITION(U.CONST n, relop, U.AFIELD f)) = 
+        SOME (f, Relop.reverse relop, n)
+  | unFieldCondition _ = NONE
+@ 
+I should trim the answers that are printed, but for now, I
+leave them alone.
+<<show equations unsolved>>=
+let fun indent pp = PP.Short.li [PP.Short.$ "$t $c${", pp, PP.Short.$ "$}$b"]
+in  raise Error.Error ("Could not solve equations:",
+		       indent (NoisySolver.solverDisplay (eqnsIn, eqnsOut)))
+end
+@ 
+<<aux functions>>=
+fun sameSoln((soln, conds), (soln', conds')) =
+  Exp.Set.equal (conds, conds') andalso
+  StringMap.collate Exp.compare (soln, soln') = EQUAL
+@ 
+Folding expressions.
+We must be sure to visit not just the roots, but every node.
+<<functions>>=
+fun foldExpsArm f zero ({ answers, conditions, ... } : 'a arm_spec) =
+  let fun visit (e, z) = Absolute.Exp.foldExps f z e
+  in  Absolute.Exp.Set.foldl visit (StringMap.foldl visit zero answers) conditions
+  end
+@ 
+\section{Mapping matching statements}
+<<functions>>=
+fun mmap f =
+  let fun match
+        (MATCH {value=v, succptr=s, arms=arms,         sourcemap=smap, region=rgn}) =
+        (MATCH {value=v, succptr=s, arms=map arm arms, sourcemap=smap, region=rgn})
+      and arm (ARM (p, {original=or, answers=a's, conditions=c's, patlen=len,
+                        name=n, code=c, patRegion=rgn})) =
+            (ARM (p, {original=original or, answers=a's, conditions=c's, patlen=len,
+                      name=n, code=f c, patRegion=rgn}))
+      and original {code=c, smap=smap, uid=u} = {code=f c, smap=smap, uid=u}
+  in  match
+  end
+@
+\section{Absolute fields}
+<<absfield.sml>>=
+signature ABSOLUTE_FIELD_VARS = sig
+  type field = Field.absolute_field
+  type state
+  val new : state
+  val varFor : state * field -> state * string  (* create var *)
+  val fieldFor : state -> string -> field option (* recover field *)
+end
+@ 
+I'm going to try a cheat here, and just make up a variable name with
+spaces and curlies.
+<<absfield.sml>>=
+structure AbsoluteFieldVars : ABSOLUTE_FIELD_VARS = struct
+  type field = Field.absolute_field
+  type state = field StringMap.map
+  val new = StringMap.empty
+  fun varFor(fmap, af as (f, n) : field) =
+    let val v = String.concat ["{", #name f, " at ", Int.toString n, "}"]
+    in  (StringMap.insert(fmap, v, af), v)
+    end
+  fun fieldFor fmap v = StringMap.find(fmap, v)
+end
+@ 

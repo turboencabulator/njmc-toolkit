@@ -1,0 +1,11 @@
+; module link
+group
+  structure UGencode
+  structure AllDataEncoders
+  signature ENCODING_GENERATOR
+  signature CODE_GENERATOR
+  signature REWRITER
+  structure ReadSLED
+  structure EmitCode
+is
+  runmodules.cm

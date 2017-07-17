@@ -1,0 +1,17 @@
+; $Id: pattern.cm,v 1.4 1999/09/06 16:02:57 nr Exp $
+; module semantic
+group is
+  exp.cm
+  field.cm
+  global.cm (* includes fieldinfo and therefore field *)
+  error.cm
+
+  pattern.nw
+  patbasics.sig@pattern.nw
+  patbasics.sml@pattern.nw
+
+
+;;  unparse-pp.cm
+;;  pp.cm
+;;  ximage.sml@ximage.nw
+

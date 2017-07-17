@@ -1,0 +1,2631 @@
+
+
+
+#================================================================  charname.icn
+
+
+
+#line 2 "charname.nw"
+procedure charname(s)
+  static nametab
+  local c
+  initial {
+    nametab := table()
+    
+#line 23 "charname.nw"
+nametab["\x00"] := "NUL"  
+nametab["\x01"] := "SOH"  
+nametab["\x02"] := "STX"  
+nametab["\x03"] := "ETX"  
+nametab["\x04"] := "EOT"  
+nametab["\x05"] := "ENQ"  
+nametab["\x06"] := "ACK"  
+nametab["\x07"] := "BEL"  
+nametab["\b"  ] := "BS"   
+nametab["\t"  ] := "HT"   
+nametab["\n"  ] := "LF"   
+nametab["\v"  ] := "VT"   
+nametab["\f"  ] := "FF"   
+nametab["\r"  ] := "CR"   
+nametab["\x0e"] := "SO"   
+nametab["\x0f"] := "SI"   
+nametab["\x10"] := "DLE"  
+nametab["\x11"] := "DC1"  
+nametab["\x12"] := "DC2"  
+nametab["\x13"] := "DC3"  
+nametab["\x14"] := "DC4"  
+nametab["\x15"] := "NAK"  
+nametab["\x16"] := "SYN"  
+nametab["\x17"] := "ETB"  
+nametab["\x18"] := "CAN"  
+nametab["\x19"] := "EM"   
+nametab["\x1a"] := "SUB"  
+nametab["\e"  ] := "ESC"  
+nametab["\x1c"] := "FS"   
+nametab["\x1d"] := "GS"   
+nametab["\x1e"] := "RS"   
+nametab["\x1f"] := "US"   
+nametab[" "   ] := "SPACE"
+nametab["!" ] := "BANG"
+nametab["\""] := "DBLQ"
+nametab["#" ] := "SHARP"
+nametab["$" ] := "DOL"
+nametab["%" ] := "PERC"
+nametab["&" ] := "AMP"
+nametab["'" ] := "TICK"
+nametab["(" ] := "LPAR"
+nametab[")" ] := "RPAR"
+nametab["*" ] := "STAR"
+nametab["+" ] := "PLUS"
+nametab["," ] := "COMMA"
+nametab["-" ] := "DASH"
+nametab["." ] := "DOT"
+nametab["/" ] := "SLASH"
+nametab[":" ] := "COLON"
+nametab[";" ] := "SEMI"
+nametab["<" ] := "LT"
+nametab["=" ] := "EQ"
+nametab[">" ] := "GT"
+nametab["?" ] := "QUES"
+nametab["@" ] := "ATSI"
+nametab["[" ] := "LSQ"
+nametab["\\"] := "BSLA"
+nametab["]" ] := "RSQ"
+nametab["^" ] := "HAT"
+nametab["`" ] := "BTICK"
+nametab["{" ] := "LBR"
+nametab["|" ] := "BAR"
+nametab["}" ] := "RBR"
+nametab["~" ] := "TILDE"
+nametab["\d"] := "DEL"
+#line 8 "charname.nw"
+    nametab[":="] := "GETS"  
+    nametab["<="] := "LE"  
+    nametab[">="] := "GE"
+    nametab["=>"] := "DARROW"
+    nametab["->"] := "ARROW"
+    nametab[""] := "EMPTY"
+    every c := !(&letters ++ &digits ++ '_') do nametab[c] := c
+  }
+  if \nametab[s] then return nametab[s]
+  if /nametab[!s] then fail
+  r := ""
+  every r ||:= "_" || nametab[!s]
+  return r[2:0]
+end
+
+
+
+#===================================================================  check.icn
+
+
+
+#line 2 "check.nw"
+procedure checkgrammar(g)
+  local defined
+  defined := set()
+  every insert(defined, key(g.nonterms | g.terms))
+  *g.nonterms > 0 | stop("No productions in grammar.")
+  if *(g.leaves -- defined) > 0 then {
+#line 11 "check.nw"
+writes(&errout, "Undeclared symbols:")
+every writes(&errout, " ", !(g.leaves -- defined))
+write(&errout)
+stop()
+#line 7 "check.nw"
+                                                                                    }
+  return g
+end
+
+
+
+#=================================================================  ebnflex.icn
+
+
+
+#line 25 "ebnflex.nw"
+global token, tval, filename, lineno
+global thisline, thispos
+#line 30 "ebnflex.nw"
+global EOF
+#line 34 "ebnflex.nw"
+global pass_through_resynch
+procedure lex(newfile)
+  static toks,  infile
+  local eol
+  initial {EOF    := " end of file "; /lineno := 0; toks := [];
+           infile := &input; filename := "standard input"}
+  filename := image(infile := \newfile)[6:-1]
+  if \newfile then lineno := 0
+  if *toks = 1 & token := scantokens(pop(toks)) then
+    return token
+  else if *toks = 2 & (pop(toks) ? { 
+      tab(thispos := pop(toks))
+      if token := scantokens() then {
+        every push(toks, if pos(0) then 1 else &pos | &subject)
+        return token
+      } 
+    }) then &null
+  else {
+    while thisline := read(infile) do {
+      lineno +:= 1
+      thispos := 1
+      thisline ?    
+        if (="#line ", /pass_through_resynch, lineno := integer(tab(many(&digits)))-1, 
+            =" \"", filename := tab(upto('"')), ="\"", pos(0)) |
+           (="<* LINE ", /pass_through_resynch, lineno :=integer(tab(many(&digits)))-1,
+            =" \"", filename := tab(upto('"')), ="\" *>", pos(0)) then { }
+        else {
+          if token := scantokens() then {
+            every push(toks, if pos(0) then 1 else &pos | &subject)
+            return token
+          }
+        }
+    }
+  }
+  return token := tval := EOF
+end
+#line 75 "ebnflex.nw"
+procedure gobble(t)
+    if token == t then return 1(.tval, lex())
+end
+
+procedure expect(t, nt)
+    return gobble(t) | 
+    error("when parsing "||\nt||", " | "", 
+          "expected ", image(t), " but found ", image(tval))
+end
+
+procedure lexwhere(outfile)
+  /outfile := &errout
+  write(outfile, thisline)
+  write(outfile, repl(" ", \thispos-1), "^", repl(" ", 0 <= *thisline-thispos) | "", "$")
+  return
+end
+
+procedure erroratfl(file, line, L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+  stop()
+end
+
+procedure errorat(loc, L[])
+  write ! ([&errout, loc, ": "] ||| L)
+  stop()
+end
+
+procedure error(L[])
+  
+#line 118 "ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 104 "ebnflex.nw"
+  stop()
+end
+
+procedure warning(L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": Warning -- "] ||| L)
+end
+
+procedure impossible(L[])
+  push(L, "This can't happen: ")
+  
+#line 118 "ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 114 "ebnflex.nw"
+  write(&errout, "\n")
+  &null[0]
+end
+
+
+
+#===================================================================  emitc.icn
+
+
+
+#line 2 "emitc.nw"
+procedure Cemitnt(g, nt)
+  write(nt, "() {")
+  if type(rhs := g.nonterms[nt]) ~== "Alt" then
+    write("\t/* ", prodimage(rhs, nt), " */")
+  Cemitnode(nt)
+  write("}")
+  write()
+end
+
+procedure Cemitnode(node)
+  case type(node) of {
+    "Alt" : {
+      write("\tswitch (token) {")
+      every n := !node.list do {
+        every write("\tcase ", g.terms[!sort(predict(n, node))], ":");
+        write("\t\t/* ", 
+              if g.nonterms[l := key(g.nonterms)] === node then prodimage(l, n) 
+              else nodeimage(n), " */")
+        Cemitnode(n)
+        write("\t\tbreak;")
+        write()
+      }
+      write("\tdefault:")
+      write("\t\tparse_error();");
+      write("\t}")
+    }
+    "Cat" : every Cemitnode(!node.list)
+    "Opt" | "Clo" : {
+      write(if type(node) == "Opt" then "\tif (0" else "\twhile (0")
+      every write("\t|| token == ", !sort(first[node]--epsilonset))
+      write("\t) {")
+      write("\t\t/* ", nodeimage(node), " */")
+      Cemitnode(node.node)
+      write("\t}")
+    }
+    "string" :
+       write("\t\tmatch(", \g.terms[node], ");") | write("\t\t", node, "();");
+    default : error("this can't happen -- error node type")
+  }
+end
+
+
+
+#=================================================================  emiticn.icn
+
+
+
+#line 2 "emiticn.nw"
+procedure Icon(what)
+  return case(what) of {
+    "emit"           : IconEmitnt
+    "preamble"       : default_emit_preamble
+    "postamble"      : default_emit_postamble
+    "stringdef"      : IconStringdef
+    "infersemantics" : IconSemantics
+    "precedence"     : IconPrec
+    "lr"             : IconLR
+    "append"	     : IconAppend
+    "nil"	     : "[]"
+    "some"	     : IconSome
+    "none"	     : "&null"
+    "resynch"        : default_resynch
+    default : error("Icon doesn't support ", what)
+  }
+end
+#line 20 "emiticn.nw"
+procedure default_resynch(pos)
+  return write("#line ", pos.lineno, " ", image(pos.filename))
+end
+#line 24 "emiticn.nw"
+global ITAB, thisnt
+procedure IconEmitnt(g, nt)
+  initial {
+    ITAB := 4
+    write("link ebnflex")
+  }
+  if \IconReserved then {IconEmitReserved(); IconReserved := &null}
+  write("procedure P_", thisnt := nt, "()")
+  
+#line 39 "emiticn.nw"
+n := case type(node := g.nonterms[nt]) of
+  { "Opt" | "Clo" : 1
+    "Cat" : *node.list
+    "Alt" : { k := 0
+              every type(nn := !node.list) == "Cat" do
+                k <:= *nn.list
+              k
+            }
+  }
+l := [] ; every put(l, "ii" || (1 to n))
+if *l > 0 then write(repl(" ", ITAB), "local ", commaseparate(l))
+#line 33 "emiticn.nw"
+  write(if type(g.nonterms[nt]) ~== "Alt" then 
+              " # " || prodimage(nt[1], g.nonterms[nt]) else "")
+  IconEmitnode(g, g.nonterms[nt], ITAB, "return")
+  every write("end" | "")
+end
+#line 51 "emiticn.nw"
+record closchema(Init, While, Do, Put1, Put2)
+
+procedure IconEmitnode(g, node, indent, assignment)
+  local gobble, initindent
+  static schema, fakeline
+  initial {schema := table() 
+           schema["Clo"] := closchema("ii1 := []", "while", "do", "put(ii1, ", ")")
+           schema["Opt"] := closchema("ii1 := &null", "if", "then", "ii1 := (", ")")
+           fakeline := create(seq(1000, 1000))
+          }
+  if type(node) ~== "Alt" then iwrites(indent, \assignment, " ")
+  initindent := if /assignment then indent else 0
+  case type(node) of {
+    "Alt" : 
+      if /g.terms[!node.list] then {	# ordinary case
+        iwrite(indent,   "case token of {")
+        every n := !node.list do {
+          iwrites(indent+ITAB, alternate_terms(g, sort(predict(n, node))), " : ")
+          write("# ", 
+                if g.nonterms[l := key(g.nonterms)] === node then prodimage(l, n) 
+                else nodeimage(n))
+          IconEmitnode(g, n, indent+2*ITAB, assignment)
+        }
+        iwrite(indent+ITAB, "default : ", icnsyntax(node))
+        iwrite(indent, "}")
+      } else {
+	iwrite(indent, \assignment || " " | "", 
+               "(gobble(", alternate_terms(g, node.list), ") | ", icnsyntax(node), ")")
+      }
+    "Cat" : {
+        iwrite(initindent, "{")
+        every IconEmitnode(g, node.list[i := 1 to *node.list], indent + ITAB,
+                           "ii" || i || " := ")
+        write("#line ", adjustline(\node.position))
+        every iwrite(indent, !\node.semantics)
+        write("#line ", \node.position & @fakeline, image("generated code"))
+        iwrite(indent, "}")
+        }
+    "Opt" | "Clo" : {
+      sch := schema[type(node)]
+      iwrite(initindent, "{")
+      iwrite(indent+ITAB, sch.Init)
+      iwrite(indent+ITAB, sch.While, " token == (", 
+             alternate_terms(g, sort(first[node]--epsilonset)), ") ", sch.Do)
+      IconEmitnode(g, node.node, indent+2*ITAB, sch.Put1)
+      iwrite(indent+2*ITAB, sch.Put2)
+      iwrite(indent+ITAB, "ii1")
+      iwrite(indent, "}")
+    }
+    "string" : 
+       iwrite(initindent, "expect(", \g.terms[node], ", ", image(thisnt), ")") | 
+         iwrite(initindent, "P_", node, "()")
+    default : error("this can't happen -- error node type")
+  }
+  return
+end
+#line 110 "emiticn.nw"
+#====== link commafy
+procedure icnsyntax(alt)
+  s := set()
+  every s ++:= predict(!alt.list, alt)
+  return case *s of {
+    0 : error("Empty predict set in production for `", thisnt, "'! Can this happen?")
+    1 | 2 | 3 :
+       map("error(#syntax error parsing " || thisnt || ":\\n\\texpected " || 
+           map(commafy(sort(s), "or"), "\"", "'") || "#)", "#", "\"")
+    default : map("error(#syntax error parsing " || thisnt || "#)", "#", "\"")
+  }
+end
+#line 126 "emiticn.nw"
+procedure iwrite(indent, L[])
+  return write!(push(L,left("", indent)))
+end
+
+procedure iwrites(indent, L[])
+  return writes!(push(L,left("", indent)))
+end
+#line 136 "emiticn.nw"
+global IconReserved
+
+procedure IconStringdef(g)
+  IconReserved := set()
+  every t := !g.leaves & not member(g.nonterms, t) do
+    if any('"\'', t[1] == t[-1]) then {
+      /g.terms[t] := "\"" || t[2:-1] || "\""
+      insert(IconReserved, g.terms[t])
+    }
+  every t := key(g.terms) do /g.terms[t] := t
+  return g
+end
+#line 149 "emiticn.nw"
+procedure IconEmitReserved()
+  write("procedure reserved(w)")
+  write("  static words")
+  write("  initial words := set([")
+  every write("    ", !sort(IconReserved), ",")
+  write("    ", ?IconReserved, "])")
+  write("  if member(words, w) then return w")
+  write("end")
+end
+#line 159 "emiticn.nw"
+procedure alternate_terms(g, l)
+  s := ""
+  every s ||:= " | " || g.terms[!l]
+  return s[4:0]
+end
+
+#line 166 "emiticn.nw"
+procedure IconSemantics(g)
+  every Idosem(g, !g.nonterms)
+  return
+end
+
+procedure Idosem(g, node)
+  case type(node) of {
+    "Opt" | "Clo" : Idosem(g, node.node)
+    "Alt" : every Idosem(g, !node.list)
+    "Cat" : {
+       every Idosem(g, !node.list)
+       node.semantics := [case type(node.semantics) of {
+         "null" : {
+            "ii" || copy_number(g, node) | {
+              s := "["
+              every s ||:= "ii" || (1 to *node.list) || ", "
+              s[1:-2] || "]" | "&null"
+            }
+          }
+         "string" : IconSemanticTag(g, node, node.semantics)
+         "allargs" : node.semantics.ident || "(" ||
+                      arg_list("ii", {l := []; every put(l, 1 to *node.list); l}) || ")"
+       }]
+     }
+    "string" : &fail
+    default  : error("impossible node type")
+  }
+end
+#line 195 "emiticn.nw"
+procedure IconSemanticTag(g, catnode, ident)
+  return ident || "(" || arg_list("ii", arg_numbers(g, catnode)) || ")"
+end
+#line 200 "emiticn.nw"
+procedure IconPrec(g)
+  l := 
+  every p := !sort(g.prec, 2) & term := p[1] do
+    write("  prec[", term, "] := ", p[2], 
+          ";  assoc[", term, "] := ", image(g.assoc[p[1]]))
+  return
+end
+#line 208 "emiticn.nw"
+procedure adjustline(s)
+  local i
+  s ? {
+    i := tab(many(&digits)) - 1 | ""
+    return i || tab(0)
+  }
+end
+#line 216 "emiticn.nw"
+procedure IconAppend(list, x)
+  return "put(" || list || ", " || x || ")"
+end
+
+procedure IconSome(x)
+  return x
+end
+
+
+
+#==================================================================  emitml.icn
+
+
+
+#line 3 "emitml.nw"
+procedure ML(what)
+  return case(what) of {
+    "emit"           : MLEmitnt
+    "preamble"       : MLEmitPreamble
+    "postamble"      : MLEmitPostamble
+    "stringdef"      : MLStringdef
+    "infersemantics" : MLSemantics
+    "precedence"     : MLPrec
+    "lr"             : MLLR
+    "append"	     : MLAppend
+    "nil"	     : "[]"
+    "some"	     : MLSome
+    "none"	     : "NONE"
+    "resynch"        : MLResynch
+    default : error("ML doesn't support ", what)
+  }
+end
+#line 21 "emitml.nw"
+procedure MLResynch(pos)
+  return write("(*#line ", pos.lineno, " ", image(pos.filename), "*)")
+end
+#line 25 "emitml.nw"
+procedure MLEmitPreamble(g)
+  local do_rgn, token
+  do_rgn := g.attributes["region"]
+  token := ((\g.attributes["token"])[1] | "Token")
+  
+#line 183 "emitml.nw"
+outfile := open("ii.tab.sml", "w") | stop("can't open ii.tab.sml")
+write(outfile, "signature ", mixcaps_to_allcaps(token), " = sig")
+emit_ml_token_datatype(outfile, g)
+write(outfile, "val reserved   : string -> token option")
+write(outfile, "val unReserved : token  -> string option")
+write(outfile, "end")
+
+write(outfile, "structure ", token, " : ", mixcaps_to_allcaps(token), " = struct")
+emit_ml_tokendef(outfile, g)
+emit_ml_reserved(outfile, g)
+write(outfile, "end")
+close(outfile)
+#line 30 "emitml.nw"
+  emit_templates(
+     
+#line 43 "emitml.nw"
+[
+"structure %parser = struct",
+"  datatype 'a stream = STREAM of unit -> %lexresult * 'a stream",
+"  fun invoke (STREAM lex) = lex()",
+"  ",
+"  type token = %Token.token",
+"  ",
+"  exception SyntaxError of {parsing:string, msg:string list, found:token%{region:region}}",
+"  exception Expected of {expected:string, found:token, parsing:string option} ",
+"	   (* token expected, nonterminal being parsed *)",
+"  ",
+if \g.attributes["arg-pat"] then {
+  s := "fun makeParser (" 
+  every s ||:= !g.attributes["arg-pat"] || " "
+  s ||:= ") = let"
+} else
+  "local",
+#line 68 "emitml.nw"
+"  open %Token",
+"  ",
+if /do_rgn then &null 
+else [
+  "  val nullRegion = (0, 0)",
+  "  fun span ((0,0), r) = r",
+  "    | span (r, (0,0)) = r", 
+  "    | span ((l1, h1), (l2, h2)) = if l1 < h2 then (l1, h2) else (l2, h1)",
+  "  fun startRegion (first, last) = (first, first)",
+  ""],
+"  exception TokenMismatch of string",
+"  fun expect (f, %tokenlex, nt) =",
+"    (f token%trgn, invoke lex) handle TokenMismatch t => ",
+"         raise Expected {expected=t, found=token, parsing=nt}",
+"  ",
+"  fun synerror (t%trgn, nt, s) = raise SyntaxError {parsing=nt, found=t, msg=s%{region=trgn}}",
+"  ",
+"  ",
+"  (* closure and optional for parsing *)",
+"  fun closure((%tokenlex), predicate, parse) =",
+"    let fun cl(%tokenlex, l%{rgn'}) =",
+"	   if predicate token then",
+"	     let val (x%rgn, (%tokenlex)) = parse(%tokenlex)",
+"	     in  cl(%tokenlex, x::l%{region_span})",
+"	     end",
+"	   else",
+"	     (rev l%{rgn'}, (%tokenlex))",
+"    in  cl(%tokenlex, []%yyrgn)",
+"    end",
+#line 107 "emitml.nw"
+"  ",
+"  fun optional((%tokenlex), predicate, parse) = ",
+"     if predicate token then ",
+"	let val (x%rgn, (%tokenlex)) = parse(%tokenlex)",
+"	in  (SOME x%rgn, (%tokenlex))",
+"	end",
+"     else ",
+"	(NONE%yyrgn, (%tokenlex))",
+# N.B. we really should do better here --- instead of null region, 
+# we could use the empty region immediately preceding the non-satisfying token.
+"  ",
+"  fun make_parser (f, unEOF) stream =",
+"    let val (result%rgn, (%tokenlex)) = f (invoke stream)",
+"    in  (unEOF token; result) handle TokenMismatch _ => ",
+"          raise Expected {expected=\"end of file\", found=token, parsing=NONE} ",
+"    end",
+"  ",
+""]
+#line 31 "emitml.nw"
+                      ,
+     "parser",    ((\g.attributes["parser"])[1] | "Parser"), 
+     "Token",     token,
+     "lexresult", if /do_rgn then "'a" else "'a * (int*int)",
+     "tokenlex",  if /do_rgn then "token, lex" else "token, trgn, lex",
+     
+#line 98 "emitml.nw"
+"rgn",           if /do_rgn then "" else ", rgn",
+"rgn'",          if /do_rgn then "" else ", rgn'",
+"trgn",          if /do_rgn then "" else ", trgn",
+"region=trgn", 	 if /do_rgn then "" else ", region=trgn",
+"region:region", if /do_rgn then "" else ", region:int*int",
+"region_span", 	 if /do_rgn then "" else ", span(rgn, rgn')",
+"nullRegion",    if /do_rgn then "" else ", nullRegion",
+"yyrgn",       	 if /do_rgn then "" else ", startRegion trgn",
+#line 36 "emitml.nw"
+                       )
+  default_emit_preamble(g, ML)
+  write()
+  
+#line 197 "emitml.nw"
+write("(*#line ", 0, " ", image("generated code"), "*)")
+l := sort(g.leaves)
+every t := !l & member(g.terms, t) do {
+  if /g.termtypes[t] then { pat := g.terms[t]; val := t }    
+  else                    { pat := "(" || g.terms[t] || " x)"; val := "x" }
+  write("  fun un", g.terms[t], " ", pat, " = ", val)
+  write("    | un", g.terms[t], " _ = raise TokenMismatch ", image(t))
+}    
+write("  fun unEOF EOF = \"end of file\"")
+write("    | unEOF _ = raise TokenMismatch \"end of file\"")
+write()
+#line 40 "emitml.nw"
+  return
+end
+#line 127 "emitml.nw"
+procedure emit_templates(templates, pairs[])
+  t := table()
+  while k := get(pairs) do t[k] := get(pairs)
+##  write(&errout, "Templates: ")
+##  every k := key(t) do write(&errout, "  ", k, " --> ", t[k])
+  return emit_templates_tab(templates, t)
+end
+
+procedure emit_templates_tab(templates, t)
+  every s := !templates do 
+    case type(s) of {
+      "&null" : &null
+      "string" : 
+	 s ? {
+           while writes(tab(upto('%'))) do {
+             ="%"
+             if ="%" then 
+               writes("%")
+             else if (="{", k := tab(upto('}')), ="}") | (k :=tab(many(&letters))) then
+               writes(t[k] | stop(k, " unbound in template"))
+             else 
+               stop("Ill-formed % construct in template: (",
+                    image(move(3) || "..." | tab(0)), ")")
+           }
+           write(tab(0))
+         }
+      "list" : emit_templates_tab(s, t)
+    }
+  return
+end
+#line 159 "emitml.nw"
+procedure MLEmitPostamble(g)
+  default_emit_postamble(g, ML)
+  
+#line 61 "emitml.nw"
+write("in")
+if /g.attributes["arg-pat"] then 
+  writes("  val parser =")
+write("  make_parser(P_", g.start, ", unEOF)")
+write("end (*local*)")
+#line 162 "emitml.nw"
+  write("end (* Parser *)")
+  return
+end
+#line 166 "emitml.nw"
+global ITAB, thisnt, track_regions, tokenlex
+procedure MLEmitnt(g, nt)
+  local outfile
+  static fun
+  initial {
+    ITAB := 4
+    fun := "fun"
+  }
+  track_regions := g.attributes["region"]
+  tokenlex := if /track_regions then "token, lex" else "token, trgn, lex"
+  write(fun, " P_", thisnt := nt, "(", tokenlex, ") =")
+  fun := "and"
+  write(if type(g.nonterms[nt]) ~== "Alt" then 
+              " # " || prodimage(nt[1], g.nonterms[nt]) else "")
+  MLEmitnode(g, nt, g.nonterms[nt], ITAB)
+end
+#line 212 "emitml.nw"
+procedure ML_pattern_elements(k)
+  s := "ii" || k
+  if \track_regions then
+    s ||:= ", rr" || k
+  return s
+end
+    
+#line 221 "emitml.nw"
+procedure MLEmitnode(g, nt, node, indent, assignment)
+  local initindent, ofword
+  static fakeline
+  initial {fakeline := create(seq(1000, 1000))
+          }
+  if type(node) ~== "Alt" then iwrites(indent, \assignment, " ")
+  initindent := if /assignment then indent else 0
+  case type(node) of {
+    "Alt" : {
+        iwrite(indent, assignment, "let")
+        every i := 1 to *node.list & n := node.list[i] do {
+          iwrites(indent+ITAB, "fun alt", i, " () = ")
+          write("(* ", 
+                if g.nonterms[l := key(g.nonterms)] === node then prodimage(l, n) 
+                else nodeimage(n), " *)")
+          MLEmitnode(g, nt, n, indent+2*ITAB, assignment)
+        }
+        iwrite(indent, assignment, "in")
+        iwrite(indent+ITAB, assignment, "case token")
+        ofword := "of"
+        every i := 1 to *node.list & n := node.list[i] & 
+              t := ml_token_pat(g, !sort(predict(n, node)))
+        do {
+          iwrite(indent+2*ITAB, ofword, " ", t, " => alt", i, "()")
+          ofword := " |"
+        }          
+        iwrite(indent+2*ITAB, ofword, " t => ", mlsyntax(node, "t"))
+        iwrite(indent, "end")
+      }
+    "Cat" : {
+        iwrite(indent, "let")
+        every MLEmitnode(g, nt, node.list[i := 1 to *node.list], indent + ITAB,
+                "val (" || ML_pattern_elements(i) || ", (" || tokenlex || ")) = ")
+        if \track_regions then 
+          iwrite(indent+ITAB, "val rr0 = ",
+                 case *node.list of {
+		   0 : "startRegion trgn"
+		   1 : "rr1"
+		   default : "span(rr1, rr" || *node.list || ")"
+		 })
+        iwrite(indent+ITAB, "val result = (")
+        write("(*#line ", adjustline(\node.position), "*)")
+        every iwrite(indent+ITAB, !\node.semantics)
+        write("(*#line ", \node.position & @fakeline, image("generated code"), "*)")
+        iwrite(indent+ITAB, ")")
+        iwrite(indent,   "in  (result, ", if \track_regions then "rr0, " else "",
+	                      "(", tokenlex, "))")
+        if \g.attributes["trace"] then
+          iwrite(indent, "    before print ", image("reduced " || nt || "\n"))
+        iwrite(indent, "end")
+        }
+    "Opt" | "Clo" : {
+      f := if type(node) == "Opt" then "optional" else "closure"
+      iwrite(initindent, "(", f, "((", tokenlex, "), (")
+      fn := "fn"
+      every t := ml_token_pat(g, !sort(first[node]--epsilonset)) do {
+        iwrite(indent+ITAB, fn, " ", t, " => true")
+        fn := " |"
+      }
+      iwrite(indent+ITAB, fn, " _ => false),")
+      iwrite(indent, "(fn (", tokenlex, ") => ")
+      MLEmitnode(g, nt, node.node, indent+2*ITAB)
+      iwrite(indent+ITAB, ")))")
+    }
+    "string" : 
+       iwrite(initindent, "expect(un", \g.terms[node], ", ", tokenlex, ", ",
+                                  "SOME ", image(thisnt), ")") | 
+         iwrite(initindent, "P_", node, "(", tokenlex, ")")
+    default : error("this can't happen -- error node type")
+  }
+  return
+end
+#line 296 "emitml.nw"
+#====== link commafy
+procedure mlsyntax(alt, token)
+  local rgn
+  s := set()
+  every s ++:= predict(!alt.list, alt)
+  rgn := if /track_regions then "" else ", trgn"
+  return case *s of {
+    0 : error("Empty predict set in production for `", thisnt, "'! Can this happen?")
+    1 | 2 | 3 :
+       map("synerror(" || token || rgn || ", " || "#" || thisnt || "#, [#expected " || 
+           map(commafy(sort(s), "or"), "\"", "'") || "#])", "#", "\"")
+    default : map("synerror(" || token || rgn || ", #" || thisnt || "#, [])", "#", "\"")
+  }
+end
+#line 315 "emitml.nw"
+global MLReserved
+
+procedure MLStringdef(g)
+  MLReserved := set()
+  every t := !g.leaves & not member(g.nonterms, t) do
+    if any('"\'', t[1] == t[-1]) then {
+      /g.terms[t] := mltokname(t[2:-1])
+      insert(MLReserved, t)
+    }
+  every t := key(g.terms) do /g.terms[t] := t
+  return g
+end
+#line 328 "emitml.nw"
+procedure emit_ml_reserved(outfile, g)
+  local prefix, nprefix
+  prefix  := "fun reserved "
+  nprefix := "  | reserved "
+  every t := !sort(MLReserved) do {
+    write(outfile, prefix, t, " = SOME ", g.terms[t])
+    prefix := nprefix
+  }    
+  write(outfile, nprefix, " _ = NONE")
+  write(outfile)
+
+  prefix  := "fun unReserved "
+  nprefix := "  | unReserved "
+  every t := !sort(MLReserved) do {
+    write(outfile, prefix, g.terms[t], " = SOME ", t)
+    prefix := nprefix
+  }    
+  write(outfile, nprefix, " _ = NONE")
+  write(outfile)
+
+  return g
+end
+#line 351 "emitml.nw"
+procedure MLSemantics(g)
+  every MLdosem(g, !g.nonterms)
+  return
+end
+
+procedure MLdosem(g, node)
+  case type(node) of {
+    "Opt" | "Clo" : MLdosem(g, node.node)
+    "Alt" : every MLdosem(g, !node.list)
+    "Cat" : {
+       every MLdosem(g, !node.list)
+       node.semantics := [case type(node.semantics) of {
+         "null" : {
+            "ii" || copy_number(g, node) | {
+              s := "["
+              every s ||:= "ii" || (1 to *node.list) || ", "
+              s[1:-2] || "]" | "NONE"
+            }
+          }
+         "string" : MLSemanticTag(g, node, node.semantics)
+         "allargs" : node.semantics.ident || "(" ||
+                      arg_list("ii", {l := []; every put(l, 1 to *node.list); l}) || ")"
+       }]
+     }
+    "string" : &fail
+    default  : error("impossible node type")
+  }
+end
+#line 380 "emitml.nw"
+procedure MLSemanticTag(g, catnode, ident)
+  return ident || "(" || arg_list("ii", arg_numbers(g, catnode)) || ")"
+end
+#line 385 "emitml.nw"
+procedure MLPrec(g)
+  local fun
+  fun := "fun"
+  every p := !sort(g.prec, 2) & term := p[1] do {
+    write(fun, " prec ", term, " = ", p[2]) 
+    fun  := "  |"
+  }
+  write(fun, " prec _ = raise Prec")
+  fun := "fun"
+  every p := !sort(g.prec, 2) & term := p[1] do {
+    write(fun, " assoc ", term, " = ", image(g.assoc[p[1]]))
+    fun  := "  |"
+  }
+  write(fun, " assoc _ = raise Prec")
+  return
+end
+#line 402 "emitml.nw"
+procedure MLAppend(list, x)
+  return "(" || list || "@ [" || x || "])"
+end
+
+procedure MLSome(l, n)
+  case *\l of {
+      0 : fail
+      1 : l[1] := "SOME (" || l[1] || ")"
+      default : { push(l, "SOME ("); put(l, ")")
+                  n.position := n.position ?
+                    if l := tab(upto(' ')) then (l-1) || tab(0) 
+                }
+  }
+  return \l
+end
+#line 418 "emitml.nw"
+procedure emit_ml_tokendef(outfile, g)
+  local prefix, arg, val
+  emit_ml_token_datatype(outfile, g)
+###  write(outfile, "exception TokenMismatch of string")
+  write(outfile)
+end
+#line 425 "emitml.nw"
+procedure emit_ml_token_datatype(outfile, g)
+  local prefix
+  l := sort(g.leaves)
+  write (outfile, "datatype token = EOF")
+  prefix :=       "               | "
+  every t := !l & member(g.terms, t) do
+    write(outfile, prefix, g.terms[t], 
+          if /g.termtypes[t] then "" else " of " || g.termtypes[t])
+  write(outfile)
+  return
+end
+#line 437 "emitml.nw"
+procedure ml_token_pat(g, t)
+  return if /g.termtypes[t] then g.terms[t] else "(" || g.terms[t] || " _)"
+end
+#line 442 "emitml.nw"
+procedure mixcaps_to_allcaps(s)
+  s ? {
+    tab(many(' \t'))
+    t := map(move(1), &lcase, &ucase) | ""
+    while t ||:= map(tab(upto(&ucase)), &lcase, &ucase) || "_" do
+      t ||:= move(1)
+    return t || map(tab(0), &lcase, &ucase)
+  }
+end
+
+
+
+#================================================================  emitprec.icn
+
+
+
+
+
+
+
+#=================================================================  flatten.icn
+
+
+
+#line 11 "flatten.nw"
+procedure flattengrammar(g)
+  work := []
+  every lhs := !g.ntlist do
+    every put(work, lhs | g.nonterms[lhs])
+  g.ntlist := []
+  while lhs := get(work) & node := get(work) do {
+    put(g.ntlist, lhs)
+    flattenpair(g, work, lhs, node)
+  }
+  return g
+end
+#line 23 "flatten.nw"
+procedure flattenpair(g, work, lhs, node)
+  static epsilon
+  initial { epsilon := Cat([]) }
+  case type(node) of {
+    "Opt" | "Clo" : 
+            if not member(g.nonterms, node.node) then 
+              node.node := cutnode(g, work, lhs, node.node)
+    "Cat" : every n := node.list[i := 1 to *node.list] &
+                  not member(g.nonterms | g.terms, n) do 
+                    node.list[i] := cutnode(g, work, lhs, n) 
+    "Alt" : every n := node.list[i := 1 to *node.list] do
+              if type(n) == "Cat" then
+                flattenpair(g, work, lhs, n)
+              else if not member(g.nonterms | g.terms, n) then
+                node.list[i] := cutnode(g, work, lhs, n) 
+    "string" : &null
+    default  : error("impossible node type")
+  }
+  return
+end
+
+procedure cutnode(g, work, lhs, node)
+  g.nonterms[s := gensym(lhs)] := node
+  every push(work, node | s)
+  return s
+end
+#line 50 "flatten.nw"
+procedure gensym(id)
+  static syms
+  initial syms := table()
+  /id = "XX"
+  /syms[id] := create(seq())
+  return id || "_" || @ syms[id]
+end
+
+
+
+
+#===================================================================  gtoks.icn
+
+
+
+#line 1 "gtoks.nw"
+global SEMANTICS, IDENT, STARTSEM, ENDSEM
+procedure scantokens(eol)
+  static alphanum, semantics, semmatch, multichar
+  initial { 
+    alphanum := &letters ++ &digits ++ '_'
+    SEMANTICS := " semantics "
+    STARTSEM := " start of semantics "
+    ENDSEM := " end of semantics "
+    IDENT := " identifier "
+    semmatch := table()
+    semmatch["/."] := "./"
+    semmatch["/*"] := "*/"
+       multichar := ["$$"]
+  }
+  if \eol then fail
+  if /semantics then {
+    tab(many(' \t'))
+    thispos := &pos
+    if ="#" | pos(0) then {
+      fail
+    } else if any(&letters) & tval := tab(many(alphanum)) then {
+      token := IDENT
+    } else if semantics := tval := =key(semmatch) then {
+      token := STARTSEM
+    } else if token := =("'"|"\"") then {
+      if not (tval := tab(upto(token))) then {
+        tval := tab(0)
+        error("unclosed ", token)
+      }
+      move(1)
+    } else if pos(1) & tval := ="%%" & pos(0) then {
+      token := "%%"
+    } else if tval := =!multichar then {
+      token := tval
+    } else {
+      token := tval := move(1)
+    }
+    return token
+  } else {
+     if tval := =semmatch[semantics] then {
+       semantics := &null
+       return token := ENDSEM
+    } else {
+       tval := tab(find(semmatch[semantics]) | 0)
+       return token := SEMANTICS
+    }
+  }
+end
+
+
+
+#==================================================================  images.icn
+
+
+
+#line 2 "images.nw"
+procedure nodeimage(node, parent)
+  case type(node) of {
+    "Opt" : return "[" || nodeimage(node.node, node) || "]"
+    "Clo" : return "{" || nodeimage(node.node, node) || "}"
+    "Cat" : {
+       s := ""
+       every s ||:= " " || nodeimage(!node.list, node)
+       return s[2:0] | ""
+     }
+    "Alt" : {
+       s := ""
+       every s ||:= " | " || nodeimage(!node.list, node)
+       return if type(parent) == "Cat" then "(" || s[4:0] || ")" else s[4:0]
+     }
+    "string" : return node
+    default  : error("impossible node type")
+  }
+end
+#line 21 "images.nw"
+procedure prodimage(lhs, node)
+  s := nodeimage(node)
+  return lhs || (if *s > 0 then " : " else " :") || s
+end
+
+
+
+#=====================================================================  ll1.icn
+
+
+
+#line 4 "ll1.nw"
+global epsilon, epsilonset, endmarker, debugging, emitnt
+
+procedure ll1(g, argv, emitter)
+  epsilon     := " %Epsilon% "
+  endmarker   := "end of file"
+  epsilonset  := set([epsilon])
+  ntlist      := g.ntlist		# nonterms in order of appearance
+  while case argv[1] of {
+    "-d" : debugging := "-d"
+    "-w" : weak := "-w"
+    "-s" : ntlist := sort(ntlist)
+    default : &fail
+  } do get(argv)
+  while argv[1][1] == "-" do write(&errout, "Ignoring ", get(argv))
+  checkgrammar(g)
+  if /weak then
+    every lhs := key(g.nonterms) do 
+      g.nonterms[lhs] := Alternate(g.nonterms[lhs], Alt([]))
+  compute_first(g)
+  compute_follow(g)
+  if \debugging then { emitff(&errout, g); emitpredict(g) }
+  showconflicts(g)
+  emitter("preamble")(g)
+  emitcode(g, ntlist, emitter("emit"))
+  emitter("postamble")(g)
+end
+#line 32 "ll1.nw"
+procedure emit_amble(amble, synch)
+  every l := !amble do case type(l) of {
+    "string" : write(l)
+    "resynch" : synch(l)
+    default : impossible("type of ", type(l), " in preamble or postanble")
+  }
+  return
+end
+
+procedure default_emit_preamble(g, emitter)
+  return emit_amble(g.preamble, (\emitter)("resynch") | default_resynch)
+end
+
+procedure default_emit_postamble(g, emitter)
+  return emit_amble(g.postamble, (\emitter)("resynch") | default_resynch)
+end
+#line 55 "ll1.nw"
+procedure addset(old, new)
+  n := *old
+  every insert(old, !new)
+  return *old > n
+end
+#line 70 "ll1.nw"
+global first
+procedure compute_first(g)
+  local changes, x, p
+  first := table()
+  every first[t:= key(g.terms)] := set([t])
+  every first[key(g.nonterms)] := set()
+  changes := 1
+  while \changes do {
+    changes := &null
+    every lhs := key(g.nonterms) do
+      changes := addset(first[lhs], first_tree(g.nonterms[lhs]))
+  }
+end
+#line 91 "ll1.nw"
+procedure first_list(l, tail)
+  if *l = 0 then 
+    return \tail | epsilonset
+  else if member(first[l[1]], epsilon) then 
+    return (first[l[1]] -- epsilonset) ++ first_list(l[2:0], tail)
+  else
+    return first[l[1]]
+end
+#line 102 "ll1.nw"
+procedure first_tree(node)
+  case type(node) of {
+    "Cat" | "Alt" : every first_tree(!node.list)
+    "Clo" | "Opt" : first_tree(node.node)
+  }
+  /first[node] := set()
+  case type(node) of {
+    "string"      : &null
+    "Cat"         :       addset(first[node], first_list(node.list))
+    "Alt"         : every addset(first[node], first[!node.list])
+    "Clo" | "Opt" :       addset(first[node], first[node.node] ++ epsilonset)
+    default       : error("unknown node type")
+  }
+  return first[node]
+end
+#line 121 "ll1.nw"
+global start, follow, tofollow
+procedure compute_follow(g)
+  local empty
+  follow := table()
+  empty := set()
+  tofollow := []
+  follow_tree(g, g.start, set([endmarker]))
+  every follow_tree(g, !g.nonterms | key(g.nonterms), empty)
+  while follow_tree(g, get(tofollow), get(tofollow))
+end
+
+procedure follow_tree(g, node, new)
+  local change
+  change := &null
+  change := /follow[node] := set()
+  change := addset(follow[node], new)
+  if \change then
+    case type(node) of {
+      "string" : if \g.nonterms[node] then every put(tofollow, g.nonterms[node] | new)
+      "Cat"    : {
+        every i := 1 to *node.list - 1 do
+          follow_tree(g, node.list[i], first_list(node.list[i+1:0], follow[node]))
+        follow_tree(g, node.list[*node.list], new)
+      }
+      "Alt"   : every follow_tree(g, !node.list, new)
+      "Opt"   : follow_tree(g, node.node, new)
+      "Clo"   : follow_tree(g, node.node, new ++ first[node.node])
+      default : error("unknown node type")
+    }
+  return
+end
+#line 160 "ll1.nw"
+procedure predict(node, parent)
+  return first_list([node], follow[parent])
+end
+#line 164 "ll1.nw"
+procedure emitcode(g, ntlist, emitter)
+  g.terms[endmarker] := g.endsyntax
+  every nt := !ntlist & not member(g.externalnts, nt) do
+    emitter(g, nt)
+  delete(g.terms, endmarker)
+end
+#line 173 "ll1.nw"
+procedure emitpredict(g)
+  write(&errout, "PREDICT Sets:")
+  write(&errout)
+  every nt := !sort(g.nonterms) do
+    if type(nt[2]) == "Alt" then every showpredict(nt[1], !nt[2].list)
+    else showpredict(nt[1], nt[2])
+end
+
+procedure showpredict(lhs, node)
+  write(&errout, prodimage(lhs, node))
+  every write(&errout, "\t", !sort(predict(node, lhs)))
+  write(&errout)
+end
+#line 187 "ll1.nw"
+procedure emitff(outfile, g)
+  every l := (!sort(g.nonterms))[1] do {
+    write(outfile, l)
+    write(outfile, "\tFIRST")
+    every write(outfile, "\t\t", !sort(first[l]))
+    write(outfile, "\tFOLLOW")
+    every write(outfile, "\t\t", !sort(follow[l]))
+    write(outfile)
+  }
+end
+#line 198 "ll1.nw"
+procedure showconflicts(g)
+  local p1, p2, nt, i1, i2, overlap, count
+
+  count := 0
+  every nt := !sort(g.nonterms) do
+    count +:= conflicts(nt[2], nt[1])
+  if count > 0 then 
+    if \die_on_conflicts then
+      error(count, " conflicts.")
+    else
+      write(&errout, count, " conflicts.")
+  else if \debugging then
+    write(&errout, "Grammar is OK")
+end
+#line 214 "ll1.nw"
+procedure conflicts(node, lhs)
+  local ambiguous
+  n := 0
+  case type(node) of {
+    "Alt" : {
+      p := []
+      every put(p, predict(!node.list, node))
+      if *(ambiguous := p[i := 1 to *p] ** p[j := i+1 to *p]) > 0 & n +:= 1 then 
+        {
+#line 241 "ll1.nw"
+write(&errout, lhs, ": can't predict alternatives")
+write(&errout, lhs, ": ambiguous tokens are:")
+every write(&errout, repl(" ", *lhs), "     ", !ambiguous)
+write(&errout, lhs, ": and they appear in")
+every q := !node.list & member(predict(q, node), !ambiguous) do
+  write(&errout, repl(" ", *lhs), "    ", nodeimage(q))
+#line 222 "ll1.nw"
+                                                    }
+      every n +:= conflicts(!node.list, lhs)
+    }
+    "Opt" | "Clo" : {
+      if *(ambiguous := predict(node.node, node) ** follow[node]) > 0 & n +:= 1 then {
+        write(&errout, lhs, ": can't decide whether to take ", nodeimage(node))
+        writes(&errout, "  on seeing tokens:")       
+        every writes(&errout, " ", !ambiguous)
+        write(&errout)
+      }
+      n +:= conflicts(node.node, lhs)
+    }
+    "Cat"    : every n +:= conflicts(!node.list, lhs)
+    "string" : &null
+    default  : error("this can't happen -- error node type")
+  }
+  return n
+end
+
+
+
+#==================================================================  lricon.icn
+
+
+
+#line 1 "lricon.nw"
+record caserec(tab, val, def)
+
+procedure newcase(val)
+  return caserec(table(), val)
+end
+
+procedure addbranch(cr, value, L[])
+  s := ""; every s ||:= string(!L)
+  if value == "default" then
+    /cr.def := s | impossible("duplicate defaults in constructed case")
+  else {
+    /cr.tab[s] := []
+    put(cr.tab[s], value)
+  }
+  return t
+end
+
+procedure casestring(cr)
+  local def
+  if /cr.def & *cr.tab = 1 then
+    return key(cr.tab)
+  else {
+    s := "case " || cr.val || " of {"
+    every p := !sort(cr.tab) do
+      s ||:= "\n  " || commaseparate(p[2], " | ") || " : " || p[1]
+    s ||:= "\n  default : " || \cr.def
+    s ||:= "\n}"
+    return s
+  }
+end
+
+procedure writecase(cr)
+  local def
+  if /cr.def & *cr.tab = 1 then
+    write(key(cr.tab))
+  else {
+    write("case ", cr.val, " of {")
+    every p := !sort(cr.tab) do
+      write(commaseparate(p[2], " | "), " : ", p[1])
+    write("  default : ", \cr.def)
+    write("}")
+  }
+end
+#line 46 "lricon.nw"
+procedure IconLR(g)
+  static fakeline
+  initial fakeline := create(seq(1000, 1000))
+
+  reductions := set()
+  start_ticking(*itemsetlist, 50, "Action table...")
+  
+#line 62 "lricon.nw"
+iwrite(0, "procedure P_", g.start, "(states, values)")
+iwrite(2, "/states := [1]; /values := []")
+statecase := newcase("states[1]")
+every i := 1 to *itemsetlist do {
+  tick_to(i)
+  tokencase := newcase("token")
+  every tok := 0 ~=== key(ac := actions(g, itemsetlist[i])) do {
+    addbranch(tokencase, g.terms[tok], IconAction(ac[tok], reductions))
+  }
+  if member(ac, 0) then 
+    addbranch(tokencase, "default", IconAction(ac[0], reductions))
+  addbranch(statecase, i, casestring(tokencase))
+}
+iwrites(2, "repeat ")
+writecase(statecase)
+iwrite(0, "end")
+#line 53 "lricon.nw"
+  write(&errout, " done")
+  
+#line 144 "lricon.nw"
+  every write(
+"" |
+"link ebnflex" |
+"" |
+"procedure shift(states, values, stateno)" |
+"  write(\\iidebug, states[1], \": shifted \", token, \" [\", tval, \"]\")" |
+"  push(values, tval)" | 
+"  push(states, stateno)" |
+"  lex()" |
+"  return" |
+"end")
+#line 55 "lricon.nw"
+  
+#line 103 "lricon.nw"
+write("global iidebug\n")
+write("procedure reduce(states, values, itemno)")
+write("  rdebug(\\iidebug, states[1], values[1], itemno)")
+itemnocase := newcase("itemno")
+sr := sort(reductions)
+start_ticking(sr[-1], 50, "Goto table...")
+every it := itemtab[i := !sr] do {
+  tick_to(i)
+  if not it.dotpos = *it.cat.list + 1 then impossible("bad reduction")
+  L := [itemnocase, i, "{"]
+  case *it.cat.list of {
+    0 : &null
+    1 : put(L, "ii1 := pop(values) ; pop(states)\n")
+    default : 
+      every put(L, concat("ii", i := *it.cat.list to 1 by -1, 
+                          " := pop(values) ; pop(states)\n"))
+  }
+  if \it.cat.semantics then
+    every put(L, "push(values, {\n" |
+                 "#line " || adjustline(\it.cat.position) || "\n" |
+                 !it.cat.semantics || "\n" | 
+                 "#line " || (\it.cat.position, @fakeline) || " \"generated-code\"\n" |
+                 "} | &null)\n")
+  else 
+    put(L, "push(values, &null)\n")
+  if *statecase.tab > 1 then 
+    addbranch(statecase, "default", 
+              "stop(\"impossible state \", states[1], \"in reduce\")")
+  statecase := newcase("states[1]")
+  every t := itemsetnos[\goto[s := key(goto)][it.nt]] do
+    addbranch(statecase, itemsetnos[s], t)
+  every put(L, "push(states, " | casestring(statecase) | ")\n")
+  put(L, "}")
+  addbranch ! L
+}
+addbranch(itemnocase, "default", "stop(\"impossible reduction \", itemno)")
+writecase(itemnocase)
+write("end")
+#line 156 "lricon.nw"
+every write(
+"procedure rdebug(outfile, state, value, itemno)" |
+"  static tab" |
+"  initial {" |
+"    tab := table()")
+every it := itemtab[i := !sort(reductions)] do
+  write("    tab[", i, "] := ", image(it.nt || " -> " || 
+                                      commaseparate(it.cat.list, " ") || 
+                                      " (" || i || ")"))
+every write(
+"  }" |
+"  return write(outfile, state, \": reduced \", \\tab[itemno] | itemno || \"???\", \" [\", image(value), \"]\")" |
+"end" |
+"")
+#line 56 "lricon.nw"
+  write(&errout, " done")
+  if \IconReserved then {IconEmitReserved(); IconReserved := &null}
+  return
+end
+#line 80 "lricon.nw"
+procedure IconAction(A, reductions)
+  return case A[2] of {
+    "shift"  : concat("shift(states, values, ", itemsetnos[A[3]], ")")
+    "reduce" : { insert(reductions, A[3].uniqueid)
+                 concat("reduce(states, values, ", A[3].uniqueid, ") # ",
+                        itemimage(A[3]))
+               }
+    "error"  : { msg := A[3] || " in parser state "
+                 "error(" || image(msg) || ", states[1])"
+               }
+    "accept" : "return values[2] # values[1] is EOF!"
+    default  : impossible("action type ", A[2])
+  }
+end
+#line 96 "lricon.nw"
+procedure concat(L[])
+  s := ""
+  every x := !L do s ||:= (string|image)(x)
+  return s
+end
+
+
+
+#=================================================================  lrxform.icn
+
+
+
+#line 4 "lrxform.nw"
+global lrcons, lrnil, lrsome, lrnone
+procedure lrxform(g, emitter)
+  work := []
+  every lhs := !g.ntlist do
+    every put(work, lhs | g.nonterms[lhs])
+  g.ntlist := []
+  while lrxpair(g, work, get(work), get(work), emitter)
+  return g
+end
+#line 14 "lrxform.nw"
+procedure lrxpair(g, work, lhs, node, emitter)
+  static epsilon
+  initial { epsilon := Cat([]) }
+  put(g.ntlist, lhs)
+  return g.nonterms[lhs] := lrxalt(g, work, lhs, node, emitter)
+end
+
+procedure lrxalt(g, work, lhs, node, emitter)   # produce Alt-Cat-string
+  static missing, empty, append, some # OK since emitter never changes
+  initial { 
+     missing := Cat([], [emitter("none")])
+     empty   := Cat([], [emitter("nil")]) 
+     append := emitter("append")
+     some := emitter("some")
+  }
+  return case type(node) of {
+    "Opt"    : {
+       n := lrxcat(g, work, lhs, node.node) # Cat-string
+       n.semantics := some(\n.semantics, n)
+       Alt([n, missing])
+    }
+    "Clo"    : lrxalt(g, work, lhs, Alt([Cat([lhs, node.node],[append("ii1", "ii2")]), 
+                                         empty]))
+    "Cat"    | 
+    "string" : lrxalt(g, work, lhs, Alt([node]))
+    "Alt"    : { every n := node.list[i := 1 to *node.list] do
+                   node.list[i] := lrxcat(g, work, lhs, n) 
+                 node
+               }
+    default  : error("impossible node type")
+  }
+  return
+end
+
+procedure lrxcat(g, work, lhs, node)   # produce Cat-string
+  return case type(node) of {
+    "Opt" | "Clo" | "Alt" : lrxcat(g, work, lhs, cutnode(g, work, lhs, node))
+    "string" : lrxcat(g, work, lhs, Cat([node],["ii1"]))
+    "Cat"    : { every n := node.list[i := 1 to *node.list] & type(n) ~== "string" do
+                   node.list[i] := cutnode(g, work, lhs, n) 
+                 node
+               }
+    default  : error("impossible node type")
+  }
+  return
+end
+
+
+
+#====================================================================  main.icn
+
+
+
+#line 1 "main.nw"
+#====== link openfile
+global die_on_conflicts, token_prefix
+
+procedure main(args)
+  token_prefix := ""
+  opts := []
+  emitter := Icon
+  while case args[1] of {
+    "-impossible" : error := impossible
+    "-d"       : put(opts, args[1])
+    "-flatten" : flatten := args[1]
+    "-slr"     : dolr := slr1
+    "-lr1"     : lr1 := args[1]
+    "-parser"  : doparser  := args[1]
+    "-grammar" : dogrammar := args[1]
+    "-tex" : dotex := args[1]
+    "-infer"   : doinfer := args[1]
+    "-prec"    : showprec := args[1]
+    "-infer"   : infer := args[1]
+    "-icn" : emitter := Icon
+    "-c"   : emitter := C
+    "-ml"  : emitter := ML
+    "-start" : (get(args), substart := args[1])
+    "-yacc" : yacc := args[1]
+    "-mlyacc" : yacc := args[1]
+    "-token-prefix" : (get(args), token_prefix := args[1])
+    "-picky"  : die_on_conflicts := args[1]
+    default : if args[1][1] == "-" then usage()
+  } do get(args)
+  if /showprec & /doparser & /dogrammar & /dolr then doparser := 1
+  case *args of {
+    0       : g := readgrammar(&input)
+    1       : g := readgrammar(open(filename := args[1])) | 
+                               write(&errout, "Can't open ", filename)
+    default : usage()
+  }
+  g := subgrammar(g, \substart)
+  emitter("stringdef")(g)
+  if \flatten then
+    flattengrammar(g)
+  if \dolr | \infer | \doparser | \doinfer then
+    emitter("infersemantics")(g)
+  if \lr1 | \dolr then
+    lrxform(g, emitter)
+  writegrammar(\dogrammar & /dotex & &output, g, yacc, emitter)
+  writetex    (\dogrammar & \dotex & &output, g, yacc, emitter)
+  if \doparser then
+    ll1(g, opts ||| args, emitter)
+  if \dolr then
+    dolr(g, opts ||| args, emitter("lr"))
+  if \showprec then
+    emitter("precedence")(g)
+end
+
+procedure usage()
+  every write("Usage: ebnf [options] [grammarfile]" |
+"Options:" | 
+"-d	       write debugging info on standard error" |
+"-flatten      flatten grammar -- needed if LL(1) uses semantic actions" |
+"-slr          emit SLR(1) parser (Icon only)" |
+"-lr1          remove EBNF constructs & make LR(1) grammar" |
+"-parser       spit an LL(1) recursive descent parser on stdout (default)" |
+"-grammar      rewrite the grammar on stdout (after flattening or yaccifying" |
+"-infer        infer semantics for a rewritten grammar" |
+"-yacc         if emitting grammar, put it in yacc form" |
+"-mlyacc       if emitting grammar, put it in mlyacc form" |
+"-tex          if emitting grammar, put it in LaTeX form" |
+"-token-prefix prefix before token names for -yacc" |
+"-icn          emit Icon (the default)" |
+"-c            emit a C parser" |
+"-ml           emit an ML parser" |
+"-picky        error exit if there are parsing conflicts" |
+"" |
+"Useful combinations:" |
+"  New grammars w/o extended BNF:" |
+"    -flatten -grammar" |
+"    -lr1 -grammar" |
+"  Parsers:" |
+"    -slr" |
+"    -flatten -parser"
+)
+  stop()
+end
+
+
+
+#================================================================  readgram.icn
+
+
+
+#line 17 "readgram.nw"
+record grammar(nonterms, 	# map nonterminal symbol -> right-hand side
+               terms, 		# map terminal symbol (name or string) to output syntax
+               termtypes,	# map terminal symbol to type of tval (used in ML)
+               nttypes,		# map nontterminal symbol to type of value (used in ML)
+	       ntlist, 		# list of nonterminals in order of appearance
+	       start, 		# start symbol
+	       leaves, 		# set of terminals and nonterminals used in productions
+	       preamble, 	# list of pass-throughs
+	       postamble,	# list of pass-throughs
+	       endsyntax,	# syntax for token to follow grammar
+               externalnts,	# nonterminals for which external parsers are supplied
+               prec,		# precedence of terminals
+               assoc,		# associativity of terminals
+               attributes)      # arbitrary attributes
+#line 36 "readgram.nw"
+record Alt(list)
+record Clo(node)
+record Opt(node)
+record Cat(list, semantics, precterm, position)
+			# precterm, if not null, defines precedence & associativity
+			# position is source-code location
+#line 43 "readgram.nw"
+procedure readgrammar(file)
+  local lhs, rhs, preamble, postamble, ntlist, leaves, terms, nonterms, endsyntax,
+        prec, assoc, nextprec, termtypes, termtype, nttypes, nttype, t, att, attributes
+  every preamble | postamble | ntlist := []
+  every leaves | externalnts := set()	
+  every terms | termtypes | nttypes | nonterms | prec | assoc | attributes := table()
+  endsyntax := "EOF"
+  nextprec := 1
+  
+#line 60 "readgram.nw"
+lineno := 0
+while lineno +:= 1 &
+  thisline := read(file) ? 
+    if ="%%" & pos(0) then
+      break
+    else if (="%term", white()) then {
+      t := tab(upto(' \t') | 0)      
+      
+#line 106 "readgram.nw"
+if member(terms, t) then error(t, " is already a terminal symbol")
+if \nonterms[t] then error(t, " is already a nonterminal symbol")
+terms[t] := termtypes[t] := &null
+#line 68 "readgram.nw"
+      termtype := 3(optwhite(), ="(", tab(bal(')')), =")") | &null
+      termtypes[t] := termtype
+      if ="(" then error("syntax: %term gsyntax [(type)] [osyntax]")
+      optwhite()
+      pos(0) | (terms[t] := tab(upto(' \t') | 0))
+      optwhite()
+      pos(0) | error("syntax: %term gsyntax [(type)] [osyntax]")
+    } else if (="%type", white()) then {
+      ="<" | type_syntax()
+      nttype := tab(upto('>')) | type_syntax()
+      =">"
+      white()
+      while not(pos(0)) do {
+        nt := tab(upto(' \t') | 0)
+        (/nttypes[nt] := nttype) |
+           error("Nonterminal ", nt, " already has type ", nttypes[nt])
+       white()
+      }
+    } else if ="%end " then
+      endsyntax := tab(0)
+    else if ="%start " then
+      /start := tab(0) | error("start symbol already set")
+    else if ="%external " then
+      insert(externalnts, tab(0))
+    else if ="#line " then
+      (lineno := tab(many(&digits)) - 1, tab(many(' \t')), 
+         pos(0) | (="\"", filename := tab(upto('"')), ="\"", pos(0)),
+       put(preamble, resynch(filename, lineno))
+      )
+    else if ="%" & ass := =("left"|"right"|"nonassoc") & tab(many(' \t')) then
+      {
+#line 110 "readgram.nw"
+while case scantokens() of {
+  IDENT : {
+    if not member(terms, tval) then {
+      t := tval; 
+#line 106 "readgram.nw"
+if member(terms, t) then error(t, " is already a terminal symbol")
+if \nonterms[t] then error(t, " is already a nonterminal symbol")
+terms[t] := termtypes[t] := &null
+#line 114 "readgram.nw"
+    }
+    prec[tval] := nextprec;
+    assoc[tval] := ass;
+  }
+  "\"" | "'" : {
+    if not member(terms, image(tval)) then {
+      t := image(tval); 
+#line 106 "readgram.nw"
+if member(terms, t) then error(t, " is already a terminal symbol")
+if \nonterms[t] then error(t, " is already a nonterminal symbol")
+terms[t] := termtypes[t] := &null
+#line 121 "readgram.nw"
+    }
+    prec[image(tval)] := nextprec;
+    assoc[image(tval)] := ass;
+  }
+  default : error("identifier or terminal literal expected")
+}
+nextprec +:= 1
+#line 98 "readgram.nw"
+                               }
+    else if ="%attribute " then {
+      att := tab(upto(' ') | 0)
+      /attributes[att] := []
+      put(attributes[att], tab(0))
+    } else
+      put(preamble, tab(0))
+#line 52 "readgram.nw"
+  
+#line 132 "readgram.nw"
+lex(file)
+while not (token == ("%%" | EOF)) do {
+  lhs := Ident()
+  expect(":")
+  if member(terms, lhs) then error(lhs, " is already a terminal symbol")
+  /start := lhs
+  if /nonterms[lhs] then put(ntlist, lhs)	# maintain list of lhs
+  nonterms[lhs] := Alternate(nonterms[lhs], parserhs(leaves, terms))
+  expect(";")
+}
+#line 53 "readgram.nw"
+  while put(postamble, read(file))
+  return grammar(nonterms, terms, termtypes, nttypes,
+	         ntlist, start, leaves, preamble, postamble,
+                 endsyntax, externalnts, prec, assoc, attributes)
+end
+#line 129 "readgram.nw"
+record resynch(filename, lineno)
+#line 143 "readgram.nw"
+#====== link ebnfint #
+#line 146 "readgram.nw"
+procedure type_syntax()
+  suspend error("syntax: %type <type> nonterm ...")
+end
+#line 155 "readgram.nw"
+procedure Alternate(p1, p2)
+  if /p1 then return p2
+  else if type(p1) == type(p2) == "Alt" then return Alt(p1.list|||p2.list)
+  else if type(p1) == "Alt"             then put(p1.list, p2) & return p1
+  else if type(p2) == "Alt"             then put(p2.list, p1) & return p2
+  else return Alt([p1, p2])
+end
+#line 165 "readgram.nw"
+procedure parserhs(leaves, terms)
+  p := parsealt(leaves, terms)
+  while gobble("|") do
+    p := Alternate(p, parsealt(leaves, terms))
+  return p
+end
+
+procedure parsealt(leaves, terms)
+  local precterm
+  static matcher
+  initial { 
+#line 229 "readgram.nw"
+matcher := table()
+matcher["["] := "]" ; matcher["("] := ")"; matcher["{"] := "}"
+#line 175 "readgram.nw"
+                                                }
+  l := []
+  repeat {
+    if x := gobble(!"[({") then {
+      node := parserhs(leaves, terms)
+      gobble(matcher[x]) | error("unmatched " || x)
+      put(l, case x of { 
+               "(" : node 
+               "[" : Opt(node)
+               "{" : Clo(node) 
+          })
+    } else case token of {
+       "%"  : {lex()
+               
+#line 232 "readgram.nw"
+if token == IDENT & tval == "prec" then
+  lex()
+else
+  error("%prec expected")
+#line 189 "readgram.nw"
+               case token of {
+                 IDENT : if member(terms, tval) then precterm := tval 
+                         else error(image(tval), " is not a terminal symbol")
+                 "\"" | "'" : precterm := image(tval)
+                 default : error("expected terminal symbol (or literal)")
+               }
+               lex()
+              }
+       "$" | "$$"  : {
+                ot := token; lex(); s := tval; expect(IDENT)
+                if ot == "$$" then s := allargs(s)
+                return Cat(l, s, precterm, lineno || " " || image(filename))
+               }
+       STARTSEM : {
+#line 220 "readgram.nw"
+s := []
+p := lineno || " " || image(filename)
+lex()
+while put(s, token == SEMANTICS & .tval) do lex()
+expect(ENDSEM)
+token == !"]})|;" | 
+   error("expected closing bracket, bar, or semicolon after semantics")
+return Cat(l, s, precterm, p)
+#line 202 "readgram.nw"
+                                                                       }
+       !"]})|;" : return if *l = 1 & /precterm then l[1] 
+                         else Cat(l, &null, precterm, lineno || " " || image(filename))
+       IDENT    : {insert(leaves, tval)
+                   put(l, tval)
+                   if member(terms, tval) then precterm := tval
+                   lex()
+                  }
+       "\"" | "'" : {insert(leaves, image(tval))
+                     put(l, image(tval))
+		     precterm := image(tval)
+                     lex()
+                    }
+       default : error("expected identifier, literal terminal, or punctuation")
+    }
+  }
+end
+#line 240 "readgram.nw"
+procedure split(line)
+  static meta, white, quote, nonmeta
+  initial {
+    white := ' \t'
+    meta := '(){}[]|'
+    quote := '"\''
+    nonmeta := &ascii -- (white ++ meta ++ quote)
+  }
+  l := []
+  line ? {
+    tab(many(white))
+    while not pos(0) do {
+      if put(l, tab(any(meta))) then &null
+      else if delim := tab(any('"\'')) then
+        put(l, delim || tab(find(delim)+1)) | error("unclosed " || delim)
+      else if put(l, tab(many(nonmeta))) then &null
+      else error("this can't happen in scanning")
+      tab(many(white))
+    }
+  }
+  return l
+end
+#line 263 "readgram.nw"
+procedure white()
+  suspend tab(many(' \t'))
+end
+
+procedure optwhite()
+  suspend white() | ""
+end
+
+
+
+#====================================================================  slr1.icn
+
+
+
+#line 2 "slr1.nw"
+global accept, epsilon, epsilonset, endmarker
+
+record item(nt, dotpos, cat, uniqueid)
+
+#line 7 "slr1.nw"
+procedure slr1(g, argv, emit)
+  epsilon     := " %Epsilon% "
+  endmarker   := "end of file"
+  epsilonset  := set([epsilon])
+  accept      := " %Accept% "
+  g.nonterms[accept] := Cat([g.start, endmarker])		# augment re. p110
+  put(g.ntlist, accept)
+  g.terms[endmarker] := g.endsyntax
+  ostart := g.start
+  g.start := accept
+  checkgrammar(g)
+  compute_first(g)
+  compute_follow(g)
+  g.start := ostart
+  pushtrace("LALR")
+  I0 := set([newitem(accept, 1, g.nonterms[accept])])
+  newitemset(closure(g, I0))
+  extend(g)
+  lrdiag(f := if !argv == "-d" then open("i.output", "w"), g) & close(f)
+#  every p := !sort(itemtab) do write(p[1], ": ", itemimage(p[2]))
+  every write(!g.preamble)
+  resetconflicts()
+  emit(g)
+  summarizeconflicts(&errout, g)
+  every write(!g.postamble)
+  poptrace()
+end
+#line 37 "slr1.nw"
+#====== link pushtrace
+procedure closure(g, items)
+  local closed
+  l := sort(items)
+  closed := set()
+  while i := get(l) do 
+    if not member(closed, i) then {
+      insert(closed, i)
+      every cat := genrhs(g, i.cat.list[i.dotpos]) do
+        put(l, newitem(i.cat.list[i.dotpos], 1, cat))
+    }
+  return closed
+end
+#line 51 "slr1.nw"
+procedure genrhs(g, lhs)
+  static missing, empty
+  initial {missing := Cat([], "&null"); empty := Cat([], "[]") }
+  case type(node := \g.nonterms[lhs]) of { 
+    "Alt"    : suspend !node.list
+    "Cat"    : suspend node
+    "Opt"    : &null[0] & suspend genrhs(g, node.node) | missing
+    "Clo"    : &null[0] & suspend Cat([lhs, node.node], ["put(ii1, ii2)"]) | empty
+    "string" : suspend Cat([node], ["ii1"])
+    default  : error("impossible -- bad format for grammar, found node ", image(node))
+  }
+end
+#line 64 "slr1.nw"
+procedure itemimage(it)
+  l := ["[", it.nt,"->"] ||| it.cat.list[1:it.dotpos] ||| ["."] ||| 
+                             it.cat.list[it.dotpos:0] ||| ["]"]
+  
+#line 71 "slr1.nw"
+lp := &null
+any('"\'', lp := string(it.cat.list[*it.cat.list to 1 by -1]))
+/lp := it.cat.precterm
+put(l, "(%prec " || (\lp ~== \it.cat.precterm) || ")")
+#line 68 "slr1.nw"
+  return commaseparate(l, " ")
+end
+#line 76 "slr1.nw"
+procedure itemsetimage(s)
+  l := []
+  every put(l, (!s).uniqueid)
+  return commaseparate(sort(l), " ")
+end
+#line 82 "slr1.nw"
+procedure addsym(g, Vg, X)
+  l := []
+  every i := !Vg & i.cat.list[i.dotpos] == X do 
+    put(l, newitem(i.nt, i.dotpos+1, i.cat))
+  return closure(g, l)
+end
+#line 89 "slr1.nw"
+global itemtab
+
+procedure newitem(nt, dotpos, cat)
+  static cache, uid
+  initial { cache := table() ; uid := create(seq()); itemtab := table() }
+  s := nt || " " || image(cat) || " " || dotpos
+  if /cache[s] := item(nt, dotpos, cat, n := @uid) then
+    itemtab[n] := cache[s]
+  return cache[s]
+end
+#line 100 "slr1.nw"
+global itemsets		# table with keys strings, values item sets
+global itemsetnos
+global itemsetlist
+
+procedure newitemset(s)
+  local im
+  initial { every itemsets | itemsetnos := table() ; itemsetlist := []}
+  (/itemsets[im := itemsetimage(s)] := s, 
+   itemsetnos[s] := *itemsets, 
+   put(itemsetlist, s)) & if *itemsets % 15 = 0 then writes(&errout, ".")
+  return itemsets[im]
+end
+#line 113 "slr1.nw"
+global goto, gotodefault
+
+
+procedure addgoto(I, X, Iprime)
+  if goto[I] === gotodefault then  
+    goto[I] := table()
+  goto[I][X] := Iprime
+  return
+end
+
+procedure extend(g)
+  initial goto := table(gotodefault := table())
+  i := 1
+  writes(&errout, "Computing LR(0) items...")
+  while i <= *itemsetlist do {
+    every it := !(I := itemsetlist[i]) & X := it.cat.list[it.dotpos] do
+      addgoto(I, X, newitemset(addsym(g, I, X)))
+    i +:= 1
+  }
+  write(&errout, " done")
+end  
+#line 137 "slr1.nw"
+procedure actions(g, I, logconflict)
+  t := table()
+  
+#line 160 "slr1.nw"
+n := 0
+every it := !I & it.dotpos = *it.cat.list + 1 do n +:= 1
+#line 140 "slr1.nw"
+  every it := !I do
+    if member(g.terms, a := it.cat.list[it.dotpos]) then {
+      addaction(g, t, a, [it, "shift", goto[I][a]], logconflict)
+    } else if it.dotpos = *it.cat.list + 1 then {
+      if it.nt == accept then
+        addaction(g, t, endmarker, [it, "accept"], logconflict)
+      else # try optimization
+        if n > 1 then
+          A := [it, "reduce", it] & every addaction(g, t, !follow[it.nt], A, logconflict)
+        else # optimize
+          addaction(g, t, 0, [it, "reduce", it], logconflict)
+  }
+  if A := \t[0] then # detect possible conflict with reduction
+    every \t[term := !follow[A[3].nt]] do
+      addaction(g, t, term, A, logconflict)
+  else  
+    t[0] := [&null, "error", expectedtokens(t, g, I)]
+  return t
+end
+#line 163 "slr1.nw"
+procedure sameaction(a1, a2)
+  return case a1[2] == a2[2] of {
+    "shift"  | "reduce" : a1[3] === a2[3]
+    "accept" | "error"  : a1
+  }
+end
+#line 170 "slr1.nw"
+procedure addaction(g, t, term, action, logconflict)
+  local sprec, rprec
+  savereduce(case action[2] of {
+    "reduce" : action[3]
+    "accept" : action[1]
+  })
+  (/t[term] := action) | sameaction(t[term], action) | {
+    s := (a := t[term] | action, a[2] == "shift", a)
+    r := (a := t[term] | action, a[2] == "reduce", a)
+    
+#line 186 "slr1.nw"
+if \s & \r & 
+   sprec  := \g.prec [term] & 
+   rprec  := \g.prec [\r[1].cat.precterm] then {
+  if      sprec > rprec then t[term] := s
+  else if sprec < rprec then t[term] := r
+  else case g.assoc[term] == g.assoc[r[1].cat.precterm] of {
+    "left"  : t[term] := r
+    "right" : t[term] := s
+    "nonassoc" : t[term] := [&null, "error", 
+       (if term ~== r[1].cat.precterm then term || " and " || r[1].cat.precterm || " are"
+       else term || " is") || " not associative"]
+    default : impossible("precedence")
+  } | impossible("precedence mismatch")
+  return
+}
+#line 180 "slr1.nw"
+    /logconflict := countconflict
+    logconflict(\s, \r, term) | logconflict(t[term], action, term)
+    if \s & \r then t[term] := s
+  }
+end
+#line 202 "slr1.nw"
+procedure expectedtokens(t, g, I)
+  local primarynts, ntterms, tterms
+  primarynts := set()
+  every it := !I & nt := it.cat.list[1 ~= it.dotpos] & member(g.nonterms, nt) do
+    insert(primarynts, nt)
+  if *primarynts = 0 then
+    every it := !I & nt := it.cat.list[it.dotpos] & member(g.nonterms, nt) do
+      insert(primarynts, nt)
+  every ntterms | tterms := []
+  every k := key(t) do
+    put(if member(first[!primarynts], k) then ntterms else tterms, k)
+  return if *primarynts > 0 then {
+    every insert(primarynts, !tterms)
+    s := " (" || truncalternates(ntterms, 5) || ")" | ""
+    "expected " || truncalternates(primarynts) || s
+  } else if *tterms > 0 then {
+    "expected " || truncalternates(tterms, 5)
+  } else {
+    "no input is legal"
+  }
+end
+#line 224 "slr1.nw"
+procedure truncalternates(l, size)
+  /size := 3
+  l := sort(l)
+  return if *l > 0 then {
+           if *l > size then l := put(l[1:size], "...")
+           commafy(l, "or")
+         }
+end
+#line 233 "slr1.nw"
+global srconflictcount, rrconflictcount
+global reducedsigs
+
+procedure resetconflicts()
+  srconflictcount := rrconflictcount := 0
+  reducedsigs := set()
+end
+
+procedure countconflict(sr, r, term)
+  return if sr[2] == "shift" then srconflictcount +:= 1 else rrconflictcount +:= 1
+end
+
+procedure savereduce(item)
+  return insert(\reducedsigs, image(item.cat) || item.nt)
+end
+
+procedure summarizeconflicts(outfile, g)
+  writes(outfile, 0 < srconflictcount, " shift/reduce conflicts")
+  if 0 < srconflictcount & 0 < rrconflictcount then writes(outfile, ", ")
+  writes(outfile, 0 < rrconflictcount, " reduce/reduce conflicts")
+  if 0 < srconflictcount | 0 < rrconflictcount then write(outfile)
+  n := 0; 
+  every cat := genrhs(g, lhs := key(g.nonterms)) &
+        not member(reducedsigs, image(cat) || lhs) do 
+    n +:= 1
+  write(outfile, 0 < n, " rules never reduced")
+  return
+end
+#line 264 "slr1.nw"
+global lrdiagconflicts
+procedure loglrdiag(s, r, term)
+  /lrdiagconflicts[term] := []
+  put(lrdiagconflicts[term], [s, r])
+  return
+end
+#line 271 "slr1.nw"
+procedure lrdiag(outfile, g)
+  local reduced
+  start_ticking(*itemsetlist, 50, "Dumping " || image(outfile)[6:-1] || "...")
+  emitff(outfile, g)
+  reduced := set()
+  every i := 1 to *itemsetlist do {
+    tick_to(i)
+    if /lrdiagconflicts | *lrdiagconflicts > 0 then lrdiagconflicts := table()
+    acl := actions(g, itemsetlist[i], loglrdiag)
+    every l := !\lrdiagconflicts[tok := key(lrdiagconflicts)] & s := l[1] & r := l[2] do 
+      {
+#line 309 "slr1.nw"
+write(outfile, i, ": ", s[2], "/", r[2], " conflict on ", string(tok) | ".")
+every write(outfile, "\t", actiondiag(g, s|r, tok))
+#line 281 "slr1.nw"
+                                                                     }
+    write(outfile, "state ", i)
+    every write(outfile, "\t", itemimage(!itemsetlist[i]) | "")
+    every ac := \acl[tok := 0 ~=== key(acl) | 0] do
+      every write(outfile, "\t", (0 ~=== tok | ".")\1, "  ",
+        A := (ac | (ac ~=== !!\lrdiagconflicts[tok])) & case A[2] of {
+          "shift"  : "shift " || itemsetnos[A[3]]
+          "reduce" : {insert(reduced, image(A[3].cat) || A[3].nt)
+                      "reduce " || itemimage(A[3]) || " (" || A[3].uniqueid || ")"
+                     }
+          "error"  : "error (" || A[3] || ")"
+          "accept" : {insert(reduced, image(A[1].cat) || A[1].nt)
+                      "accept"
+                     }
+          default  : impossible("action type ", A[2])
+        })
+    write(outfile, "\t")
+    every nt := key(gt := goto[itemsetlist[i]]) & member(g.nonterms, nt) do
+      write(outfile, "\t", nt, "  goto ", itemsetnos[gt[nt]])
+    write(outfile)
+  }
+  every cat := genrhs(g, lhs := key(g.nonterms)) &
+        not member(reduced, image(cat) || lhs) do
+    write(outfile, "Never reduced: ", lhs, " : ", commaseparate(cat.list, " "))
+  write(&errout, " done")
+  return
+end
+#line 312 "slr1.nw"
+procedure actiondiag(g, a, tok)
+  case a[2] of {
+    "shift"  : {pt := tok;               s := "shift "  || itemsetnos[a[3]]}
+    "reduce" : {pt := a[3].cat.precterm; s := "reduce " || itemimage(a[3])}
+  }
+  return s || " (" || 
+         (if \g.prec[\pt] then g.assoc[pt] || " " || g.prec[pt] else "no precedence") ||
+         ")"
+end
+
+
+
+#=================================================================  subgram.icn
+
+
+
+#line 2 "subgram.nw"
+procedure subgrammar(g, start, endsyntax)
+  local new
+  new := copy(g)
+  new.start := start
+  every new.terms | new.nonterms := table()
+  new.ntlist := []
+  new.leaves := set()
+  markreachable(new.leaves, g, start)
+  every member(new.leaves, nt := !g.ntlist) do {
+    put(new.ntlist, nt)
+    new.nonterms[nt] := g.nonterms[nt]
+  }
+  every member(new.leaves, t := key(g.terms)) do {
+    new.terms[t] := g.terms[t]
+  }
+  new.endsyntax := \endsyntax
+  return new
+end
+#line 21 "subgram.nw"
+procedure markreachable(reachable, g, nt)
+  if member(reachable, nt) then return
+  insert(reachable, nt)
+  domarkreachable(reachable, g, \g.nonterms[nt])
+  return
+end
+#line 28 "subgram.nw"
+procedure domarkreachable(reachable, g, node)
+  case type(node) of {
+    "Opt" | "Clo" : domarkreachable(reachable, g, node.node)
+    "Alt" : every domarkreachable(reachable, g, !node.list)
+    "Cat" : every domarkreachable(reachable, g, !node.list  | \node.precterm)
+    "string" : markreachable(reachable, g, node)
+    default  : error("impossible node type ", type(node))
+  }
+  return
+end
+
+
+
+#=====================================================================  tex.icn
+
+
+
+#line 2 "tex.nw"
+procedure writetex(outfile, g, emitter)
+  local terms, pfx
+  terms := set()
+  pfx := ""
+  every insert(terms, key(g.terms))
+  every writes(outfile, pfx, "\\begin{production}{", lhs := !g.ntlist, "}\n    ") do {
+    case type(rhs := g.nonterms[lhs]) of {
+      "Opt" | "Clo" | "Cat" | "string" : 
+              { write(outfile, texpix(g, rhs)) }
+      "Alt" : { write(outfile, texpix(g, rhs, s := "\n  ")) }
+      default : error("impossible node type")
+    }
+    write(outfile, "\\end{production}")
+    pfx := "\\productionglue\n"
+  }
+  return g
+end
+#line 20 "tex.nw"
+procedure texpix(g, node, separator)
+  return case type(node) of {
+    "Opt" : "\\optional{" || texpix(g, node.node) || "}"
+    "Clo" : "\\sequence{" || texpix(g, node.node) || "}"
+    "Cat" : {
+       s := ""
+       every s ||:= texpix(g, !node.list, node) || " "
+       s[1:-1] | ""
+     }
+    "Alt" : {
+       s := ""
+       sep := if type(separator) == "string" then separator else " "
+       every s ||:= sep || "| " || texpix(g, !node.list)
+       s := s[*sep+3:0]
+       if type(separator) == "Cat" then "\\alternate{" || s || "}" else s
+     }
+    "string" : 
+       if node[1] == node[-1] == "\"" then
+         case node[2:-1] of {
+           "|" : "{\\litbar}"
+           "}" | "{" | "\\" : "\\lit{\\char`\\" || node[2:-1] || "}"
+           default : "\\lit{" || escapeTeX(node[2:-1]) || "}"
+         }
+       else
+         (if \g.terms[node] then "\\term" else "\\nt") || "{" || node || "}"
+    default  : error("impossible node type")
+  }
+end
+#line 49 "tex.nw"
+procedure escapeTeX(s)
+  static specials
+  initial specials := cset("\{}%#$^&~")
+  r := ""
+  s ? {
+    while r ||:= tab(upto(specials)) do
+      r ||:= "\\" || move(1)
+    return r || tab(0)
+  }
+end
+
+
+
+
+#====================================================================  tick.icn
+
+
+
+#line 1 "tick.nw"
+global tick_inc, tick_last
+
+procedure start_ticking(limit, nticks, msg)
+  tick_inc := 1 + limit / nticks
+  tick_last := 0
+  writes(&errout, \msg)
+  return
+end
+
+procedure tick_to(i)
+  while tick_last < i do {
+    writes(&errout, ".")
+    tick_last +:= tick_inc
+  }
+  return
+end
+
+
+
+
+#===================================================================  write.icn
+
+
+
+#line 1 "write.nw"
+global pixsemantics
+
+procedure writegrammar(outfile, g, yacc, emitter)
+  initial pixsemantics := showsemantics
+  ps := pixsemantics
+  write(outfile, "%start ", g.start)
+  case yacc of {
+    "-yacc" : { yacctx(g) ; pixsemantics := showyaccsem }
+    "-mlyacc" : { mlyacctx(g) ; pixsemantics := showmlyaccsem }
+  }
+  if /yacc then
+    every t := key(g.terms) do
+      write(outfile, "%term ", t, " " || (t ~== g.terms[t]) | "")
+  else
+    every write(outfile, "%token ", (!sort(g.terms, 2))[2])
+  
+#line 30 "write.nw"
+maxprec := 0
+every maxprec <:= !g.prec
+l := []
+every i := 1 to maxprec do put(l, [])
+al := list(maxprec)
+every k := key(g.prec) do {
+  put(l[g.prec[k]], k)
+  al[g.prec[k]] := g.assoc[k]
+}
+every i := 1 to maxprec do {
+  writes(outfile, "%", al[i])
+  every writes(outfile, " ", g.terms[!l[i]])
+  write(outfile)
+}
+#line 17 "write.nw"
+  write(outfile, "%%")
+  every writes(outfile, lhs := !g.ntlist, " : ") do
+    case type(rhs := g.nonterms[lhs]) of {
+      "Opt" | "Clo" | "Cat" | "string" : 
+              { writes(outfile, nodepix(g, rhs)); write(outfile, ";") }
+      "Alt" : { write(outfile, nodepix(g, rhs, s := "\n " || repl(" ", *lhs)))
+                write(outfile, s[2:0], ";") }
+      default : error("impossible node type")
+    }
+  pixsemantics := ps
+  return g
+end
+#line 45 "write.nw"
+procedure nodepix(g, node, separator)
+  return case type(node) of {
+    "Opt" : "[" || nodepix(g, node.node) || "]"
+    "Clo" : "{" || nodepix(g, node.node) || "}"
+    "Cat" : {
+       s := ""
+       every s ||:= nodepix(g, !node.list, node) || " "
+       
+#line 142 "write.nw"
+if not (if member(g.terms, lp := node.list[*node.list to 1 by -1]) then
+          lp == \node.precterm) then
+  s ||:= "%prec " || (\g.terms[\node.precterm] |
+error("null terminal for precterm = ", image(\node.precterm))) || " "
+#line 53 "write.nw"
+       if s ||:= pixsemantics(g, node) then
+         s
+       else 
+         s[1:-1] | ""
+     }
+    "Alt" : {
+       s := ""
+       sep := if type(separator) == "string" then separator else " "
+       every s ||:= sep || "| " || nodepix(g, !node.list)
+       s := s[*sep+3:0]
+       if type(separator) == "Cat" then "(" || s || ")" else s
+     }
+    "string" : \g.terms[node] | node
+    default  : error("impossible node type")
+  }
+end
+#line 70 "write.nw"
+procedure showsemantics(g, node, left, right)
+  /left := "/* "
+  /right := " */"
+  return case type(s := node.semantics) of {
+    "list" : left || commaseparate(s, "\n") || right
+    "string" : "$ " || s
+    "allargs" : "$$ " || s
+    "null" : fail
+    default : impossible("type of semantics")
+  }
+end
+#line 86 "write.nw"
+record allargs(ident)
+
+procedure showyaccsem(g, node)
+  s := node.semantics
+  return case type(s) of {
+    "list" : "{ " || commaseparate(s, "\n") || " }"
+    "null" :  "{ $0 = $" || copy_number(g, node) || "; }"
+    "string"  : "{ $0 = " || s || "(" || arg_list("$", arg_numbers(g, node)) || "); }"
+    "allargs" : "{ $0 = " || s.ident || "(" || 
+                   arg_list("$", {l := []; every put(l, 1 to *node.list); l}) || "); }"
+    default : impossible("type of semantics")
+  }
+end
+#line 100 "write.nw"
+procedure oldshowyaccsem(g, node)
+  s := node.semantics
+#  while type(s) == "list" & *s = 1 do s := s[1]
+  return case type(s) of {
+    "list" : fail
+    "null" :  "{ $0 = $" || copy_number(g, node) || "; }"
+    "string"  : "{ $0 = " || s || "(" || arg_list("$", arg_numbers(g, node)) || "); }"
+    "allargs" : "{ $0 = " || s.ident || "(" || 
+                   arg_list("$", {l := []; every put(l, 1 to *node.list); l}) || "); }"
+    default : impossible("type of semantics")
+  }
+end
+#line 117 "write.nw"
+procedure arg_numbers(g, node)
+  l := []
+  case *node.list of {
+    1 : put(l, 1)
+    default : every put(l, 1(i := 1 to *node.list, not member(g.terms, node.list[i])))
+  }   
+  return l
+end
+#line 130 "write.nw"
+procedure copy_number(g, node)
+  l := arg_numbers(g, node)
+  if *l = 1 then return l[1]
+end
+#line 135 "write.nw"
+procedure arg_list(prefix, nums)
+  s := ""
+  every s ||:= prefix || !nums || ", "
+  return s[1:-2] | ""
+end
+#line 147 "write.nw"
+procedure yacctx(g)
+  static quote, n
+  initial {quote := "\""; n := create("XXX" || seq())}
+  every k := key(g.terms) do
+    if g.terms[k][1] == g.terms[k][-1] == quote then 
+      if *g.terms[k] = 3 then g.terms[k][1] := g.terms[k][-1] := "'"
+      else g.terms[k] := 
+        (g.terms[k] ? {
+          move(1)
+          token_prefix || map(tab(many(&letters)), &lcase, &ucase) | 
+          token_prefix || charname(tab(-1)) | 
+          @n
+        })
+  return g
+end
+#line 163 "write.nw"
+procedure mlyacctx(g)
+  static quote
+  initial quote := "\""
+  every k := key(g.terms) do
+    if g.terms[k][1] == g.terms[k][-1] == quote then 
+      g.terms[k] := mltokname(g.terms[k][2:-1])
+  return g
+end
+
+procedure mltokname(s)
+  static n
+  initial n := create("XXX" || seq())
+  return "R'" || 
+     (s ? (map(tab(many(&letters)), &lcase, &ucase) | charname(tab(0)) | @n))
+end
+#line 181 "write.nw"
+procedure showmlyaccsem(g, node)
+  t := table(0)
+  l := ["let"]
+  every i := 1 to *node.list & n := node.list[i] do
+    if type(n) == "string" then {
+      t[n] +:= 1
+      put(l, "  val ii" || i || " = " || if /g.terms[n] then n || t[n] else n)
+    }
+  put (l, "in\n")  
+  return "(" || commaseparate(l, "\n") || showsemantics(g, node, "", "") || "\nend)"
+end
+
+          
+
+
+
+#=================================================================  ebnfint.icn
+
+
+
+#line 1 "ebnfint.nw"
+procedure Ident(notrequired)
+  return 2(token == IDENT, .tval, lex()) | 
+    if \notrequired then fail else error("identifier expected")
+end
+
+procedure Int(notrequired)
+  return 2(token == INT, .tval, lex()) | 
+    if \notrequired then fail else error("integer expected")
+end
+
+
+
+#==========================================  /home/lair/nr/src/icon/commafy.icn
+
+
+
+procedure commafy(l, andword)
+   local s, comma, and, i
+   if *l = 0 then return ""
+   /andword := "and"
+   comma := if *l > 2 then ", " else " "
+   and := if *l > 1 then andword || " " else ""
+   s := ""
+   every i := 1 to *l - 1 do s ||:= l[i] || comma
+   return s || and || l[*l]
+end   
+  
+procedure commaseparate(l, comma)
+  local s, i
+  if *l = 0 then return ""
+  /comma := ", "
+  s := ""
+  every i := 1 to *l - 1 do s ||:= l[i] || comma
+  return s || l[*l]
+end
+
+
+
+
+#=========================================  /home/lair/nr/src/icon/openfile.icn
+
+
+
+procedure openfile(name, mode, path) 
+    /mode := "r"
+    /path := ["."]
+    if name == "-" then
+       case mode of {
+          "r" : return &input
+          "w" : return &output
+          default : stop("bogus file mode: ", mode)
+       }
+    else 
+      return open(if name[1] == "/" then name else !path || "/" || name, mode) | 
+         stop("Can't open file ", name, " for ", mode, "on path ", image(path))
+end
+
+
+
+#========================================  /home/lair/nr/src/icon/pushtrace.icn
+
+
+
+################################################################
+
+global tracestack
+
+procedure pushtrace(tr)
+    initial tracestack := []
+    push(tracestack, &trace)
+    return &trace := 
+      case type(tr) of {
+        "string" : integer(getenv(tr)) | 0
+        default  : tr
+      }
+end
+
+procedure poptrace()
+    return &trace := pop(tracestack) 
+end

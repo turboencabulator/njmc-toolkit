@@ -1,0 +1,23 @@
+; $Id: match.cm,v 1.6 1999/09/06 16:02:55 nr Exp $
+(* support for matching statements *)
+    (* could be split into elaboration part and codegen part,
+       by analogy with sledspec/elaborate *)
+; module match
+group is
+  code.cm
+  sledspec.cm
+  error.cm
+  smlnj-lib.cm
+  elabexp.cm
+  solve.cm
+  util.cm
+
+  match.nw
+  consord.sig@ffusion.nw
+  consord.sml@ffusion.nw
+  ffusion.nw
+  absfield.sml@match.nw
+  tree.nw
+  dag.nw
+  gencode.nw
+

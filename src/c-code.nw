@@ -1,0 +1,106 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: c-code.nw,v 1.3 1998/11/11 21:59:10 nr Exp $
+\section{Interfaces and implementations for representing C~code}
+An intermediate level to translate from the [CODE]] interface before
+emission. 
+<<c-code.sig>>=
+signature C_CODE = sig
+  <<ctype>>
+  val typestring : ctype * string -> string (* includes PP escapes *)
+end
+<<c-code.sml>>=
+structure CCode : C_CODE = struct
+  <<ctype>>
+  <<functions>>
+end
+<<ctype>>=
+datatype ctype
+  = CHAR | DOUBLE | FLOAT | INT | LONG | LONGDOUBLE | SHORT
+  | SIGNED_CHAR | UNSIGNED_CHAR | UNSIGNED_LONG | UNSIGNED_SHORT | UNSIGNED | VOID
+  | POINTER of ctype
+  | ARRAY of int option * ctype
+  | FUNCTION of { args : (string option * ctype) list, return : ctype, varargs : bool }
+  | STRUCT of { tag : string option
+              , fields : (string * ctype * int option) list option
+              }                        	(* int option == sized bit fields *)
+  | UNION  of { tag : string option, members : (string * ctype) list option }
+  | ENUM   of { tag : string option, members : (string * int option) list option }
+  | CONST of ctype
+  | VOLATILE of ctype
+  | NAMED of string
+  | COMMENTED of ctype * string  (* type with a comment *)
+@ 
+Now, borrowed from {\tt lcc}, the code to convert a type declaration
+to a string.  The original code is imperative, using a for loop to
+assign to [[str]].  We model that behavior with tail-recursive calls.
+<<functions>>=
+local
+  fun unqual(CONST ty) = unqual ty
+    | unqual(VOLATILE ty) = unqual ty
+    | unqual ty = ty
+  val isptr = (fn POINTER _ => true | _ => false) o unqual
+  fun spaceopt "" = ""
+    | spaceopt s  = " " ^ s
+  fun cat f l = String.concat(map f l)
+  fun d(CONST ty, str) =
+         if isptr ty then d(ty, "const " ^ str)
+	 else "const " ^ d(ty, str)
+    | d(VOLATILE ty, str) = 
+         if isptr ty then d(ty, "volatile " ^ str)
+	 else "volatile " ^ d(ty, str)
+    | d(CHAR, str) = "char" ^ spaceopt str
+    | d(DOUBLE, str) = "double" ^ spaceopt str
+    | d(FLOAT, str) = "float" ^ spaceopt str
+    | d(INT, str) = "int" ^ spaceopt str
+    | d(LONG, str) = "long" ^ spaceopt str
+    | d(LONGDOUBLE, str) = "long double" ^ spaceopt str
+    | d(SHORT, str) = "short" ^ spaceopt str
+    | d(SIGNED_CHAR, str) = "signed char" ^ spaceopt str
+    | d(UNSIGNED_CHAR, str) = "unsigned char" ^ spaceopt str
+    | d(UNSIGNED_LONG, str) = "unsigned long" ^ spaceopt str
+    | d(UNSIGNED_SHORT, str) = "unsigned short" ^ spaceopt str
+    | d(UNSIGNED, str) = "unsigned" ^ spaceopt str
+    | d(VOID, str) = "void" ^ spaceopt str
+    | d(POINTER ty, str) =
+         let val parens = case unqual ty of ARRAY _ => true
+                                          | FUNCTION _ => true
+					  | _ => false
+         in  d(ty, if parens then "(*" ^ str ^ ")" else "*" ^ str)
+         end
+    | d(ARRAY(NONE,   ty), str) = d(ty, str ^ "[]")
+    | d(ARRAY(SOME n, ty), str) = d(ty, str ^ "[" ^ Int.toString n ^ "]")
+    | d(FUNCTION {args=[], return, varargs}, str) = d(return, str ^ "(void)")
+    | d(FUNCTION {args,    return, varargs}, str) =
+	 let fun arg (NONE, ty) = d(ty, "")
+	       | arg (SOME n, ty) = d(ty, n)
+	     val args = Util.joinl (fn (l, r) => l ^ ", $o" ^ r) (map arg args)
+         in  d(return,
+	       String.concat [str, "${$4$c($1", args,
+			      (if varargs then ", ..." else "")^ "$b$b$})"])
+	 end
+    | d(STRUCT {tag=tag, fields=fields}, str) =
+         "struct" ^ tagopt tag ^ fieldsopt fields ^ spaceopt str
+    | d(UNION {tag=tag, members=members}, str) =
+         "union" ^ tagopt tag ^ membersopt members ^ spaceopt str
+    | d(ENUM  {tag, members}, str) =
+         "enum" ^ tagopt tag ^ enumopt members ^ spaceopt str
+    | d(NAMED typeid, str) = typeid ^ spaceopt str
+    | d(COMMENTED (ty, comment), str) = d(ty, "/* " ^ comment ^ " */" ^ spaceopt str)
+  and tagopt NONE = ""
+    | tagopt (SOME t) = " " ^ t
+  and field (id, ty, NONE)   = "$c" ^ d(ty, id) ^ "; "
+    | field (id, ty, SOME n) = "$c" ^ d(ty, id) ^ ":" ^ Int.toString n ^ "; "
+  and fieldsopt NONE = ""
+    | fieldsopt (SOME fields) = " {${$t " ^ cat field fields ^ " $b$c$}}"
+  and member (id, ty) = field (id, ty, NONE)
+  and membersopt NONE = ""
+    | membersopt (SOME members) = " {${$t " ^ cat member members ^ " $b$c$}}"
+  and enum (id, SOME n) = id ^ "=" ^ Int.toString n
+    | enum (id, NONE)   = id 
+  and enumopt NONE = ""
+    | enumopt (SOME []) = "{ /* empty enumeration?? */ }"
+    | enumopt (SOME enums) = " {${$t " ^ Util.joinl (fn (a, b) => a ^ ", $o" ^ b)
+                                                         (map enum enums) ^ " $b$c$}}"
+in
+  val typestring = d
+end

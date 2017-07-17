@@ -1,0 +1,335 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: main.nw,v 1.44 1998/12/02 00:35:58 nr Exp $
+<<main1.sml>>=
+structure Main = MainFun(structure Gencode = UGencode open OriginalEncoders)
+structure DataMain = MainFun(structure Gencode = UGencode open AllDataEncoders)
+<<main2.sml>>=
+functor MainFun (structure EncodingInterface : ENCODING_GENERATOR
+                     where Code.Constructor = ULinked.Constructor
+                     where type Code.defined   = UGencode.Code.defined
+                     where type Code.statement = UGencode.Code.statement
+                 structure EmitC : CODE_GENERATOR
+                     where type Code.interface_spec = UGencode.Code.interface_spec
+                     where type Code.defined        = UGencode.Code.defined
+                     where type Code.statement      = UGencode.Code.statement
+                 structure SizeInterface : SIZE_GENERATOR
+                 structure EmitML : CODE_GENERATOR
+                 structure XformC : REWRITER
+                 structure Instance : INSTANCE
+                 val stdInstance : Instance.definition
+                 sharing
+                   EmitC.Code = EmitML.Code = EncodingInterface.Code = XformC.Code
+                   = SizeInterface.Code = Instance.Code
+                     ) = 
+struct
+
+
+  structure SledSpec = ULinked.SledSpec
+  structure ElabExp = ULinked.ElabExp
+
+  structure E = EncodingInterface
+  structure S = SizeInterface
+  structure D = SledSpec.Denotable
+  structure Code = E.Code
+  structure Exp = Code.Exp
+  structure Constructor = E.Code.Constructor
+  structure C = Constructor
+
+  fun errorContext smap = (smap, ErrorMsg.defaultConsumer())
+
+  local
+    open Error
+  in
+    fun goodtab s = StringMap.foldri 
+                       (fn (key,OK x,l) => (key,x)::l | (_,ERROR,l) => l) [] s
+    fun goodspec (s:SledSpec.espec) = goodtab (#symtab s)
+  end
+<<main2.sml>>=
+  fun encoding' codegen ifname smap (s: SledSpec.espec) =
+    let val constructors = rev (Constructor.constructors' (#family s))
+                                        (* correct elaboration order *)
+        val basic = {constructors = constructors, instance = stdInstance,
+                     redefineInImplementation = codegen = EmitCode.ML,
+                    instructionType = Constructor.unnamedConstype (#family s),
+                    names = ifname}
+        val opaque = {opaqueTypes=case codegen of EmitCode.C => false
+                                                | EmitCode.ML => true}
+        val eContext = errorContext smap
+        val msg = Error.errMsg eContext
+        val size = { instanceInterface = ifname ^ "Instruction"
+                   , constructorFamily = #family s
+                   , rangeName = "sizeRange"
+                   , exactName = "size"
+                   , mname = ifname
+                   }
+
+        val instancesOnly = false
+        val modules = 
+              if instancesOnly then
+                {ints=[E.instanceCreationInt (basic, opaque)],
+                 imps=[E.instanceCreationImp (basic, opaque)]}
+              else                 
+                {ints=[E.instanceCreationInt (basic, opaque),
+                       E.instanceRepresentationInt (basic)],
+                 imps=[E.instanceCreationImp (basic, opaque),
+                       E.instanceRepresentationImp (basic),
+                       E.instanceEncodingImp (basic, {encodername="default_enc"}),
+                       S.sizeImplementation size]}
+   in  Error.OK modules
+       handle Error.Error e => (msg (e, SourceMap.nullRegion); Error.ERROR)
+    end
+
+fun encoding c i (sm, ?) = 
+  Error.strip (Error.emap (fn (_, s) => encoding' c i sm s) ?)
+<<main2.sml>>=
+
+  val emitC =
+    EmitCode.emitters (EmitCode.C, EmitC.printers,
+                       {ximp=XformC.implementation, xint=XformC.interface})
+
+  val emitML = EmitCode.emitters (EmitCode.ML, EmitML.printers, EmitCode.idx)
+
+  fun basename s =
+    let val s' = hd (String.tokens (not o Char.isAlpha) s)
+    in  if size s' > 0 then s' else s
+        handle List.Empty => s
+    end
+
+  fun tools what lang infile = 
+    let val emit = case lang of EmitCode.C => emitC | EmitCode.ML => emitML
+        fun dump output = Util.timed what (#emitBoth (emit output)) infile
+    in  Error.emap dump (encoding lang (basename infile) (ReadSLED.elab infile))
+    end
+    handle Error.Error (s, b) => ErrorMsg.impossibleWithBody s b
+
+  fun ml_code infile = tools "generating ML code" EmitCode.ML infile
+  fun c_code  infile = tools "generating C code"  EmitCode.C  infile
+
+  (*****************************************************************)
+
+  structure Gencode = UGencode
+  structure Dag = Gencode.Dag
+  structure Tree = Dag.Tree
+  structure Match = Tree.Match
+
+  structure TreeImage = TreeDagImageFun(structure Dag = Dag
+                                        val exp = ULinked.Image.exp)
+
+  structure EC = EmitCode
+
+  fun showTree filename smap t = 
+    EC.ppWrite EC.nosynch 78 filename (TreeImage.tree smap t)
+
+  fun showDag filename smap d = 
+    EC.ppWrite EC.nosynch 78 filename (TreeImage.dag smap d)
+
+  fun showTrees filename smap ts = 
+    EC.ppWrite EC.nosynch 78 filename (PP.LIST (map (TreeImage.tree smap) ts))
+
+  fun showDags filename smap ds = 
+    EC.ppWrite EC.nosynch 78 filename (PP.LIST (map (TreeImage.dag smap) ds))
+
+   (* totally bogus ``fetch templates'' *)
+  val printers as (_, {match=ppMatch, ...}) = EmitC.printers {hex=false, pcUnit=8}
+
+  local structure pp = PP.Short in
+    fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
+  end
+
+
+  structure RunDecoder = URunDecoder
+
+  val fuse = GlobalState.Match.fuse
+
+  fun matcher' templates opt specfiles =
+    let val espec = Util.timed "elaborating specifications" ReadSLED.elabFiles specfiles
+        fun match mfile =
+          let val (codemap, codefile) = ReadSLED.parseMatch mfile
+              val match = Error.emap
+                          (Util.timed "match elaboration" (Match.elaborate codemap))
+                          (Error.epair (codefile, espec))
+              val match = Error.strip match
+          in  Error.emap (fn m => (codemap, m, mfile)) match
+          end handle Option =>
+              (print "Uncaught exception Option in match elaboration\n"; Error.ERROR)
+        fun massage (codemap, (header, matchers), mfile) =
+          let fun tree (match, trailer) = 
+                let val match =
+                      if !fuse then Util.timed "match fusion" UMatchFusion.fuseMatch match
+                      else match
+                    val t = Tree.mkTree (fn (lines, rgn) => rgn) match
+                in  (t, trailer) before Tree.warnTree(match, t) 
+                end
+(*
+              fun trees (code, matches) = {header=code, trees=map tree matches}
+              val tree as {header, trees} = Util.timed "tree building" trees ms
+*)
+              val trees = map tree matchers
+              val dags  = Util.timed "dag building" (map (Dag.tree2dag o #1)) trees
+              fun compile (lines, rgn) =
+                Code.STATEMENT' (codemap, rgn, Code.RAW (pplines lines))
+              val gencase = 
+                Gencode.gencase templates {optimizeTwoLeaves=opt, compile=compile}
+              fun gen ((m, trailer), dag) = (gencase (m, dag), trailer)
+              val codes =
+                Util.timed "code generation" (map gen) (ListPair.zip(matchers, dags))
+              val matchFile = {header=header, sourcemap=codemap, matchers=codes}
+                : Gencode.Code.match_file
+              val pp = Util.timed "matcher prettyprinting" ppMatch matchFile
+              val _ = EC.ppWrite EC.nosynch 78 (mfile ^ ".d") pp
+          in  (codemap, (header, matchers), tree, trees, dags, codes)
+          end
+    in  Error.emap massage o match
+    end
+
+  fun matcher x = matcher' RunDecoder.defaultTemplates true x
+
+  <<decoder>>
+  <<field fusion>>
+end
+@ 
+<<decoder>>=
+
+fun writeMatcher filename matchFile =
+  let val pp = Util.timed "matcher prettyprinting" ppMatch matchFile
+  in  EC.ppWrite EC.nosynch 78 filename pp
+  end
+          
+fun eseq f x = Error.strip (Error.emap f x)
+
+structure RD = RunDecoder
+fun decoder x = eseq (RD.decoders o #2) (#2 (ReadSLED.elab x))
+
+
+fun dcompile (prefix, effect, ty) = 
+  map (RD.imperativeImplementation
+         { prefix = prefix, effect = effect, ty = ty,
+           templates = RD.defaultTemplates })
+
+fun decodermax' doMatch x =
+  let fun showall ds =
+        ( RD.emitTrees (ds, x ^ ".trees")
+        ; RD.emitDags  (ds, x ^ ".dags")
+        ; doMatch x ds
+        )
+  in  Error.emap showall (decoder x)
+  end
+
+fun noMatch _ x = ()
+@ 
+The [[valOf]] always succeeds below because instructions are not
+operands to other constructors.
+<<decoder>>=
+val decoderPrefix = "decode_"
+fun imatch filename ds =
+  let fun compile { cons, operands } =
+        let fun opval n = 
+              let val operand as (_, ty, _) = Constructor.operandNamed (cons, n)
+              in  case ty
+                    of Constructor.INTEGER _ => Exp.var n
+                     | Constructor.INSTANCE id =>
+                         let val ty = Constructor.typeFromId id
+                             val tyname = valOf(Constructor.typeName ty)
+                         in  Exp.call [Exp.var (decoderPrefix ^ tyname), Exp.var n]
+                         end
+              end
+            val {name, ...} = Constructor.info cons
+        in  Code.COMMENTED_STMT (
+              Code.RETURN (#instance stdInstance cons (map opval operands)),
+              "return instance of constructor named " ^ name)
+        end
+      val tyname = EncodingInterface.Control.instanceTypeName o Constructor.typeName
+      fun ty constype = Type.VAR {interface=NONE, name=tyname constype}
+  in  RD.emitC ([], dcompile(decoderPrefix, compile, ty) ds, filename ^ ".binmatch")
+  end
+
+fun decodermax x = decodermax' imatch x
+@ 
+This builds the `fake decoder' that adds [[__LINE__]] to the operands.
+It's not optimized yet.
+<<decoder>>=
+fun fakeMatch filename f =
+  let fun compile { cons, operands } =
+        let fun opval n = 
+              let val operand as (_, ty, _) = Constructor.operandNamed (cons, n)
+              in  case ty
+                    of Constructor.INTEGER _ => Exp.var n
+                     | Constructor.INSTANCE id =>
+                         let val ty = Constructor.typeFromId id
+                             val tyname = valOf(Constructor.typeName ty)
+                         in  Exp.call [Exp.var (decoderPrefix ^ tyname), Exp.var n]
+                         end
+              end
+        in  Code.RETURN (foldl Exp.add (Exp.var "__LINE__") (map opval operands))
+        end
+      fun ty constype = Type.INTEGER {signed=false, width=NONE}
+  in  RD.emitC ([], f (compile, ty), filename ^ ".fakematch")
+  end
+
+fun decodermax x = decodermax' imatch x
+@ 
+<<field fusion>>=
+fun decoders sledfile = 
+  eseq (Util.timed "computing decoders" RD.decoders)
+       (Util.timed "elaborating specifications" ReadSLED.elabFiles [sledfile])
+
+<<field fusion>>=
+structure COrder = ConstraintOrderFun(ULinked.Patterns)
+structure FF = FieldFusionFun(COrder)
+
+open ConstraintEdge
+infix 9 <*
+fun costgt ((_, l), (_, r)) = FF.compare'cost (l, r) = GREATER
+
+fun matcherInfo (Match.MATCH { arms, ... }, constype) =
+  let val graph = COrder.order (fn (Match.ARM (p, _)) => p, fn a <* b => a <> b, arms)
+      val name = getOpt(Constructor.typeName constype, "(anonymous)")
+      val estimate = FF.costEstimate (fn (Match.ARM (p, _)) => p)
+      fun addCost (e as a <* b) = (e, estimate ({msf=a, lsf=b}, arms))
+      val graph = Util.timed "cost estimation" (map addCost) graph
+      val graph = ListMergeSort.sort costgt graph
+  in  (name, graph)
+  end
+local
+  fun info d = matcherInfo (RD.matcher d, RD.constype d)
+  val minfo = Util.timed "computing constraint order" (map info)
+in                  
+  fun debugMatcher file = Error.emap minfo (decoders file)
+end
+@ 
+<<field fusion>>=
+fun afield ({name, ...} : Field.field, n) = [name, " at ", Int.toString n]
+fun number (FF.FINITE n) = Int.toString n
+  | number (FF.INFINITY) = "<infinity>"
+fun cost { cost = c, benefit = b } = ["cost ", number c, " benefit ", Int.toString b]
+
+fun edgeStrings (f1 <* f2) = afield f1 @ [" <* "] @ afield f2 
+
+fun showGraph prefix graph = 
+  app (fn (e, c) => app print ([prefix] @ edgeStrings e @ [" ("] @ cost c @ [")\n"]))
+      graph
+
+fun showMatcher prefix (name, graph) =
+  ( app print [prefix, "Constraint orderings for constructor type ", name, ":\n" ]
+  ; showGraph (prefix ^ "  ") graph
+  ; print "\n"
+  )
+      
+
+fun sameToken ((f1, n1) <* (f2 : Field.field, n2), _) =
+  n1 = n2 andalso #class f1 = #class f2
+
+fun adjacent (pair as (ConstraintEdge.<* ((f1, n1), (f2, n2)), _)) =
+  sameToken pair andalso #lo (#range f1) = #hi (#range f2)
+
+fun showAll l =
+  ( print "**************** full list of candidates ****************\n"
+  ; app (showMatcher "") l
+  ; print "\n**************** restriction to single token ****************\n"
+  ; app (fn (n, g) => showMatcher "" (n, List.filter sameToken g)) l
+  ; print "\n**************** restriction to adjacent fields ****************\n"
+  ; app (fn (n, g) => showMatcher "" (n, List.filter adjacent g)) l
+  )
+
+
+val emap = Error.emap

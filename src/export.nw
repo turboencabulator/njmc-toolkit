@@ -1,0 +1,24 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+\chapter{Exporting}
+Can't use this signature constraint because I have no signature for [[Type]].
+<<export.sig>>=
+signature TOOLKIT_CODE_EXPORT = sig
+  structure Code : CODE
+end
+signature TOOLKIT_EXPORT_EXP = EXP
+@ 
+<<export.sml>>=
+structure ToolkitExport = struct
+  structure Code = ULinked.Code
+  structure Type = Type
+  structure Constructor = ULinked.Constructor
+  structure Debug = GlobalState.Debug
+  structure StdInstance = AllDataEncoders.StdInstance
+  structure RunDecoder = URunDecoder
+  structure TKError = Error
+  val verbosity = ErrorMsg.verbosity
+  val verbose = ErrorMsg.verbose
+end
+@ 
+
+

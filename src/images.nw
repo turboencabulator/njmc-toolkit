@@ -1,0 +1,602 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: images.nw,v 1.34 1999/11/23 16:25:57 nr Exp $
+<<denotable-image.sig>>=
+signature DENOTABLE_IMAGE = sig
+  structure Denotable : DENOTABLE
+  val pattern  : Denotable.Patterns.Pure.pattern     -> PP.pretty
+  val pure     : Denotable.Patterns.Pure.pattern     -> PP.pretty
+  val latent   : Denotable.Patterns.Latent.pattern   -> PP.pretty
+  val labelled : Denotable.Patterns.Labelled.pattern -> PP.pretty
+  val absolute : Denotable.Patterns.Absolute.pattern -> PP.pretty
+  val exp : Denotable.Patterns.Exp.exp -> PP.pretty
+  val conditions : Denotable.Patterns.Exp.Set.set -> PP.pretty
+end
+<<images.sig>>=
+signature IMAGES = sig
+  structure Constructor : SLED_CONSTRUCTOR
+  val pure     : Constructor.Patterns.Pure.pattern     -> PP.pretty
+  val latent   : Constructor.Patterns.Latent.pattern   -> PP.pretty
+  val labelled : Constructor.Patterns.Labelled.pattern -> PP.pretty
+  val absolute : Constructor.Patterns.Absolute.pattern -> PP.pretty
+  val exp : Constructor.Patterns.Exp.exp -> PP.pretty
+  val operand : Constructor.operand -> string
+  val conditions : Constructor.Patterns.Exp.Set.set -> PP.pretty
+end
+@ 
+<<images.sml>>=
+functor ImagesFun (structure Constructor : SLED_CONSTRUCTOR
+		     where type Pattern.Exp.exp = UnifiedExp.exp
+		   structure Unparser : UNPARSE_PP
+                     where type Unparser.Atom.Precedence.precedence = int
+                   val anonymousTypeName : string
+		  ) : IMAGES =
+struct
+  structure Prec = PrecedenceFun()
+  structure Unparser = Unparser.Unparser
+  structure U = UnifiedExp
+  structure Constructor = Constructor
+  structure C = Constructor
+  structure P = C.Patterns
+  structure E = P.Exp
+  structure pp = PP.Short
+  fun fname ({name,...}:P.field) = name
+  <<images>>
+end
+<<denotable-image.sml>>=
+functor DenotableImageFun (structure Denotable : DENOTABLE
+			     where type Patterns.Exp.exp = UnifiedExp.exp
+			   structure Unparser : UNPARSE_PP
+                             where type Unparser.Atom.Precedence.precedence = int
+			   val anonymousTypeName : string
+			  ) : DENOTABLE_IMAGE =
+struct
+  structure Denotable = Denotable
+  structure I = ImagesFun(structure Constructor = Denotable.Constructor
+			  structure Unparser = Unparser
+			  val anonymousTypeName = anonymousTypeName
+)
+  open I
+  val pattern = pure
+end
+@ 
+<<images>>=
+<<local declarations>>
+type ppexp = Unparser.ast
+val textatom = Unparser.ATOM o pp.te
+<<unparsing utilities>>
+fun typeName constype = getOpt(C.typeName (C.typeFromId constype), anonymousTypeName)
+<<functions>>
+val exp = pp.li o Unparser.unparse o exp
+@ 
+\subsection{Patterns and Expressions}
+
+We use the general unparsing mechanism for expressions.
+
+\subsubsection {Setup for  unparsing expressions}
+Here's the general unparsing mechanism---we use operator names and
+look up the precedence and fixities.
+By default, infix operators have spaces, prefix don't.
+<<unparsing utilities>>=
+<<[[prec]] and [[assoc]]>>
+local
+  fun space $ = pp.te (" " ^ $ ^ " ")
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+in
+  fun binary' namer $ (l, r) = 
+    let val prec = prec $
+        val fixity = assoc prec
+        val _ = case fixity of Assoc.INFIX _ => () | _ => Impossible.impossible "fixity"
+	val $ = (namer $, prec, fixity)
+    in  Unparser.BINARY(l, $, r)
+    end
+  fun binary $ = binary' space $
+  fun binopt $ = binary' opt $
+  fun nary' namer $ args = 
+    let val prec = prec $
+        val fixity = assoc prec
+        val _ = case fixity of Assoc.INFIX Assoc.NONASSOC => ()
+                             | _ => Impossible.impossible "fixity"
+	val $ = (namer $, prec, fixity)
+    in  Unparser.NARY($, args)
+    end
+  fun nary $ = nary' space $
+  fun nopt $ = nary' opt $
+  fun prefix  $ e = Unparser.UNARY((pp.te $, prec "postfix", Assoc.PREFIX ), e)
+  fun postfix $ e = Unparser.UNARY((pp.te $, prec "postfix", Assoc.POSTFIX), e)
+end
+@ Note the flagrant cheat on the unary precedence, exploiting the fact
+that all C unary operators have the same precedence.
+@
+Now we can simulate all those yummy C-like operators!
+<<[[prec]] and [[assoc]]>>=
+local
+  val N = Assoc.INFIX Assoc.NONASSOC
+  val L = Assoc.INFIX Assoc.LEFT
+  val R = Assoc.INFIX Assoc.RIGHT
+  val E = Assoc.PREFIX
+  val O = Assoc.POSTFIX
+in
+  val ops = [(N, ["low"]),
+             (L, ["|"]),   (* patterns *)
+             (L, [";"]),
+	     (N, [","]),
+	     (R, [":="]),
+             (L, ["&", "&&"]),
+             (N, ["==", "!="]),
+             (L, ["<=", "<", ">=", ">"]),
+
+             (L, [">>", "<<"]),
+             (L, ["+", "-"]),
+             (L, ["%", "/", "*"]),
+             (E, ["not "]),
+	     (O, ["postfix"]),
+             (L, [".", "->", "app", "call", "subscript"]),
+	     (L, ["parens"]),
+             (N, ["high", "hi"])
+             ]
+end
+val {prec, assoc} = Prec.funs ops
+<<parenthesization>>
+@ 
+Some of these functions are likely to come in handy; we can use them
+in ML~code to create C expressions.
+Note the difference between [[binary]] and [[binopt]]; that
+difference determines the placement of optional line breaks.
+<<unparsing utilities>>=
+val comma  = nary' (fn _ => pp.$ ", $o") ","
+val /:=/  = binary ":="
+val /||/ = binopt "||"
+val /&&/ = binopt "&&"
+val /|/  = binopt "|"
+val /&/  = binary "&"
+val /==/ = binary "=="
+val /!=/ = binary "!="
+val /</  = binary "<"
+val />/  = binary ">"
+val /<=/ = binary "<="
+val />=/ = binary ">="
+val /<</ = binary "<<"
+val />>/ = binary ">>"
+val /+/  = binopt "+"
+val /-/  = binopt "-"
+val /*/  = binary "*"
+val ///  = binary' (fn _ => pp.te " div ") "/"
+val /%/  = binary' (fn _ => pp.te " mod ") "%"
+val not'  = prefix "not "
+fun dot (e, tag) = Unparser.UNARY((pp.te ("." ^ tag), prec ".", Assoc.POSTFIX), e)
+val /~/  = prefix "~"
+val /->/ = binary "->"
+fun relop Relop.EQ = /==/
+  | relop Relop.NE = /!=/
+  | relop Relop.LE = /<=/
+  | relop Relop.LT = /</
+  | relop Relop.GE = />=/
+  | relop Relop.GT = />/
+@ 
+ML doesn't offer nearly enough levels of precedence to handle
+C~operators.
+Ideally I'd like to declare all the levels of C operators at a
+precedence lower than that of any ML infix operator.
+Since I have only ten levels total, however, I've instead decided
+never to mix ML and C operators in the same expression, and I've
+avoided infixing a couple of levels I hope I can do without.
+<<unparsing utilities>>=
+infixr 0 /:=/
+infix  1 /||/
+infix  2 /&&/
+infix  3 /|/
+infix  4 /&/
+infix  5 /==/ /!=/ /</ /<=/ />/ />=/
+infix  6 />>/ /<</
+infix  7 /-/ /+/
+infix  8 /*/ /// /%/
+infix  9 dot
+@ 
+\subsubsection{Expressions and their operators}
+<<[[exp]] auxiliaries>>=
+fun ppcon' n = pp.te (Int.toString n)
+val ppcon = Unparser.ATOM o ppcon'
+@
+We begin with the basics of arithmetic.
+The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
+<<functions>>=
+<<[[exp]] auxiliaries>>
+fun exp(U.VAR s) = textatom s
+  | exp(U.ADD (U.MUL(~1, e1), e2)) = exp (U.SUB(e2, e1))
+  | exp(U.ADD (e1, e2)) = exp e1 /+/ exp e2
+  | exp(U.SUB (e1, e2)) = exp e1 /-/ exp e2
+  | exp(U.MUL (1, e)) = exp e
+  | exp(U.MUL (n, e)) = ppcon n /*/ exp e
+  | exp(U.CONST n) = ppcon n
+<<functions>>=
+  | exp(U.PC_KNOWN) = textatom "FORCEABLE(<program counter>)"
+  | exp(U.TRUE) = textatom "true"
+  | exp(U.FALSE) = textatom "false"
+  | exp(U.STRING(S)) = textatom ("\"" ^ String.toCString S ^ "\"")
+  | exp(U.CHAR c)    = textatom ("'"  ^ String.toCString (str c) ^ "'")
+  | exp(U.MISSING_STRING) = textatom "<NULL string>"
+<<local declarations>>=
+fun Cimage s =
+  let val slashes = explode "\n\t\\\""
+      fun slashed c = List.exists (fn x => c = x) slashes
+      fun \ c l = #"\\" :: c :: l
+      fun char (c, l) = if slashed c then \ c l else c :: l
+  in  implode (#"\"" :: foldr char [#"\""] (explode s))
+  end
+<<functions>>=
+  | exp(U.PC) = textatom "FORCE(<program counter>)"
+  | exp(U.NARROWs(e, N)) = postfix ("[" ^ Int.toString N ^ "!]") (exp e)
+  | exp(U.NARROWu(e, N)) = postfix ("[" ^ Int.toString N ^ "]")  (exp e)
+<<functions>>=
+  | exp(U.FITSu(e, N)) = exp(call "FITSU" [e, E.const N])
+  | exp(U.FITSs(e, N)) = exp(call "FITSS" [e, E.const N])
+
+  | exp(U.ASSERT_NARROWs(e, N)) = exp(call "ISS" [e, E.const N])
+  | exp(U.ASSERT_NARROWu(e, N)) = exp(call "ISU" [e, E.const N])
+<<functions>>=
+  | exp(U.SLICE(e, {lo = lo, width = width})) =
+      postfix (String.concat
+	       ["[", Int.toString lo, ":", Int.toString (lo+width-1), "]"]) (exp e)
+  | exp(U.WIDEN(e, N)) = postfix ("!" ^ Int.toString N) (exp e)
+  | exp(U.SHIFT(e, N)) = 
+      if N < 0 then exp e />>/ ppcon (~N) else exp e /<</ ppcon N
+  | exp(U.AFIELD (f,n)) =
+      textatom (String.concat ["{", fname f, " at ", Int.toString n, "}"])
+  | exp(U.DIV(e, N)) = exp e /// ppcon N
+  | exp(U.MOD(e, N)) = exp e /%/ ppcon N
+  | exp(U.NOT(e)) = not' (exp e)
+<<[[exp]] auxiliaries>>=
+fun call f args = E.call (E.var f :: args)
+<<functions>>=
+  | exp(U.FORCE(e)) = exp (call "FORCE" [e])
+  | exp(U.KNOWN(e)) = exp (call "FORCEABLE" [e])
+<<[[exp]] auxiliaries>>=
+val impossible = Impossible.impossible
+<<functions>>=
+  | exp(U.SELECT(e, membername)) = exp e dot membername
+  | exp(U.CAN_SELECT(e, membername)) = exp (call "CAN_SELECT" [e, E.string membername])
+<<[[exp]] auxiliaries>>=
+  (* show things in modula-3 constructor style *)
+fun constructor name args = 
+  let fun arg (name, value) = textatom name /:=/ value
+      val args = if null args then textatom "" else comma (map arg args)
+      val args = pp.li (Unparser.unparse args)
+      val f = textatom name
+      fun call args = binary' (fn _ => pp.te "") "call" (f, Unparser.ATOM (pp.li args))
+  in  
+      call [pp.$ "{${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.$ "$}}"]
+  end
+<<functions>>=
+  | exp(U.UNION(e, {name = name, ty = ty})) = 
+      constructor "??need type image??" [(name, exp e)]
+  | exp(U.UNSAFE_UNION(e, {name = name, ty = ty})) = 
+      constructor "??need type image??" [(name, exp e)]
+  | exp(U.SUTMP(tmp, e)) = exp(call "SUTMP" [tmp, e])
+  | exp(U.CONDITION (l, rel, r)) = relop rel (exp l, exp r)
+  | exp(U.INSTANCE_INPUT(e, {cons = cons, operand = operand})) =
+        exp e dot "u" dot consname cons dot operand
+  | exp(U.INSTANCE_TAGGED(e, {cons = cons, uid = uid})) = 
+	exp e dot "tag" /==/ exp (E.var (consname cons ^ "_TAG"))
+  | exp(U.NOSIMP(e)) = exp e
+  | exp(U.ORB []) = ppcon 0
+  | exp(U.ORB(exps)) = Util.joinl op /|/ (map exp exps)
+  | exp(U.INRANGE (e, {lo, hi})) = ppcon lo /<=/ exp e /</ ppcon hi
+  | exp(U.ANDALSO []) = exp (U.TRUE)
+  | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
+  | exp(U.ORELSE []) = exp (U.FALSE)
+  | exp(U.ORELSE(exps)) = Util.joinl op /||/ (map exp exps)
+  | exp(U.RECORD (exps, {fields, ty})) = 
+	constructor "??need image??" (ListPair.zip (fields, map exp exps))
+  | exp(U.INSTANCE(exps, cons)) = 
+        let val {name, operands, ...} = C.info (C.fromId cons)
+	in  constructor name (ListPair.zip (map #1 operands, map exp exps))
+	end
+  | exp(U.BINDING_INSTANCE(name, wild, constype)) = 
+	textatom (if wild then "_"
+		  else "BINDING(" ^ name ^ " : " ^ typeName constype ^ ")")
+  | exp(U.FAIL s) = textatom ("bad exp: " ^ s)
+  | exp(U.COMMENTED (e, comment)) = ecomment (exp e, comment)
+<<[[exp]] auxiliaries>>=
+fun ecomment (e, comment) = 
+  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+                         pp.te "/*", pp.te comment, pp.te "*/", pp.ou, pp.en], 
+                  prec "hi",
+                  Assoc.POSTFIX),
+      	   e)
+<<functions>>=
+  | exp(U.ARRAY _) = Impossible.unimp "image of array literal"
+  | exp(U.ARRAY_SUB(a, n)) = 
+      let open Unparser Assoc
+	  val index = pp.li (unparse (exp n))
+          val subscript = pp.li [pp.$ "[|${", index, pp.$ "$}|]"]
+      in  BINARY(exp a, (pp.te "", prec "subscript", INFIX LEFT), ATOM subscript)
+      end
+  | exp(U.CALL []) = Impossible.impossible "call"
+@ 
+The call is a bit tricky because of the indentation.
+For functions of up to [[limit]] characters, we indent the limit of
+the function.  For longer functions, we indent 2 and require a break
+after the open parenthesis.
+<<functions>>=
+  | exp(U.CALL (f::args)) = 
+      let open Unparser Assoc
+	  val f = exp f
+          val limit = 12 (* max willing indent *)
+          <<bind [[fwidth]] to the number of characters [[f]] will use>>
+	  val args = if null args then textatom "" else comma (map exp args)
+	  val args = pp.li (unparse args)
+	  fun call args = binary' (fn _ => pp.te "") "call"
+	                                      (f, Unparser.ATOM (pp.li args))
+      in  
+	  if fwidth < limit then
+	    call [pp.$ "(${", pp.i (fwidth + 1), args, pp.ou, pp.$ "$})"]
+	  else
+	    call [pp.$ "(${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.te "$})"]
+      end
+<<bind [[fwidth]] to the number of characters [[f]] will use>>=
+val fwidth = (size o PP.flatten o pp.li o Unparser.unparse) 
+               (Unparser.UNARY((pp.te "", prec "call", Assoc.POSTFIX), f))
+<<local declarations>>=
+val consname = #name o C.info o C.fromId
+<<functions>>=
+  | exp(U.RAW (code as (lines, region), smap, ty)) =
+      textatom ("<raw code at " ^ SourceMap.locationString smap region ^ ">")
+@ 
+\subsection{Utility functions used for expressions}
+Parenthesization is a bit odd, because we have to fool the unparser
+into using it.
+We can do it by slapping a very high-precedence invisible operator in
+front of the expression.
+<<parenthesization>>=
+fun parenthesize e = Unparser.UNARY((pp.te "", prec "parens", Assoc.PREFIX), e)
+@ 
+String stuff\ldots
+@
+\subsection{Patterns}
+In the bad old days, we occasionally gave the name of a pattern in
+double square brackets following its image.
+<<functions>>=
+local
+  fun binop ? (a, b) = pp.li [pp.be, a, pp.en, ?, pp.be, b, pp.en ]
+  val op /|/ = binop (pp.li [pp.te " ", pp.on, pp.te "| "])
+  val op /&/ = binop (pp.te " & ")
+  val seq = binop (pp.li [pp.te "; ", pp.on])
+  val cvt = pp.li o Unparser.unparse
+
+  fun conditions s =
+    if P.Exp.Set.isEmpty s then pp.te "TRUE"
+    else pp.li [pp.$ "{${", cvt (Util.joinl op /&&/ (map exp (P.Exp.Set.listItems s))),
+		pp.$ "$}}"]
+  fun pattern'' sequence = 
+    let fun pattern (P.PAT (_, [])) = pp.te "<NOMATCH>"
+          | pattern (P.PAT (name, ds)) = 
+              pp.li [ if length ds > 1 then pp.te "  " else pp.te "",
+                      Util.joinl op /|/ (map disjunct ds) ]
+        and disjunct (P.DIS (name, conds, sequents)) =
+              let val name   = case name of SOME n => n | NONE => "?noname?"
+		  val isEmpty = P.Exp.Set.isEmpty
+                  val condpp = if isEmpty conds then pp.te ""
+                               else pp.li [ conditions conds, pp.$ " => ${$4$c" ]
+              in  pp.li [ pp.te "(", pp.te name, pp.te ") ", condpp, sequence sequents,
+                          if isEmpty conds then pp.te "" else pp.$ "$b$}" ]
+              end
+     in pattern
+     end
+  fun pattern'' disjunct = 
+    let fun pattern (P.PAT (_, [])) = pp.te "<NOMATCH>"
+          | pattern (P.PAT (name, ds)) = 
+              pp.li [ if length ds > 1 then pp.te "  " else pp.te "",
+                      Util.joinl op /|/ (map disjunct ds) ]
+    in pattern
+    end
+  fun disjunct sequence (P.DIS (name, conds, sequents)) =
+    let val name   = case name of SOME n => n | NONE => "?noname?"
+        val isEmpty = P.Exp.Set.isEmpty
+        val condpp = if isEmpty conds then pp.te ""
+                     else pp.li [ conditions conds, pp.$ " => ${$4$c" ]
+    in  pp.li [ pp.te "(", pp.te name, pp.te ") ", condpp, sequence sequents,
+                if isEmpty conds then pp.te "" else pp.$ "$b$}" ]
+    end
+  fun sequence sequent (P.SEQ (dotsl, ss, dotsr)) =
+    let fun dots true = pp.te " ... "
+          | dots false = pp.te ""
+        and sequents [] = pp.te "epsilon"
+          | sequents ss = Util.joinl seq (map sequent ss)
+    in  pp.li [dots dotsl, sequents ss, dots dotsr]
+    end
+  fun constraints (class : P.token_class, [], []) =
+        pp.li [pp.te "some ", pp.te (#name class)]
+    | constraints (class, fbs, rcs) =
+        Util.joinl op /&/ (map binding fbs @ map constraint rcs)
+  and binding (f, e) = pp.li [pp.be, pp.te (fname f), pp.te " = ", cvt (exp e), pp.en]
+  and constraint (f, range) = pp.te (Util.stringInInterval (fname f, range))
+
+  fun consOrLabel label (P.CONSTRAINTS c) = constraints c
+    | consOrLabel label (P.LABEL l) = pp.li [label l, pp.te ": "]
+  fun label (P.ACTUAL l) = pp.te l
+    | label (P.LATENT e) = pp.li [pp.te "LATENT(", cvt(exp e), pp.te ")"]
+
+  fun aconstraints (constraints, labels, length) =
+    let fun binding ((f, offset), range) =
+          pp.te (Util.stringInInterval (fname f ^ " at " ^ Int.toString offset, range))
+        val tail = [pp.te "length = ", pp.int length]
+        val labels = [pp.int (StringMap.numItems labels), pp.te " labels"]
+    in  Util.joinl op /&/ (map binding constraints @ [pp.li tail, pp.li labels])
+    end
+
+  fun pattern' constraints = pattern'' (disjunct (sequence constraints))
+  fun apat p = pattern'' (disjunct aconstraints) p
+
+in
+  val pure = pattern' constraints
+  val latent = pattern' (consOrLabel (label o P.LATENT))
+  val labelled = pattern' (consOrLabel label)
+  val conditions = conditions
+  val absolute = apat
+end
+@ 
+\subsection{Types}
+<<bogus local declarations to be turned to type images one day>>=
+local
+  open Type
+  structure C = CCode
+in
+  fun ctype(INTEGER {signed, width}) = 
+        let val base = if signed then C.INT else C.UNSIGNED
+            fun rangeString (lo, hi) = String.concat
+              ["[", Int.toString lo, "..", Int.toString (hi -1), "]"]
+            fun comment w = (if signed then rangeString(~(pow(2,w-1)), pow(2,w-1))
+                             else rangeString (0, pow(2,w)))
+                            handle Overflow => "ML range overflow"
+        in  case width
+              of NONE => base
+               | SOME w =>
+                   if w = Control.wordsize then base
+                   else if w < Control.wordsize then C.COMMENTED(base, comment w)
+                   else Impossible.impossible "int/unsigned won't hold a target word"
+        end		  
+    | ctype BOOLEAN = C.INT
+    | ctype STRING = C.POINTER C.CHAR
+    | ctype (RELOCATABLE (INTEGER {signed=true,...})) = C.NAMED "RAddr"
+    | ctype (RELOCATABLE _) = Error.unimp "general relocatable type"
+    | ctype (RECORD fields) =
+	let fun Cfield (s, ty) = (s, ctype ty, NONE : int option)
+	    val fields = if null fields then [("I_am_an_empty_struct", C.CHAR, NONE)]
+		         else map Cfield fields
+	in  C.STRUCT {tag=NONE, fields=SOME fields}
+	end
+    | ctype (UNION members) =
+        let fun isUnit (_, Type.UNIT) = true
+	      | isUnit _ = false
+	in  if List.all isUnit members then
+	      C.ENUM {tag=NONE,
+		      members=SOME (map (fn(n,_) => (mangle (Control.tagName n), NONE))
+				        members)}
+	    else 
+	       Impossible.impossible "asked for discriminated union in C; \
+                                   \must have left out a rewriting step"
+	end
+    | ctype (UNSAFE_UNION members) =
+	C.UNION {tag=NONE, members=SOME(map (fn(s,ty)=> (mangle s, ctype ty)) members)}
+    | ctype (FUNCTION {parms, varargs, return}) =
+	C.FUNCTION {args=map (fn (n,t) => (SOME (mangle n), ctype t)) parms,
+		    varargs=varargs, return=ctype return}
+    | ctype (VAR n) = C.NAMED (mangle n)
+    | ctype (INSTANCE _) = Error.unimp "instance types"
+    | ctype ANY_POINTER = C.POINTER C.VOID
+    | ctype (RECURSIVE _) = Error.unimp "recursive types"
+    | ctype UNIT = C.VOID
+    | ctype _ = Error.unimp "unsupported C type"
+  fun typeDecl(ty, name) = pp.$ (C.typestring(ctype ty,
+					      case name of NONE => "" | SOME s => s))
+end
+<<images>>=
+fun operand ((name, C.INTEGER {signed, width=w}, {relocatable=r, field=f}): C.operand)=
+      let fun wid NONE = "" | wid (SOME width) = Int.toString width ^ "-bit "
+          val pfx = (if r then "relocatable " else "") ^ wid w
+          val article = if not signed andalso size pfx = 0 then "an " else "a "
+          val kind = if signed then "signed" else "unsigned"
+	  val field = case f of NONE => [] | SOME f => [" (from field ", #name f, ")"]
+      in  String.concat (name :: ", " :: article :: pfx :: kind :: " integer" :: field)
+      end
+  | operand (name, C.INSTANCE constype, _) = 
+      String.concat [name, ", an instance of constructor type ", typeName constype]
+@ 
+<<tree-image.sml>>=
+signature TREE_DAG_IMAGE = sig
+  structure Dag : DAG
+  val tree : SourceMap.sourcemap -> ('a * SourceMap.region) Dag.Tree.node -> PP.pretty
+  val dag  : SourceMap.sourcemap -> ('a * SourceMap.region) Dag.dag -> PP.pretty
+end
+
+functor TreeDagImageFun(structure Dag : DAG
+		        val exp : Dag.Tree.Match.Patterns.Exp.exp -> PP.pretty)
+: TREE_DAG_IMAGE =
+struct
+  structure Dag = Dag
+  structure D = Dag
+  structure T = D.Tree
+  structure M = T.Match
+  structure Exp = M.Patterns.Exp
+  structure pp = PP.Short
+
+  fun arm smap (M.ARM (_, {conditions, answers, code=(_, region), ...})) =
+    let val body = map pp.te ["code at ", SourceMap.locationString smap region]
+        val guarded = if Exp.Set.isEmpty conditions then body
+		      else pp.$ "when ${${$t$o" ::
+			   exp (Exp.andalso' (Exp.Set.listItems conditions)) ::
+			   pp.$ " $}$b$c$}then " :: body
+	fun answer (name, value, tail) = 
+          pp.$ " $c" :: pp.te name :: pp.$ " = ${$t$c" :: exp value :: pp.$ "$b$}"
+	  :: tail
+	val answers = if StringMap.numItems answers = 0 then []
+		      else pp.$ "${$t$nwith answers${$t" ::
+			  StringMap.foldli answer [pp.$ "$b$b$}$}"] answers
+    in  pp.li (guarded @ answers)
+    end
+  fun armList smap =
+    let val arm = arm smap
+	fun a's [] = []
+          | a's [a] = [arm a]
+          | a's (h::t) = arm h :: pp.nl :: a's t
+    in  a's
+    end
+
+  fun stdRange {lo, hi} =
+    pp.te (if lo+1 = hi then Int.toString lo
+	   else String.concat [Int.toString lo, "-", Int.toString (hi-1)])
+  fun tree smap =
+    let fun tree (T.NODE {field=(f, n), children}) =
+	   pp.li [pp.te "test ", pp.te (#name f), pp.te " at ", pp.te (Int.toString n),
+		  pp.te ":", pp.i 2, pp.li (map edge children), pp.ou]
+	  | tree (T.LEAF {arms=[], ...}) = pp.te "<NO MATCH>"
+	  | tree (T.LEAF {arms, name}) = 
+              let val arms = pp.li (armList smap arms)
+	      in  case name of SOME n => pp.li [pp.te "[", pp.te n, pp.te "] ", arms]
+	                     | NONE => arms
+	      end
+	and edge (T.EDGE {range=r, node}) =
+	    pp.li [pp.nl, pp.li [pp.$ "${in $3${${", stdRange r,
+				 pp.$ "$b$} $c$}=> $t$c${", tree node, pp.$ "$}$b$}"]]
+    in  fn t => pp.li [tree t, pp.nl, pp.nl]
+    end
+  fun rangeSet set = 
+    PPUtil.commaSeparate (pp.te "??empty-range??") 
+      (map stdRange (RangeSet.listItems set))
+
+  fun arrayImage (D.NAME_ARRAY { field, tbl, uid }) =
+    pp.li ([pp.te "name array ", pp.te (Int.toString uid), pp.$ ": $t${$c" ] 
+	   @ IntMap.foldri
+	     (fn (n, s, tail) => pp.te (Int.toString n) :: pp.te " => " :: 
+	          pp.te s :: (if length tail < 4 then tail else pp.$ ", $o" :: tail))
+	     [pp.$ "$}$b$n"] tbl)
+	                     
+  fun dag smap (node, arrays, arms) =
+    let fun addArray(array, tail) = arrayImage array :: tail
+	fun armsImage [] = pp.te "<NO MATCH>"
+	  | armsImage a's = pp.li (armList smap a's)
+	fun shortArms (_, []) = pp.te "<NO MATCH>"
+	  | shortArms (i, M.ARM (_, {code=(_, region), ...}) :: t) =
+	      pp.li (map pp.te ["arm list ", Int.toString i, " (",
+				SourceMap.locationString smap region, ")"])
+	fun addArm(i, a, tail) = 
+           pp.te "Arm list " :: pp.te (Int.toString i) :: pp.$ ": ${$t$c" ::
+	   armsImage a :: pp.$ "$b$}$n" :: tail
+	fun dag (D.NODE {field=(f, n), children}) =
+	   pp.li [pp.te "test ", pp.te (#name f), pp.te " at ", pp.te (Int.toString n),
+		  pp.te ":", pp.i 2, pp.li (map edge children), pp.ou]
+	  | dag (D.LEAF {arms=armid, name}) = 
+	      (case name
+		 of SOME n => pp.li [pp.te "[", pp.te (D.nameString n), pp.te "] ", 
+				     shortArms(armid, Vector.sub(arms, armid))]
+		  | NONE => shortArms(armid, Vector.sub(arms, armid)))
+	and edge (D.EDGE {range=r, node}) =
+	    pp.li [pp.nl, pp.li [pp.$ "${in $3${${", rangeSet r,
+				 pp.$ "$b$} $c$}=> $t$c${", dag node, pp.$ "$}$b$}"]]
+        val ppnode = [dag node, pp.nl, pp.nl]
+        val pparms = Vector.foldri addArm ppnode (arms, 0, NONE)
+        val pparrays = foldr addArray pparms arrays
+    in  pp.li pparrays
+    end
+
+end

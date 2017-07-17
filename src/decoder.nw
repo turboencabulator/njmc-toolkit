@@ -1,0 +1,92 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Automatically generating a decoder}
+
+Take an elaborated specification and generate a matching statement
+that recognizes all the constructors (by type).
+<<decoder.sig>>=
+signature DECODER = sig
+  structure Match : MATCH
+  structure Constructor : SLED_CONSTRUCTOR
+    sharing Constructor = Match.SledSpec.Constructor
+  type recognized_constructor =
+    { cons : Constructor.constructor
+    , operands : string list
+    }
+  type recognizer = { constype : Constructor.constype
+                    , matcher  : recognized_constructor Match.match
+                    }
+  val decoder : Match.SledSpec.espec -> recognizer list Error.error
+  val tosx : recognized_constructor -> Sx.sx
+end
+@ 
+<<decoder.sml>>=
+functor DecoderFun(Match : MATCH) : DECODER = struct
+  structure Match = Match
+  structure Constructor = Match.SledSpec.Constructor
+
+  structure A = Ast
+  structure M = Match
+  structure S = Match.SledSpec
+  structure P = Match.SledSpec.Patterns
+  structure C = Constructor
+
+  type recognized_constructor =
+    { cons : C.constructor
+    , operands : string list
+    }
+  type recognizer = { constype : C.constype
+                    , matcher  : recognized_constructor Match.match
+                    }
+  <<toplevel>>
+end
+@ 
+To do a really topnotch job of decoder generation, I would recognize
+which constructors are special cases of which other constructors, and
+I would put those first.
+Instead, I take the easy way out, which is just to reverse the order.
+Because we encourage specification writers to put general instructions
+before the special-case synthetic instructions, this often works out.
+<<toplevel>>=
+fun decoder (spec : S.espec) = 
+  Error.errorList (map (recognizer spec) (C.allTypes (#family spec)))
+and recognizer spec constype = 
+  let val members = C.members constype
+      <<arm generation>>
+      val arms = (Error.emap List.concat o Error.errorList) (map arm members)
+      fun answer arms =
+        { constype = constype
+        , matcher = M.MATCH 
+            { value = fn ty => C.Patterns.Exp.var "PC"
+            , succptr = SOME "successor"
+            , arms = rev arms   (* reverse to put synthetics first *)
+            , sourcemap = SourceMap.nullMap
+            , region = SourceMap.nullRegion
+            }
+        }
+  in  Error.emap answer arms
+  end
+@ 
+<<arm generation>>=
+fun arm cons =
+  let val {name, operands, property = {branches, syntax}, ...} = C.info cons
+      val opnames = map #1 operands
+      val code = {cons = cons, operands = opnames}
+      val pat = A.APP(([A.OPCODE name], SourceMap.nullRegion), map A.IDENT opnames)
+  in  M.elabArm (SourceMap.nullMap, spec, C.tag cons, SOME "successor")
+      (pat, [], NONE, code)
+      handle Error.Error (s, b) =>
+        ( Error.errMsg (SourceMap.nullMap, ErrorMsg.defaultConsumer())
+           (("building recognizer for constructor " ^ name ^ " -- " ^ s, b),
+            SourceMap.nullRegion)
+        ; Error.ERROR
+        )
+  end
+@ 
+<<toplevel>>=
+fun tosx {cons, operands} = 
+      let val name = #name (Constructor.info cons)
+      in  SxUtil.list [Sx.ATOM "constructor",
+                       SxUtil.list (map Sx.ATOM (name :: operands))]
+      end
+

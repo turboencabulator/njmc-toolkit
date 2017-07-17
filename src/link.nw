@@ -1,0 +1,277 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: link.nw,v 1.43 1999/11/23 16:25:58 nr Exp $
+<<link1.sml>>=
+functor LinkFun(structure BasicExp : EXP where type exp = UnifiedExp.exp) = struct
+  structure Exp = BoolSetFun(structure Exp = BasicExp)
+  structure Patterns = PatternsFun(Exp)
+  structure FieldExpressions = FieldExpressionsFun(Patterns)
+  structure Constructor : SLED_CONSTRUCTOR =
+      SledConstructorFun(structure Patterns = Patterns
+			 structure Constructor = Constructor)
+
+  val anonymousTypeName = "(anonymous instruction type)"
+  structure Images = ImagesFun(structure Constructor = Constructor
+			       structure Unparser = StdUnparser
+			       val anonymousTypeName = anonymousTypeName)
+
+  structure Denotable = DenotableFun(structure Constructor = Constructor
+				     val expstring = PP.flatten o Images.exp
+				     val patstring = PP.flatten o Images.pure 
+				     val operandstring = Images.operand)
+  structure SledSpec = SledSpecFun(Denotable)
+
+  structure Code = CodeFun(
+    structure Constructor = Denotable.Constructor
+    structure Exp = Exp
+  )
+  
+  structure Image = DenotableImageFun(structure Denotable = Denotable
+				      structure Unparser = StdUnparser
+				      val anonymousTypeName = anonymousTypeName)
+
+  val expstring = PP.flatten o Image.exp
+  val patstring = PP.flatten o Image.pattern
+  structure Simplify = UnifiedSimplifierFun(structure Code = Code
+					    val expstring = expstring)
+
+  (*********
+  local
+    structure S = Simplify
+    structure SS = Simplify.Super
+    fun exp' e = (app print ["SuperSimplify ", expstring e, "\n"]; SS.exp e)
+  in 
+    structure Simplify = struct
+      open S
+      structure Super = struct open SS val exp = exp' end
+    end
+  end
+  *********)
+
+  structure ElabExp = ElabExpFun (structure Denotable = Denotable
+				  val image = Image.exp
+				  val simplify = Simplify.exp)
+
+
+  structure BalancerDebugging = BalancerDebuggingFun(
+     type exp = Exp.exp
+     type condition = Exp.exp
+     val image = Image.exp
+     val conimage = image)
+
+  structure Balancer = BalancerFun(
+    structure Debug = BalancerDebugging
+    structure BX = BXAllFun(structure Debug = BalancerDebugging))
+
+  structure Solver =
+    MalSolverFun(
+      structure Solver = SolverFun(structure Balancer = Balancer
+				   structure Debug = BalancerDebugging
+				   structure Elim = UnifiedElim)
+      val simplify = Simplify.exp
+      structure Exp = Exp)
+
+
+  structure Elaborate = ElaborateFun (structure ElabExp = ElabExp
+				      structure SledSpec = SledSpec
+				      structure FieldExpressions = FieldExpressions
+                                      structure Solve = Solver)
+
+  structure EncodingControl = struct
+    structure Original : ENCODING_CONTROL = OriginalEncodingFun(Code)
+    structure AllData : ENCODING_CONTROL = struct
+      open Original
+      val emitters = EMIT_NONE
+    end
+    structure ML : ENCODING_CONTROL = struct
+      open Original
+      val defineInstanceTypesInImplementation = true
+      val putInstanceConstructorsInInterface = false
+    end
+  end
+
+  structure Match = MatchFun(
+    structure ElabExp = ElabExp
+    structure SledSpec = SledSpec
+    structure Solver = Solver
+    structure Absolute = Patterns.Absolute
+    fun simplify p = p
+    val superSimplify = Simplify.Super.exp
+    structure AbsoluteFieldVars = AbsoluteFieldVars
+    val expimage = Image.exp
+  )
+
+end
+<<link2.sml>>=
+structure ULinked = LinkFun(structure BasicExp = UnifiedComplete)
+
+structure USatisfaction = struct
+  local
+    structure U = UnifiedComplete
+  in
+    fun alwaysSatisfied (U.TRUE) = true
+      | alwaysSatisfied (U.ANDALSO []) = true
+      | alwaysSatisfied (U.ANDALSO l) = List.all alwaysSatisfied l
+      | alwaysSatisfied _ = false
+    fun falsehood (U.FALSE) = true
+      | falsehood (U.ANDALSO l) = List.exists falsehood l
+      | falsehood _ = false
+  end	
+end
+
+(*structure USimplify = UnifiedSimplifierFun(structure Code = ULinked.Code)*)
+
+structure USimplify = ULinked.Simplify
+<<link3.sml>>=
+structure Image = ULinked.Image
+
+structure CControl : C_CONTROL = CControlFun(structure Code = ULinked.Code
+					     structure Image = Image
+					     val expstring = ULinked.expstring
+					     val superSimp = USimplify.Super.exp
+					     val codeSimp = USimplify.Super.code)
+
+structure LinkEncoderBasics = struct
+  
+  val warnedConstructors = ref ULinked.Code.Constructor.Set.empty
+  fun reset() = warnedConstructors := ULinked.Code.Constructor.Set.empty
+    (* improves performance but is not needed for semantics *)
+
+  structure Encode : ENCODER = EncodeFun(
+    val patimage = Image.pure
+    val condsimage = Image.conditions
+    val expstring = ULinked.expstring
+    structure Code = ULinked.Code
+    structure Simplify = USimplify
+    structure FieldExpressions = ULinked.FieldExpressions
+    val warnedConstructors = ref ULinked.Code.Constructor.Set.empty) 
+end
+
+
+functor LinkEncoderFun (structure EControl : ENCODING_CONTROL
+			    where type ty = ULinked.Code.ty) = 
+struct
+  structure Encode = LinkEncoderBasics.Encode
+
+  structure BogusClosure : CLOSURE = struct
+    structure Encoder = Encode
+    open Encoder
+    fun closure (disjunct, conditions) = Code.FAIL ("closures not yet implemented", [])
+  end
+  
+  val instanceTypeName = EControl.instanceTypeName o Encode.Code.Constructor.typeName 
+                          : Encode.Code.constype -> string
+
+  structure StdInstance = StandardInstanceFun(
+    structure Encoder = Encode
+    val typeName = instanceTypeName
+  )
+  structure Instance = StdInstance.Instance
+  val stdInstance = StdInstance.instance
+
+  structure EncodingInterface : ENCODING_GENERATOR = EncodingInterfaceFun(
+    val anonymousTypeName = ULinked.anonymousTypeName
+    structure Closure = BogusClosure
+    structure Control = EControl
+    structure Instance = StdInstance.Instance
+    val patstring = PP.flatten o Image.pattern)
+
+  structure SizeInterface : SIZE_GENERATOR =
+    SizeInterfaceFun(
+      structure Encoder = Encode
+      structure Simplify = USimplify
+      val anonymousTypeName = ULinked.anonymousTypeName)
+
+  structure XformC = XformCFun(
+    structure Code = CControl.Code
+    val tagName = CControl.tagName
+  )
+  
+  structure EmitC = EmitCFun (
+     structure Image = Image
+     val verbose = ErrorMsg.verbose
+     structure Control = CControl
+     structure Exp = ULinked.Exp
+     val alwaysSatisfied = USatisfaction.alwaysSatisfied
+     fun instanceType ct = Type.VAR {interface=NONE, name = instanceTypeName ct}
+     structure Unparser = StdUnparser)
+  
+  structure MLControl : ML_CONTROL = MLControlFun (ULinked.Code)
+  
+  structure ExpMap = BinaryMapFn(struct open ULinked.Exp type ord_key = exp end)
+
+  structure EmitML = EmitMLFun (
+     structure Control = MLControl
+     structure Exp = ULinked.Exp
+     structure ExpMap = ExpMap
+     val alwaysSatisfied = USatisfaction.alwaysSatisfied
+     fun instanceType ct = Type.VAR {interface=NONE, name = instanceTypeName ct}
+     structure Unparser = StdUnparser)
+end
+
+structure AllDataEncoders = 
+  LinkEncoderFun (structure EControl = ULinked.EncodingControl.AllData)
+
+structure OriginalEncoders =
+  LinkEncoderFun (structure EControl = ULinked.EncodingControl.Original)
+<<link4.sml>>=
+structure UTree = TreeFun(structure Match = ULinked.Match
+			  val expimage = ULinked.Image.exp
+			  val tautology = USatisfaction.alwaysSatisfied
+			  val falsehood = USatisfaction.falsehood)
+
+structure UDag = DagFun(structure Tree = UTree)
+
+structure UGencode = GencodeFun
+  (structure Dag = UDag
+   structure Code = ULinked.Code
+   val simplify = USimplify.Super.exp  
+   val codeSimp = USimplify.Super.code 
+   val maxRange = 32
+)
+
+structure UMatchFusion = 
+  MatchFusionFun(
+    structure Match = UGencode.Dag.Tree.Match
+    structure DFusion = DisjunctFusionFun (Match.Patterns)
+    fun announceFusion (p as Match.Patterns.PAT (_, ds),
+                        p' as Match.Patterns.PAT(_, ds')) =
+      if length ds' < length ds then
+        app print ["disjunct fusion reduced ", Int.toString (length ds),
+                   " disjuncts to ", Int.toString (length ds'), " disjuncts.\n",
+                   PP.flatten (ULinked.Images.absolute p), " becomes\n",
+                   PP.flatten (ULinked.Images.absolute p'), ".\n"]
+      else
+        ()
+  )
+
+structure URunDecoder = RunDecoderFun(
+  structure Gencode = UGencode
+  structure Dag = Gencode.Dag
+  structure Tree = Dag.Tree
+  structure Match = Tree.Match
+  structure Decoder = DecoderFun(Match)
+  structure MatchFusion = UMatchFusion
+  structure ReadSLED = ReadSLED
+  structure Code = Gencode.Code
+  structure Exp = Code.Exp
+  fun call(f, args) = Code.EVAL (Exp.call (Exp.var f :: args))
+  val defaultTemplates = 
+    { addressAdd = fn {address, pcUnits} => Exp.add(address, Exp.const pcUnits)
+    , addressToPC = fn x => x : Exp.exp
+    , addressType = Type.INTEGER {signed=false, width=NONE}
+    , fetch = fn {address,width} => Exp.call [Exp.var "fetch", address,Exp.const width]
+    , noMatch = Code.COMMENTED_STMT (call("assert", [Exp.false']), "no match")
+    }
+  val expToSx = ExpToSx.tosx
+  structure EmitC  = OriginalEncoders.EmitC
+  structure EmitML = OriginalEncoders.EmitML
+  structure XformC = OriginalEncoders.XformC
+)
+
+
+
+
+
+
+
+

@@ -1,0 +1,55 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: precedence.nw,v 1.6 1998/11/11 21:59:22 nr Exp $
+\chapter{Building Precedence Functions}
+Both our internal language and the various target languages have
+binary operators with precedence, fixity, and associativity.
+This module provides an auxiliary function used to turn precedence
+tables into precedence functions.
+For some context, see the \inmodule{unparse}{unparsing module}.
+@ 
+To get help with precedence, we supply a list of all operators,
+divided into precedence levels.  All operators at a single level must
+have the same fixity, so we represent a level by
+[[fixity * string list]].
+By supplying the entire list, with the low-precedence items first, we
+can produce two functions:
+\begin{description}
+\item[\texttt{prec}] gives the precedence of any operator.
+\item[\texttt{fixity}] gives the fixity of any precedence level.
+I actually underspecify [[fixity]] so it could be used for
+associativity if need be.
+\end{description}
+I used to have a function \texttt{bracket} that parenthesized
+expressions, but I dropped it in favor of more advanced unparsing technology.
+<<precedence.sig>>=
+signature PRECEDENCE = sig
+  type precedence = int
+  val funs : ('fixity * string list) list ->
+             { prec : string -> precedence
+	     , assoc : precedence -> 'fixity
+             }
+end
+@ 
+Here in the implementation I've keep the old language of
+``associativity'' even though I expect to be using ``fixity'' now.
+<<precedence.sml>>=
+functor PrecedenceFun () : PRECEDENCE = struct
+  type precedence = int
+  fun funs ops =
+    let fun tables(p, [],          prec, assoc) = (prec, assoc)
+          | tables(p, (a, ops)::t, prec, assoc) = 
+              tables(p+1, t,
+                     foldl (fn (opr, prec) => StringMap.insert(prec, opr, p)) prec ops,
+                     IntMap.insert(assoc, p, a))
+        val (ptab, atab) = tables(1, ops, StringMap.empty, IntMap.empty)
+        fun prec rator = 
+          case StringMap.find (ptab, rator)
+            of SOME p => p
+             | NONE => Impossible.impossible ("unknown precedence for operator " ^ rator)
+        fun assoc p =
+          case IntMap.find (atab, p)
+            of SOME a => a
+             | NONE => Impossible.impossible "unknown fixity"
+    in  {prec=prec, assoc=assoc}
+    end
+end

@@ -1,0 +1,1682 @@
+
+
+
+#=====================================================================  lex.icn
+
+
+
+#line 8 "lex.nw"
+global token, tval, file, line
+#line 12 "lex.nw"
+global EOF, IDENT, INT, STRING, TYVAR, CODE, comment_depth
+#line 21 "lex.nw"
+global SEMANTICS, IDENT, STARTSEM, ENDSEM, succptr
+procedure scantokens(eol)
+  static alpha, alphanum, symbol, ambling
+  initial { 
+    alpha      := &letters
+    alphanum   := alpha ++ &digits ++ '_\''
+    symbol     := '!%&$#+-/:<=>?@\~`^|*'
+    ambling    := 1
+    /comment_depth := 0
+    
+#line 14 "lex.nw"
+EOF        := " end of file "
+IDENT      := " identifier "
+INT        := " integer "
+STRING     := " string "
+TYVAR      := " tyvar "
+CODE       := " line of code "
+#line 31 "lex.nw"
+  }
+  
+#line 35 "lex.nw"
+if (pos(1), white() | "", ="%%", pos(0)) then {
+  ambling := if /ambling then 1 else &null
+  return token := tval := "%%"
+}
+if \ambling then {
+  if not pos(0) then {
+    thispos := &pos
+    tval := tab(0)
+    return token := CODE
+  }
+} else {
+  skip_white()
+  if {not pos(0)} then {
+    thispos := &pos
+    if tval := integer(tab(many(&digits))) then {
+      token := INT
+    } else if tval := tab(many(symbol)) then {
+      token := reserved(tval) | IDENT
+    } else if tval := (any(alpha), tab(many(alphanum))) then {
+      token := reserved(tval) | IDENT
+    } else if tval := ="'" || tab(many(alphanum)) then {
+      token := TYVAR
+    } else {
+      token := tval := move(1)
+    }
+    return token
+  }
+}
+#line 33 "lex.nw"
+end
+#line 64 "lex.nw"
+procedure white()
+  suspend tab(many(' \t'))
+end
+
+procedure skip_comments()
+  while comment_depth > 0 do
+    if tab(upto('(*')) then {
+      if ="*)" then
+        comment_depth -:= 1
+      else if ="(*" then 
+        comment_depth +:= 1
+      else 
+        move(1)
+    } else if pos(0) then {
+      return
+    } else 
+      tab(0)
+end
+
+procedure skip_white()
+  skip_comments()
+  # no comment or else pos(0)
+  white()
+  while ="(*" do {
+    comment_depth +:= 1
+    skip_comments()
+    white()
+  }
+  return
+end
+
+
+
+#================================================================  dt-order.icn
+
+
+
+#line 62 "dt-order.nw"
+#line 4 "dt-order.nw"
+#====== link ebnflex
+procedure reserved(w)
+  static words
+  initial words := set([
+    "%%",
+    "(",
+    ")",
+    "*",
+    ",",
+    "->",
+    ".",
+    ":",
+    "=",
+    "and",
+    "datatype",
+    "of",
+    "op",
+    "type",
+    "withtype",
+    "{",
+    "|",
+    "}",
+    "."])
+  if member(words, w) then return w
+end
+procedure P_Input()
+    local ii1, ii2
+
+    case token of {
+        "%%" | CODE | EOF : # Input : Input_1 Input_2
+            return {
+                ii1 :=  P_Input_1()
+                ii2 :=  P_Input_2()
+#line 25 "dt-order.nw"
+             inputfile(ii1, ii2) 
+#line 1000"generated code"
+            }
+        default : error("syntax error parsing Input:\n\texpected '%%', CODE, or end of file")
+    }
+end
+
+procedure P_Input_2()
+
+    case token of {
+        "%%" | EOF : # Input_2 : {Input_2_1}
+            return {
+                ii1 := []
+                while token == ("%%") do
+                    put(ii1,  P_Input_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Input_2:\n\texpected '%%' or end of file")
+    }
+end
+
+procedure P_Input_2_1()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        "%%" : # Input_2_1 : "%%" Input_2_1_1 "%%" Input_2_1_2
+            return {
+                ii1 :=  expect("%%", "Input_2_1")
+                ii2 :=  P_Input_2_1_1()
+                ii3 :=  expect("%%", "Input_2_1")
+                ii4 :=  P_Input_2_1_2()
+#line 24 "dt-order.nw"
+             decorated_nest(ii2, ii4) 
+#line 2000"generated code"
+            }
+        default : error("syntax error parsing Input_2_1:\n\texpected '%%'")
+    }
+end
+
+procedure P_Input_2_1_2()
+
+    case token of {
+        "%%" | CODE | EOF : # Input_2_1_2 : {Input_2_1_2_1}
+            return {
+                ii1 := []
+                while token == (CODE) do
+                    put(ii1,  P_Input_2_1_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Input_2_1_2:\n\texpected '%%', CODE, or end of file")
+    }
+end
+
+procedure P_Input_2_1_2_1()
+    local ii1
+
+    case token of {
+        CODE : # Input_2_1_2_1 : CODE
+            return {
+                ii1 :=  expect(CODE, "Input_2_1_2_1")
+#line 24 "dt-order.nw"
+            ii1
+#line 3000"generated code"
+            }
+        default : error("syntax error parsing Input_2_1_2_1:\n\texpected CODE")
+    }
+end
+
+procedure P_Input_2_1_1()
+
+    case token of {
+        "%%" | "datatype" | "type" : # Input_2_1_1 : {TypeNest}
+            return {
+                ii1 := []
+                while token == ("datatype" | "type") do
+                    put(ii1,  P_TypeNest()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Input_2_1_1:\n\texpected '%%', 'datatype', or 'type'")
+    }
+end
+
+procedure P_Input_1()
+
+    case token of {
+        "%%" | CODE | EOF : # Input_1 : {Input_1_1}
+            return {
+                ii1 := []
+                while token == (CODE) do
+                    put(ii1,  P_Input_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Input_1:\n\texpected '%%', CODE, or end of file")
+    }
+end
+
+procedure P_Input_1_1()
+    local ii1
+
+    case token of {
+        CODE : # Input_1_1 : CODE
+            return {
+                ii1 :=  expect(CODE, "Input_1_1")
+#line 24 "dt-order.nw"
+            ii1
+#line 4000"generated code"
+            }
+        default : error("syntax error parsing Input_1_1:\n\texpected CODE")
+    }
+end
+
+procedure P_TypeNest()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        "datatype" : # TypeNest : "datatype" Datatype TypeNest_1 TypeNest_2
+            return {
+                ii1 :=  expect("datatype", "TypeNest")
+                ii2 :=  P_Datatype()
+                ii3 :=  P_TypeNest_1()
+                ii4 :=  P_TypeNest_2()
+#line 28 "dt-order.nw"
+             typenest(push(ii3, ii2), \ii4 | []) 
+#line 5000"generated code"
+            }
+        "type" : # TypeNest : "type" TypeBinding
+            return {
+                ii1 :=  expect("type", "TypeNest")
+                ii2 :=  P_TypeBinding()
+#line 30 "dt-order.nw"
+            ii2
+#line 6000"generated code"
+            }
+        default : error("syntax error parsing TypeNest:\n\texpected 'datatype' or 'type'")
+    }
+end
+
+procedure P_TypeNest_2()
+
+    case token of {
+        "%%" | "datatype" | "type" | "withtype" : # TypeNest_2 : [TypeNest_2_1]
+            return {
+                ii1 := &null
+                if token == ("withtype") then
+                    ii1 := ( P_TypeNest_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TypeNest_2")
+    }
+end
+
+procedure P_TypeNest_2_1()
+    local ii1, ii2, ii3
+
+    case token of {
+        "withtype" : # TypeNest_2_1 : "withtype" TypeBinding TypeNest_2_1_1
+            return {
+                ii1 :=  expect("withtype", "TypeNest_2_1")
+                ii2 :=  P_TypeBinding()
+                ii3 :=  P_TypeNest_2_1_1()
+#line 27 "dt-order.nw"
+             push(ii3, ii2) 
+#line 7000"generated code"
+            }
+        default : error("syntax error parsing TypeNest_2_1:\n\texpected 'withtype'")
+    }
+end
+
+procedure P_TypeNest_2_1_1()
+
+    case token of {
+        "%%" | "and" | "datatype" | "type" : # TypeNest_2_1_1 : {TypeNest_2_1_1_1}
+            return {
+                ii1 := []
+                while token == ("and") do
+                    put(ii1,  P_TypeNest_2_1_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TypeNest_2_1_1")
+    }
+end
+
+procedure P_TypeNest_2_1_1_1()
+    local ii1, ii2
+
+    case token of {
+        "and" : # TypeNest_2_1_1_1 : "and" TypeBinding
+            return {
+                ii1 :=  expect("and", "TypeNest_2_1_1_1")
+                ii2 :=  P_TypeBinding()
+#line 27 "dt-order.nw"
+            ii2
+#line 8000"generated code"
+            }
+        default : error("syntax error parsing TypeNest_2_1_1_1:\n\texpected 'and'")
+    }
+end
+
+procedure P_TypeNest_1()
+
+    case token of {
+        "%%" | "and" | "datatype" | "type" | "withtype" : # TypeNest_1 : {TypeNest_1_1}
+            return {
+                ii1 := []
+                while token == ("and") do
+                    put(ii1,  P_TypeNest_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TypeNest_1")
+    }
+end
+
+procedure P_TypeNest_1_1()
+    local ii1, ii2
+
+    case token of {
+        "and" : # TypeNest_1_1 : "and" Datatype
+            return {
+                ii1 :=  expect("and", "TypeNest_1_1")
+                ii2 :=  P_Datatype()
+#line 26 "dt-order.nw"
+            ii2
+#line 9000"generated code"
+            }
+        default : error("syntax error parsing TypeNest_1_1:\n\texpected 'and'")
+    }
+end
+
+procedure P_TypeBinding()
+    local ii1, ii2, ii3
+
+    case token of {
+        "(" | IDENT | TYVAR : # TypeBinding : TyconDecl "=" Type
+            return {
+                ii1 :=  P_TyconDecl()
+                ii2 :=  expect("=", "TypeBinding")
+                ii3 :=  P_Type()
+#line 31 "dt-order.nw"
+             typeabbrev(ii1, ii3) 
+#line 10000"generated code"
+            }
+        default : error("syntax error parsing TypeBinding:\n\texpected '(', IDENT, or TYVAR")
+    }
+end
+
+procedure P_Datatype()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        "(" | IDENT | TYVAR : # Datatype : TyconDecl "=" Constructor Datatype_1
+            return {
+                ii1 :=  P_TyconDecl()
+                ii2 :=  expect("=", "Datatype")
+                ii3 :=  P_Constructor()
+                ii4 :=  P_Datatype_1()
+#line 33 "dt-order.nw"
+             datatype(ii1, push(ii4, ii3)) 
+#line 11000"generated code"
+            }
+        default : error("syntax error parsing Datatype:\n\texpected '(', IDENT, or TYVAR")
+    }
+end
+
+procedure P_Datatype_1()
+
+    case token of {
+        "%%" | "and" | "datatype" | "type" | "withtype" | "|" : # Datatype_1 : {Datatype_1_1}
+            return {
+                ii1 := []
+                while token == ("|") do
+                    put(ii1,  P_Datatype_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Datatype_1")
+    }
+end
+
+procedure P_Datatype_1_1()
+    local ii1, ii2
+
+    case token of {
+        "|" : # Datatype_1_1 : "|" Constructor
+            return {
+                ii1 :=  expect("|", "Datatype_1_1")
+                ii2 :=  P_Constructor()
+#line 32 "dt-order.nw"
+            ii2
+#line 12000"generated code"
+            }
+        default : error("syntax error parsing Datatype_1_1:\n\texpected '|'")
+    }
+end
+
+procedure P_TyconDecl()
+    local ii1, ii2
+
+    case token of {
+        "(" | IDENT | TYVAR : # TyconDecl : Tyseq Ident
+            return {
+                ii1 :=  P_Tyseq()
+                ii2 :=  P_Ident()
+#line 34 "dt-order.nw"
+             tycon(ii2, ii1) 
+#line 13000"generated code"
+            }
+        default : error("syntax error parsing TyconDecl:\n\texpected '(', IDENT, or TYVAR")
+    }
+end
+
+procedure P_Tyseq()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        IDENT : # Tyseq :
+            return {
+#line 35 "dt-order.nw"
+             [] 
+#line 14000"generated code"
+            }
+        TYVAR : # Tyseq : Tyvar
+            return {
+                ii1 :=  P_Tyvar()
+#line 36 "dt-order.nw"
+             [ii1] 
+#line 15000"generated code"
+            }
+        "(" : # Tyseq : "(" Tyvar Tyseq_1 ")"
+            return {
+                ii1 :=  expect("(", "Tyseq")
+                ii2 :=  P_Tyvar()
+                ii3 :=  P_Tyseq_1()
+                ii4 :=  expect(")", "Tyseq")
+#line 37 "dt-order.nw"
+             push(ii3, ii2) 
+#line 16000"generated code"
+            }
+        default : error("syntax error parsing Tyseq:\n\texpected '(', IDENT, or TYVAR")
+    }
+end
+
+procedure P_Tyseq_1()
+
+    case token of {
+        ")" | "," : # Tyseq_1 : {Tyseq_1_1}
+            return {
+                ii1 := []
+                while token == (",") do
+                    put(ii1,  P_Tyseq_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Tyseq_1:\n\texpected ')' or ','")
+    }
+end
+
+procedure P_Tyseq_1_1()
+    local ii1, ii2
+
+    case token of {
+        "," : # Tyseq_1_1 : "," Tyvar
+            return {
+                ii1 :=  expect(",", "Tyseq_1_1")
+                ii2 :=  P_Tyvar()
+#line 37 "dt-order.nw"
+            ii2
+#line 17000"generated code"
+            }
+        default : error("syntax error parsing Tyseq_1_1:\n\texpected ','")
+    }
+end
+
+procedure P_Constructor()
+    local ii1, ii2
+
+    case token of {
+        "op" | IDENT : # Constructor : Nonfix Constructor_1
+            return {
+                ii1 :=  P_Nonfix()
+                ii2 :=  P_Constructor_1()
+#line 39 "dt-order.nw"
+             constructor(ii1, ii2) 
+#line 18000"generated code"
+            }
+        default : error("syntax error parsing Constructor:\n\texpected 'op' or IDENT")
+    }
+end
+
+procedure P_Constructor_1()
+
+    case token of {
+        "%%" | "and" | "datatype" | "of" | "type" | "withtype" | "|" : # Constructor_1 : [Constructor_1_1]
+            return {
+                ii1 := &null
+                if token == ("of") then
+                    ii1 := ( P_Constructor_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Constructor_1")
+    }
+end
+
+procedure P_Constructor_1_1()
+    local ii1, ii2
+
+    case token of {
+        "of" : # Constructor_1_1 : "of" Type
+            return {
+                ii1 :=  expect("of", "Constructor_1_1")
+                ii2 :=  P_Type()
+#line 39 "dt-order.nw"
+            ii2
+#line 19000"generated code"
+            }
+        default : error("syntax error parsing Constructor_1_1:\n\texpected 'of'")
+    }
+end
+
+procedure P_Type()
+    local ii1, ii2
+
+    case token of {
+        "(" | "{" | IDENT | TYVAR : # Type : TupleType Type_1
+            return {
+                ii1 :=  P_TupleType()
+                ii2 :=  P_Type_1()
+#line 40 "dt-order.nw"
+             arrowty(ii1, \ii2) | ii1 
+#line 20000"generated code"
+            }
+        default : error("syntax error parsing Type")
+    }
+end
+
+procedure P_Type_1()
+
+    case token of {
+        "%%" | ")" | "," | "->" | "and" | "datatype" | "type" | "withtype" | "|" | "}" : # Type_1 : [Type_1_1]
+            return {
+                ii1 := &null
+                if token == ("->") then
+                    ii1 := ( P_Type_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Type_1")
+    }
+end
+
+procedure P_Type_1_1()
+    local ii1, ii2
+
+    case token of {
+        "->" : # Type_1_1 : "->" Type
+            return {
+                ii1 :=  expect("->", "Type_1_1")
+                ii2 :=  P_Type()
+#line 40 "dt-order.nw"
+            ii2
+#line 21000"generated code"
+            }
+        default : error("syntax error parsing Type_1_1:\n\texpected '->'")
+    }
+end
+
+procedure P_TupleType()
+    local ii1, ii2
+
+    case token of {
+        "(" | "{" | IDENT | TYVAR : # TupleType : Element TupleType_1
+            return {
+                ii1 :=  P_Element()
+                ii2 :=  P_TupleType_1()
+#line 42 "dt-order.nw"
+             push(ii2, ii1)
+                            if *ii2 = 1 then ii2[1] else tuplety(ii2) 
+#line 22000"generated code"
+            }
+        default : error("syntax error parsing TupleType")
+    }
+end
+
+procedure P_TupleType_1()
+
+    case token of {
+        "%%" | ")" | "*" | "," | "->" | "and" | "datatype" | "type" | "withtype" | "|" | "}" : # TupleType_1 : {TupleType_1_1}
+            return {
+                ii1 := []
+                while token == ("*") do
+                    put(ii1,  P_TupleType_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TupleType_1")
+    }
+end
+
+procedure P_TupleType_1_1()
+    local ii1, ii2
+
+    case token of {
+        "*" : # TupleType_1_1 : "*" Element
+            return {
+                ii1 :=  expect("*", "TupleType_1_1")
+                ii2 :=  P_Element()
+#line 41 "dt-order.nw"
+            ii2
+#line 23000"generated code"
+            }
+        default : error("syntax error parsing TupleType_1_1:\n\texpected '*'")
+    }
+end
+
+procedure P_TypeArg()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        IDENT : # TypeArg : Name
+            return P_Name()
+        TYVAR : # TypeArg : Tyvar
+            return P_Tyvar()
+        "(" : # TypeArg : "(" Type TypeArg_1 ")"
+            return {
+                ii1 :=  expect("(", "TypeArg")
+                ii2 :=  P_Type()
+                ii3 :=  P_TypeArg_1()
+                ii4 :=  expect(")", "TypeArg")
+#line 53 "dt-order.nw"
+             if *ii3 = 0 then ii2 else push(ii3, ii2) 
+#line 24000"generated code"
+            }
+        "{" : # TypeArg : "{" RecordElement TypeArg_2 "}"
+            return {
+                ii1 :=  expect("{", "TypeArg")
+                ii2 :=  P_RecordElement()
+                ii3 :=  P_TypeArg_2()
+                ii4 :=  expect("}", "TypeArg")
+#line 44 "dt-order.nw"
+             recordty(push(ii3, ii2)) 
+#line 25000"generated code"
+            }
+        default : error("syntax error parsing TypeArg")
+    }
+end
+
+procedure P_TypeArg_2()
+
+    case token of {
+        "," | "}" : # TypeArg_2 : {TypeArg_2_1}
+            return {
+                ii1 := []
+                while token == (",") do
+                    put(ii1,  P_TypeArg_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TypeArg_2:\n\texpected ',' or '}'")
+    }
+end
+
+procedure P_TypeArg_2_1()
+    local ii1, ii2
+
+    case token of {
+        "," : # TypeArg_2_1 : "," RecordElement
+            return {
+                ii1 :=  expect(",", "TypeArg_2_1")
+                ii2 :=  P_RecordElement()
+#line 44 "dt-order.nw"
+            ii2
+#line 26000"generated code"
+            }
+        default : error("syntax error parsing TypeArg_2_1:\n\texpected ','")
+    }
+end
+
+procedure P_TypeArg_1()
+
+    case token of {
+        ")" | "," : # TypeArg_1 : {TypeArg_1_1}
+            return {
+                ii1 := []
+                while token == (",") do
+                    put(ii1,  P_TypeArg_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing TypeArg_1:\n\texpected ')' or ','")
+    }
+end
+
+procedure P_TypeArg_1_1()
+    local ii1, ii2
+
+    case token of {
+        "," : # TypeArg_1_1 : "," Type
+            return {
+                ii1 :=  expect(",", "TypeArg_1_1")
+                ii2 :=  P_Type()
+#line 52 "dt-order.nw"
+            ii2
+#line 27000"generated code"
+            }
+        default : error("syntax error parsing TypeArg_1_1:\n\texpected ','")
+    }
+end
+
+procedure P_RecordElement()
+    local ii1, ii2, ii3
+
+    case token of {
+        IDENT : # RecordElement : Ident ":" Type
+            return {
+                ii1 :=  P_Ident()
+                ii2 :=  expect(":", "RecordElement")
+                ii3 :=  P_Type()
+#line 45 "dt-order.nw"
+             recordmember(ii1, ii3) 
+#line 28000"generated code"
+            }
+        default : error("syntax error parsing RecordElement:\n\texpected IDENT")
+    }
+end
+
+procedure P_Element()
+    local ii1, ii2
+
+    case token of {
+        "(" | "{" | IDENT | TYVAR : # Element : TypeArg Element_1
+            return {
+                ii1 :=  P_TypeArg()
+                ii2 :=  P_Element_1()
+#line 48 "dt-order.nw"
+             typeargs_to_apps(push(ii2, ii1)) 
+#line 29000"generated code"
+            }
+        default : error("syntax error parsing Element")
+    }
+end
+
+procedure P_Element_1()
+
+    case token of {
+        "%%" | "(" | ")" | "*" | "," | "->" | "and" | "datatype" | "type" | "withtype" | "{" | "|" | "}" | IDENT | TYVAR : # Element_1 : {TypeArg}
+            return {
+                ii1 := []
+                while token == ("(" | "{" | IDENT | TYVAR) do
+                    put(ii1,  P_TypeArg()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Element_1")
+    }
+end
+
+procedure P_Ident()
+    local ii1
+
+    case token of {
+        IDENT : # Ident : IDENT
+            return {
+                ii1 :=  expect(IDENT, "Ident")
+#line 55 "dt-order.nw"
+            ii1
+#line 30000"generated code"
+            }
+        default : error("syntax error parsing Ident:\n\texpected IDENT")
+    }
+end
+
+procedure P_Tyvar()
+    local ii1
+
+    case token of {
+        TYVAR : # Tyvar : TYVAR
+            return {
+                ii1 :=  expect(TYVAR, "Tyvar")
+#line 56 "dt-order.nw"
+            ii1
+#line 31000"generated code"
+            }
+        default : error("syntax error parsing Tyvar:\n\texpected TYVAR")
+    }
+end
+
+procedure P_Nonfix()
+    local ii1, ii2
+
+    case token of {
+        "op" : # Nonfix : "op" Ident
+            return {
+                ii1 :=  expect("op", "Nonfix")
+                ii2 :=  P_Ident()
+#line 57 "dt-order.nw"
+             insert(infixids, ii2); ii2 
+#line 32000"generated code"
+            }
+        IDENT : # Nonfix : Ident
+            return P_Ident()
+        default : error("syntax error parsing Nonfix:\n\texpected 'op' or IDENT")
+    }
+end
+
+procedure P_Name()
+    local ii1, ii2
+
+    case token of {
+        IDENT : # Name : Ident Name_1
+            return {
+                ii1 :=  P_Ident()
+                ii2 :=  P_Name_1()
+#line 60 "dt-order.nw"
+             longname(push(ii2, ii1)) 
+#line 33000"generated code"
+            }
+        default : error("syntax error parsing Name:\n\texpected IDENT")
+    }
+end
+
+procedure P_Name_1()
+
+    case token of {
+        "%%" | "(" | ")" | "*" | "," | "->" | "." | "and" | "datatype" | "type" | "withtype" | "{" | "|" | "}" | IDENT | TYVAR : # Name_1 : {Name_1_1}
+            return {
+                ii1 := []
+                while token == (".") do
+                    put(ii1,  P_Name_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Name_1")
+    }
+end
+
+procedure P_Name_1_1()
+    local ii1, ii2
+
+    case token of {
+        "." : # Name_1_1 : "." Ident
+            return {
+                ii1 :=  expect(".", "Name_1_1")
+                ii2 :=  P_Ident()
+#line 60 "dt-order.nw"
+            ii2
+#line 34000"generated code"
+            }
+        default : error("syntax error parsing Name_1_1:\n\texpected '.'")
+    }
+end
+
+record inputfile(preamble, nests)
+record decorated_nest(nest, postamble)
+record typenest(datatypes, types)
+record typeabbrev(tycon, ty)
+record datatype(tycon, constructors)
+record tycon(name, args)
+record constructor(name, ty)
+record arrowty(arg, ret)
+record tuplety(elements)
+record recordty(elements)
+record recordmember(name, ty)
+record appty(name, args)
+record longname(idents)
+global infixids
+#line 68 "dt-order.nw"
+procedure typeargs_to_apps(args)
+  return case *args of {
+    0 : impossible("this can't happen --- type arguments")
+    1 : apply_tycon(args[-1], [])
+    2 : if type(args[-2]) == "list" then 
+          apply_tycon(args[-1], args[-2])
+        else 
+          apply_tycon(pull(args), [typeargs_to_apps(args)])
+    default : apply_tycon(pull(args), [typeargs_to_apps(args)])
+  }
+end
+
+procedure apply_tycon(con, args)
+  return if type(con) == ("string"|"longname") then appty(con, args)
+         else if *args = 0 & type(con) == ("tuplety"|"recordty") then con
+         else error("type constructor ", tyimage(con), " is not a name") 
+end
+#line 86 "dt-order.nw"
+#====== link openfile
+global shortnames
+global less, equal, greater
+procedure main(args)
+    
+#line 23 "dt-order.nw"
+infixids := set()
+#line 91 "dt-order.nw"
+    less := "LESS"; equal := "EQUAL"; greater := "GREATER"
+    if args[1] == "-impossible" then {get(args); error := impossible}
+    if args[1] == "-short" then shortnames := get(args)
+    if *args > 0 then
+        every consume(openfile(filename := !args,"r"))
+    else
+        consume(&input)
+end
+#line 100 "dt-order.nw"
+procedure consume(input)
+    local nest
+    lex(input)
+    everything := P_Input()
+    
+#line 128 "dt-order.nw"
+while (token ~== EOF) do {
+    error("Leftover token ", token, " = ", image(tval))
+    lex()
+}
+#line 105 "dt-order.nw"
+####	pp := PPnew(&errout)
+####	every PPxwrite(pp, pptyimage(!types))
+    pp := PPnew(&output)    
+    every write(!\everything.preamble)
+    if *everything.nests = 0 then error("did not ask for any ordering functions")
+    every nest := !everything.nests do {
+	types := nest.nest
+        every t := !types do
+          case type(t) of {
+            "typenest" : {
+pushtrace("NEST")
+               pfx := "fun"
+               every emit_orderfun (pp, !t.datatypes, pfx) do pfx := "and"
+               every emit_typeorder(pp, !t.types,     pfx) do pfx := "and"
+poptrace()
+             }
+            "typeabbrev" : emit_typeorder(pp, t)
+	  }
+	every write(!\nest.postamble)
+    }
+    return
+end
+#line 135 "dt-order.nw"
+#====== link pushtrace
+#====== link maplist, commafy, pretty
+procedure tyimage(ty, pp)
+  return case type(ty) of {
+    "typeabbrev" : "type " || tyimage(ty.tycon, pp) || pp.in || " = " || 
+	            pp.on || tyimage(ty.ty, pp) || pp.ou || pp.nl
+    "typenest" : "datatype " || pp.in || 
+                  commaseparate(maplist2(tyimage, ty.datatypes, pp), 
+			        pp.ou || pp.nl || "and " || pp.in) || pp.ou ||
+                  if *ty.types > 0 then
+                    "withtype " || pp.in || 
+		      commaseparate(maplist2(tyimage, ty.types, pp), 
+				    pp.ou || pp.nl || "and " || pp.in) || pp.ou
+		  else
+		      ""
+    "datatype" : tyimage(ty.tycon, pp) || pp.in || pp.nl || " = " || pp.in ||
+	             commaseparate(maplist2(tyimage, ty.constructors, pp), 
+			        pp.ou || pp.nl || " | " || pp.in) || pp.ou || pp.ou
+    "tycon" : argsimage(ty.args, pp) || ty.name
+    "constructor" : 
+       nonfix(ty.name) || if /ty.ty then "" else " of " || tyimage(ty.ty, pp)
+    "arrowty" : "(" || tyimage(ty.arg, pp) || " -> " || tyimage(ty.ret, pp) || ")"
+    "tuplety" : "(" || commaseparate(maplist2(tyimage, ty.elements, pp), " * ") || ")"
+    "recordty" : "{" || commaseparate(maplist2(tyimage, ty.elements, pp), ", ") || "}"
+    "recordmember" : ty.name || " : " || tyimage(ty.ty, pp)
+    "appty" : argsimage(ty.args, pp) || tyimage(ty.name, pp)
+    "string" : ty
+    "longname" : commaseparate(maplist2(tyimage, ty.idents, pp), ".")
+    default : impossible("bad type ", image(ty))
+  }
+end
+
+procedure argsimage(args, pp)
+  return case *args of {
+    0 : ""
+    1 : tyimage(args[1]) || " "
+    default : "(" || commaseparate(maplist(tyimage, args, pp)) || ") "
+  }
+end
+
+record ppspec(be, en, in, ou, nl, on, cn) # { } t b m o c
+
+procedure pptyimage(ty)
+  static pp
+  initial pp := ppspec("${", "$}", "$t", "$b", "$n", "$o", "$c")
+  return tyimage(ty, pp)
+end
+#line 186 "dt-order.nw"
+procedure emit_orderfun(pp, ty, prefix)
+  type(ty) == "datatype" | impossible("ordering ", image(ty))
+  N := *ty.constructors
+  /prefix := "fun"
+  
+#line 332 "dt-order.nw"
+orderargs := argsyntax(maplist(ordername, ty.tycon.args))
+#line 191 "dt-order.nw"
+pushtrace("ORDER")
+  every (i := 1 to N & j := i) | (i := 1 to N & j := 1 to N & i ~= j) do {
+    PPxwrites(pp, prefix, " ", ordername(ty.tycon.name), orderargs, " ")
+    prefix := "  |"
+    if i ~= j then
+      PPxwrites(pp, "(", wildmatch(ty.constructors[i]), ", ", 
+                         wildmatch(ty.constructors[j]), ") = ", 
+		    if i < j then less else greater)
+    else {
+      PPxwrites(pp, "(", conmatch(ty.constructors[i], "L"), ", ", 
+                         conmatch(ty.constructors[j], "R"), ") = $t$t$o")
+      
+#line 211 "dt-order.nw"
+cons := ty.constructors[i]
+case type(cons.ty) of {
+  "null" : PPxwrites(pp, equal)
+  "arrowty" : error("Can't order arrow types")
+  "appty" : PPxwrites(pp, orderfun(cons.ty), " (L, R)")
+  "tuplety" | "recordty" :
+    casenest(pp, cons.ty.elements, testindices(indextab(cons.ty)))
+  default : impossible("unknown type")
+}
+#line 203 "dt-order.nw"
+      PPxwrites(pp, "$b$b")
+    }
+    PPxwrite(pp)
+  }
+poptrace()
+  return
+end
+#line 222 "dt-order.nw"
+procedure emit_typeorder(pp, ty, prefix)
+  /prefix := "fun"
+  orderargs := argsyntax(maplist(ordername, ty.tycon.args))
+  PPxwrites(pp, prefix, " ", ordername(ty.tycon.name), orderargs, " ")
+  prefix := "  |"
+  PPxwrites(pp, "(", typematch(ty.ty, "L"), ", ", typematch(ty.ty, "R"), ") = $t$t$o")
+  
+#line 234 "dt-order.nw"
+case type(ty.ty) of {
+  "arrowty" : error("Can't order arrow types")
+  "appty" : PPxwrites(pp, orderfun(ty.ty), " (L, R)")
+  "tuplety"  |
+  "recordty" : casenest(pp, ty.ty.elements, testindices(indextab(ty.ty)))
+  default : impossible("unknown type" || image(type(ty.ty)))
+}
+#line 229 "dt-order.nw"
+  PPxwrite(pp, "$b$b")
+  return
+end
+#line 242 "dt-order.nw"
+procedure casenest(pp, elements, indexpairs)
+  static diff
+  local test
+  initial diff := "diff"
+  if k := get(indexpairs) then {
+    test := orderfun(k[2]) || " (L" ||  k[1] || ", R" || k[1] || ")"
+    if not indexpairs[1] then
+      PPxwrites(pp, "${", test, "$}")
+    else {
+      PPxwrites(pp, "$t $n${(case ", test, " $t")
+      PPxwrites(pp, "$cof ", equal, "   => $t$t$o")
+      casenest(pp, elements, indexpairs)
+      PPxwrites(pp, "$b$b")
+      PPxwrites(pp, "$c | ", diff, "    => ", diff)
+    # PPxwrites(pp, "$c | ", less, "    => ", less)
+    # PPxwrites(pp, "$c | ", greater, " => ", greater)
+      PPxwrites(pp, "$b)$}$b")
+    }
+  } else {
+    PPxwrites(pp, equal)
+  }
+  return
+end
+#line 269 "dt-order.nw"
+procedure orderfun(ty) 
+  return case type(ty) of {
+    "arrowty" : error("Can't order arrow types")
+    "tuplety" : tuple_orderfun(ty)
+    "recordty" : tuple_orderfun(ty)
+    "appty" : ordername(ty.name) || argsyntax(maplist(bracket_orderfun, ty.args))
+    default : impossible("ordering type ", image(ty))
+  }
+end
+
+procedure argsyntax(l)
+  return case *l of {
+    0 : ""
+    1 : " " || l[1]
+    default : " (" || commaseparate(l) || ")"
+  }
+end
+
+procedure bracket_orderfun(ty)
+  s := orderfun(ty)
+  return if upto(' ', s) then "(" || s || ")" else s
+end
+#line 295 "dt-order.nw"
+procedure tuple_orderfun(ty)
+  type(ty) == ("tuplety"|"recordty") | impossible("tuple ordering ", tyimage(ty))
+  pp := PPnew("")
+  PPxwrites(pp, "(fn (", typematch(ty, "L"), ", ",
+                         typematch(ty, "R"), ") => $t$t$o")
+  casenest(pp, ty.elements, testindices(indextab(ty)))
+  PPxwrite(pp, ")")
+  return pp.file[1:-1]
+end
+#line 308 "dt-order.nw"
+procedure testindices(tab)
+  local ints, bools, chars, reals, strings, others, l
+  every ints | bools | chars | reals | strings | others := []
+  every p := !sort(tab) do
+    put(case primitive_type(p[2]) of {
+          "int"    : ints
+	  "bool"   : bools
+	  "char"   : chars
+	  "real"   : reals
+	  "string" : strings
+	  default  : others
+	}, p)
+  return ints ||| bools ||| chars ||| reals ||| strings ||| others
+end
+
+procedure primitive_type(ty)
+  if type(ty) == "appty" & *ty.args = 0 & 
+     type(ty.name) == "longname" & *ty.name.idents == 1 then 
+    return ty.name.idents[1] 
+  else 
+    return
+end
+#line 334 "dt-order.nw"
+procedure wildmatch(con)
+  return if /con.ty then nonfix(con.name) else nonfix(con.name) || " _"
+end
+
+procedure conmatch(con, prefix)
+  return if /con.ty then nonfix(con.name)
+         else nonfix(con.name) || " " || typematch(con.ty, prefix)
+end
+#line 346 "dt-order.nw"
+procedure typematch(ty, prefix, suffix)
+  /suffix := ""
+  return case type(ty) of {
+    "tuplety"  : tuplematch(ty.elements, prefix, suffix)
+    "recordty" : recordmatch(ty.elements, prefix, suffix)
+    default    : prefix
+  }
+end
+
+procedure tuplematch(elements, prefix, suffix)
+  *elements > 1 | impossible("tuple type")
+  l := []
+  every i := 1 to *elements do
+    put(l, case type(ty := elements[i]) of {
+        "tuplety"  : tuplematch (ty.elements, prefix, suffix || i || "_")
+        "recordty" : recordmatch(ty.elements, prefix, suffix || i || "_")
+        default : prefix || suffix || i
+      })
+  return "(" || commaseparate(l) || ")"
+end
+
+procedure recordmatch(elements, prefix, suffix)
+  l := []
+  every i := 1 to *elements do
+    put(l, case type(ty := elements[i]) of {
+        "tuplety"  : tuplematch (ty.elements, prefix, suffix || i || "_")
+        "recordty" : recordmatch(ty.elements, prefix, suffix || i || "_")
+        default : ty.name || "=" || prefix || suffix || i
+      })
+  return "{" || commaseparate(l) || "}"
+end
+#line 380 "dt-order.nw"
+procedure indextab(ty, tab, suffix)
+  /tab := table()
+  /suffix := ""
+  case type(ty) of {
+    "tuplety"  : tupleindex(ty.elements, tab, suffix)
+    "recordty" : recordindex(ty.elements, tab, suffix)
+  }
+  return tab
+end
+
+procedure tupleindex(elements, tab, suffix)
+  *elements > 1 | impossible("tuple type")
+  every i := 1 to *elements do
+    case type(ty := elements[i]) of {
+      "tuplety"  : tupleindex (ty.elements, tab, suffix || i || "_")
+      "recordty" : recordindex(ty.elements, tab, suffix || i || "_")
+      default : tab[suffix || i] := ty
+    }
+  return tab
+end
+
+procedure recordindex(elements, tab, suffix)
+  every i := 1 to *elements do
+    case type(ty := elements[i]) of {
+      "tuplety"  : tupleindex (ty.elements, tab, suffix || i || "_")
+      "recordty" : recordindex(ty.elements, tab, suffix || i || "_")
+      default : tab[suffix || i] := ty.ty
+    }
+  return tab
+end
+#line 411 "dt-order.nw"
+procedure ordername(name)
+  static ordertypes
+  initial ordertypes := set(["int", "bool", "char", "string", "list", "unit", "option"])
+  return case type(name) of {
+    "string" : 
+       case name of {
+         "int" : "Int.compare"
+         "string" : "String.compare"
+         default :
+	     (if member(ordertypes, name) then "Order." else "") || "compare'" || name
+       }
+    "longname" : if \shortnames then ordername(name.idents[-1]) else  {
+       s := ""
+       every s ||:= name.idents[1 to *name.idents - 1] || "."
+       s || ordername(name.idents[-1])
+    }
+  }
+end
+
+procedure nonfix(name)
+  return if member(infixids, name) then "op " || name else name
+end
+
+
+
+#===============================================  /home/nr/src/icon/ebnflex.icn
+
+
+
+#line 25 "/u/norman/src/ebnf/ebnflex.nw"
+global token, tval, filename, lineno
+global thisline, thispos
+#line 30 "/u/norman/src/ebnf/ebnflex.nw"
+global EOF
+#line 34 "/u/norman/src/ebnf/ebnflex.nw"
+procedure lex(newfile)
+  static toks,  infile
+  local eol
+  initial {EOF    := " end of file "; /lineno := 0; toks := [];
+           infile := &input; filename := "standard input"}
+  filename := image(infile := \newfile)[6:-1]
+  if \newfile then lineno := 0
+  if *toks = 1 & token := scantokens(pop(toks)) then
+    return token
+  else if *toks = 2 & (pop(toks) ? { 
+      tab(thispos := pop(toks))
+      if token := scantokens() then {
+        every push(toks, if pos(0) then 1 else &pos | &subject)
+        return token
+      } 
+    }) then &null
+  else {
+    while thisline := read(infile) do {
+      lineno +:= 1
+      thispos := 1
+      thisline ?    
+        if (="#line ", lineno := integer(tab(many(&digits)))-1, 
+            =" \"", filename := tab(upto('"')), ="\"", pos(0)) |
+           (="<* LINE ", lineno := integer(tab(many(&digits)))-1, 
+            =" \"", filename := tab(upto('"')), ="\" *>", pos(0)) then { }
+        else {
+          if token := scantokens() then {
+            every push(toks, if pos(0) then 1 else &pos | &subject)
+            return token
+          }
+        }
+    }
+  }
+  return token := tval := EOF
+end
+#line 74 "/u/norman/src/ebnf/ebnflex.nw"
+procedure gobble(t)
+    if token == t then return 1(.tval, lex())
+end
+
+procedure expect(t, nt)
+    return gobble(t) | 
+    error("when parsing "||\nt||", " | "", 
+          "expected ", image(t), " but found ", image(tval))
+end
+
+procedure lexwhere(outfile)
+  /outfile := &errout
+  write(outfile, thisline)
+  write(outfile, repl(" ", thispos-1), "^", repl(" ", 0 <= *thisline-thispos) | "", "$")
+  return
+end
+
+procedure erroratfl(file, line, L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+  stop()
+end
+
+procedure errorat(loc, L[])
+  write ! ([&errout, loc, ": "] ||| L)
+  stop()
+end
+
+procedure error(L[])
+  
+#line 117 "/u/norman/src/ebnf/ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 103 "/u/norman/src/ebnf/ebnflex.nw"
+  stop()
+end
+
+procedure warning(L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": Warning -- "] ||| L)
+end
+
+procedure impossible(L[])
+  push(L, "This can't happen: ")
+  
+#line 117 "/u/norman/src/ebnf/ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 113 "/u/norman/src/ebnf/ebnflex.nw"
+  write(&errout, "\n")
+  &null[0]
+end
+
+
+
+#==============================================  /home/nr/src/icon/openfile.icn
+
+
+
+procedure openfile(name, mode, path) 
+    /mode := "r"
+    /path := ["."]
+    if name == "-" then
+       case mode of {
+          "r" : return &input
+          "w" : return &output
+          default : stop("bogus file mode: ", mode)
+       }
+    else 
+      return open(if name[1] == "/" then name else !path || "/" || name, mode) | 
+         stop("Can't open file ", name, " for ", mode, "on path ", image(path))
+end
+
+
+
+#=============================================  /home/nr/src/icon/pushtrace.icn
+
+
+
+################################################################
+
+global tracestack
+
+procedure pushtrace(tr)
+    initial tracestack := []
+    push(tracestack, &trace)
+    return &trace := 
+      case type(tr) of {
+        "string" : integer(getenv(tr)) | 0
+        default  : tr
+      }
+end
+
+procedure poptrace()
+    return &trace := pop(tracestack) 
+end
+
+
+
+#===============================================  /home/nr/src/icon/maplist.icn
+
+
+
+procedure maplist(f, l)
+  local ll, x
+  ll := []
+  every x := !l do 
+    put(ll, f(x) | fail)
+  return ll
+end
+
+procedure maplist2(f, l, a2)
+  local ll, x
+  ll := []
+  every x := !l do 
+    put(ll, f(x, a2) | fail)
+  return ll
+end
+
+procedure maplist3(f, l, a2, a3)
+  local ll, x
+  ll := []
+  every x := !l do 
+    put(ll, f(x, a2, a3) | fail)
+  return ll
+end
+
+
+
+#===============================================  /home/nr/src/icon/commafy.icn
+
+
+
+procedure commafy(l, andword)
+   local s, comma, and, i
+   if *l = 0 then return ""
+   /andword := "and"
+   comma := if *l > 2 then ", " else " "
+   and := if *l > 1 then andword || " " else ""
+   s := ""
+   every i := 1 to *l - 1 do s ||:= l[i] || comma
+   return s || and || l[*l]
+end   
+  
+procedure commaseparate(l, comma)
+  local s, i
+  if *l = 0 then return ""
+  /comma := ", "
+  s := ""
+  every i := 1 to *l - 1 do s ||:= l[i] || comma
+  return s || l[*l]
+end
+
+
+
+
+#================================================  /home/nr/src/icon/pretty.icn
+
+
+
+#line 21 "pretty.nw"
+record iPPprettyprinter(
+  break_deque			# holds break info
+, break_level
+, buffer			# holds characters and markers
+, current_level
+, file				# gets output
+, indent_width
+, left_margin			# left margin to take at next break
+, left_margin_w			# left margin used on current line
+, output_width
+, total_chars_enqueued
+, total_chars_flushed
+, total_pchars_enqueued
+, total_pchars_flushed
+)
+#line 37 "pretty.nw"
+procedure PPnew(file, width, indent, leftmargin)
+  return iPPprettyprinter(
+    [], 0, [], 0, file, \indent | 2, \leftmargin | 0, 0, \output_width | 80, 0, 0, 0, 0)
+end
+#line 42 "pretty.nw"
+record iPPmarker(level)
+record iPPnewline()
+record iPPindent()
+record iPPoutdent()
+record iPPcondbreak(chars_enqueued, level, connected)
+#line 48 "pretty.nw"
+procedure PPbegin(pp)
+  pp.current_level +:= 1
+  return pp
+end
+#line 53 "pretty.nw"
+procedure PPend(pp)
+  pp.current_level -:= 1
+  pp.break_level >:= pp.current_level
+  return pp
+end
+#line 59 "pretty.nw"
+procedure PPindent(pp)
+  static iPPindentval
+  initial iPPindentval := iPPindent()
+  put(pp.buffer, iPPindentval)
+  pp.total_chars_enqueued +:= 1
+  return pp
+end
+#line 67 "pretty.nw"
+procedure PPoutdent(pp)
+  static iPPoutdentval
+  initial iPPoutdentval := iPPoutdent()
+  put(pp.buffer, iPPoutdentval)
+  pp.total_chars_enqueued +:= 1
+  return pp
+end
+#line 75 "pretty.nw"
+procedure PPnewline(pp)
+  static iPPnewlineval
+  initial iPPnewlineval := iPPnewline()
+  pp.break_deque := []
+  pp.break_level := pp.current_level
+  put(pp.buffer, iPPnewlineval)
+  pp.total_chars_enqueued +:= 1
+  PPflush(pp)
+if getenv("PPX") then PPinternal_writes(pp, "$n")
+if pp.total_pchars_flushed ~= pp.total_pchars_enqueued then
+  stop("bad pp")
+  return pp
+end  
+#line 89 "pretty.nw"
+procedure PPoptnl(pp)
+  while *pp.break_deque > 0 & 
+        (pp.break_deque[1].level > pp.current_level |
+            (pp.break_deque[1].level = pp.current_level & 
+            /pp.break_deque[1].connected)) do
+    pop(pp.break_deque)        
+  push(pp.break_deque, iPPcondbreak(pp.total_chars_enqueued, pp.current_level, &null))
+  return pp
+end  
+#line 99 "pretty.nw"
+procedure PPconnnl(pp)
+  static iPPnewlineval
+  initial iPPnewlineval := iPPnewline()
+  if pp.break_level < pp.current_level then {
+    while *pp.break_deque > 0 & pp.break_deque[1].level >= pp.current_level do
+      pop(pp.break_deque)        
+    put(pp.buffer, iPPmarker(pp.current_level))
+    pp.total_chars_enqueued +:= 1
+    push(pp.break_deque, iPPcondbreak(pp.total_chars_enqueued, pp.current_level, 1))
+  } else { # take an immediate line break at current_level 
+    pp.break_deque := []
+    put(pp.buffer, iPPnewlineval)
+    pp.total_chars_enqueued +:= 1
+    PPflush(pp)
+if getenv("PPX") then PPinternal_writes(pp, "$c")
+  }
+  return pp
+end  
+#line 118 "pretty.nw"
+procedure PPwrites(pp, L[])
+  local outn, leftn
+  every s := string(!L) & *s > 0 do {
+    while iPPwont_fit(pp, s) & *pp.break_deque > 0 do
+      if not iPPtake_outermost_connected_break(pp) then
+        iPPtake_break(pp, pop(pp.break_deque))
+if \temp & getenv("PPX") then s := "$f[]" || s
+    put(pp.buffer, s)
+    pp.total_chars_enqueued +:= *s     
+    pp.total_pchars_enqueued +:= *s
+  }
+  return pp
+end
+#line 132 "pretty.nw"
+procedure iPPtake_outermost_connected_break(pp)
+  local b
+  if \(!pp.break_deque).connected then {
+    b := pull(pp.break_deque)
+    while /b.connected do b := pull(pp.break_deque)
+    return iPPtake_break(pp, b)
+  } else fail
+end
+#line 141 "pretty.nw"
+procedure iPPtake_break(pp, b)
+  pp.break_level := b.level
+  PPflush(pp, b.chars_enqueued - pp.total_chars_flushed)
+if getenv("PPX") then PPinternal_writes(pp, "$", if \b.connected then "c" else "o",
+                       "(", b.level, ")")
+  if /b.connected then iPPwritenl(pp)
+  pp.break_level >:= pp.current_level
+  return
+end
+#line 151 "pretty.nw"
+procedure iPPwont_fit(pp, s)
+  return  (pp.total_pchars_enqueued - pp.total_pchars_flushed) + pp.left_margin_w + *s >
+       pp.output_width
+end
+#line 156 "pretty.nw"
+procedure PPwrite(pp, L[])
+  PPwrites ! (push(L, pp))
+  return PPnewline(pp)
+end
+#line 161 "pretty.nw"
+procedure PPflush(pp, len)
+  local limit, temp, count
+  out := 0
+  while not (out >= \len) & temp := get(pp.buffer) do {
+    count := if type(temp) == "string" then *temp else 1
+    pp.total_chars_flushed +:= count
+    out +:= count
+if getenv("PPX") then PPinternal_writes(pp, 
+    case type(temp) of { 
+      "iPPmarker"  : "$m(" || temp.level || ")"
+      "iPPnewline" : "$n"
+      "iPPindent"  : "$t"
+      "iPPoutdent" : "$b"
+    })
+    case type(temp) of { 
+      "iPPmarker"  : if temp.level <= pp.break_level then iPPwritenl(pp)
+      "iPPnewline" : iPPwritenl(pp)
+      "iPPindent"  : pp.left_margin +:= pp.indent_width
+      "iPPoutdent" : pp.left_margin -:= pp.indent_width
+      "string"     : { PPinternal_writes(pp, temp); pp.total_pchars_flushed +:= *temp }       
+      default      : stop("bogus prettyprinter")
+    }   
+  }
+  return
+end
+#line 187 "pretty.nw"
+procedure iPPwritenl(pp)
+  pp.left_margin_w := 0 < pp.left_margin | 0
+  return PPinternal_writes(pp, "\n", left("", pp.left_margin_w))
+end
+#line 192 "pretty.nw"
+procedure PPxwrites(pp, L[])
+  every s := !L do 
+    s ? {
+      while PPwrites(pp, tab(upto('$\n'))) do
+        if ="$" then {
+	  if any('${}tbnoc') then
+	    case move(1) of {
+	      "$" : PPwrites(pp, "$")
+	      "{" : PPbegin(pp)
+	      "}" : PPend(pp)
+	      "t" : PPindent(pp)
+	      "b" : PPoutdent(pp)
+	      "n" : PPnewline(pp)
+	      "o" : PPoptnl(pp)
+	      "c" : PPconnnl(pp)
+	    }
+	  else if c := move(1) then {
+	    write(&errout, "Warning: bad prettyprinting escape $", c, " in ", image(s))
+	    PPwrites(pp, c)
+	  } else 
+	    PPwrites(pp, "$")
+        } else if ="\n" then {
+          PPnewline(pp)
+        } else stop("This can't happen -- fouled upto")
+      PPwrites(pp, tab(0))          
+    }
+  return pp
+end
+#line 221 "pretty.nw"
+procedure PPxwrite(pp, L[])
+  PPxwrites ! (push(L, pp))
+  return PPnewline(pp)
+end
+#line 226 "pretty.nw"
+procedure PPinternal_writes(pp, L[])
+  return case type(pp.file) of {
+    "file" : writes ! (push(L, pp.file))
+    "string" : every pp.file ||:= !L
+    default : impossible("prettyprinter file")
+  }
+end

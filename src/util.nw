@@ -1,0 +1,183 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: util.nw,v 1.21 1998/11/11 21:54:36 nr Exp $
+<<stringkey.sig>>=
+structure StringKey : ORD_KEY = struct
+  type ord_key = string
+  val compare = String.compare
+end
+@ 
+Next is string comparison using a different ordering, so that strings
+that differ only in case compare close together.
+Note when we account for case, upper case comes \emph{later}.
+<<stringcasekey.sml>>=
+structure StringCaseKey : ORD_KEY = struct
+  type ord_key = string
+  val lower = String.map Char.toLower
+  fun compare(s1, s2) =
+    case String.compare(lower s1, lower s2)
+      of EQUAL => String.compare(s2, s1)  (* note reversal! uppercase last *)
+       | diff => diff
+end
+<<stringdict.sml>>=
+structure StringMap = ExistsMapFun(BinaryMapFn(StringKey))
+structure StringListMap = ListMapFn(StringKey)
+structure StringCaseMap = BinaryMapFn(StringCaseKey)
+structure StringCaseListMap = ListMapFn(StringCaseKey)
+<<stringset.sml>>=
+structure StringSet = BinarySetFn(StringKey)
+structure StringPairSet = BinarySetFn(
+  struct
+    type ord_key = string * string
+    fun compare ((s1, s1'), (s2, s2')) =
+      case String.compare(s1, s2)
+	of EQUAL => String.compare(s1', s2')
+	 | answer => answer
+  end)
+<<intkey.sig>>=
+structure IntKey : ORD_KEY = struct
+  type ord_key = int
+  val compare = Int.compare
+end
+@ 
+<<existsmap.sml>>=
+signature EXISTS_MAP = sig
+  include ORD_MAP
+  val exists : ('a -> bool) -> 'a map -> bool
+end
+
+functor ExistsMapFun(M : ORD_MAP) : EXISTS_MAP = struct
+  open M
+  exception Found
+  fun exists p m =
+    ( M.app (fn x => if p x then raise Found else ()) m
+    ; false
+    ) handle Found => true
+end
+<<intdict.sml>>=
+structure IntMap = ExistsMapFun(BinaryMapFn(IntKey))
+<<intset.sml>>=
+structure IntSet = BinarySetFn(IntKey)
+<<util.sml>>=
+structure Util = struct
+  fun exp {base: int, power: int} =
+    case power of 0 => 1
+                | 1 => base
+                | p => let val half = exp {base = base * base, power = power div 2} 
+                       in  case power mod 2 of 0 => half | _ => base * half
+                       end
+  fun twoRaised n = Word.toInt (Word.<< (0w1, Word.fromInt n))
+ 
+  fun lookup tab name = StringMap.find(tab, name)
+ 
+  fun addUniqueName errorl (name, set) =
+    if StringSet.member(set, name) then
+      errorl name
+    else
+      StringSet.add(set, name)
+
+  (* joinl intercalates a binary operator in a nonempty list *)
+  fun joinl $ [] = Impossible.impossible "bad joinl"
+    | joinl $ (h::t) = foldl (fn (r, l) => $(l, r)) h t
+
+  local 
+    val varCount = ref 0
+  in
+    fun freshName n = (varCount := !varCount + 1; n ^ "_" ^ Int.toString (!varCount))
+  end
+
+  <<utilities>>
+end
+<<utilities>>=
+fun stringInInterval (s, {lo, hi}) =
+  if lo + 1 = hi then
+    String.concat [                         s, " == ", Int.toString lo]
+  else
+    String.concat [Int.toString lo, " <= ", s, "  < ", Int.toString lo]
+@ 
+<<utilities>>=
+fun noisyLookup lookup s =
+  let val answer = lookup s
+  in  app print ["Looking up ", s, "; found ",
+			(case answer of SOME _ => "something" | NONE => "nothing")]
+      ; answer
+  end
+@ 
+Compute [[f(a, b, c)]] visiting As and Bs in left-to-right LIFO order.
+<<utilities>>=
+fun crossProduct f zero As bs =
+  let fun addA(a :: As, answer) =
+            let fun addB(b :: bs, answer) = addB(bs, f(a, b, answer))
+                  | addB([], answer) = answer
+            in  addA(As, addB(bs, answer))
+            end
+	| addA([], answer) = answer
+  in  addA(As, zero)
+  end
+<<wildcard.sml>>=
+structure Wildcard = struct
+  local
+    val n = ref 0
+    val wild = ref StringSet.empty
+  in
+    fun makeWild v = wild := StringSet.add(!wild, v)
+    fun new() = 
+      let val v = "_ " ^ Int.toString (!n)
+      in  ( n := !n + 1
+          ; makeWild v
+          ; v
+          )
+      end
+    fun wildVars () = !wild
+    fun reset() = (n := 0; wild := StringSet.empty)
+  end
+end
+<<utilities>>=
+fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
+fun vectorMap f v = Vector.tabulate (Vector.length v, fn i => f (Vector.sub (v, i)))
+@ 
+<<utilities>>=
+local 
+  val digits = "abcdefghijklmnopqrstuvwxyz"
+  val base = String.size digits
+  fun digit n = String.sub(digits, n)
+in
+  fun alphacode n =
+    let fun code (n, pre') = if n < base then String.implode(rev (digit n :: pre'))
+                             else code(n div base, digit (n mod base) :: pre')
+    in  code(n, [])
+    end
+end
+@ 
+<<utilities>>=
+fun timed msg f x =
+  let val start = Timer.startRealTimer()
+      val answer = f x
+      val endit = Timer.checkRealTimer start
+  in  app print ["Time for ", msg, " is ", Time.toString endit, "\n"];
+      answer
+  end
+<<constypeutil.ord>>=
+structure ConstypeKey = struct
+  type ord_key = { typeid : int, family : int }
+%%
+  type ord_key = { typeid : int, family : int }
+%%
+  val compare = compare'ord_key
+end
+structure ConstypeSet = BinarySetFn(ConstypeKey)
+structure ConstypeMap = BinaryMapFn(ConstypeKey)
+<<stringutil.sml>>=
+structure StringUtil = struct
+  val allCaps = String.translate (String.str o Char.toUpper)
+  fun mixedCaps s =
+    let fun cap (prev', []) = prev'
+          | cap (p', h::t) = scan(Char.toUpper h :: p', t)
+	and scan(p', x::c::t) = if Char.isAlpha c andalso not (Char.isAlpha x) then
+	                          cap(p', c::t)
+				else
+				  scan(x::p', c::t)
+	  | scan(p', [c]) = c :: p'
+	  | scan(p', []) = p'
+    in  String.implode (rev (cap ([], String.explode s)))
+    end
+end

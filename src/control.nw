@@ -1,0 +1,188 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: control.nw,v 1.12 1998/11/11 21:59:11 nr Exp $
+\chapter{Controlling code generation}
+
+\section{Code generation for C}
+
+Here are a bunch of parameters we can use to control code generation.
+<<ccontrol.sml>>=
+functor CControlFun(
+  structure Code : CODE
+  val superSimp : Code.Exp.exp -> Code.Exp.exp
+  val codeSimp  : Code.statement -> Code.statement
+  val expstring : Code.Exp.exp -> string
+) : C_CONTROL =
+struct
+  structure Code = Code
+  structure Exp = Code.Exp
+  <<control for C>>
+  val superSimp = superSimp
+  val maxDecimal = 1000000 (* largest int for decimal notation *)
+  val wordsize = 32 (* size of word on target machine *)
+  (* these functions rewrite high-level abstractions to lower-level abstractions
+ *)
+  val methodCall : Code.Exp.exp * string * Code.Exp.exp list -> Code.statement =
+    fn _ => Impossible.unimp "method calls in C"
+  fun tagName n = n ^ "_TAG"
+end
+@ 
+Here are some defaults from the old Icon implementation.
+<<control for C>>=
+fun fail (fmt, vals) =
+      Code.EVAL (Exp.call (Exp.var "fail" :: Exp.string fmt ::vals))
+@ 
+Note that if we wanted to force all names to lower case, this would be
+the place to do it.
+<<control for C>>=
+local
+  fun idChar c = Char.isAlphaNum c orelse Char.isDigit c orelse c = #"_"
+  val cmap = Mangler.mapOutBadChars {bad = not o idChar, good = "_" }
+  val reserved =  [
+        "asm", "auto", "break", "case", "char", "const", "continue",
+        "default", "double", "do", "else", "enum", "extern", "float", "for",
+        "goto", "if", "int", "long", "register", "return", "short",
+        "signed", "sizeof", "static", "struct", "switch", "typedef", "union",
+        "unsigned", "void", "volatile", "while"]
+in
+  val mangle = Mangler.mangler
+        {map=cmap, reserved=reserved, avoid=fn s => s ^ "_", preprocess=fn x=>x }
+end
+<<control for C>>=
+fun emit {pcUnit, tokens} = 
+  let val emittername = "emit"
+      fun emittername' width = "emit" ^ Int.toString width
+      fun call f args = Exp.call (Exp.var f::args)
+      val const = Exp.const
+      fun emitcall  (value, width) = Code.EVAL (call emittername [value, const width])
+      fun emitcall' (value, width) = Code.EVAL (call (emittername' value)
+						     [const width])
+      fun pcShift offset =
+        Exp.pcSubst (Exp.add(Exp.var "ENCODE_PC", const (offset div pcUnit)))
+      fun direct offset value = pcShift offset value
+      type exp = Exp.exp
+      type direct = int -> exp -> exp
+      val direct : direct = direct
+      <<showtoken>>
+    
+      fun emit (direct:direct) ({value, width, offset} : Code.token, (offset', stmts))=
+        if offset = offset' then
+          (offset + width * !GlobalState.CG.emitUnitBits,
+	   emitcall(direct offset value, width) :: stmts)
+        else
+          Impossible.impossible (
+             String.concat ([
+                 "Emitting ", Int.toString width, "-unit token labelled with offset ",
+		 Int.toString offset, " at actual offset ", Int.toString offset',
+                 "\nActual tokens emitted are:\n"] @ foldr showtoken [] tokens))
+      val unsigned = Type.INTEGER { signed=false, width=NONE }
+      val encodePC = ("ENCODE_pc", Code.VAR (SOME unsigned, SOME (call "cur_pc" [])))
+      val defns = if List.exists (fn {value,...} => Exp.usesPC value) tokens then
+	            [encodePC]
+		  else
+		    []
+  in  case tokens
+        of [] => Code.COMMENTED_STMT (Code.SKIP, "emit epsilon")
+	 | _  => codeSimp(Code.BLOCK(defns, #2 (foldl (emit direct) (0, []) tokens)))
+  end
+<<showtoken>>=
+fun showtoken ({value, width, offset}, strings) = 
+  "\t" :: Int.toString width :: " units at offset " :: Int.toString offset ::
+  ": " :: expstring value :: "\n" :: strings
+@ 
+\section{Code generation for ML}
+Here are a bunch of parameters we can use to control code generation.
+<<mlcontrol.sml>>=
+functor MLControlFun(Code : CODE) : ML_CONTROL = struct
+  structure Code = Code
+  structure Exp = Code.Exp
+  <<control for ML>>
+  fun superSimp e = e (* bogus *)
+  val maxDecimal = 1000000 (* largest int for decimal notation *)
+  val intsize = 31
+  val wordsize = 32 (* size of word on target machine *)
+  (* these functions rewrite high-level abstractions to lower-level abstractions
+ *)
+  val functorizeImports = true
+  val tupleArgs = false
+  val methodCall : Code.Exp.exp * string * Code.Exp.exp list -> Code.statement =
+    fn _ => Impossible.unimp "method calls in ML"
+end
+@ 
+Here are some defaults from the old Icon implementation.
+<<control for ML>>=
+local
+  val lib = Exp.var "SledLibrary"
+  val failure = Exp.select(lib, "Failure")
+  val cons = Exp.select(lib, "cons")
+  val nil' = Exp.select(lib, "nil'")
+  val mllist = foldr (fn (l, r) => Exp.call [cons, l, r]) nil'
+  fun cvt x = Exp.call [Exp.select(Exp.var "Word", "toString"), x]
+in
+  fun fail (fmt, vals) = Code.RAISE (failure, [mllist(Exp.string fmt :: map cvt vals)])
+end
+@ 
+Note that if we wanted to force all names to lower case, this would be
+the place to do it.
+<<control for ML>>=
+local
+  fun idChar c = Char.isAlphaNum c orelse Char.isDigit c orelse
+		 c = #"_" orelse c = #"'"
+  val mlmap = Mangler.mapOutBadChars {bad = not o idChar, good = "_" }
+  val reserved =  (* stolen from ML lex code *)
+       ["*", "|", ":", "=", "#", "and", "abstraction", "abstype", "->",
+        "as", "case", "datatype", "else", "end", "eqtype", "exception",
+        "do", "=>", "fn", "fun", "functor", "funsig", "handle", "if", "in",
+        "include", "infix", "infixr", "let", "local", "nonfix", "of", "op",
+        "open", "overload", "raise", "rec", "sharing", "sig", "signature",
+        "struct", "structure", "then", "type", "val", "while", "with",
+  	"withtype", "orelse", "andalso"]
+  fun strip_ (#"_" :: s) = strip_ s
+    | strip_ [] = "underscore"
+    | strip_ l = implode l
+in
+  val mangle = Mangler.mangler 
+    {map=mlmap, reserved=reserved, avoid=fn s => s ^ "_" , preprocess=strip_ o explode}
+end
+@
+Dunno if this is suitable for ML, but\ldots
+Methinks functorizing against an emitter would be better.
+<<control for ML>>=
+fun emit {pcUnit, tokens} = 
+  let val emittername = "emit"
+      fun emittername' width = "emit" ^ Int.toString width
+      fun call f args = Exp.call (Exp.var f::args)
+      val const = Exp.const
+      fun emitcall  (value, width) = Code.EVAL (call emittername [value, const width])
+      fun emitcall' (value, width) = Code.EVAL (call (emittername' value)
+						     [const width])
+      fun pcShift offset =
+        Exp.pcSubst (Exp.add(Exp.var "ENCODE_PC", const (offset div pcUnit)))
+      fun direct offset value = pcShift offset value
+      type exp = Exp.exp
+      type direct = int -> exp -> exp
+      val direct : direct = direct
+    
+      fun expstring _ = "?"
+      <<showtoken>>
+      fun emit (direct:direct) ({value, width, offset} : Code.token, (offset', stmts))=
+        if offset = offset' then
+          (offset + width * !GlobalState.CG.emitUnitBits,
+	   emitcall(direct offset value, width) :: stmts)
+        else
+          Impossible.impossible (
+             String.concat ([
+                 "Emitting ", Int.toString width, "-unit token labelled with offset ",
+		 Int.toString offset, " at actual offset ", Int.toString offset',
+                 "\nActual tokens emitted are:\n"] @ foldr showtoken [] tokens))
+      val unsigned = Type.INTEGER { signed=false, width=NONE }
+      val encodePC = ("ENCODE_pc", Code.VAR (SOME unsigned, SOME (call "cur_pc" [])))
+      val defns = if List.exists (fn {value,...} => Exp.usesPC value) tokens then
+	            [encodePC]
+		  else
+		    []
+  in  case tokens
+        of [] => Code.COMMENTED_STMT (Code.SKIP, "emit epsilon")
+	 | _ => (Code.BLOCK(defns, #2 (foldl (emit direct) (0, []) tokens)))
+          (* should simplify *)
+  end
+@ 

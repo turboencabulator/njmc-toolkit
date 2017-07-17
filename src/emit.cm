@@ -1,0 +1,19 @@
+; $Id: emit.cm,v 1.5 1999/09/06 15:59:28 nr Exp $
+; module emit
+(* code emission *)
+group is
+  code.cm
+  unparse.cm
+  pp.cm
+  unparse-pp.cm
+  decoder.cm
+  smlnj-lib.cm
+   (* note error NOT imported --- should never get user error here *)
+
+  emit-c.nw
+  emit-ml.nw
+  xform-c.nw
+  ccontrol.sml@control.nw
+  mlcontrol.sml@control.nw
+  c-code.nw
+  mangle.nw

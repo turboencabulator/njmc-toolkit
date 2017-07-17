@@ -1,0 +1,1165 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: pattern.nw,v 1.32 1998/11/11 21:59:20 nr Exp $
+% l2h ignore change {
+\chapter{Patterns}
+
+The pattern code is parameterized in an odd way.
+The reason is that there are four variations on patterns.
+\begin{itemize}
+\item
+A [[Pure]] normal-form pattern has no labels of any kind.
+All patterns bound to top-level identifiers are pure.
+\item
+A [[Labelled]] pattern contains pattern labels, which can be in two
+forms. 
+\emph{Actual} labels appear in the specification of a pattern itself.
+\emph{Latent} labels are associated with constructor operands of
+constructor types.
+Latent labels become actual if and only if binding instances of those
+types are used in matching statements.
+(In matching statements, binding instances are represented by
+identifiers; other instances are created by constructor application.)
+Labelled patterns are used as intermediate forms in the process of
+elaborating patterns.
+\item
+A [[Latent]] pattern contains latent pattern labels, but no actual
+pattern labels.
+It is obtained from a [[Labelled]] pattern by rewriting all the actual
+labels to make them relative to the program counter.
+Latent patterns are associated with constructors after elaboration;
+for each operand of constructor type, there is one latent pattern
+label in each disjunt.
+\item
+An [[Absolute]] pattern is not in the standard normal form, but is in 
+\emph{absolute normal form}, in which the sequence operation, and
+therefore all labels,
+have been eliminated.
+To retain the sequencing information,
+\begin{itemize}
+\item 
+fields are tagged with their
+locations in the instruction stream,
+\item
+labels are replaced with a table binding names to offsets, and
+\item
+the length of the pattern is stored explicitly.
+\end{itemize}
+The new tagged fields are ``absolute'' fields, hence the name of the normal form.
+
+The absolute normal form is an intermediate form used to build 
+decision trees for matching statements.
+In the building process, field bindings are rewritten to
+conditions, so the conversion function splits field bindings out from
+the rest of the disjunct---it actually therefore returns a ``prototype
+absolute normal form'' with the field bindings still attached.
+\end{itemize}
+This table summarizes the uses of the different kinds of patterns.\\
+\begin{tabularx}{\hsize}{l|l|c>{\raggedright\arraybackslash}X|c>{\raggedright\arraybackslash}X}
+Type&Context&\multicolumn{2}{c}{Actual labels}&\multicolumn{2}{|c}{Latent labels}\\
+\hline
+Pure&top-level&no&&no&\\
+Latent&cons.~RHS&no&(converted to PC-relative)&
+  yes&(per disjunct, for each operand of constructor type)\\
+Labelled&elaboration&yes&&yes&\\
+Labelled&matching&yes&(become label bindings)&yes&(become actual or vanish)\\
+Absolute&post-match&no&&no&\\
+\end{tabularx}
+@
+This diagram shows transitions between different forms of patterns.
+\begin{quote}
+\epsfig{file=pats.eps}
+\end{quote}
+@ 
+<<pattern.sig>>=
+signature PATTERN = sig
+  structure Exp : EXP_SET
+  type pattern
+  <<exported identifiers>>
+end
+
+signature ABSOLUTE_PATTERN = sig
+  structure Exp : EXP_SET
+  type pattern
+  type proto_pattern
+  val epsilon : pattern
+  val constraint : int -> Field.absolute_field * Relop.relop * int -> pattern 
+					(* first argument is total pattern length *)
+  val andp : pattern list -> pattern
+end
+
+signature PATTERNS = sig
+  include PATTERN_TYPES
+  <<exported common identifiers>>
+  structure Pure     : PATTERN 
+     where type pattern = field constraints            sequence disjunct' pattern'
+  structure Labelled : PATTERN 
+     where type pattern = (field, label) cons_or_label sequence disjunct' pattern'
+  structure Latent : PATTERN
+     where type pattern = (field, latent) cons_or_label sequence disjunct' pattern'
+  structure Absolute : ABSOLUTE_PATTERN
+     where type pattern = absolute_disjunct pattern' 
+     where type proto_pattern = 
+                   (absolute_disjunct * absolute_field field_binding' list) pattern'
+
+  sharing Exp = Pure.Exp = Labelled.Exp = Latent.Exp = Absolute.Exp
+
+  val actualLabel : string  -> Labelled.pattern
+  val latentLabel : Exp.exp -> Latent.pattern
+
+  val makeLabelsPCrelative : Labelled.pattern -> Latent.pattern
+  val purify               : Labelled.pattern -> Pure.pattern
+  val anf                  : Labelled.pattern -> Absolute.proto_pattern
+
+  val injectPure           : Pure.pattern   -> Labelled.pattern
+  val injectLatent         : Latent.pattern -> Labelled.pattern
+  val dropLatents          : Latent.pattern -> Pure.pattern
+
+  val actualizeLatents     : {actualsOK : bool} -> Labelled.pattern -> Labelled.pattern
+    (* in some contents, latents must disappear.  
+       actualsOK is true iff they can legitimately become actual *)
+end
+@
+\section{Semantics, constructors, and mutators}
+Patterns are built up from {\em constraints} by applying [[;]], [[&]] and [[|]]
+(sequence, conjunction and disjunction), and are represented in disjunctive normal form.  
+A constraint restricts a field's value
+to be within a certain interval: $lo \le f < hi$.
+Patterns consisting solely of constraints are created with [[conspat]],
+which relates a field to a value.  The only relational operators now
+supported are equality and inequality, but others could easily be
+added by adding cases to [[conspat]].
+
+A field [[f]] is that part of a word from bits [[f.lo]] through bits [[f.hi-1]]
+inclusive.  Notice that this is {\em not} the syntax used in the input, which is 
+like what's used in architecture manuals.
+
+If a pattern contains field bindings with free variables, it may have
+conditions attached to its disjuncts.  A condition is an expression over those same
+free variables.
+<<field types>>=
+type range       = {lo:int, hi:int}
+type token_class = {name:string, size:int} (* placeholder?, fields? *)
+type field       = {name:string, range:range, class:token_class}
+         	       (* field is bits lo..hi-1 (note NOT like input) *)
+type absolute_field = field * int		(* field at offset *)
+<<shared pattern types>>=
+type 'f field_binding'    = 'f * Exp.exp	(* f = exp *)
+type 'f range_constraint' = 'f * range 		(* lo <= f < hi *)
+
+type 'f constraints 
+ = token_class * 'f field_binding' list * 'f range_constraint' list
+       (* invariant: constraints of the same sequent have distinct fields *)
+
+datatype ('f, 'label) cons_or_label 
+  = CONSTRAINTS of 'f constraints
+  | LABEL of 'label
+
+type latent = Exp.exp
+datatype label = ACTUAL of string | LATENT of Exp.exp
+
+(* for the kinds of patterns that have sequents, these are the possiblities *)
+datatype possible_sequent = SEQ_CONS   of field constraints
+                          | SEQ_ACTUAL of string
+                          | SEQ_LATENT of latent
+
+datatype 'a sequence  = SEQ of bool * 'a list * bool        (* booleans show dots *)
+
+datatype 'a disjunct' = DIS of string option * Exp.Set.set * 'a 
+				(* name, conditions, and sequents/constraints *)
+
+datatype 'dis pattern' = PAT of string option * 'dis list  (* (name, disjuncts) *)
+
+type field_binding    = field field_binding'
+type range_constraint = field range_constraint'
+@ 
+It is not locally obvious what word is 
+tested by a range constraint in a pattern; one needs to know the
+position of the sequent containing the range constraint.
+Because this question is crucial for handling matching statements, I
+put the patterns into a new {\em absolute normal form}, which is
+described by the following rules: 
+\begin{enumerate}
+\item
+Each disjunction contains not a list of sequents but a set of
+range constraints.
+(Field bindings get
+converted to conditions or answers in an arm.)
+\item
+The range constraints are made ``absolute'' by
+using an [[absolute_field]] in place of a [[field]].
+The [[absolute_field]] gives the bit offset of the word containing the
+field (its size is available from the field's class).
+\end{enumerate}
+In support of this scheme, we use ``absolute disjuncts,''
+as defined with the other patterns.
+We have to store the length explicitly in an absolute, because sequents that 
+constrain no fields are lost.  
+The other field of an absolute disjunct binds label
+names to offsets, which are expressed in bits. Where are field bindings???
+<<shared pattern types>>=
+type absolute_disjunct = ( absolute_field range_constraint' list
+                         * {bits:int} StringMap.map 
+			                   (* label and constype bindings in bits *)
+                         * int                 (* length in bits *)
+                         ) disjunct'
+@
+For reasons that are not entirely clear, even to myself, I have chosen
+to split field bindings from range constraints, rather than use
+a single list of a merged datatype like
+\begin{quote}
+[[datatype 'f constraint' = BIND  of 'f field_binding'
+                          | RANGE of 'f range_constraint']]
+\end{quote}
+The split scheme complicates the implementation of certain invariants,
+but it should simplify code generation.
+@
+There are the pattern constructors, primitive and otherwise.
+Although the pattern operators operate on lists, they are cooked so
+that an application to a list containing exactly one element always
+returns that element, so for any operator [[xxx]], [[(fn p => xxx[p])]]
+is guaranteed to be the identity function.
+<<exported identifiers>>=
+val constraint : Field.field * Relop.relop * Exp.exp -> pattern
+val wildcard : Field.token_class -> pattern    (* `some class' *)
+val epsilon : pattern
+
+val orp  : pattern list -> pattern
+val andp : pattern list -> pattern
+val seqp : pattern list -> pattern
+val preDots : pattern -> pattern
+val postDots : pattern -> pattern
+@ 
+We can also name a pattern or add conditions to it.
+<<exported identifiers>>=
+val nameByBinding : string * pattern -> pattern
+val addConds : Exp.Set.set -> pattern -> pattern
+@ [[nameByBinding]] names the pattern and its disjuncts if they
+aren't named already. Actually, the real rule is a little more
+complicated---if the pattern has a single disjunct, and the disjunct 
+is named, then all the names are replaced by the new name; otherwise,
+it simply supplies names for whatever parts of pattern and disjuncts
+aren't named already.
+I'm not sure where this rule came from
+originally, but I have copied it faithfully from the Icon version of
+the toolkit.
+<<exported identifiers>>=
+val nameUnnamed : string * pattern -> pattern
+@ [[nameUnnamed]] implements a simpler rule---it replaces those among
+the pattern name and the disjunct names that are not already bound.
+It is used to name the results of a constructor application.
+@ 
+During the specification process, names may be bound to a particular pattern.
+When that happens, the pattern and its disjuncts are associated with
+the name, unless they're associated with a name already.
+(But, in the case where the pattern has exactly one disjunct, the
+pattern gets a new name regardless.)
+The names can be referred to by code that appears in
+case statements.
+<<internal functions>>=
+fun nameByBinding (name, PAT (oldname, disjuncts)) =
+  let fun nameDis (DIS (NONE, x, y)) = DIS (SOME name, x, y)
+	| nameDis d = d
+  in  case disjuncts
+	of [DIS (SOME _, x, y)] => PAT (SOME name, [DIS(SOME name, x, y)])
+	 | ds  => PAT (case oldname of NONE => SOME name | _ => oldname,
+		       map nameDis ds)
+  end
+@ 
+<<internal functions>>=
+fun nameUnnamed (name, PAT (oldname, disjuncts)) =
+  let fun nameDis (DIS (NONE, x, y)) = DIS (SOME name, x, y)
+	| nameDis d = d
+  in  PAT (case oldname of NONE => SOME name | _ => oldname,
+           map nameDis disjuncts)
+  end
+@
+<<internal functions>>=
+fun addConds conds (PAT(name, ds)) =
+  let fun add (DIS(name, cs, x)) = DIS(name, Exp.Set.union(conds, cs), x)
+  in  PAT(name, map add ds)
+  end
+@
+\subsection{Primitive constructors of patterns}
+We parameterize over these, because we don't know what kind of field
+or pattern or what-have-you we might use.
+The key issue is that we don't know whether a sequent will contain
+temporary things.  We also don't know if we'll have absolute fields.
+<<patbasics.sig>>=
+signature PATTERN_TYPES = sig
+  structure Exp : EXP_SET
+  <<field types>>
+  <<shared pattern types>>
+end
+
+signature SEQUENT_BASICS = sig
+  structure PatternTypes : PATTERN_TYPES
+  type sequent
+  val unSequent : sequent -> PatternTypes.possible_sequent
+  val mkSequent : PatternTypes.possible_sequent -> sequent
+  val cons : PatternTypes.field PatternTypes.constraints -> sequent
+end
+@ 
+<<patbasics.sml>>=
+functor PatternTypesFun(Exp : EXP_SET) = struct
+  structure Exp = Exp
+  open Field
+  <<shared pattern types>>
+end
+@ 
+<<patbasics.sml>>=
+functor LabelledSequentFun(PatternTypes : PATTERN_TYPES) 
+: SEQUENT_BASICS 
+= 
+struct
+  structure PatternTypes = PatternTypes
+  open PatternTypes
+  type sequent = (field, label) cons_or_label
+  fun mkSequent (SEQ_CONS c)   = CONSTRAINTS c
+    | mkSequent (SEQ_ACTUAL l) = LABEL (ACTUAL l)
+    | mkSequent (SEQ_LATENT e) = LABEL (LATENT e)
+  fun unSequent (CONSTRAINTS c)    = (SEQ_CONS c)  
+    | unSequent (LABEL (ACTUAL l)) = (SEQ_ACTUAL l)
+    | unSequent (LABEL (LATENT e)) = (SEQ_LATENT e)
+  val cons = CONSTRAINTS
+end
+
+functor LatentSequentFun(PatternTypes : PATTERN_TYPES) : SEQUENT_BASICS = 
+struct
+  structure PatternTypes = PatternTypes
+  open PatternTypes
+  type sequent = (field, latent) cons_or_label
+  fun mkSequent (SEQ_CONS c)   = CONSTRAINTS c
+    | mkSequent (SEQ_ACTUAL l) = Impossible.impossible "actual label in latent pattern"
+    | mkSequent (SEQ_LATENT e) = LABEL e
+  fun unSequent (CONSTRAINTS c) = (SEQ_CONS c)  
+    | unSequent (LABEL e)       = (SEQ_LATENT e)
+  val cons = CONSTRAINTS
+end
+
+functor PureSequentFun(PatternTypes : PATTERN_TYPES) : SEQUENT_BASICS = 
+struct
+  structure PatternTypes = PatternTypes
+  open PatternTypes
+  type sequent = field constraints
+  fun mkSequent (SEQ_CONS c)   = c
+    | mkSequent (SEQ_ACTUAL l) = Impossible.impossible "actual label in pure pattern"
+    | mkSequent (SEQ_LATENT e) = Impossible.impossible "latent label in pure pattern"
+  fun unSequent c = SEQ_CONS c
+  fun cons c = c
+end
+@ 
+<<internal functions>>=
+fun simpleDisjunct seq = DIS (NONE, Exp.Set.empty, SEQ (false, seq, false))
+val epsilon  = nameByBinding("epsilon", PAT (NONE, [simpleDisjunct []])) : pattern
+fun seq2p seq = PAT (NONE, [simpleDisjunct seq])
+fun c2p (l, class) = seq2p [Seq.cons(class, [], l)] : pattern 
+fun wildcard class = c2p ([], class)
+fun constraints2pattern (l as ({class,...},_)::t) = c2p(l, class)
+  | constraints2pattern l =
+       Impossible.impossible "pattern from empty constraint list"
+<<function [[addBitsToPC]]>>
+type ('a, 'b) exp_folder = (Exp.exp * 'a -> 'a) -> 'a -> 'b -> 'a
+fun foldExps' folder' f zero (PAT(name, ds)) =
+  let fun dis (DIS(name, cs, ?), z) = folder' f (Exp.Set.foldl f z cs) ?
+  in  foldl dis zero ds
+  end
+fun foldNothing f zero ? = zero
+fun foldExps f = foldExps' foldNothing f
+(*
+fun foldExps f zero (PAT(name, ds)) =
+  let fun dis (DIS(name, cs, (bbs, ccs, labels, patlen)), z) =
+        foldl (fn ((field, e), zero) => f(e, zero)) (Exp.Set.foldl f z cs) bbs
+  in  foldl dis zero ds
+  end
+*)
+@ 
+<<internal functions>>=
+val error = Error.error
+<<mutators>>
+fun rangeConstraints (f, relop, n) = (* result should be disjoined *)
+  let val max = Field.fmax f
+      fun range(lo, hi) = [(f, {lo=lo, hi=hi})]
+      fun bad relop n =
+	Error.errorl ["Impossible constraint ", #name f, " ",relop," ", Int.toString n]
+  in  case relop
+	of Relop.EQ => range(n, n+1)
+         | Relop.LT => if n <= 0 then
+                         bad "<" n
+                       else if Word.fromInt n >= max then
+                         error("Constraint value too large in " ^
+                               #name f ^ " < " ^ Int.toString n)
+                       else range(0, n)
+         | Relop.LE => if n < 0 then
+                         bad "<=" n
+                       else if Word.fromInt n >= max then
+                         error("Constraint value too large in " ^
+                               #name f ^ " <= " ^ Int.toString n)
+                       else range(0, n+1)
+         | Relop.GT => if Word.fromInt (n+1) >= max then
+                         bad ">" n
+                       else if n < ~1 then
+                         error("Constraint value too small in " ^
+                               #name f ^ " > " ^ Int.toString n)
+                       else range(n+1, Word.toInt max) 
+         | Relop.GE => if Word.fromInt n >= max then
+                         bad ">=" n
+                       else if n < 0 then
+                         error("Constraint value too small in " ^
+                               #name f ^ " >= " ^ Int.toString n)
+                       else range(n, Word.toInt max)
+         | Relop.NE => let val gt = range(n+1, Word.toInt max)
+                           val lt = range(0, n)
+                       in  if n = 0 then gt
+                           else if Word.fromInt (n+1) = max then lt
+                           else lt @ gt
+                       end
+        handle Overflow =>
+          Error.unimp "range constraints spanning more than 31 signed bits"
+  end
+fun constraint (f, relop, e) =
+  let fun static n =
+        orp (map (fn c => constraints2pattern [c]) (rangeConstraints(f, relop, n)))
+      fun dynamic e =
+        case relop of Relop.EQ => seq2p [Seq.cons (#class f, [(f, e)], [])]
+                    | _ => error ("can only write " ^ #name f ^ " ?? relop " ^ " e" ^
+				  " when e is an integer literal")
+in
+    case Exp.unConst e of SOME n => static n | NONE => dynamic e
+end
+<<absolute constraints and conjunction>>=
+fun constraint len (af as (f, offset), ?, n) =
+  let val consl = map (fn (_, range) => (af, range)) (Pure.rangeConstraints (f, ?, n))
+      fun dis cons = DIS (NONE, Exp.Set.empty, ([cons], StringMap.empty, len))
+  in  PAT(NONE, map dis consl)
+  end
+@
+\subsection{Pattern mutator functions}
+The mutators [[&]], [[|]], and [[;]], combine patterns.
+We define binary operators, and we could define
+operators on lists by using identities, if identities really existed
+(they don't, because conjunction and concatenation destroy names).
+@ 
+Semantics:
+\begin{quote}
+A pattern specifies a valid decomposition of a sequence of bits, e.g.,
+an instruction.
+Patterns are combined using the [[|]] (or), 
+[[&]] (and) and [[;]] (sequence) operators.
+The disjunction of two patterns specifies that either decomposition
+specified by each pattern is valid.
+A sequence of two patterns specifies that the first decomposition
+must be followed by the second decomposition.
+A conjunction of two patterns specifies that both decompositions must be valid.
+All operators are associative, i.e., [[(A;B);C = A;B;C]].
+The [[;]] operator distributes over the [[|]] operator, i.e., [[(A|B);C = (A;C)|(B;C)]].
+The semantics of [[&]] are restricted by the definition of a sequent.
+A sequent denotes a fetch of a given bitsize and a set of tests to 
+apply to the fetched value.  
+The conjunction of two sequents donotes that the decomposition specified
+by each sequent is valid, and therefore the tests of each sequent
+must be applied to the same range of bits, i.e., 
+the fetch fields of each sequent must be of equal size.
+It is fallacious to apply tests over values of unequal sizes.
+\end{quote}
+<<mutators>>=
+fun orpx(PAT (_, d1), PAT(_, d2)) = PAT (NONE, d1 @ d2)
+@ No substitutions needed for PC-relative goo.
+@
+[[distribute]] implements the distributive law that shows how conjunction and
+concatenation distribute over disjunction.
+<<mutators>>=
+fun distribute opdd (PAT (_, ds1),  PAT (_, ds2)) =
+  let fun opdp (d, disjuncts) = map (fn d2 => opdd(d, d2)) disjuncts
+      fun a (h::t, p) = opdp(h,p) @ a(t,p)
+          | a ([], p) = []
+  in  PAT(NONE, a (ds1, ds2))
+  end
+@ 
+To conjoin conditions, take the set union.
+To conjoin sequences, merge
+from the left if neither sequence has a [[dots]] there;
+otherwise  merge from the right.  
+Note that conjunction destroys dots.
+[[andd]] conjoins two disjuncts, and we get the same operations on
+patterns by using the distributive law.
+<<mutators>>=
+<<manipulating the program counter>>
+<<length functions>>
+local
+   <<definition of [[merge]]>>
+   fun andd (DIS (_, conds1, SEQ(ldots1, seq1, rdots1)), 
+	     DIS (_, conds2, SEQ(ldots2, seq2, rdots2))) =
+    let val (l1, l2) = (bitlength seq1, bitlength seq2)
+        val longest = if l1 > l2 then l1 else l2
+        val (seq, pos1, pos2) = 
+          if ldots1 orelse ldots2 then
+	    if rdots1 orelse rdots2 then
+	      <<complain about dots>>
+	    else
+	      (rev(merge(ldots1, ldots2, rev seq1, rev seq2)),
+	       longest - l1, longest - l2)
+	  else
+	    (merge(rdots1, rdots2, seq1, seq2), 0, 0)
+    in
+      DIS(NONE, Exp.Set.union (addToPC(pos1, conds1), addToPC(pos2, conds2)),
+	  SEQ (false, seq, false))
+    end
+in
+  <<definition of [[andpx]]>>
+end
+@
+<<common functions>>=
+<<function [[addBitsToPC]]>>
+@ 
+<<function [[addBitsToPC]]>>=
+fun bitsToPCunits bits =
+    let val unit = !GlobalState.pcUnitBits
+	val pcs = bits div unit
+	val _ = if pcs * unit <> bits then
+	          Error.errorl ["Token of size ", Int.toString bits,
+				" is not integral number of ", Int.toString unit,
+				"-bit units used to increment PC"]
+		else ()
+    in  pcs
+    end
+
+fun addBitsToPC 0 = Exp.pc
+  | addBitsToPC bits = Exp.add(Exp.pc, Exp.const (bitsToPCunits bits))
+<<manipulating the program counter>>=
+<<function [[addBitsToPC]]>>
+fun pcplus 0 = (fn e => e)
+  | pcplus bits = Exp.pcSubst (addBitsToPC bits)
+fun addToPC (pos, conds) =
+  if pos = 0 then conds
+  else Exp.Set.map (pcplus pos) conds
+@ Useful elsewhere are 
+the abilities to add to the PC and to convert bits to PC units.
+<<exported common identifiers>>=
+val addBitsToPC : int -> Exp.exp
+val bitsToPCunits : int -> int
+@
+It is desirable to preserve names when patterns are combined with field bindings
+in pattern-matching statements.  Because it's late at night and I'm lazy, I'm making
+this work in all contexts, not just in matching statements.
+<<definition of [[andpx]]>>=
+<<contradiction handling>>
+fun isFieldBinding (PAT(_, [DIS(_, conds, SEQ(false, [cc], false))])) =
+      (case Seq.unSequent cc
+	 of SEQ_CONS (_,[x],[]) => Exp.Set.isEmpty conds
+	  | _ => false)
+  | isFieldBinding _ = false
+fun andpx (p1 as PAT (n1, _), p2 as PAT (n2, _)) = 
+  let val p as PAT(patname, ds) = dropContradictoryDisjuncts(distribute andd (p1, p2))
+      val keepname = if      isFieldBinding p1 then n2
+		     else if isFieldBinding p2 then n1
+		     else NONE
+  in  case (keepname,patname)
+	of (SOME n, NONE) => PAT(SOME n, ds)
+	 | _ => p
+  end
+@ The code above doesn't seem to preserve the original Icon semantics
+of doing funky things with the names of the disjuncts when
+[[keepname]] is present.
+@
+<<definition of [[merge]]>>=
+<<merge functions>>
+fun merge (dots1, dots2, seq1, seq2) =
+  let fun m([],   []) = []
+        | m(seq1, []) = if dots2 then seq1
+			  else <<complain of right seq too short>>
+        | m([], seq2) = if dots1 then seq2
+			  else <<complain of left seq too short>>
+        | m (seq1 as (h1::t1), seq2 as (h2::t2)) =
+            case(Seq.unSequent h1, Seq.unSequent h2) 
+	      of (SEQ_CONS (class1, bb1, cc1), SEQ_CONS (class2, bb2, cc2)) =>
+		    if class1 = class2 then
+		      let val bb = mergeBindings(bb1, bb2) (*DANGER! new constraints!*)
+			  val cc = mergeConstraints(cc1, cc2)
+		      in
+			   Seq.cons(class1, bb, cc) :: m(t1, t2)
+		      end
+		    else
+		      <<complain about class mismatch>>
+               | (label, SEQ_CONS _) => Seq.mkSequent label :: m(t1, seq2)
+	       | (_,     label)      => Seq.mkSequent label :: m(seq1, t2)
+  in m (seq1, seq2)
+  end
+<<complain of right seq too short>>=
+error "Shapes differ for &; right-hand sequence too short"
+<<complain of left seq too short>>=
+error "Shapes differ for &; left-hand sequence too short"
+<<complain about dots>>=
+error "Illegal conjunction; dots on both left and right"
+<<complain about class mismatch>>=
+error ("Shapes differ for &; left sequent from class `" ^
+       #name class1 ^ "'; right sequent from class `" ^ #name class2 ^ "'")
+@ 
+<<length functions>>=
+fun bitlength l =
+  let fun width (SEQ_CONS({size,...},_,_)) = size
+        | width _ = 0
+      fun len(h :: t, n) = len(t, n + width (Seq.unSequent h))
+        | len([], n) = n
+  in  len(l, 0)
+  end
+@
+We make a sequence by concatenating lists of sequents.
+Inner dots disappear ``automagically,'' since they are just ignored.
+We forbid concatenating dots with a sequence consisting solely of location bindings;
+a user who really wants to do something this weird can always intercalate
+an epsilon.
+<<mutators>>=
+<<mapping substitution onto sequences>>
+local
+  fun isLabel s = case Seq.unSequent s of SEQ_CONS _ => false | _ => true
+  fun all_locbindings [] = false
+    | all_locbindings l = List.all isLabel l
+  fun seqd (DIS (_, conds1, SEQ(ldots1, seq1, rdots1)), 
+	    DIS (_, conds2, SEQ(ldots2, seq2, rdots2))) =
+    if rdots1 andalso all_locbindings seq2 then
+      error "illegal concatenation `... ; L:'"
+    else if ldots2 andalso all_locbindings seq1 then
+      error "illegal concatenation `L: ...'"
+    else
+      let val k = bitlength seq1
+      in  DIS (NONE, Exp.Set.union(conds1, addToPC(k, conds2)),
+	       SEQ(ldots1, seq1 @ (map (mapSeq (pcplus k)) seq2), rdots2))
+      end
+in
+  fun seqpx x = distribute seqd x  (* watch value restriction *)
+end
+@ Notice that the empty sequence is \emph{not} all location bindings.
+<<mapping substitution onto sequences>>=
+fun mapSeq sigma s =
+  Seq.mkSequent (
+    case Seq.unSequent s 
+      of l as SEQ_ACTUAL _ => l
+       | SEQ_LATENT e => SEQ_LATENT (sigma e)
+       | SEQ_CONS (class, bb, cc) =>
+           SEQ_CONS (class, map (fn (f, e) => (f, sigma e)) bb, cc))
+val mapSeq : (Exp.exp -> Exp.exp) -> Seq.sequent -> Seq.sequent = mapSeq
+  (* Seq.sequent was sequent *)
+  (* this rebinding somehow avoids a type error when mapSeq is used in Double *)
+@
+<<folding expressions over sequences>>=
+fun foldSeq f zero s =
+  case Seq.unSequent s 
+    of SEQ_ACTUAL l => zero
+     | SEQ_LATENT e => f(e, zero)
+     | SEQ_CONS (class, bb, cc) => foldl (fn ((_, e), zero) => f(e, zero)) zero bb
+@ 
+The ellipsis is also a mutator.
+<<internal functions>>=
+local
+  fun pre  (DIS(name, conds, SEQ(pre,  seq, post))) =
+           (DIS(name, conds, SEQ(true, seq, post))) 
+  fun post (DIS(name, conds, SEQ(pre,  seq, post))) =
+	   (DIS(name, conds, SEQ(pre,  seq, true))) 
+in
+  fun preDots  (PAT(n, ds)) = PAT(n, map pre  ds)
+  fun postDots (PAT(n, ds)) = PAT(n, map post ds)
+end
+@
+Only disjunction really has an identity, so we don't use identities at
+all.
+<<mutators>>=
+fun patfold f [x] = x
+  | patfold f (h::t) = f(h, patfold f t)
+  | patfold f [] = Impossible.impossible "applied pattern operator to empty list"
+fun andp x = patfold andpx x
+fun seqp x = patfold seqpx x
+fun orp  x = patfold orpx  x
+@ 
+@
+[[merge_constraints]] merges two sets of constraints, preserving the invariant
+that a field may appear at most once on any list of constraints.
+<<merge functions>>=
+fun mergeCons combine (l1, l2) =
+  let fun add((f, r), set) =
+	case FieldMap.find(set, f)
+	  of NONE => FieldMap.insert(set, f, r)
+	   | SOME r' => FieldMap.insert(set, f, combine(f, r, r'))
+      val new = foldl add (foldl add FieldMap.empty l1) l2
+  in  FieldMap.listItemsi new
+  end
+
+fun mergeConstraints x = mergeCons (fn (_, r, r') => Range.intersection(r, r')) x
+fun mergeBindings x = mergeCons (fn (f, _, _) => <<complain of constraint conflict>>) x
+(* could do better in the way of merging constraints, to kick out extra conditions...*)
+<<complain of constraint conflict>>=
+Error.errorl ["Multiple field bindings for field `", #name f, "'"] (* need image *)
+@ 
+<<absolute constraints and conjunction>>=
+fun mergeConstraints (l1, l2) =
+  let fun add((f, r), set) =
+	case AbsoluteFieldMap.find(set, f)
+	  of NONE => AbsoluteFieldMap.insert(set, f, r)
+	   | SOME r' => AbsoluteFieldMap.insert(set, f, Range.intersection(r, r'))
+      val new = foldl add (foldl add AbsoluteFieldMap.empty l1) l2
+  in  AbsoluteFieldMap.listItemsi new
+  end
+
+fun andd (DIS (_, conds1, (ccs1, labels1, len1)), 
+	  DIS (_, conds2, (ccs2, labels2, len2))) =
+  let val _ = len1 = len2 orelse Impossible.impossible "absolute length mismatch"
+      val len = len1
+      val ccs = mergeConstraints (ccs1, ccs2)
+      fun ulab (l1, l2) = if l1 = l2 then l1
+			  else Impossible.impossible "inconsistent absolute labels"
+      val labels = StringMap.unionWith ulab (labels1, labels2)
+  in  DIS (NONE, Exp.Set.union(conds1, conds2), (ccs, labels, len))
+  end
+
+<<absolute contradiction handling>>
+
+fun andpx (p1, p2) = dropContradictoryDisjuncts(Pure.distribute andd (p1, p2))
+fun andp l = Pure.patfold andpx l
+@ 
+\subsection{Explanation of pattern labels}
+A label [[L:]] in any sequence makes [[L]] available for use in field
+bindings throughout any pattern containing that sequence.
+The label is permissible only on the right-hand side of a constructor
+specification, and its scope is the entire branch in which it appears,
+including equations.
+The \emph{eventual} representation of the label is as an integer
+expression derived from [[PC]], i.e., an offset relative to
+the beginning of the disjunct (sequence) in which it appears.
+The problem is, we can't compute that representation until we've
+elaborated the rest of the pattern.
+Pattern elaboration must therefore take place in three stages:
+\begin{enumerate}
+\item
+Scan for labels in the AST, and put them in scope as [[PATLABEL]]
+applied to their own names.
+This assures they are unique in the scope, so we can substitute for
+the names later without fear of reprisal.
+They should project as integers using simply their names.
+\item
+Elaborate the AST into a [[labelled_pattern]], in which
+[[EXTENSION]] appears as a binding instance.
+\item
+Once the AST is elaborated, we can now call [[makeLabelsRelative]],
+which removes all pattern labels and replaces them in field bindings
+with the appropriate [[PC_RELATIVE]] values.
+The pattern label will not appear free in the resulting pattern.
+\end{enumerate}
+
+
+\begin{quote}
+\em (Old)
+
+In a single [[when]] clause of a constructor definition, a label [[L]]
+can be used as inputs to the set of equations as long as it appears in
+all disjuncts of the associated pattern.  (This is, of course, one way
+of propagating the label into field bindings.)
+
+We enforce the scoping of labels by substituting [[Epatlabel]]
+expressions for variables that refer to labels.
+(We do this after running the solver, when binding patterns into what
+we might call ``top-level normal form.''  Of course this has nothing
+to do with patterns themselves; it's a property of the expressions in
+field bindings, but we do null out the [[name]] field of a
+[[patlabel]] so it can mark the location without interfering with
+other labels that are differently scoped but identically named.)
+At the emission level (untyped constructor), 
+we'll rewrite [[patlabel]] expressions into the form [[Epc() + offset]].
+At the recognition level, we'll insert a binding of the name of the
+label to an expression of the same form.
+
+
+The invariant on [[patlabel]]s is that the [[name]] field is non-null
+during parsing and conversion to normal form, but the [[name]] field
+must be null in any pattern that results from a [[lookup]] or a
+[[crhs]] call.
+We might actually be able to do something with this in ML by
+parameterising the type by [[unit]] or [[string]].
+
+Another invariant we want to maintain is that no [[patlabel]] should
+appear in more than one sequence.  Conjunction can't do it, because it
+destroys all labels.  Disjunction can't do it, because collecting a
+larger group of sequences together can't violate the invariant.
+But concatentation can do it, because we replicate sequences to get an
+outer product.  So we have to be careful in [[seqpx]].
+We exploit the invariant by setting [[name]] fields null 
+when binding label names.
+
+A [[latent_patlabel]] is used to implement label binding of free
+constructor-typed arguments in matching statements.
+The label has to be associated with the constructor-input pattern, but
+making it a label at constructor-input time will just put it in the
+wrong scope.
+Instead, we keep the latent pattern label around until we know whether
+it will refer to a real instance [[Einstance(name)]] or a binding
+instance [[Ebinding_instance(name)]].  In the former case it
+vanishes; in the latter, it turns into a real label.
+[[eliminate_instances]] does the work.
+\end{quote}
+<<label functions>>=
+fun actualLabel l = Labelled.seq2p [LABEL(ACTUAL l)]
+fun latentLabel e = Latent.seq2p [LABEL e]
+@ 
+To make a normal pattern labelled, we just inject the right sequents
+using [[SEQUENT]].
+<<transfer functions>>=
+fun inject seq (PAT(name, ds)) =
+  let fun dis (DIS(name, conds, SEQ(pre, ss, post))) =
+            DIS(name, conds, SEQ(pre, map seq ss, post))
+  in  PAT(name, map dis ds)
+  end
+fun injectPure p = inject CONSTRAINTS p
+fun injectLatent p = inject (fn CONSTRAINTS c => CONSTRAINTS c
+			      | LABEL latent => LABEL (LATENT latent)) p
+@ 
+To fail if there are labels present, we perform the inverse operation,
+complaining if we see anything except [[SEQUENT]].
+<<transfer functions>>=
+fun project seq (PAT (name, ds)) =
+  let fun dis (DIS(name, conds, SEQ(pre, ss, post))) =
+	         DIS(name, conds, SEQ(pre, map seq ss, post))
+  in  PAT(name, map dis ds)
+  end
+fun purify p = 
+  project (fn CONSTRAINTS c => c 
+           | LABEL _ => Error.error "labels not permitted at top level") p
+fun projectAsPure p = 
+  project (fn CONSTRAINTS c => c 
+           | LABEL _ => ErrorMsg.impossible "unexpected pattern label") p
+fun dropLatents p =
+ (projectAsPure o actualizeLatents {actualsOK=false} o injectLatent) p
+@ 
+Making labels PC-relative is a bit more elaborate.
+The first step is to find the offsets of all the labels.
+This is where they get converted from bits to PC units.
+<<label functions>>=
+fun labelOffsets (DIS(name, conds, SEQ(pre, ss, post))) =
+  let fun addlabel(m, l, n) =
+	case StringMap.find(m, l)
+	  of NONE => StringMap.insert(m, l, Pure.bitsToPCunits n)
+	   | SOME _ => Error.errorl ["Pattern label ", l, " appears twice in disjunct"]
+      fun b ([], n, bindings) = bindings
+        | b (CONSTRAINTS (cls,_,_) :: t, n, bindings) = b(t, n + #size cls, bindings)
+	| b (LABEL (ACTUAL l) :: t, n, bindings) = b(t, n, addlabel(bindings, l, n))
+	| b (LABEL (LATENT _) :: t, n, bindings) = b(t, n, bindings)
+  in  b(ss, 0, StringMap.empty) 
+  end
+@
+Now, to make labels PC-relative, we add the offsets to the program
+counter.
+For each disjunct, 
+we build up a map from bindings of labels.  Then, if the map isn't
+empty, we apply it to the conditions and the sequents.
+<<label functions>>=
+fun makeLabelsPCrelative (PAT (name, ds)) =
+  let fun addPC k = Exp.add(Exp.pc, Exp.const k)
+      fun labelbindings d = StringMap.map addPC (labelOffsets d)
+      fun dis (d as DIS(name, conds, SEQ(pre, ss, post))) =
+	let val lmap = labelbindings d
+	    fun strip([], ss') = rev ss'
+	      | strip(CONSTRAINTS c    :: t, ss') = strip(t, CONSTRAINTS c :: ss')
+              | strip(LABEL (LATENT e) :: t, ss') = strip(t, LABEL e :: ss')
+              | strip(LABEL (ACTUAL _) :: t, ss') = strip(t, ss')
+	    val ss = strip(ss, [])
+	in  if StringMap.numItems lmap = 0 then
+	      DIS(name, conds, SEQ(pre, ss, post))
+	    else
+	      let val sigma = Exp.multiSubst (fn l => StringMap.find (lmap, l))
+		  val conds = Exp.Set.map sigma conds
+		  val ss = map (Latent.mapSeq sigma) ss
+	      in  DIS(name, conds, SEQ(pre, ss, post))
+	      end
+	end
+  in  PAT(name, map dis ds)
+  end
+@ 
+\subsection{Substitution}
+Substitution destroys disjuncts with manifestly false conditions,
+because that's how simplification works.
+It's crucial for constructor application.
+<<exported identifiers>>=
+val subst : (Exp.exp -> Exp.exp) -> pattern -> pattern
+<<internal functions>>=
+fun subst sigma (PAT(name, ds)) =
+  let fun dis (DIS(name, cs, SEQ(pre, ss, post))) =
+        DIS(name,
+	    Exp.Set.delTrue (Exp.Set.map sigma cs),
+	    SEQ(pre, map (mapSeq sigma) ss, post))
+      val hasFalse = Exp.Set.exists (fn e => Exp.compare(e, Exp.false') = EQUAL)
+      fun worthwhile (DIS(_, cs, _)) = not (hasFalse cs)
+  in  PAT(name, List.filter worthwhile (map dis ds))
+  end
+@ 
+\subsection{Folding}
+<<exported identifiers>>=
+val foldExps : (Exp.exp * 'a -> 'a) -> 'a -> pattern -> 'a
+<<internal functions>>=
+fun foldExps f zero (PAT(name, ds)) =
+  let <<folding expressions over sequences>>
+      fun dis (DIS(name, cs, SEQ(pre, ss, post)), zero) =
+        foldl (fn (s, z) => foldSeq f (Exp.Set.foldl f z cs) s) zero ss
+  in  foldl dis zero ds
+  end
+@ 
+\subsection{Miscellany}
+I've lost some features of the old implementation, including keeping
+the name and the (optional) warning about labels unused within the disjunct.
+<<*>>=
+procedure bind_and_remove_patlabel_names(p, keepname, free_vars_ok)
+  q := pattern([], p.name)
+  every put(q.disjuncts, barpm_d(!p.disjuncts, keepname, free_vars_ok))
+  return q
+end
+
+procedure barpm_d(d, keepname, free_vars_ok)
+  t := table()
+  every s := !d.sequents & type(s) == "patlabel" & \s.name do {
+    (/t[s.name] := Epatlabel(s)) |
+      error("Duplicate labels ", s.name, " in disjunct ", expimage(d))
+    if s.name == free_variables(d) then &null
+    else \free_vars_ok | 
+         warning("Label ", s.name, " not used in disjunct ", expimage(d))
+    if /keepname then s.name := &null
+  } 
+  return subst_tab(d, t)
+end
+
+procedure bind_patlabel_names(p, free_vars_ok)
+  return bind_and_remove_patlabel_names(p, 1, free_vars_ok)
+end
+@
+\section{Eliminating contradictions}
+On the Intel 486, some modifiers may be used only with certain opcodes,
+e.g., [[grp3.Eb | grp3.Ev]].  When such a disjunction is conjoined with a
+particular opcode, the result contains contradictions, e.g.%
+\footnote{Note that when this sort of conjunction takes place as part
+of defining a constructor, the disjunction is expanded as part of the
+opcode, and the result is multiple constructors, some of which are
+``vacuous'' in the sense that they contain only contradictory
+disjuncts.} 
+$$\hbox{[[(grp3.Eb | grp3.Ev) & grp3.Eb]]} \equiv \hbox{[[grp3.Eb | ]]\it impossible}.$$
+[[not_contradictory]] can be applied to a disjunct; it succeeds if and
+only if the disjunct contains no impossible constraints.
+We might one day decide to use it to eliminate disjuncts with
+conditions that are evidently always false.
+<<contradiction handling>>=
+fun notContradictory (DIS (_, _, SEQ(_, seq, _))) =
+  let fun contra (_, {lo, hi}:range) = lo >= hi
+      fun contra' (SEQ_CONS (_, _, l)) = List.exists contra l
+	| contra' _ = false
+  in  not (List.exists (contra' o Seq.unSequent) seq)
+  end
+fun dropContradictoryDisjuncts (PAT(n, ds)) = PAT(n, List.filter notContradictory ds)
+@ 
+<<absolute contradiction handling>>=
+fun notContradictory (DIS (_, _, (ccs, _, _))) =
+  let fun contra (_, {lo, hi}:range) = lo >= hi
+  in  not (List.exists contra ccs)
+  end
+fun dropContradictoryDisjuncts (PAT(n, ds)) = PAT(n, List.filter notContradictory ds)
+@
+\section{Functions on patterns}
+[[place_holder]] takes a disjunct and returns a disjunct that 
+may be used as a place holder for it.
+This old code is still floating around because we haven't implemented
+relocation yet.
+<<*>>=
+procedure place_holder(d)
+  local shape, class
+  shape := shapeof(d)
+  <<complain if some class in [[shape]] has no placeholder>>
+  p := epsilon()
+  every class := !shape do p := seqp(p, class.holder)
+  *p.disjuncts = 1 | impossible("Some placeholder has multiple disjuncts")
+  return p.disjuncts[1]
+end
+<<complain if some class in [[shape]] has no placeholder>>=
+if /(class := !shape).holder then
+    error("No placeholder is defined for class ", class.name)
+@ [[pattern_length]] computes the length in bits of a pattern in normal form.
+<<*>>=
+procedure pattern_length(p)
+  local shapes, class
+  shapes := maplist(disjunct_length, p.disjuncts)
+  *shapes > 0 | error("length of impossible pattern")
+  if !shapes ~= shapes[1] then error("Length of pattern ", patimage(p), " is not fixed")
+  return shapes[1]
+end
+<<*>>=
+procedure disjunct_length(d)
+  n := 0
+  every s := !d.sequents & type(s) == "sequent" do
+    n +:= s.class.size
+  return n
+end
+<<*>>=
+procedure shapeof(d)
+  l := []
+  every s := !d.sequents & type(s) == "sequent" do
+    put(l, s.class)
+  return l
+end
+@
+A pattern is a legitimate global pattern if it has no conditions and
+no field bindings and if no labels are named.
+<<internal functions>>=
+fun insistGlobal (p as PAT (_, ds)) =
+  if List.exists (fn (DIS(_,conds,_)) => not (Exp.Set.isEmpty conds)) ds then
+    error "top-level pattern has conditions" (* need image *)
+  else 
+    let fun badSequent (SEQ_CONS (_, [], _)) = false
+          | badSequent _ = true (* field binding or label *)
+        fun badDisjunct (DIS(_, _, SEQ(_,seq,_))) =
+	      List.exists (badSequent o Seq.unSequent) seq
+    in  if List.exists badDisjunct ds then
+          error "top-level battern has inputs or labels" (* need image *)
+	else
+	  p 
+    end
+<<exported identifiers>>=
+val insistGlobal : pattern -> pattern (* identity or raises exception *)
+@ 
+\subsection{Absolute normal form}
+@ 
+Converting to absolute normal form is simply a matter of adding up word sizes to
+compute offsets.  
+There's a bit of trickery in that I don't eliminate field
+bindings here, so I return a ``[[proto_pattern]]'' instead of a true
+[[Absolute.pattern]].
+<<conversion to absolute normal form>>=
+fun anf (p as PAT(name, ds) : Labelled.pattern) = 
+  let infix 9 at
+      fun addlabel(m, l, n) =
+	case StringMap.find(m, l)
+	  of NONE => StringMap.insert(m, l, {bits=n})
+	   | SOME _ => Error.errorl ["Pattern label ", l, " appears twice in disjunct"]
+      fun (f, ?) at n = ((f, n), ?)  (* make binding absolute *)
+      fun b ([], n, bindings, constraints, labels) = (bindings, constraints, labels, n)
+	| b ((LABEL (ACTUAL l)) :: t, n, bbs, ccs, labels) =
+   	      b(t, n, bbs, ccs, addlabel(labels, l, n))
+        | b ((LABEL (LATENT _)) :: t, n, bbs, ccs, labels) = 
+              Impossible.impossible "latent label in anf conversion"
+        | b ((CONSTRAINTS (class, bs, cs)) :: t, n, bbs, ccs, labels) = 
+              let val bbs = foldl (fn (b, bbs) => b at n :: bbs) bbs bs
+		  val ccs = foldl (fn (c, ccs) => c at n :: ccs) ccs cs
+	      in  b(t, n + #size class, bbs, ccs, labels)
+	      end
+      fun dis (DIS (name, conditions, SEQ(pre, ss, post))) =
+         let val (bb, cc, labels, n) = b(ss, 0, [], [], StringMap.empty)
+         in  (DIS (name, conditions, (cc, labels, n)), bb)
+	 end
+  in  PAT(name, map dis ds) : Absolute.proto_pattern
+  end
+@ 
+To convert labels to actuals.
+<<actualization>>=
+structure U = UnifiedExp
+fun actualizeLatents {actualsOK} (PAT(name, ds) : Labelled.pattern) = 
+  let fun actualize([], seqs') = rev seqs'
+	| actualize (LABEL (LATENT e) :: t, seqs') =
+            let fun ignorable (U.VAR _) = true
+		  | ignorable (U.INSTANCE _) = true
+		  | ignorable (U.INSTANCE_INPUT (e, {cons, operand})) = ignorable e
+	              (* only if it's a constructor-typed input, but I can't check *)
+		  | ignorable _ = false
+	    in case e
+		 of U.BINDING_INSTANCE (name, wild, _) =>
+		    if actualsOK then
+		      actualize(t, if wild then seqs' else LABEL(ACTUAL name) :: seqs')
+		    else
+		      Impossible.impossible "latent label becoming actual"
+		  | _ =>
+		    if ignorable e then actualize(t, seqs')
+		    else Impossible.impossible "type of latent-label expression"
+	    end
+	| actualize(h :: t, seqs') = actualize(t, h :: seqs')
+      fun dis (DIS (name, conditions, SEQ(pre, ss,                post))) =
+	       DIS (name, conditions, SEQ(pre, actualize(ss, []), post))
+  in  PAT(name, map dis ds) : Labelled.pattern
+  end
+@ 
+\section{Old Icon code}
+@
+The tricky part of computing the constructors applied in a
+pattern is that the exact set is not known until [[pnf]] is applied to
+the pattern. 
+We make a conservative estimate by generating all possible
+applications using [[explode_apps]].
+<<*>>=
+procedure constructors_applied_in(p)
+    case type(p) of {
+        "pattern" | "Pident" | "Plabel" | "Pcon" | "string" | "integer" | "literal" :
+		 fail
+        "Pand" | "Por" | "Pseq"  : suspend constructors_applied_in(!p.patterns)
+        "Papp" : suspend (if type(p.cons) == "list" then
+                            constructors_applied_in(explode_apps(p.cons,p.args))
+                          else p.cons) |
+                          constructors_applied_in(!p.args)
+            default : impossible("pattern AST")
+    }
+end
+@ 
+\section{Field stuff}
+<<field.sig>>=
+signature FIELD = sig
+  <<field types>>
+  val fwidth : field -> int
+  val fmax   : field -> Word.word
+  val afmax  : absolute_field -> Word.word
+  val compare'range : range * range -> order
+  val compare'field : field * field -> order
+  val compare'absolute_field : absolute_field * absolute_field -> order
+end
+<<field.ord>>=
+structure Field : FIELD = struct
+  <<field types>>
+  fun fwidth ({range={lo,hi}, ...} : field) = hi - lo
+  fun fmax f = Word.<<(0w1, Word.fromInt(fwidth f))
+  fun afmax (f, n) = fmax f
+%%
+  <<field types>>
+%%
+end
+
+structure AbsoluteFieldKey : ORD_KEY = struct
+  type ord_key = Field.absolute_field
+  val compare = Field.compare'absolute_field
+end
+structure AbsoluteFieldSet = BinarySetFn(AbsoluteFieldKey)
+structure AbsoluteFieldMap = BinaryMapFn(AbsoluteFieldKey)
+@ 
+<<pattern.sml>>=
+functor PatternInternalFun (Seq : SEQUENT_BASICS) = struct
+  open Seq.PatternTypes
+  type pattern = Seq.sequent sequence disjunct' pattern'
+  <<internal functions>>
+end
+@ 
+<<pattern.sml>>=
+functor PatternsFun(Exp: EXP_SET where type exp = UnifiedExp.exp) : PATTERNS = 
+struct
+  structure Exp = Exp
+  <<common functions>>
+
+  structure PatternTypes = PatternTypesFun(Exp)
+  structure PT = PatternTypes
+  structure Labelled = PatternInternalFun(LabelledSequentFun(PT))
+  structure Latent   = PatternInternalFun(LatentSequentFun  (PT))
+  structure Pure     = PatternInternalFun(PureSequentFun    (PT))
+  open PT
+
+  structure Absolute = struct 
+    structure Exp = Exp  
+    type pattern = absolute_disjunct pattern'
+    type proto_pattern = 
+                   (absolute_disjunct * absolute_field field_binding' list) pattern'
+    val epsilon = PAT(SOME "epsilon", 
+		      [DIS (NONE, Exp.Set.empty, ([], StringMap.empty, 0))])
+    <<absolute constraints and conjunction>>
+  end
+
+  <<conversion to absolute normal form>>
+  <<actualization>>
+  <<transfer functions>>
+  <<label functions>>
+end
+@ 
+

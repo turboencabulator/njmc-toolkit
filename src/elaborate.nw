@@ -1,0 +1,1160 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: elaborate.nw,v 1.38 1999/09/06 16:05:28 nr Exp $
+
+% l2h let htmlcontents tableofcontents
+@
+
+\section{Elaborating a specification}
+Elaborating a specification actually always extends an existing,
+possibly empty, specification.
+<<elaborate.sig>>=
+signature ELABORATE = sig
+  structure SledSpec : SLED_SPEC
+  val elaborate : SourceMap.sourcemap -> Ast.spec * SledSpec.espec -> SledSpec.espec
+end  
+@ 
+@
+<<elaborate.sml>>=
+functor ElaborateFun 
+          (structure ElabExp : ELAB_EXP
+           structure SledSpec : SLED_SPEC
+              sharing SledSpec.Denotable = ElabExp.Denotable
+	   structure Solve : MAL_SOLVER
+           structure FieldExpressions : FIELD_EXPRESSIONS
+           sharing FieldExpressions.Patterns = ElabExp.Denotable.Patterns
+           sharing type Solve.Exp.exp = ElabExp.Denotable.Patterns.Exp.exp
+	   sharing type Solve.Exp.Set.set = ElabExp.Denotable.Patterns.Exp.Set.set) : ELABORATE = 
+struct
+  type error_stream = TextIO.outstream
+  structure SledSpec = SledSpec
+  structure EC = ElabExp.ElabCons
+  structure Denotable = ElabExp.Denotable
+  structure D = Denotable
+  structure Patterns = D.Patterns
+  structure P = Patterns
+  structure Pure = Patterns.Pure
+  structure Exp = D.Patterns.Exp
+  structure Constructor = D.Constructor
+  structure C = Constructor
+  structure A = Ast
+  open Error
+
+  structure Util' = struct
+    fun bindUnbound(tab, name, x) =
+      case StringMap.find(tab, name) 
+         of NONE => StringMap.insert(tab, name, x)
+          | SOME _ => Error.errorl ["identifier ", name, " redefined"]
+  end
+ 
+  <<bit numbering>>
+  <<elaborate>>
+end
+@ 
+<<elaborate>>=
+fun elaborate smap
+      (ast, info as {symtab,token_classes,constructors,bitNumbering,fieldInfo,vars,
+                     family,ignored}:SledSpec.espec) =
+  let val warning = ErrorMsg.warning smap
+      fun ignore s = 
+        {symtab=symtab, token_classes=token_classes, constructors=constructors,
+         bitNumbering=bitNumbering, fieldInfo=fieldInfo, vars=vars, family=family,
+         ignored = StringSet.add(ignored, s)
+        } : SledSpec.espec
+      fun newVars v = 
+        {symtab=symtab, token_classes=token_classes, constructors=constructors,
+         bitNumbering=bitNumbering, fieldInfo=fieldInfo, vars=v, family=family,
+         ignored = ignored
+        } : SledSpec.espec
+      fun newSymtab tab = 
+        {symtab=tab, token_classes=token_classes, constructors=constructors,
+         bitNumbering=bitNumbering, fieldInfo=fieldInfo, vars=vars, ignored=ignored,
+         family=family
+        } : SledSpec.espec
+      fun newFieldInfo info = 
+        ( GlobalState.fieldinfo := info
+        ; {symtab=symtab, token_classes=token_classes, constructors=constructors,
+	   bitNumbering=bitNumbering, fieldInfo=info, vars=vars, ignored=ignored,
+	   family=family
+	   }) : SledSpec.espec
+      fun newConstructors (symtab, cs) =
+	    (* might add a constructor type to symtab *)
+        {symtab=symtab, token_classes=token_classes, constructors=cs,
+         bitNumbering=bitNumbering, fieldInfo=fieldInfo, vars=vars, ignored=ignored,
+	 family=family
+        } : SledSpec.espec
+      val errorContext = (smap, ErrorMsg.defaultConsumer())
+      fun errormsg rgn = ErrorMsg.error errorContext rgn ErrorMsg.ERROR
+      fun warningmsg rgn = ErrorMsg.error errorContext rgn ErrorMsg.WARNING
+      <<binding functions>>
+      <<lookup functions>>
+      val elabArg = {fieldInfo=fieldInfo, lookup=lookup, lookupGlobal=lookup,
+		     lookupConstructor=lookupConstructor, errorContext=errorContext,
+		     elaborationContext=ElabExp.ENCODING}
+      fun optionalField n =
+	case lookupOpt n of SOME (OK (D.FIELD f)) => SOME f | _ => NONE
+	   (* could lead to spurious error messages :-( *)
+      <<elab>>
+  in  catch' info errorContext SourceMap.nullRegion elab ast
+  end  
+@ 
+\section{Elaboration of all the declarations}
+<<elab>>=
+fun elab (A.PC_unit_bits (int, region)) = ignore "pc_unit_bits"
+  | elab (A.WORDSIZE (int)) = ignore "wordsize"
+  | elab (A.TOKENDEF (name, size, fields, region)) = 
+      <<elaborate [[fields of name (size)]] with [[fields]] over [[region]]>>
+  | elab (A.BIT_zero_significance (significance, region)) = 
+      <<set significance of bit zero to [[significance]]>>
+  | elab (A.RELOCATABLE (names)) = 
+      newVars {relocatable = foldl ((fn (x, y) => StringSet.add(y, x))) 
+                                   (#relocatable vars) names}
+  | elab (A.PLACEHOLDER (name, exp, region)) = ignore "placeholder"
+  | elab (A.FIELDINFO (names, fielditems)) = <<elaborate [[fielditems]] for [[names]]>>
+  | elab (A.DISCARD (opcodes)) = ignore "discard"
+  | elab (A.KEEP    (opcodes)) = ignore "keep"
+  | elab (A.FETCH (width, string)) = ignore "fetch"
+  | elab (A.ADDRESS_add (string)) = ignore "address"
+  | elab (A.ADDRESS_type (string)) = ignore "address"
+  | elab (A.ADDRESS_convert (string)) = ignore "address"
+  | elab (A.PATBINDING (names, exp)) = 
+      <<elaborate binding of pattern [[names]] to expression [[exp]]>>
+  | elab (A.CONSTRUCTOR (opcode, operands, tyname, branches)) = 
+      let val (opcode, rgn) = opcode
+val opcodename = EC.foldrOpcodeNames op ^ "" (opcode, rgn)
+      in  <<elaborate constructor [[(opcode, operands, tyname, branches)]]>>
+          handle Overflow => ErrorMsg.impossible "overflow elaborating constructor"
+      end
+  | elab (A.ASM_operand   (names, operand_syntax)) = ignore "assembly"
+  | elab (A.ASM_component (globbing, glob_target)) = ignore "assembly"
+  | elab (A.ASM_opcode    (globbing, glob_target)) = ignore "assembly"
+  | elab (A.ASM_syntax    (opcode, operands)) = ignore "assembly"
+@ 
+@
+<<toplevel>>=
+procedure init_parser()
+    every unchecked_fields | guaranteed_fields := set()
+    every fieldname_literals | operands_and_ids | warned_literals := set()
+    instructionctype := constype("(anonymous constructor type)", set())
+    vanishing_latent_patlabel := latent_patlabel()
+    <<initialization>>
+end
+@ Because of the strange way we allow users to specify field-name
+literals in field bindings, we want to make sure there's never a clash
+between the names used in fieldinfo statements and the names used in
+operands and equations.
+In the old Icon implementation, we did this conservatively at parse
+time.
+\undone{In the ML implementation, we'll check when we build
+environments for constructor applications, making sure that no field
+name is in scope as an operand or temporary.}
+<<warn about clash in [[ii1]]>>=
+every (if not member(warned_literals, ii1) then warning else verbose)(
+  ii1 || " is used as a field-name literal and an operand or id..." |
+  "  the literal takes priority in field bindings"
+)
+<<grammar>>=
+PCSpec : "pc_unit_bits" INT /* if ii2 > 0 then pc_unit_bits := ii2 
+                               else error("pc_unit_bits must be positive") */;
+ # also make sure every existing token divides it! 
+@ 
+\subsection {Fields and field information}
+Fields declared in the same [[fields]] declaration are members of the same equivalence class.
+Fields in the same equivalence class share the same {\em shape}, i.e., 
+the width of the unit in which they are defined.
+Constraints on fields with different classes may not be combined with [[&]], even
+if the classes have the same shape.
+% Equivalence classes are an effective way of specifying the names of fields
+% that appear in the same instructions, e.g. [[rd]], [[rs]], and [[rt]] or 
+% [[fd]], [[fs]], and [[ft]].
+% false, not so!
+Equivalence classes are useful for distinguishing CISC instruction fragments that 
+must be combined to form a complete instruction.
+
+Internally, the toolkit uses little-endian bit numbering---that is,
+bit~0 is always the least significant bit.
+<<elaborate [[fields of name (size)]] with [[fields]] over [[region]]>>=
+let val class = {name=name, size=size}
+    fun newfield ((name, lo, hi, rgn), (symtab, fields)) =
+       let val hi = case hi of NONE => lo | SOME n => n
+           val range = #make_0_lsb bitNumbering (size, {lo=lo, hi=hi+1})
+           val f = {name=name, range=range, class=class}
+       in  if lo <= hi then
+             (bindUnbound(symtab, name, D.FIELD f, rgn), f :: fields)
+           else
+             (errormsg rgn "range bounds out of order" ErrorMsg.nullErrorBody;
+              (bindUnboundError(symtab, name, rgn), fields))
+       end
+    val (symtab, fields') = foldl newfield (symtab, []) fields
+    val symtab = bindUnbound(symtab, name, D.TOKEN class, region)
+    val symtab = if size mod !GlobalState.pcUnitBits = 0 then symtab
+                 else (
+                   <<complain about [[size]]>>;
+                   (* make the token name and all field names ERROR *)
+                   foldl (fn (name, tab) => bindError(tab, name)) symtab
+                     (name :: (map #name fields'))
+                 )
+in {symtab=symtab, 
+    token_classes=(class, rev fields')::token_classes,
+    constructors=constructors,
+    bitNumbering=
+       if length fields > 0 then useBitNumbering bitNumbering else bitNumbering,
+    fieldInfo=fieldInfo, vars=vars, ignored=ignored, family=family
+   }
+end      
+<<complain about [[size]]>>=
+errormsg region (concat ["size of token (", Int.toString size, 
+                      ") must be a multiple of pc_unit_bits = ", 
+                      Int.toString (!GlobalState.pcUnitBits)]) 
+  ErrorMsg.nullErrorBody
+@ 
+\subsection {Bit numbering}
+We always use little-endian numbering internally.
+To make zero the most significant bit, we just renumber.
+<<bit numbering>>=
+fun keep_numbering (size, {lo,hi}) = {lo=lo, hi=hi} : Patterns.range
+fun flip_numbering (size, {lo,hi}) = {lo=size-hi, hi=size-lo} : Patterns.range
+
+fun useBitNumbering ({make_0_lsb,set,used}:SledSpec.bit_numbering) =
+  { make_0_lsb = make_0_lsb, used = true, set = set } : SledSpec.bit_numbering
+
+fun warnBitNumbering ({set, used, make_0_lsb}:SledSpec.bit_numbering) spout =
+  if used then 
+    spout "You change the bit numbering, but you've already used the \
+          \old numbering ... seems like a crazy idea, but I'll do it"
+  else if set then
+    spout "You set the bit numbering twice?  On your head be it..."
+  else 
+    ()
+
+fun setBitNumbering ({make_0_lsb,set,used}:SledSpec.bit_numbering, f) =
+  { make_0_lsb = f, used = used, set = true } : SledSpec.bit_numbering
+<<set significance of bit zero to [[significance]]>>=
+let val numfun = case significance of A.MOST  => flip_numbering
+                                    | A.LEAST => keep_numbering
+    val _ = warnBitNumbering bitNumbering 
+                      (fn s => warningmsg region s ErrorMsg.nullErrorBody)
+in {symtab=symtab, token_classes=token_classes, constructors=constructors,    
+    bitNumbering=setBitNumbering(bitNumbering, numfun),
+    fieldInfo=fieldInfo, ignored=ignored, vars=vars, family=family
+   }
+end      
+@
+\subsection {Placeholders}
+Placeholders are emitted for instructions that refer to unresolved 
+relocatable addresses.
+They are associated with the equivalence class of the fields used in 
+the instruction.
+A placeholder is defined by a pattern with the same
+length (but not necessarily the same shape) as the equivalence class
+for which it is a placeholder.
+By construction, a placeholder can't refer to constructors that might use it,
+because no such constructor can have been defined yet.
+In other words,
+the definitions of placeholders must precede the definition of
+an instruction that outputs a pattern with fields in the associated
+equivalence classes.
+<<grammar>>=
+Placeholder : "placeholder" "for" Ident "is" Pattern 
+              /* class := lookuptype(ii3, "equivclass")
+                 (/class.holder := pnf(ii5, globals)) |
+                 error("Placeholder for ", ii3, " is already defined") 
+                 <<make sure placeholder of [[class]] is the right length>>
+               */;
+@ %def Placeholder
+<<make sure placeholder of [[class]] is the right length>>=
+if pattern_length(class.holder) ~= class.size then
+  error("Length of placeholder `", patimage(class.holder), 
+    "' \nfor ", class.name, " does not match class size ", class.size)
+@ 
+<<elaborate [[fielditems]] for [[names]]>>=
+let open FieldInfo
+    val {elabInt,...} = ElabExp.elab elabArg
+    fun insistInt e = case Patterns.Exp.unConst e
+			of SOME n => n
+			 | NONE => Error.error "constant expected"
+    fun update(f, info) =
+      let fun bind(A.CHECKING c, info) = setChecking(f, c, info)
+            | bind(A.FIELDNAME (A.DENSE_NAMES  l), info) = setAllNames(f, l, info)
+            | bind(A.FIELDNAME (A.SPARSE_NAMES l), info) =
+                 let fun int e = Error.emap
+                                 (insistInt o ElabExp.insistSingle)
+                                 (elabInt e)
+                     fun ok (n, OK x) = OK (n, x)
+                       | ok (n, ERROR) = ERROR
+                 in  case Error.errorList (map (fn (n, e) => ok (n, int e)) l)
+                       of OK l  => setSomeNames(f, l, info)
+                        | ERROR => info
+                 end
+      in  foldl bind info
+      end
+    fun elabName (fname, info) = case lookup fname
+                                   of OK d  => update(D.projectField d,info) fielditems
+                                    | ERROR => info
+    fun elab ((f, rgn), info) = Error.catch' info errorContext rgn elabName (f, info)
+in  newFieldInfo (foldl elab fieldInfo names)
+end
+@ 
+\subsection{Elaborating pattern bindings}
+At the top level, no pattern labels are permitted.
+<<elaborate binding of pattern [[names]] to expression [[exp]]>>=
+let val {elabPat, ...} = ElabExp.elab elabArg 
+    val elabPat = Error.emap (ElabExp.gmap Patterns.purify) o elabPat
+    fun inject (n, pat) = D.PATTERN(Pure.nameByBinding(n, Pure.insistGlobal pat))
+    fun bindpat("_", pat, tab, rgn) = tab
+      | bindpat(n,   pat, tab, rgn) =
+          catch' (bindUnboundError(tab, n, rgn)) errorContext rgn
+            (fn () => bindUnbound (tab, n, inject(n, pat), rgn)) ()
+    open ElabExp (* get SINGLE and GROUP *)
+    fun errbinding () =
+      case names
+        of (A.ONE_NAME (n, rgn)) => bindUnboundError(symtab, n, rgn)
+         | (A.TABLE ns) => foldl (fn ((n,rgn), tab) => bindUnboundError(tab, n, rgn)) 
+                                 symtab (List.filter (fn (n, _) => n <> "_") ns)
+    fun binding' pats =
+      case (names, pats)
+        of (A.ONE_NAME (n, rgn), SINGLE p) => bindpat(n, p, symtab, rgn)
+         | (A.TABLE ns, GROUP ps) =>
+              if length ns = length ps then
+                ListPair.foldl (fn ((n,rgn),pat,tab) => bindpat(n, pat, tab, rgn))
+                               symtab (ns, ps)
+              else
+                <<complain about size mismatch>>
+         | (A.ONE_NAME _, GROUP  _) => error "generator must be bound to identifier list"
+         | (A.TABLE _,    SINGLE _) => error "identifier list must be bound to generator"
+    val lhsRgn = case names
+                   of A.ONE_NAME(_, rgn) => rgn
+                    | A.TABLE ns => foldl (fn ((_,r1),r2) => SourceMap.span(r1, r2))
+                                        SourceMap.nullRegion ns
+    fun binding pats =
+      binding' pats handle Error x =>
+        (Error.errMsg errorContext (x, lhsRgn); errbinding())
+in
+    case catch errorContext lhsRgn elabPat exp
+      of ERROR   => newSymtab (errbinding())
+       | OK pats => newSymtab (binding pats)
+end
+<<complain about size mismatch>>=
+let val rgn = foldr (fn ((_, r1), r2) => SourceMap.span(r1, r2)) (Ast.expRegion exp) ns
+in  catch' (errbinding()) errorContext rgn
+    error ("table has " ^ Int.toString(length ns) ^ " identifiers, " ^
+           "but RHS generates " ^ Int.toString(length ps) ^ " patterns")
+end
+@
+We've lost the verbose announcement of pattern bindings.
+<<verbosely announce binding>>=
+case type(id) of {
+  "string" : verbose("Pattern ", id)
+  "list"   : verbose(*id, " patterns")
+}
+@ 
+\subsection{Elaborating constructors}
+We elaborate in stages:
+\begin{enumerate}
+\item
+Explode the opcode to produce a list of interpretations.
+\item
+Determine the list of operands and their types.
+\item
+Compute list of inputs from opcode and operands, and use those inputs
+to solve equations.
+\item
+Combine the preceding three elements into a single environment, and
+elaborate the pattern on the right-hand side.
+Constraints from equation solving get bound into the pattern as
+needed.
+\end{enumerate}
+We try to solve equations just once, not once per interpretation.
+We do a lot of [['a error]] to avoid cascading error messages.
+
+The initial stage involves handling the easier elaborations, just to
+get things (except for the patterns) out of abstract syntax.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+let fun codecatch f = catch errorContext rgn f
+    fun codecatch' default f = catch' default errorContext rgn f
+    open Error
+    <<bind [[names]] to opcode {\&} operand names, checking for duplicates>>
+    <<bind [[opcodes]] and [[operands]] to their elaborated values>>
+    val names    = names    : StringSet.set error 
+    val opcodes  = opcodes  : EC.interpretation list error 
+    val operands = operands : ( Constructor.Syntax.operand list
+	                      * Constructor.operand list
+	                      ) error
+
+    type soln = Exp.Set.set * Exp.exp StringMap.map (* (conditions, answers) *)
+    <<rebind [[branches]] to contain solutions of equations>>
+    val branches = branches : (soln * Ast.exp option) list error
+    <<rebind [[branches]] to make implicit patterns explicit>>
+    val branches = branches : (soln * Ast.exp) list error
+
+    (* < check for unused definitions > IS MISSING?? !!! *)
+@ 
+After all this prepatory work, the next step is the code that
+elaborates a single interpretation of the opcode.
+Here's where we compose environments, make substitutions for them, 
+elaborate that pattern on the right-hand side, and produce a
+constructor.
+Note that it's up to [[f]] and [[x]] to decide what to do with the new
+constructor.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+    fun elabInterp (f, x, (syntax, operands), ty, branches) lookup (name, rho) =
+      let <<rebind [[rho]] to include bindings for the operands>>
+          fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
+          val sigma = Exp.multiSubst (optmap D.projectIntE o Util.lookup rho)
+          (* now elaborate each branch under that interpretation *)
+          fun elabBranch((conds, eqnrho), pat)  = 
+              let val patLabels = ElabExp.patternLabels pat
+		  <<create [[innerLookup]] to include eqn results, labels, and globals>>
+                  val elabArg = {lookup=OK o innerLookup, lookupGlobal=OK o lookup,
+                                 errorContext=errorContext, fieldInfo=fieldInfo,
+				 elaborationContext=ElabExp.ENCODING, 
+				 lookupConstructor=lookupConstructor}
+                  val {elabPat, ...} = ElabExp.elab elabArg
+                  val insistSingle = ElabExp.insistSingle
+                  val p = emap (Patterns.makeLabelsPCrelative o
+                                Patterns.Labelled.addConds conds o insistSingle)
+                               (elabPat pat)
+                  <<error checking for overlap at [[pat]]>>
+                  val _ = Error.catch errorContext (Ast.expRegion pat) 
+                          (emap overlapCheck) p
+              in
+                  p : Patterns.Latent.pattern error
+              end
+      in
+          codecatch (fn () =>
+                     emap (fn pats => 
+                           f({name=name, ty=ty, operands=operands,
+			      property={branches=pats, syntax=syntax},
+			      sourcemap=smap, region=rgn}, x))
+                          (errorList (map elabBranch branches))) ()
+      end
+@ 
+And here's where we define [[f]] and [[x]].
+The rules for adding a new constructor are slightly complicated,
+because we don't want vacuous constructors (those with no
+non-contradictory disjuncts) to count.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+    fun vacuousSpec ({property={branches,...},...} : Constructor.constructor_info) =
+	  case Patterns.Latent.orp branches
+	    of Patterns.PAT (_, []) => true
+	     | _ => false
+    val isVacuous = vacuousSpec o Constructor.info
+
+    fun addConstructor(c as {name,ty,...}, tab) =
+           (* tab is table of existing constructors, by name *)
+      case StringMap.find(tab, name)
+	of NONE => ( ErrorMsg.verbose ["New constructor ", name]
+		   ; bind(tab, name, C.addConstructor(c, ty))
+                   )
+	 | SOME ERROR => tab
+	 | SOME (OK c') =>
+	     if isVacuous c' then
+		( ErrorMsg.verbose ["Replacing vacuous constructor ", name]
+		; bind(tab, name, C.replaceConstructor (c, ty))
+		)
+	      else if vacuousSpec c then
+		( ErrorMsg.verbose ["Ignoring extra, vacuous constructor ", name]
+                ; tab
+		)
+	      else
+		(warning (rgn, ["Ignoring duplicate definition of constructor ", name])
+		; tab
+		)
+@
+If things go wrong, this code will bind all the faulty constructor
+names to [[ERROR]] in the constructor table.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+    fun erroneousConstructor ((name, rho), constab) =
+	  bindUnboundError(constab, name, rgn)
+    fun erroneousConstructors interps = foldl erroneousConstructor constructors interps
+@ 
+If the constructor type is new and we failed to add any constructors
+to it, we rebind it to [[ERROR]].
+This is a bit harsh, since it will wipe out the constructor type
+entirely, but it does guarantee that 
+there will never be an empty constructor type, which is an important invariant.
+We could do a bit better; if the thing is defined but is not a
+constype, we should rebind it to [[ERROR]]; the problem is issuing a
+suitable message.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+    fun faultyConstype symtab = case tyname of NONE => symtab 
+                                             | SOME n => 
+(ErrorMsg.verbose ["Making constructor type ", n, " ERROR"]; bindError(symtab, n))
+@
+To put it all together, we apply [[foldr]] to the list of
+interpretations, and we juggle [[error]] combinators like crazy.
+<<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
+    val (symtab, constab) =
+      case (opcodes, operands, branches)
+	of (OK interps, OK operands, OK branches) =>
+	    let <<bind [[constype]] to its elaborated value, with possibly new [[symtab]]>>
+		val constype = constype : Constructor.constype error
+                (* if constype bad, create a new one for error checking *)
+                val ty = case constype
+                           of OK ty => ty
+                            | ERROR => Constructor.freshConstype
+                                         (family, {name="test type"}, ())
+                fun addInterp (interp as (name,_), (constab, good)) =
+                  let fun addC (?, (constab, good)) =
+                            (addConstructor(?, constab), true)
+                      val add = elabInterp (addC, (constab, good),
+                                            operands, ty, branches)
+val _ = ErrorMsg.verbose ["Checking constructor interpretation ", name]
+                  in  case strip (errorEnv add lookup interp)
+                        of OK info => info
+                         | ERROR => ( bindUnboundError(constab, name, rgn)
+                                    , good)
+                  end
+                val (st, ct) = case foldr addInterp (constructors, false) interps
+                                 of (constab, true) => (symtab, constab)
+                                  | (constab, false) => (faultyConstype symtab,constab)
+	    in  case constype
+                  of OK _ => (st, ct)
+		   | ERROR => (faultyConstype symtab, erroneousConstructors interps)
+	    end
+         | (OK interps, _, _) => (faultyConstype symtab, erroneousConstructors interps)
+	 | _ => (faultyConstype symtab, constructors) 
+in  
+    newConstructors (symtab, constab)
+end
+@ 
+The next step is to deal with branches, which we do in stages.
+The first stage is to solve the equations.
+A solution contains constraints, plus an environment mapping free
+variables to expressions over inputs.
+In the solver, all identifiers simply stand for themselves.
+<<rebind [[branches]] to contain solutions of equations>>=
+local
+  fun lookupSolver n = (OK o D.TMP) (Exp.var n, optionalField n)
+  val {elabBool, ...} = ElabExp.elab {lookup=lookupSolver, lookupGlobal=lookup,
+				      lookupConstructor=lookupConstructor,
+				      elaborationContext=ElabExp.ENCODING,
+				      errorContext=errorContext, fieldInfo=fieldInfo}
+  fun solve (inputs, eqns) = 
+    let val {constraints, answers, unsolved} = Solve.solve {inputs=inputs, eqns=eqns}
+    in  if null unsolved then
+          (constraints, answers)
+        else
+          errorl [Int.toString (length unsolved),
+                  " unsolved equations ", "??need image??"]
+    end
+  
+  fun solveBranch names (eqns : Ast.exp list, pat) =
+    let val patLabels = ElabExp.patternLabels (getOpt(pat, Ast.INT 0)) (* hack *)
+        val inputs = foldl (fn (x, y) => StringSet.add(y, x)) names patLabels
+    in  emap (fn eqns => (solve(inputs, eqns), pat)) ((errorList o map elabBool) eqns)
+    end
+  fun dobranches names = errorList (map (solveBranch names) branches)
+in 
+  val branches = codecatch (strip o emap dobranches) names
+end 
+@ 
+The implicit pattern conjoins all the names from the opcode and operands.
+Most of the juggling here is to strip off [[error]].
+<<rebind [[branches]] to make implicit patterns explicit>>=
+fun implicitPattern names =
+      Ast.MARK_EXP(rgn, Ast.NARY(Ast.AND, map Ast.IDENT (StringSet.listItems names)))
+fun makeImplicit default (soln, NONE)     = (soln, default)
+  | makeImplicit default (soln, SOME exp) = (soln, exp)
+fun newbranches default = emap (map (makeImplicit default)) branches
+fun doImplicit names = newbranches (implicitPattern names)
+val branches = strip (emap doImplicit names)
+@ 
+When we try to elaborate a single interpretation, we start out with an
+environment that binds the named elements of the opcodes.
+The next step is to add bindings for the operands.
+<<rebind [[rho]] to include bindings for the operands>>=
+fun addInput(operand as (name, _, _), rho) =
+  Util'.bindUnbound(rho, name, Denotable.OPERAND operand)
+val rho  = foldr addInput rho operands
+@ When looking for a field name, it's OK for the name to be unbound,
+so we handle [[Error.Error]].
+@
+The trickiest part of all of this is getting the environment exactly
+right for the branches.
+First, we bind in the results of equations.
+We're working with [[denotable]] now, so we use [[TMP]] to inject the solutions.
+Temporaries from equations never correspond to fields.
+In the process, we need to \emph{substitute} in the equations for
+those names that are already bound in [[rho]] (opcodes and operands).
+The substitution is all ready in the form of [[rho']].
+[[composeBinding]] adds a single binding from [[eqnrho]].
+<<create [[innerLookup]] to include eqn results, labels, and globals>>=
+fun composeBinding(var, exp, rho) = 
+  StringMap.insert(rho, var, D.TMP (sigma exp, optionalField var))
+val middlerho = StringMap.foldri composeBinding rho eqnrho
+fun addLabel(var, rho) =
+  case StringMap.find(rho, var)
+    of NONE => StringMap.insert(rho, var, D.PATLABEL var)
+     | SOME e =>
+	 Error.errorl ["Pattern label ", var, " collides with operand or opcode"]
+val middlerho = foldl addLabel middlerho patLabels
+fun innerLookup n = case StringMap.find(middlerho, n)
+                      of SOME x => x
+                       | NONE => lookup n
+@ I mix in the global environment (in the form of [[lookup]]) by
+hand, although I'm sure the right combinator is lurking out there somewhere\ldots
+@ 
+<<bind [[names]] to opcode {\&} operand names, checking for duplicates>>=
+val addCode = Util.addUniqueName (fn n => errorl ["duplicate name in opcode: ", n])
+val addRand =
+ Util.addUniqueName (fn n => errorl ["duplicate name in opcodes/operands: ", n])
+fun check x = EC.foldrOperandNames addRand
+                  (EC.foldrOpcodeNames addCode x (opcode,rgn)) operands
+val names = codecatch (OK o check) StringSet.empty
+@ 
+We want to protect the handling of opcodes and operands against the
+possibility of a name clash---if [[names]] came out badly, why report
+more errors?
+So we artificially define functions of [[names]] that we can use with
+[[emap]]: [[docodes]] and [[dorands]].
+
+Opcodes are exploded into interpretations.
+<<bind [[opcodes]] and [[operands]] to their elaborated values>>=
+fun addCode((name, m), all) = (name, StringMap.listItems m) :: all
+fun docodes _ = 
+  codecatch (errorEnvOption (EC.explodeOpcode (smap, fieldInfo)) lookupOpt)
+            (opcode, rgn)
+val opcodes = strip (emap docodes names) (* compute opcodes iff names OK *)
+@ 
+For operands, we walk the arguments to build syntax info and a list of
+operands.
+<<bind [[opcodes]] and [[operands]] to their elaborated values>>=
+val rand = strip o 
+          (errorEnvOption (EC.operand (#relocatable vars, errorContext)) lookupOpt)
+fun operand (_, ERROR) = ERROR
+  | operand (A.LITERAL_operand s, OK (syntax, inputs)) = 
+       OK (Constructor.Syntax.LITERAL s :: syntax, inputs)
+  | operand (A.OPERAND opr, OK (syntax, inputs)) =
+       emap (fn opr => (Constructor.Syntax.OPERAND opr :: syntax, opr :: inputs))
+            (rand opr)
+fun dorands _ = foldr operand (OK ([], [])) operands
+val operands = strip (emap dorands names) (* compute iff names OK *)
+@ 
+To look up the constructor type, we play a slightly different game;
+missing types evaluate to the instruction type, and all others are
+looked up and projected (with the usual [[emap]]).
+<<bind [[constype]] to its elaborated value, with possibly new [[symtab]]>>=
+fun lookupOrCreateConstype name =
+  case lookupOpt name
+    of SOME d => (symtab, emap D.projectConstype d)
+     | NONE =>
+	 let val _ = ErrorMsg.verbose ["Creating new constructor type ", name]
+	     val constype = Constructor.freshConstype (family, {name=name}, ())
+	 in  (bindUnbound(symtab, name, D.CONSTYPE constype, rgn), OK constype)
+	 end
+fun constype () =
+  case tyname of NONE => (symtab, OK (Constructor.unnamedConstype family))
+               | SOME name => lookupOrCreateConstype name
+val (symtab, constype) = codecatch' (symtab, ERROR) constype ()
+@ 
+\subsubsection{Overlap detection}
+There may be some duplication here with things in \module{encode}
+which are used to emit encoding procedures.
+<<error checking for overlap at [[pat]]>>=
+fun overlapCheck p = 
+  let fun pat (P.PAT(_, ds)) = app dis ds
+      and dis (P.DIS(_, _, P.SEQ(_, ss, _))) = app seq ss
+      and seq (P.LABEL _) = ()
+        | seq (P.CONSTRAINTS cs) = 
+            let val (class, map, conds) = 
+                  FieldExpressions.outputBindings (fn _ => ()) (cs, P.Exp.Set.empty)
+            in  FieldExpressions.mapOverlapCheck map
+            end
+  in  pat p
+  end
+@ 
+We used to ``explode'' compound constructor names at this syntactic step,
+but this turned out to be not what we wanted on the RHS of constructor
+definitions.  For example, in
+\begin{verbatim} 
+pattern load is ld | lb
+constructor load^"2" a,b,c,d is load(a,b); load(c,d)
+\end{verbatim}
+we cannot evaluate [[Papp(name, args)]] for the [[load]]s on the
+right-hand side until we have an environment telling use whether
+[[load]] stands for [[ld]] or [[lb]] in this particular context.
+(The original semantics made it stand for [[ld|lb]], which we decided
+was rarely what anyone wanted.)
+@ 
+The name of an applied constructor depends on the environment 
+in which it is evaluated.  We use [[explode_names]] to 
+generate all possible constructor names denoted by 
+a constructor application, then generate the applications. 
+<<toplevel>>=
+procedure explode_apps(opcode, args, rho)
+  l := []
+  every c := explode_names(opcode, rho) do {
+    put(l, Papp(cons_named(c), args))
+  }
+  return if *l = 1 then l[1] else Por(l)
+end
+<<grammar>>=
+Relop     : "=" | "!=" | "<=" | ">=" | "<" | ">" ;
+Generator : "{" Integer "to" Integer [ "columns" INT /* ii2 */ ] "}"  
+                                /* Gfor(ii2, ii4+1, \ii5 | 1) */
+          | "[" { Integer } "]"     /* Glist(ii2) */
+          ;
+@
+\section{Old Constructor Goo}
+A constructor consists of an [[Opcode]], one or more [[Operand]]s,
+an optional constructor type [[ConstType]], and one or more [[Branches]].
+The default type of a constructor is [[instruction]].
+One-branch syntax is radically different from multibranch syntax and I haven't
+the time to explain the details now.
+Each branch consists of a set of [[Equations]]
+followed by a required output [[Pattern]].
+Branches are evaluated in order: the constructor's value
+is the output pattern of the first branch whose constraints
+are satisfied.
+<<grammar>>=
+Constructors : "constructors" (/*see_newline()*/) { Constructor /* see_newline() */} ;
+Constructor  : Opcode Operands [ ":" ConstType ] NLBranches
+                 /* note_constructor(ii1, ii2, \ii3 | instructionctype, ii4) */ 
+               ;
+Operands : SeeWhite {Operand} StopWhite /* process_operands(ii2) */;
+@ 
+To process operands, we combine adjacent literals and remove trailing
+white space.
+<<*>>=
+procedure process_operands(ops)
+  if type(ops[-1]) == "literal" & ops[-1].s ? (white(), pos(0)) then
+    pull(ops) # discard trailing white space
+  l := []
+  every x := !ops do
+    if type(x) == "literal" & type(l[-1]) == "literal" then
+      l[-1].s ||:= x.s
+    else
+      put(l, x)
+  return l
+end
+<<grammar>>=
+NLBranches   : Branches
+             | NEWLINE (Branches | /* [ [ [], &null ] ] */)
+             ;
+Branches     : SingleBranch /* [ii1] */
+             | WhenBranch {WhenBranch} [OtherwiseBranch]
+                /* push(ii2, ii1); put(ii2, \ii3); ii2 */
+             ;
+SingleBranch : "{" Equations "}" [ "is" Pattern ] /* [ ii2, \ii4 | &null] */ 
+             | "is" Pattern    /* [ [] , ii2 ] */ 
+             ;
+WhenBranch      : "when" "{" Equations "}" "is" Pattern /* [ii3, ii6] */;
+OtherwiseBranch : "otherwise" "is" Pattern /* [[], ii3] */;
+<<grammar>>=
+Opcode    : Opname { "^" Opname }  /* push(ii2, ii1) */ ;
+Opname    : Ident /* \symtab[ii1] | ii1 */ | String ;
+@ 
+<<grammar>>=
+Operand      : Ident ["!"] /* {<<note new operand or id [[ii1]]>>};
+                              name_to_input(ii1, ii2) */
+             | (Literal | GlobOperator | White) /* literal(ii1) */
+             ;
+Literal      : String | Integer /* string(ii1) */ | Relop | "=>" 
+             | "[" | "]" | "(" | ")" | "+" | "-" | "/" 
+             | "&" | "@" | "#" | "%" | ";" | "|" 
+             ;
+GlobOperator : "*" | "$" | ","
+             ;
+@
+A [[ConstType]] is defined implicitly by the first declaration of a constructor
+of that type.
+<<grammar>>=
+ConstType : Ident /* (/symtab[ii1] := constype(ii1, set())) | 
+                     lookuptype(ii1, "constype")  */;
+@ %def ConstType
+@
+The [[literal]] type serves to hold strings that are to be emitted literally.
+<<toplevel>>=
+record literal(s)       # holds string or list to be emitted literally
+@
+Every operand that is not of type [[literal]] is of
+type [[input]]:
+<<toplevel>>=
+record input(name, meaning)                     # input name and meaning
+@ There are five legitimate types for [[meaning]]:
+\begin{fields*}{constype}
+constype&Constructor of the given type.\\
+field&The given field.\\
+null&Integer.\\
+string&Relocatable address (the value of the string is always
+       [["reloc"]]).\\
+integer&Extended field; the meaning is its width in bits.
+        Finding the field requires looking up the input's name
+        in the global symbol table.\\
+\end{fields*}
+@
+An [[Operand]] may be the name of a symbol or the name of a constructor
+type trailed by zero or more digits (e.g., [[Address]], [[Address1]], etc).
+Note that variables used as relocatable addresses live in the symbol table.
+Finally, if not recognized, it is treated as a variable.
+Only a field may be sign-extended with a bang.
+<<*>>=
+procedure name_to_input(name, bang)
+  i := input(name, 
+    if name ? type(ct := symtab[tab(reversetrailing('0123456789_'))]) == "constype" then
+      mark_ct_as_used(ct)
+    else case type(x := symtab[name]) of {
+      "field"       : if /bang then x else fwidth(x)
+      "null"        : x
+      "relocatable" : "reloc"
+      "constype"    : impossible("missed first-round search for constype")
+      default       : typeerror(x, "free variable, field, or constructor input", name,
+                                globals)
+  })
+  if \bang & type(i.meaning) ~== "integer" then
+    typeerror(i.meaning, "field (only fields can be sign-extended)", name, globals)
+  return i
+end
+<<grammar>>=
+RelocSpec : "relocatable" Ident {Ident} /* every make_relocatable(ii2 | !ii3) */;
+<<*>>=
+procedure make_relocatable(name)
+  return (/symtab[name] := the_relocatable) | deferror("Relocatable name", image(name))
+end
+@
+A constructor type is marked when it is first used as an input.
+<<*>>=
+procedure mark_ct_as_used(type)
+  if /type.used := lineno then
+    {<<sort members of type>>}
+  return type
+end
+<<sort members of type>>=
+t := table()
+every m := !type.members do
+  t[m.name] := m
+t := sort(t)
+type.members := []
+every put(type.members, (!t)[2])
+@
+\subsection{Deleting constructors}
+For tests, or for other purposes, we may want to delete constructors from
+a specification.  There are two ways: say what we want to keep, or say what we 
+want to throw away.
+<<grammar>>=
+Constructors : "discard" {Opcode} /* every discard_cons_named(explode_names(!ii2)) */
+             | "keep"    {Opcode} 
+                  /* s := set()
+                     every insert(s, is_constructor(explode_names(!ii2), warning))
+                     every k := key(constructors) do
+                       if not member(s, constructors[k]) then
+                         delete(constructors, k)
+                   */
+             ;
+@
+\section{Equations}
+Extensions and ranges are guaranteed unique within a set of equations,
+and they are reset before each set of equations.
+The grammar is bit awkward because we're trying to keep it LL(1).
+<<grammar>>=
+Equations : [Equation { "," Equation } /* push(ii2, ii1) */] /* \ii1 | [] */ ;
+Equation  : Expr Relop Expr /* eqn(ii1, ii2, ii3) */ ;
+@
+Applications are forbidden in expressions except in special contexts.
+<<grammar>>=
+Expr      : AppExpr /* if has_app_or_literal(ii1) then 
+                         error("Application or literal string not legal")
+                       else ii1 */
+          ;
+<<toplevel>>=
+procedure has_app_or_literal_f(e)
+  return type(e) == ("Eapp"|"literal")
+end
+
+procedure has_app_or_literal(e)
+  suspend expwalk(e, has_app_or_literal_f)
+end
+@
+<<grammar>>=
+AppExpr   : Term { AOp Term }   
+            /* every t := !ii2 do ii1 := binop(ii1, t[1], t[2]); ii1 */ ; 
+Term      : Factor { Mop Factor }     
+            /* every f := !ii2 do ii1 := binop(ii1, f[1], f[2]); ii1 */ ; 
+AOp       : "+" | "-" ; 
+Mop       : "*" | "/" ; 
+Factor    : Integer
+          | String /* literal(ii1) */   # legal only in constructor apps
+          | "_" /* fresh_variable("_") */
+          | IDENT ( [ Bitrange ] [ "!" ]          /* SyntaxRange(ii1, ii2) */
+                  | "(" Args ")" 
+                  ) 
+             /* <<note new operand or id [[ii1]]>>
+                if type(ii2) == "SyntaxRange" then mkfactor(ii1, ii2.bits, ii2.bang) 
+                else Eapp(ii1, ii2) */
+          | "(" AppExpr ")"        
+          | "-" Factor /* binop(0, ii1, ii2) */
+          ;
+Bitrange  : "@" "[" INT [":" INT /*ii2*/] "]" /* [ii3, (\ii4|ii3)+1] */ ;
+Args      : AppExpr {"," AppExpr} /* push(ii2, ii1) */
+          | /* [] */
+          ;
+@ Can't use a square-bracket syntax for bit ranges because it creates parsing conflict
+with list of names on left-hand side of pattern binding, list of patterns in square
+brackets, and optional name in arm of case statement.
+<<toplevel>>=
+record SyntaxRange(bits, bang)
+<<*>>=
+procedure mkfactor(ident, range, ext)
+  e := ident
+  if \range then {
+    e := mkslice(e, range[1], range[2])
+    w := e.n
+  }
+  if \ext then {
+    /w := if type(f := symtab[ident]) == "field" then fwidth(f)
+          else error("Can't sign-extend ", ident, " (not a field)")
+    e := Ewiden(e, w)
+  }
+  return e
+end
+@
+\section{Code containing matching statements}
+Using the global value [[succptr]] is OK for now, but it will break horribly
+if we ever permit nested matching statements.
+<<toplevel>>=
+global matching_stmts, codeheader
+<<grammar>>=
+CodeFile      : (/*codeheader := arm(filename, lineno)*/)
+                ({CODELINE} /* codeheader.code := ii1 */)
+                { Casestmt {CODELINE} /* ii1.trailer.code := ii2 ; ii1 */ } 
+                /* codeheader.original := codeheader; matching_stmts := ii3 */;
+Casestmt      : CASELINE { Casearm } [ElseArm] "endmatch" 
+               /* x := matching_stmt(ii2, ii1, succptr) ; put(x.arms, \ii3)
+                  x.trailer := arm(filename, lineno); x */
+              ;
+Casearm       : ("|" /*arm(filename, lineno) */)
+                Pattern OptEquations OptName "=>" {CODELINE}
+                /* ii1.pattern := ii2; ii1.eqns := ii3; ii1.name := ii4; ii1.code := ii6
+                   ii1.original := ii1 */;   # value is ii1
+ElseArm       : ("else"           /* arm(filename, lineno, epsilon()) */) {CODELINE} 
+                /* ii1.code := ii2; ii1.original := ii1 */ ;
+OptName       : [ "[" Ident "]" ];
+OptEquations  : [ "{" Equations "}" ];
+@
+\section{Specifications for fetching words}
+I introduce the nonterminal [[Address]] in order to avoid making
+[[address]] a reserved word.
+<<grammar>>=
+FetchSpec : "fetch" ((INT | "any") "using" String  /* fetchtab[ii1] := ii3 */)
+          | "address" (Add "using" String          /* fetchtab[ii1] := ii3 */
+                      | "type" "is" String         /* fetchtab[ii1] := ii3 */
+                      | "to" IntIdent "using" String     /* fetchtab[ii2] := ii4 */
+                      )
+          ;
+
+Add      : Ident /* (ii1 == "add") | error("expected `add', `type', or `to'") */;
+IntIdent : Ident /* (ii1 == "integer") | error("expected", image("integer")) */;
+@ 
+\section{Assembly syntax}
+<<grammar>>=
+AsmSpec : "assembly"
+   ( "operand" {IdentBinding "is" OperandSyntaxSpec
+                                 /* every asmoperand(!ii1, ii3[1], ii3[2]) */}
+   | "component"  {Globbing "is" GlobTarget  /* asmopcode (ii1, ii3) */}
+   | "opcode"  {Globbing "is" GlobTarget  /* asmopcode (ii1, ii3, 1) */}
+   | "syntax"  (/*see_newline()*/) { AsmSyntax /* see_newline() */}
+   );
+<<grammar>>=
+OperandSyntaxSpec : String ["using" OperandNameSpec ] /* [ii1, ii2] */
+                  | OperandNameSpec /* ["%s", ii1] */
+                  ;
+OperandNameSpec   : NameTable
+                  | "field" Ident /* lookuptype(ii2, "field") */
+                  ;
+<<grammar>>=
+AsmSyntax: Opcode Operands NEWLINE 
+               /* every set_asmsyntax(is_constructor(explode_names(ii1), warning), ii2) */;
+@ 
+\subsection{Globbing expressions}
+A globbing expression
+is a string, a list (concatenation), a wildcard, or a list
+of alternatives in braces.
+<<*>>=
+record glob_any(alternatives, number)   # braced list of alternate globbing patterns
+record glob_wildcard()
+global the_glob_wildcard                # only need one value
+record glob_dollar(number)              # $n on right-hand side
+<<initialization>>=
+the_glob_wildcard := glob_wildcard()
+<<grammar>>=
+Globbing         : SeeWhite GlobPattern StopWhite White /* ii2 */;
+GlobPattern      : {GlobAlternatives | Literal | Ident} 
+                          /* number_braces(cat_adjacent_strings(ii1)) */;
+GlobAlternatives : "{" GlobPattern {"," GlobPattern } "}" /* glob_any(push(ii3, ii2))*/
+                 | "*"                                    /* the_glob_wildcard */
+                 ;
+<<grammar>>= 
+GlobTarget       : SeeWhite GlobTargets StopWhite White /* ii2 */;
+GlobTargets      : {GlobTargetSpecial | GlobTargetLiteral} 
+                                                /* cat_adjacent_strings(ii1) */;
+GlobTargetSpecial: "$" (Integer /* glob_dollar(ii1) */ | "$")
+                 ;
+GlobTargetLiteral: Literal | Ident | "*" | "{" | "}" | "," ;
+@
+<<*>>=
+procedure cat_adjacent_strings(l)
+  m := []
+  every x := !l do 
+    if type(x) == "string" & type(m[-1]) == "string" then
+      m[-1] ||:= x
+    else
+      put(m, x)
+  return m
+end
+@ 
+<<binding functions>>=
+local 
+  fun rawBindUnbound(tab, name, x, rgn) = 
+    case StringMap.find(tab, name) 
+      of NONE => StringMap.insert(tab, name, x)
+       | SOME _ => 
+           (errormsg rgn ("identifier " ^ name ^ " redefined") ErrorMsg.nullErrorBody;
+            (* image needed here *)
+            StringMap.insert(tab, name, ERROR))
+in
+  fun bindUnbound(tab, name, x, rgn) = rawBindUnbound(tab, name, OK x, rgn)
+  fun bindUnboundError(tab, name, rgn) = rawBindUnbound(tab, name, ERROR, rgn)
+  fun bind(tab, name, x) = StringMap.insert(tab, name, OK x)
+  fun bindError(tab, name) = StringMap.insert(tab, name, ERROR)
+end
+@ 
+<<lookup functions>>=
+fun lookupOpt name = StringMap.find(symtab, name)
+fun unOpt(name, SOME x) = x
+  | unOpt(name, NONE) = Error.error (name ^ " undefined")
+fun lookup name = unOpt(name, lookupOpt name)
+fun lookupConstructor name = unOpt(name, StringMap.find(constructors, name))
+@
+\begin{rcslog}
+$Log: elaborate.nw,v $
+Revision 1.38  1999/09/06 16:05:28  nr
+check for field overlap earlier
+
+Revision 1.37  1998/11/11 21:59:12  nr
+get rcs ids fixed
+
+Revision 1.1  1998/09/17 06:08:52  nr
+before instance change
+
+Revision 1.36  1998/01/28 21:28:48  nr
+recognize relocatable addresses
+
+Revision 1.35  1998/01/28 21:05:03  nr
+no more `open Ast'
+
+Revision 1.34  1998/01/28 19:36:42  nr
+make pattern labels directly visible when elaborating branches
+
+Revision 1.33  1998/01/27 21:49:24  nr
+use global map to find families by small ints;
+push info about constructor families down into expressions
+
+Revision 1.32  1998/01/27 17:47:57  nr
+make 'family of constructors' global state explicit
+split general CSDL constructors from SLED constructors
+
+Revision 1.31  1997/08/06 14:10:48  nr
+add RCS ids
+
+Revision 1.30  1997/07/10 20:56:24  nr
+move basic denotable info from elaborate.nw to sledspec.nw
+
+Revision 1.29  1997/07/03 02:52:17  nr
+revised to fit with 109.29 smlnj-lib
+
+Revision 1.28  1997/06/29 03:51:42  nr
+merge FieldTypes and FieldOrder into Field
+remove dependences on IMAGES
+take bindUnbound from Util
+change in Util to remove dependence on error stuff
+
+Revision 1.27  1997/06/27 23:35:22  nr
+compiles Cristina's scanner
+
+Revision 1.26  1997/06/27 00:04:34  nr
+move to the new pattern scheme
+
+Revision 1.25  1997/06/25 19:15:16  nr
+use two contexts for *all* elaboration
+
+Revision 1.24  1997/06/19 21:37:17  nr
+split denotable.sig into a separate file
+
+Revision 1.23  1997/06/19 06:54:34  nr
+merged ELAB_EXP and ELAB_CONS
+eliminated an open ElabCons
+
+Revision 1.22  1997/06/08 05:05:01  nr
+split sled spec from its elaboration
+remove an open
+
+Revision 1.21  1997/06/07 18:11:53  nr
+correct signature for better sharing
+
+Revision 1.20  1997/06/06 20:13:43  nr
+more informative signature
+
+Revision 1.19  1997/06/01 02:03:22  nr
+update for 109.28 restrictions on sharing
+
+Revision 1.18  1997/05/23 03:53:49  nr
+better detection of grim errors
+new solver
+
+Revision 1.17  1997/05/20 17:27:33  nr
+tracking fields of constructor inputs
+less restrictive sharing constraints on solver
+track field info in GlobalState
+new solver signature
+
+Revision 1.16  1997/04/26 03:48:06  nr
+merged signed and unsigned types of constructor operands
+
+Revision 1.15  1997/04/26 01:45:40  nr
+support for several new warnings, including
+  - import images for better messages
+make emptySpec a value again -- no more mutable state
+eliminated some open declarations
+removed some dead code
+bind bad constructor names and types to ERROR when needed
+change TMP so it's a field whenever it's named as a field
+improved image functions
+
+Revision 1.14  1997/04/20 05:02:00  nr
+added simplifier, fixed some bugs, mips looks good
+
+Revision 1.13  1997/04/18 02:05:53  nr
+use EXP instead of OLC_EXP in places that only create exps
+
+Revision 1.12  1997/04/16 21:58:40  nr
+support re-initialization for serial reusability (ugly)
+changed constructor replacement -- don't remember exactly why
+
+Revision 1.11  1997/03/01 04:00:11  nr
+better html
+
+Revision 1.10  1996/10/18 17:48:18  nr
+moved some local stuff into global state
+
+Revision 1.9  1996/09/19 16:16:40  nr
+tinkering with solver
+
+Revision 1.8  1996/08/20 22:54:01  nr
+'changed Denotable.TMP to carry optional field for projection into pattern
+added a very simple imaging function for failed projections
+
+Revision 1.7  1996/08/20 22:06:31  nr
+now sort of works for constructors, but still errors on compound opcodes
+updated projection functions to handle operands
+pulled in elaboration of constructors, better, with more docs
+
+Revision 1.6  1996/08/20 02:26:52  nr
+builds, but there is a bad split between elaborate.nw and elabcons.nw
+        I am going to try to move things across the boundary.
+        I am moving towards elaborate, although that may not be ideal ultimately.
+
+Revision 1.4  1996/08/17 21:45:37  nr
+tinker with docs
+
+\end{rcslog}
+

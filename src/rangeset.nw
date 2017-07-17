@@ -1,0 +1,132 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: rangeset.nw,v 1.8 1998/11/11 21:59:22 nr Exp $
+<<rangeset.sig>>=
+signature RANGE_SET = sig
+  type range = {lo : int, hi : int}
+  type set
+  val overlaps : set * range -> bool
+  val empty : set
+  val isEmpty : set -> bool
+  val insert : range * set -> set
+  val rangesOverlap : range * range -> bool
+  val possibleUnion : range * range -> range option (* union iff it is a range *)
+  val listItems : set -> range list (* ranges in sorted order *)
+  val numItems : set -> int (* number of non-contiguous ranges *)
+  val compare : set * set -> order
+  val filter : (range -> bool) -> set -> set
+  val foldr : (range * 'a -> 'a) -> 'a -> set -> 'a
+end
+<<rangeset.sml>>=
+(* this implementation works for sets of NON-OVERLAPPING ranges only *)
+structure RangeSet : RANGE_SET = struct
+  type range = {lo : int, hi : int}
+  type set = IntSet.set * IntSet.set
+  val empty = (IntSet.empty, IntSet.empty)
+  fun isEmpty (l, h) = IntSet.isEmpty l
+  fun cuts (l, h) = IntSet.listItems(IntSet.union(l, h))
+  fun numItems (l, h) = IntSet.numItems l
+  fun listItems set =
+    let fun chop(lo::hi::t, cuts') = chop(t, {lo=lo, hi=hi}::cuts')
+          | chop([], cuts') = rev cuts'
+          | chop([x], _) = Impossible.impossible "range-set cuts"
+    in  chop(cuts set, [])
+    end
+  <<functions>>
+  fun rangesOverlap ({lo, hi} : range, {lo = lo', hi = hi'}) =
+    if hi <= lo' orelse hi' <= lo then false else true
+  fun possibleUnion ({lo, hi} : range, {lo = lo', hi = hi'}) =
+    if hi <  lo' orelse hi' < lo then NONE
+    else SOME { lo = Int.min(lo, lo'), hi = Int.max (hi, hi') }
+  fun compare(a, b) =
+    let fun comp(h::t, h'::t') =
+              (case Int.compare(h, h') of EQUAL => comp(t, t') | diff => diff)
+	  | comp([], []) = EQUAL
+	  | comp([], _)  = LESS
+	  | comp(_,  []) = GREATER
+    in  comp(cuts a, cuts b)
+    end
+end
+@ 
+To make the transformation work, I have to represent a {\em set of
+intervals} on each edge, not just a single interval.  Because no two intervals
+overlap, I can use a wonderful dirty trick, detailed below.
+I also {\em may} convert a node's name string to a [[namearray]] mapping
+field values to strings.  The goal is for children of the same
+parent to share a single name array; that way the edges can be merged and
+the name operator can be implemented with an array reference.
+If I don't convert a node's name, the only penalty is that the tree
+might be bigger.
+(Code generation will be different for the two cases.)
+@
+Now, the dirty representation trick: 
+I can represent a set of numbers $S$ (a union of intervals) as two
+sets, $lo$ and $hi$, such that
+% l2h substitution cap <b>intersect</b>
+% l2h substitution cup <b>union</b>
+% l2h substitution emptyset <b>emptyset</b>
+\begin{itemize}
+\item[] $lo \cap hi = \emptyset$
+\item[] if $\mathtt{sort}(lo \cup hi) = a, b, c, d, \ldots$, then
+      $S = [a,b-1] \cup [c,d-1] \cup \ldots$.
+\end{itemize}
+The procedure [[addinterval]] adds a new interval to such a set $S$,
+relying on the fact that no two intervals overlap.
+The implementation may be treated as ``black magic'' or ``mathematics;''
+take your pick.%
+\footnote{Extra credit for proofs of correctness.}
+<<functions>>=
+fun insert ({lo, hi}, (loset, hiset)) =
+  let fun addPoint(p, like, unlike) =
+        if IntSet.member(unlike, p) then
+	  (like, IntSet.delete(unlike, p))
+	else   
+	  (IntSet.add(like, p), unlike)
+      val (hiset, loset) = addPoint(hi, hiset, loset)
+      val (loset, hiset) = addPoint(lo, loset, hiset)
+  in  (loset, hiset)
+  end
+@ 
+A new interval overlaps unless it falls between two existing intervals.
+The local variable
+[[leftcount]] is the number of intervals completely to the left of the
+new interval.
+[[rightcount]] is the number of intervals completely to the right of the
+new interval.
+If these total to the number of intervals, there is no overlap.
+Otherwise, there is an overlap.
+<<functions>>=
+fun overlaps((loset, hiset), {lo, hi}) =
+  let val leftcount  = IntSet.numItems (IntSet.filter (fn h => h <= lo) hiset)
+      val rightcount = IntSet.numItems (IntSet.filter (fn l => l >= hi) loset)
+  in  leftcount + rightcount < IntSet.numItems loset
+  end
+@ 
+<<functions>>=
+fun filter p s = foldl insert empty (List.filter p (listItems s))
+fun foldr f z s = List.foldr f z (listItems s)
+@ 
+To show a bit set, give the number of bits.
+<<*>>=
+procedure showbitset(loset, hiset, width)
+  l := sort(loset ++ hiset)
+  b := 0
+  i := 0
+  s := ""
+  while i < width do {
+    if i = l[1] then {
+      get(l)
+      b := 1 - b
+    } 
+    s ||:= b
+    i +:= 1
+  }
+  return reverse(s)
+end
+
+
+<<range.sml>>=
+structure Range = struct
+  type range = {lo:int, hi:int}
+  fun intersection ({lo, hi}, {lo=lo', hi=hi'}) : range =
+    {lo = Int.max(lo, lo'), hi = Int.min(hi, hi')}
+end

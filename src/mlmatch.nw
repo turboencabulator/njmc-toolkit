@@ -1,0 +1,101 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Converting a SLED match to an ML match}
+
+This is useful only for purposes of benchmarking various
+ML matching strategies.
+
+<<mlmatch.sig>>=
+
+<<mlmatch.sml>>=
+structure MLMatch = struct
+  structure Match = ULinked.Match
+  structure M = Match
+  structure C = M.SledSpec.Constructor
+  structure P = M.Patterns
+  structure A = M.Patterns.Absolute
+  structure Exp = A.Exp
+  structure E = Error
+  structure AFSet = AbsoluteFieldSet
+  structure AFMap = AbsoluteFieldMap
+  <<aux functions>>
+  <<functions>>
+end
+@ 
+[[mentions]] produces the set containing all
+absolute fields mentioned in a matching statement.
+Mentions in field bindings {\em don't} count; this information is for
+building decision trees only.%
+\footnote{The original design had no field bindings and omitting them seems to be
+the best migration path.}
+<<aux functions>>=
+fun mentions arms =
+  let fun arm(M.ARM (P.PAT (_, ds), _), mentioned) = foldl dis mentioned ds
+      and dis(P.DIS (name, conds, (constraints, _, _)), mentioned) =
+           foldl (fn ((f, e), m) => AFSet.add(m, f)) mentioned constraints
+  in  AFSet.listItems(foldl arm AFSet.empty arms)
+  end
+@ 
+<<functions>>=
+fun dbindings (P.DIS (name, conds, (constraints, _, _))) =
+  let fun binding (f, {lo, hi}) = fieldName f ^ " = " ^ Int.toString lo
+  in  wrap "({ " ", ...} : fields)" binding constraints
+  end
+@ 
+<<functions>>=
+fun addCases code (M.ARM (P.PAT (_, ds), { code=c, ...} ), l) =
+  let fun add (d, l) = (dbindings d, code c) :: l
+  in  foldr add l ds
+  end
+
+fun matchCases code (M.MATCH { arms, ... }) = 
+  { ty = matchType arms, cases = foldr (addCases code) [] arms }
+@
+<<aux functions>>=
+val mangle = AllDataEncoders.MLControl.mangle
+
+fun fieldName ({name, range, class}, offset) = 
+  mangle (name ^ "_at_" ^ Int.toString offset)
+
+fun wrap head tail f [] = "{ }"
+  | wrap head tail f l =
+      let fun add (x, (tail, suffix)) = (f x :: suffix :: tail, ", ")
+      in  String.concat (head :: #1 (foldr add ([], tail) l))
+      end
+
+fun matchType arms = wrap "{ " " }" (fn f => fieldName f ^ " : int") (mentions arms)
+@ 
+Now, find it!
+<<functions>>=
+structure D = DecoderFun(Match)
+
+fun matchers espec =
+  let fun name { cons, operands } = #name (C.info cons)
+      fun m { constype, matcher } = matchCases name matcher
+      fun makefun pfx [] = []
+        | makefun pfx ((l, r) :: t) =
+            pfx :: " match " :: l :: " = \"" :: r :: "\"\n" :: makefun "    |" t
+      fun emit { ty, cases } = 
+        ["\n  type fields = ", ty, "\n" ] @ makefun "  fun" cases
+  in  E.emap (map (emit o m)) (D.decoder espec)
+  end
+
+val matchers = E.strip o E.emap matchers o ReadSLED.elabFiles
+
+
+        
+fun convert base =
+  let val outputs = matchers [base ^ ".sled"]
+      fun emit outputs =
+        let val f = TextIO.openOut (base ^ ".mlmatch")
+            fun show s = TextIO.output(f, s)
+        in  ( show "Compiler.Control.MC.matchNonExhaustiveError := false;\n"
+            ; show "Compiler.Control.MC.matchRedundantError := false;\n"
+            ; app show ["structure ", base, " = struct\n"]
+            ; app (app show) outputs
+            ; show "end\n"
+            ; TextIO.closeOut f
+            )
+        end
+  in  E.emap emit outputs
+  end

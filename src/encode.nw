@@ -1,0 +1,1093 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: encode.nw,v 1.33 1999/09/06 16:06:57 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+@
+\section{Machine-independent support for encoding procedures}
+
+The main work of coming up with encoding procedures includes:
+\begin{itemize}
+\item
+Converting patterns with tag conditions into nested case statements.
+\item
+At the leaves of the case statements, converting patterns without tag
+conditions into encoding logic.
+The question driving the logic is ``are the conditions for this
+disjunct's encoding satisfied.''
+Conditions may include explicit conditions, conditions derived by the
+equation solver, and implicit conditions about \emph{fitting}.
+Things fit if values bound to fields fit in those fields, and if
+signed and unsigned narrow operations succeed.
+\item
+Finally, when all the conditions are satisfied, we encode a disjunct
+by turning each item in a sequence into the emission of a token.
+\end{itemize}
+Most of these functions are hidden inside the signature; most clients
+simply generate bodies of encoding functions.
+<<encode.sig>>=
+signature ENCODER = sig
+  structure Code : CODE
+  type disjunct =
+      Code.Constructor.Patterns.field
+      Code.Constructor.Patterns.constraints
+      Code.Constructor.Patterns.sequence
+      Code.Constructor.Patterns.disjunct'
+  type pattern = Code.Constructor.Patterns.Pure.pattern
+  type conditions = Code.Constructor.Pattern.Exp.Set.set 
+  type closure = disjunct * conditions option
+  type emitter = Code.exp * {width:int} -> Code.statement
+<<encode.sig>>=
+
+  (* take a function giving code for patterns without tag tests,
+     and emit a case statement that takes care of tag tests *)
+  val caseFrom : (pattern -> Code.statement) -> pattern -> Code.statement
+
+  (* take warning function, return function taking class and values of
+     fields, and returning code to emit token (or compute size, or
+     perform some other computation dependent on a sequence) *)
+
+  type disjunct_emitter = (string list -> unit) ->
+                          (Code.Constructor.Patterns.token_class *
+                           Code.Constructor.Pattern.Exp.exp FieldMap.map) list
+                          -> Code.statement
+                          
+<<encode.sig>>=
+  val emitterBody : (closure -> Code.statement) ->
+                    Code.Constructor.constructor -> Code.statement Error.error
+  val instructionEmitterBody :
+     (closure -> Code.statement) -> Code.Constructor.constype ->
+     {argname : string} -> Code.statement (* why no error here? *)
+  val instructionEmitterBody' :
+     disjunct_emitter ->
+     (closure -> Code.statement) -> Code.Constructor.constype ->
+     {argname : string} -> Code.statement (* why no error here? *)
+
+  
+  val argType : Code.Constructor.operand -> Code.ty
+  
+    (* return conditions used to determine encoding *)
+  val conditions : disjunct -> 
+    {cknown : conditions, fknown : conditions, conds : conditions, fits : conditions}
+    
+  val protectWithInputWidthChecks :
+    Code.Constructor.constructor * string list * Code.statement -> Code.statement
+      (* check widths of operands of constructor, except those on the 
+         `exempt list' (2nd argument) *)
+
+end
+@ 
+This next signature helps with token emission, but it also exposes
+enough information so we can check for overlap at elaboration time,
+thereby identifying a problem before we plan to generate code.
+<<fieldexps.sig>>=
+signature FIELD_EXPRESSIONS = sig
+  structure Patterns : PATTERNS
+
+  (* helps find out if emitted fields overlap *)
+  type conditions = Patterns.Exp.Set.set 
+  type constraints = Patterns.field Patterns.constraints
+  type exp = Patterns.Exp.exp
+  val outputBindings : 
+    (string list -> unit) (* warning function *)
+    -> constraints * conditions
+    -> Patterns.token_class * exp FieldMap.map * conditions
+  val mapOverlapCheck : exp FieldMap.map -> unit
+    (* raises Error.ERROR if fields overlap *)
+end
+@ 
+
+@
+\subsection{Converting tagged patterns to case statements}
+To produce a case statement, pull out the tags, then recurse.
+It's possible that some constructors have been discarded between the
+time we defined pattern~[[p]] and the time we're actually doing the
+pattern-to-case conversion.  For example, on the Pentium, we specify all
+addressing modes, but when generating instructions for the 32-bit
+instructions, we discard unused constructors (e.g., [[Index8]]):
+<<example>>=
+constructors 
+  Index8  base,index: Eaddr ...
+  Index32 base,index: Eaddr ...
+  Add Eaddr, r is ...
+discard Index8
+@ This discarding is handled by using the [[members]] function in
+[[Constructor]] when we build the case statement.
+@
+In order to pull out tags, we have to visit all the conditions of a
+disjunct, looking for tags.
+These utility functions walk conditions, applying a function to tag tests.
+(The functions really get applied to the arguments of tag tests.)
+Every tag test has a unique id, which identifies the constructor
+operand that is the source of the tag test.
+<<functions>>=
+fun foldTagsD f (PS.DIS (_, conds, _), zero) =
+  let fun apply (U.INSTANCE_TAGGED (e, {cons, uid}), x) = f((cons, uid, e), x)
+        | apply (_, x) = x
+  in  Exp.Set.foldl (fn (e, z) => Exp.foldExps apply z e) zero conds
+  end
+fun foldTags f zero (PS.PAT(_, ds)) = foldl (foldTagsD f) zero ds
+@ 
+Now we can search for tag tests in disjuncts.
+Taking unions and intersections of the unique ids tells us which tests
+appear in every disjunct (intersection) and which appear in any
+disjunct (union).
+[[tagUIDs]] gives us the set of tags used in a single disjunct.
+[[tagSets]] visits all disjuncts of a pattern and tells us which ones
+appear in any or all of the disjuncts (union and intersection).
+<<functions>>=
+fun tagUIDs d = foldTagsD (fn ((_, uid, _), s) => IntSet.add(s, uid)) (d, IntSet.empty)
+fun tagSets (PS.PAT(_, [])) = {union=IntSet.empty, inter=IntSet.empty}
+  | tagSets (PS.PAT(_, d :: ds)) = 
+      let fun dis (d, {union, inter}) =
+            let val tags = tagUIDs d
+            in  {union=IntSet.union(union,tags), inter=IntSet.intersection(inter,tags)}
+            end
+          val initial = tagUIDs d
+      in  foldl dis {union = initial, inter = initial} ds
+      end
+@ 
+The purpose of [[caseFrom]] is to eliminate all the tag tests, turning
+a pattern into a nested case statement.%
+\footnote{[[caseFrom]] replaces [[pattern_to_case]] from the old implementation.}
+The normal case is to pick a test that appears in every disjunct, and
+eliminate it by building a [[TAGCASE]] on that test.
+If no test appears in every disjunct (empty intersection), there had
+better be no tests at all (empty union)---in which case we're done.
+<<functions>>=
+fun caseFrom leaf (p:P.pattern) =
+  let val {inter, union} = tagSets p
+  in  case IntSet.find (fn _ => true) inter
+        of SOME uid => <<strip test with [[uid]] and keep going>>
+         | NONE => if IntSet.isEmpty union then
+                     leaf (Simplify.pattern p)
+                   else
+                     <<complain about impossible tag condition>>
+  end
+@ 
+Along the way, we drop disjuncts with conditions that say an instance
+is tagged with 
+a discarded constructor.
+This happens late in the process, when we assemble a case statement
+based only on the [[members]] of the appropriate constructor type.
+([[members]] returns only the kept constructors.)
+
+We use a mutable array of arms to map constructor tags to lists of
+disjuncts.
+We then pick out just the kept tags to build the case statement.
+We build up the map by finding the key test associated with~[[uid]],
+stripping that test from each disjunct, and using the constructor to
+associate that disjunct with an arm.
+<<strip test with [[uid]] and keep going>>=
+let <<make [[constype']] and [[instance]] type and value of instance tested in [[uid]]>>
+    fun expsEq(e1, e2) = Exp.compare (e1, e2) = EQUAL
+      (* matches exp == exp is a test under uid *)
+    fun matches (U.INSTANCE_TAGGED (e, {uid=uid', ...})) =
+            uid = uid' andalso expsEq (e, instance)
+      | matches _ = false
+    fun tagOf (U.INSTANCE_TAGGED (_, {cons={tag,...}, ...})) = tag
+      | tagOf _ = ErrorMsg.impossible "failed to find tag in tag test"
+
+    val constype = C.typeFromId constype'
+    val arms = Array.array (C.tagLimit constype, [] : disjunct list)
+                                         (* map tags to reversed lists of disjuncts *)
+
+<<strip test with [[uid]] and keep going>>=
+    fun addDis (n, d) = Array.update(arms, n, d :: Array.sub(arms, n))
+    fun dis (PS.DIS(name, conds, seq)) =
+      case Exp.Set.find matches conds
+        of NONE => ErrorMsg.impossible "tag found in every disjunct isn't in disjunct"
+         | SOME (test : Exp.exp) =>
+             addDis(tagOf test, PS.DIS(name, Exp.Set.delete(conds, test), seq))
+    val PS.PAT(_, ds) = p
+    val _ = app dis ds  (* build up the array *)
+
+    fun rewriteArm ds = caseFrom leaf (PS.PAT(NONE, rev ds))
+    fun addMember (cons, consarms) =
+          (cons, rewriteArm (Array.sub(arms, C.tag cons))) :: consarms
+in  Code.TAGCASE(instance, constype, foldr addMember [] (C.members constype))
+      (* N.B. codes uses only kept constructors in building case *)
+end
+@ 
+Finding a [[constype']] and [[instance]] to start out with is pretty
+straightforward; the code is similar to what's above.
+<<make [[constype']] and [[instance]] type and value of instance tested in [[uid]]>>=
+val (constype', instance) =
+  let val PS.PAT(_, ds) = p
+      val PS.DIS(_, conds, _) = hd ds
+            handle Empty => ErrorMsg.impossible "no disjuncts for tag"
+      fun UIDmatch (U.INSTANCE_TAGGED (e, {uid=uid',...})) = uid = uid'
+        | UIDmatch _ = false
+  in  case Exp.Set.find UIDmatch conds
+        of SOME (U.INSTANCE_TAGGED(x, {cons={typeid, family, ...}, ...})) => 
+                      ({typeid=typeid, family=family}, x)
+         | _ => ErrorMsg.impossible "didn't find tag test"
+  end     
+@   
+<<complain about impossible tag condition>>=
+(ErrorMsg.impossible
+  "Can't eliminate tag condition (need uid) from pattern (need image)")
+@
+\subsection{Control flow in emitters}
+The structure of an encoding procedure is complex because of the number of 
+conditions to be checked.  Here is a sketch of the conditions:\\
+\begin{tabularx}{\textwidth}{@{\quad}lX@{}}
+[[iwidth]]&input-width conditions for the constructor\\
+[[conds]]&conditions for a branch to be taken\\
+[[cknown]]&conditions that must hold before [[conds]] can be evaluated
+(e.g., relocatable addresses are known)\\
+[[fits]]&field-width conditions for fields to be emitted, and conditions that
+        attempts to narrow actually fit\\
+[[fknown]]&conditions that must hold before fields can be emitted or
+[[fits]] can be evaluated (again, relocatable addresses).
+[[fknown]] never repeats any conditions already in [[cknown]],
+because its use is always guarded by [[cknown]]\\
+\end{tabularx}\\
+The [[*known]] conditions influence closure creation, the [[*width]]
+conditions are error checks only, and [[fits]] and [[conds]] are used
+for branch selection. 
+@
+I use these abbreviations to make it easier to write the control flow.
+<<functions>>=
+<<condition extraction>>
+local
+  val andAlso = Exp.andalso'
+  val itemsBS = Exp.Set.listItems       (* list all items in a Boolean Set *)
+  val emptyset = Exp.Set.empty
+  val union = Exp.Set.union
+  val setToTest = andAlso o itemsBS
+  val $ = setToTest
+in 
+  <<branch functions>>
+end
+@
+
+A constructor branch is chosen conservatively, except for the last
+branch, which gets special treatment.
+While an early branch is taken iff its conditions are known to be
+true, a late branch is taken iff its conditions are not known to be
+false.
+The template for an early branch looks like
+\begin{verbatim}
+if (cknown && conds) {
+  if (fknown) {
+    fits_aborts;        # abort if fits not satisfied
+    emit_fields;
+  } else
+    create_closure;
+}
+\end{verbatim}
+@ 
+We accumulate arms of an [[IF]] statement in \emph{reverse} order.
+This means [[earlyBranch] is passed a specification of the early
+branch, and it's also given [[arms]], which contains the code for all
+succeeding branches.  The control structure is as shown above.
+<<branch functions>>=
+fun earlyBranch ({cknown, conds, fknown, fitsAndEmit, createClosure}, arms) =
+  andAlso (itemsBS cknown @ itemsBS conds) ==>
+     Cd.IF [ $ fknown ==> 
+               fitsAndEmit
+           , ELSE 
+               createClosure
+           ]
+  :: arms
+@ 
+If we reach the last branch, there's no more room to be
+conservative---we must take this branch, and so we check the [[conds]]
+and [[fits]] conditions separately:
+\begin{verbatim}
+if (cknown) {
+  if (conds) {
+    if (fknown) {
+      fits_aborts;
+      emit_fields;
+    } else {
+      unchecked_closure;
+    }
+  } else {
+    condition_failure;
+  }
+} else {
+  checked_closure;
+}
+\end{verbatim}
+@ 
+[[lastBranch]] implements this control flow, and it produces the
+(singleton) list of arms to which [[earlyBranch]] may later add.
+<<branch functions>>=
+fun lastBranch {cknown, conds, fknown, fitsAndEmit, uncheckedClosure,
+                conditionFailure, checkedClosure} =
+   [ $ cknown ==>
+        Cd.IF [ $ conds ==>
+                  Cd.IF [ $ fknown ==>
+                            fitsAndEmit
+                        , ELSE
+                            uncheckedClosure
+                  ]
+              , ELSE
+                  conditionFailure
+              ]
+   , ELSE
+       checkedClosure
+   ]
+@ 
+\subsubsection{Computing the conditions of control flow}
+[[conditions]] returns the conditions associated with disjunct [[d]].
+<<condition extraction>>=
+<<other condition functions>>
+fun conditions (d as PS.DIS(_, conds, _)) =
+  let val fits = fitsConditions d
+      val {cknown, fknown} = knownConditions d
+  in  {cknown=cknown, fknown=fknown, conds=conds, fits=fits}
+  end
+@
+\paragraph{Fits conditions}
+
+A disjunct is encodable only if all values bound to fields fit in
+their fields, and if all explicit narrowing operations succeed.
+We therefore walk patterns looking for field bindings and expressions
+so we can accumulate all the necessary conditions.
+A crucial optimization is to recognize those values that we know
+statically will fit.
+As can be seen by the definitions of [[inputFitsu]] and
+[[inputFitss]], these are values that are asserted to fit or values
+that are stored in instances.
+In both cases, our knowledge of fitting arises from checking or guaranteeing of
+inputs to constructors.
+\footnote{We may be in trouble with relocatable values in instances.}
+@
+This first part of the code looks for explicit narrows that can't be
+shown statically to succeed.
+<<other condition functions>>=
+<<fit functions>>
+local
+  (* add dynamic test to conds unless it's true statically *)
+  fun add (static, dynamic) (e, n, conds) = 
+    if static (e, n) then conds
+    else Exp.Set.add(conds, dynamic (e, n))
+  val addU = add (inputFitsu, Exp.fitsu)
+  val addS = add (inputFitss, Exp.fitss)
+
+  (* walk exp to get conditions associated with explicit narrows *)
+  local
+    fun exp (U.NARROWu (e, n), conds) = addU (e, n, conds)
+      | exp (U.NARROWs (e, n), conds) = addS (e, n, conds)
+      | exp (_, conds) = conds
+  in
+    fun addNarrowConditions (e, conds) = Exp.foldExps exp conds e
+  end
+
+  (* visit field bindings and get fits conditions *)
+  fun fitsFb((f, e), conds) = 
+    let val conds = addNarrowConditions(e, conds)
+    in  if checking f = Ast.CHECKED then
+          addU (e, F.fwidth f, conds)         (* check for checked field *)
+        else
+          conds
+    end
+
+  (* using function fb, visit all field bindings in a sequent *)
+  fun seq fb ((_, fbs, _), conds) = foldl fb conds fbs
+
+  <<support for [[knownConditions]]>>
+in 
+  fun fitsConditions (PS.DIS(_, conds, PS.SEQ(_, ss, _))) = 
+    foldl (seq fitsFb) (Exp.Set.foldl addNarrowConditions Exp.Set.empty conds) ss
+  <<definition of knownConditions>>
+end          
+@ Note we check narrows in conditions, and narrows and checked fields
+in field bindings.
+@
+\begin{quote}
+\emph{Historical note:}
+Folding [[ss]] picks up [[fits]] from the old implementation.
+Folding [[conditions]] picks up [[conds_narrows_ok]] from the old
+implementation. 
+We lost earlier because the solver converted the condition:
+\mbox{[[v = v[0:15]!]]} to
+\begin{quote}
+Enarrows(v, 16) = v[0:15].
+\end{quote}
+Without a check for the success of the narrow, this condition becomes
+a tautology, with the result that we were always taking an incorrect
+branch of the SPARC [[set]] constructor.
+By seeking out narrows in conditions, we make sure to include the
+correct check (although we continue to emit C~code for the tautology,
+which is annoying).
+\end{quote}
+\textbf{Arguably we ought to rewite narrows to slices as we pull out the checks!}
+@ 
+\paragraph{Known conditions}
+Relocatable addresses complicate everything---if some crucial
+relocatable address isn't known, we might not be able to
+evaluate either the explicit [[conds]] or the implicit fits
+conditions.
+We have to find out by digging around for use of [[FORCE]] or for
+occurrences of the program counter. 
+<<support for [[knownConditions]]>>=
+local
+  fun knownExp (U.FORCE e, conds) = Exp.Set.add(conds, Exp.known e)
+    | knownExp (_, conds) = conds
+in
+  fun addKnownConditions (e, conds) = Exp.foldExps knownExp conds e
+end
+fun knownFb ((f, e), conds) = addKnownConditions(e, conds)
+
+fun hasPC e = Exp.foldExps
+  (fn (U.PC,_) => true | (U.PC_KNOWN,_) => false | (_, haspc) => haspc) false e
+fun sequentHasPC ((_, fbs, _)) = List.exists (fn (f, e) => hasPC e) fbs
+@  I used to count [[U.PC_KNOWN]] as a use of the program
+counter, but I couldn't think why, so I don't any more.
+@
+[[knownConditions]] is a little unwieldy because I do everything
+twice.
+[[pcconds p]] starts us out with a check of the program counter iff
+predicate~[[p]] so indicates.
+<<definition of knownConditions>>=
+fun knownConditions (PS.DIS(_, conds, PS.SEQ(_, ss, _))) = 
+  let fun pcconds p = if p then Exp.Set.add(Exp.Set.empty, Exp.pcKnown)
+                      else Exp.Set.empty
+      val cpc = pcconds (Exp.Set.exists hasPC conds)
+      val cknown = Exp.Set.foldl addKnownConditions cpc conds
+
+      val fpc = pcconds (List.exists sequentHasPC ss)
+      val fknown = foldl (seq knownFb) fpc ss
+  in  {cknown = cknown, fknown = Exp.Set.difference(fknown, cknown) }
+  end
+@ Although it's not strictly kosher, I make sure [[fknown]] includes
+only conditions not already shown true in [[cknown]].
+@
+\paragraph{Static tests for fitting}
+
+Either instances or asserted expressions can be known to fit.
+The ``fit test'' tells whether a narrow will succeed.
+Unsigned values may fit in (larger) signed slots, but signed values
+can never fit in unsigned slots, because a two's-complement $-1$ is
+too big for any unsigned slot.%
+\footnote{I'm still not sure if this is really right.}
+Finally, if the width is at least the size of the host machine's word
+size, an unsigned value fits by defintion.
+This is going to be totally bogus when we start having to generate
+code using a smaller host than target word size.
+We also let even a \emph{signed} value fit by definition, even though
+I'm not sure this is exactly right.
+<<fit functions>>=
+fun inputFitsu (U.ASSERT_NARROWu (_, n), width) = n <= width
+  | inputFitsu (U.ASSERT_NARROWs (_, n), width) = false (* could have high sign bits *)
+  | inputFitsu (U.INSTANCE_INPUT (_, {cons, operand}), width) =
+      let val (_, ty, _) = C.operandNamed(C.fromId cons, operand)
+      in  case ty
+            of C.INTEGER {signed=false, width=SOME n} => n <= width
+             | _ => width >= !GlobalState.CG.wordsize (* may be unduly pessimistic *)
+      end
+  | inputFitsu (_, width) = width >= !GlobalState.CG.wordsize
+fun inputFitss (U.ASSERT_NARROWu (_, n), width) = n <= width
+  | inputFitss (U.ASSERT_NARROWs (_, n), width) = n <= width
+  | inputFitss (U.INSTANCE_INPUT (_, {cons, operand}), width) =
+      let val (_, ty, _) = C.operandNamed(C.fromId cons, operand)
+      in  case ty
+            of C.INTEGER {signed=false, width=SOME n} => n <  width
+             | C.INTEGER {signed=true,  width=SOME n} => n <= width
+             | _ => false
+      end
+  | inputFitss (_, width) = width >= !GlobalState.CG.wordsize
+@ \textbf{Red alert!  In the old code, signed operands passed the
+[[fitsu]] test with [[<=]].  Unsigned were as now---pass signed test
+with [[<]].}
+@
+\subsection{Operand Checking}
+
+This is some of the trickier code kicking around.
+The idea is that if an operand is checked (i.e., it corresponds to a
+checked field), we check its value on input, then in the body we
+simply assume it fits.
+If an operand is guaranteed, we can make the assumption and not bother
+with the check.
+
+Checking of field inputs is somewhat looser than in the past---this
+code won't detect a problem if a field input is relocatable or if it
+has no width.
+@ 
+To implement the checking, we do our usual stuff with the arms of an
+if statement.
+These checks will actually be prepended to the arms coming from the
+disjunct-selection code that appears above.
+Checks come only for non-exempt operands that correspond to checked
+fields.
+Operands might be exempted if they are being represented in a strange
+way, e.g., a register number is being represented as a (possibly
+temporary) location.
+
+The test against the global word size is actually intended to capture
+the idea that the type system of the target programming language
+guarantees the fit.
+This is of course completely bogus, but at the moment it's hard to do
+better.
+<<utility functions>>=
+<<checking utilities>>
+(* if fields are checked, add the checks to the arms *)
+fun addInputWidthCheck exempt (operand as (name, ty, prop), arms) =
+  if List.exists (fn x => x = name) exempt then
+    arms
+  else
+    case (ty, prop)
+      of (C.INTEGER {signed, width=SOME n}, {relocatable=false, field=SOME f}) =>
+           if checking f = Ast.CHECKED
+           andalso F.fwidth f < !GlobalState.CG.wordsize then
+             let val (fits, kind) = if signed then (Exp.fitss, "signed")
+                                    else           (Exp.fitsu, "unsigned")
+                 fun fail msgl = Code.FAIL (String.concat msgl, [])
+             in  Exp.not' (fits (Exp.var name, n)) ==>
+                   fail ["field ", #name f, " does not fit in ", 
+                         Int.toString(F.fwidth f), " ", kind, " bits"]
+             end
+             :: arms
+           else
+             arms
+        | _ => arms
+@
+The code for making the assumptions is similar in flavor, but instead
+of accumulating arms of an if statement, we accumulate a
+``substitution table'' [[stab]].
+This table can then be used to insert assertions around all uses of
+the relevant inputs, guaranteeing that they statically pass the
+appropriate fits tests.
+Note we assert either checked fields (safe because uses are protected
+by the checks inserted in the function above) or guaranteed fields
+(safe because the user guarantees them).
+<<utility functions>>=
+(* if fields are checked or guaranteed, can assert their width *)
+fun inputWidthAssertions (operand as (name, ty, prop), stab) =
+  case (ty, prop)
+    of (C.INTEGER {signed=s, width=SOME n}, {relocatable=false, field=SOME f}) =>
+         if checking f <> Ast.UNCHECKED
+         andalso F.fwidth f < !GlobalState.CG.wordsize then
+           let val narrow = if s then Exp.assertNarrows
+                            else Exp.assertNarrowu
+               val _ = n = F.fwidth f orelse ErrorMsg.impossible "field parm"
+           in  StringMap.insert(stab, name, narrow(Exp.var name, n))
+           end
+         else 
+           stab
+      | _ => stab
+fun inputWidthAssertionTable operands =
+  foldl inputWidthAssertions StringMap.empty operands
+@
+Finally, here are some functions used to help play with checking.
+<<checking utilities>>=
+fun checking f = FieldInfo.getChecking(f, !GlobalState.fieldinfo)
+fun showchecking (f as {name,...}) =
+  ErrorMsg.verbose ["checking of field ", name, " is ",
+                    case checking f
+                      of Ast.CHECKED => "checked"
+                       | Ast.UNCHECKED => "unchecked"
+                       | Ast.GUARANTEED => "guaranteed"]
+@ 
+\subsection{The emitter body}
+[[emitterBody']] assembles the body of a binary emitter.
+Steps include:
+\begin{enumerate}
+\item
+Find a pattern associated with a constructor, and strip out all the
+latent pattern labels.
+\item
+Turn it into a case statement, with emission at the leaves.
+\item
+Create a substitution that asserts the narrowness of checked inputs.
+\item
+Apply that substitution to the case statement.
+\item
+Guard the case statement with input width checks.
+\item
+Add a comment, and simplify away unneeded checks.
+\end{enumerate}
+<<functions>>=
+fun emitterBody' closureCreation cons =
+  let val bodyPat = PS.dropLatents (C.consPattern cons) : PS.Pure.pattern
+      val emitCons =
+            emitterFrom (tokenMapsToEmission, closureCreation, REAL_CONSTRUCTOR cons)
+      val body = caseFrom emitCons bodyPat
+      val {name, operands, ...} = C.info cons
+      val stab = inputWidthAssertionTable operands
+      fun subst n = StringMap.find(stab, n)
+      val body = if StringMap.numItems stab = 0 then body
+                 else Code.subst (Exp.multiSubst subst) body
+      val body = protectWithInputWidthChecks (cons, [], body)
+      val comment = Code.BLOCK_COMMENT (
+                        pp.li [ pp.$ "Emitting pattern $2${$c",
+                                patimage bodyPat, pp.$ "$}$b" ])
+  in  Simplify.Super.code (Code.BLOCK ([], [comment, body]))
+  end
+@ 
+The function has to be wrapped suitably for error detection.
+<<functions>>=
+fun emitterBody cc cons =
+  let val {region, sourcemap, ...} = C.info cons
+      val econtext = (sourcemap, ErrorMsg.defaultConsumer())
+val _ = app print ["asked for emitter body for ", #name (C.info cons), "\n"]
+  in  Error.catch econtext region (fn () => Error.OK (emitterBody' cc cons)) ()
+  end
+@ {\bf Wart alert!} This new implementation distinguishes disjuncts
+and branches, but the distinction is lost above by the application of
+[[Pattern.orp]]. 
+@
+An emitter for the instruction data type is vastly simpler, because
+the checking has already gone on in the creation of the instances.
+<<functions>>=
+fun instructionEmitterBody' emitMaps closureCreation itype {argname} =
+  let val pat = PS.dropLatents (C.constypePattern (Exp.var argname, C.typeid itype))
+      val body =
+            caseFrom (emitterFrom(emitMaps, closureCreation,
+                                  ARTIFICIAL_CONSTRUCTOR "instruction emitter")) pat
+  in  Simplify.Super.code body
+  end
+fun instructionEmitterBody ? = instructionEmitterBody' tokenMapsToEmission ?
+@
+This function drops disjuncts that can never be encoded,
+issuing suitable warnings.
+These warnings help users detect errors in specifications that use
+conditional assembly, i.e., getting the alternatives in the wrong order.
+
+Note that if [[d']] follows [[d]], and if the conditions for [[d']] to
+be executed imply the conditions for [[d]] to be executed, then [[d']]
+can never be executed and it is redundant.  
+<<disjunct removal functions>>=
+fun removeConditionallyRedundantDisjuncts [d] = [d]
+  | removeConditionallyRedundantDisjuncts ds =
+      let fun r [] = []
+            | r ((h as (fits, d as PS.DIS(_, conds, _)))::t) =
+               let infix 5 implies
+                   fun p implies q = P.Exp.Set.isSubset(q, p)
+                   fun keep (h' as (fits', d' as PS.DIS(_, conds', _))) =
+                     if conds' implies conds andalso fits' implies fits then
+                         (<<warn of redundant disjunct>>; false)
+                     else true
+               in  h :: List.filter keep (r t)
+               end
+          fun addFits d = (P.Exp.Set.map Simplify.exp (fitsConditions d), d)
+      in  map #2 (r (map addFits ds))
+      end
+@ In order to distinguish  disjuncts with
+different fits conditions, this function makes a redundant call to
+[[fitsConditions]].
+The first line of the function, handling lists containing only one
+disjunct, eliminates this extra effort in almost all cases.
+@
+<<warn of redundant disjunct>>=
+let fun dimage disjunct = patimage (PS.PAT(NONE, [disjunct]))
+    fun fitsImage fits = pp.li [pp.$ " $c(fits if ", condsimage fits, pp.te ")"]
+in  ErrorMsg.ppwarning sourcemap (region, [
+      pp.on, 
+      pp.te "On right-hand side of constructor ", pp.te consname, 
+      pp.$ " dropping disjunct ${$4$4$c", dimage d', fitsImage fits',
+      pp.$ "$b $cbecause disjunct $4$c",
+      dimage d, fitsImage fits, pp.$ " $b$cwill always be taken first.$b$}$n"])
+end
+@
+\subsection{Building emitters from disjuncts}
+
+In the structure shown above, a mysterious ``leaf'' function takes
+care of emitting patterns that don't contain tag conditions.
+This is that function.
+
+Emission is a little odd, because we ``make up'' a constructor to
+stand for a data-type emitter, and we need to have some source
+locations to use to tag error messages.
+<<branch functions>>=
+datatype constructor_info
+  = REAL_CONSTRUCTOR of C.constructor
+  | ARTIFICIAL_CONSTRUCTOR of string
+<<bind [[consname]], [[region]], and [[sourcemap]] from [[consinfo]]>>=
+val (consname, region, sourcemap) =
+  case consinfo
+    of REAL_CONSTRUCTOR cons =>
+         let val {name, region, sourcemap, ...} = C.info cons
+         in  (name, region, sourcemap)
+         end
+     | ARTIFICIAL_CONSTRUCTOR name =>
+         (name, SourceMap.nullRegion,
+          SourceMap.newmap(0, {fileName="<no-file>", line=0, column=0}))
+@ 
+There are really only two things going on here.
+One is that we drop ``redundant'' disjuncts, which can't ever be
+chosen.
+The other is that we call [[earlyDisjunct]] and [[lastDisjunct]]
+instead of [[earlyBranch]] and [[lastBranch]], because we don't have
+all the conditions and so on at our fingertips.
+<<branch functions>>=
+fun emitterFrom (disjunctEmission, closureCreation, consinfo) (PS.PAT(_, ds)) =
+  let <<bind [[consname]], [[region]], and [[sourcemap]] from [[consinfo]]>>
+      fun warning l = ErrorMsg.warning sourcemap (region, l)
+      val disjunctEmission = disjunctEmission warning
+      <<disjunct removal functions>>
+      val ds = removeConditionallyRedundantDisjuncts ds
+      <<bind [[conditionFailureMsg]]>>
+      fun fail() = Code.FAIL (conditionFailureMsg ^ " for constructor " ^ consname, [])
+      <<define [[earlyDisjunct]] and [[lastDisjunct]]>>
+  in  case rev ds (* the last shall be the first *)
+        of [] => (<<possibly warn about bad encoding for [[consinfo]]>>;
+                  Code.FAIL("impossible encoding (no disjuncts) ---\
+                            \perhaps a bad address mode?", []))
+         | last :: first => Code.IF (foldl earlyDisjunct (lastDisjunct last) first)
+  end
+@ We permit encoding of patterns with no disjuncts, because
+they might represent one case in a statement where other cases are
+valid.
+This situation holds on machines like the 68k, which  forbid certain
+addressing modes for certain instructions.
+We issue a warning message, and if sonmebody tries the mode at
+encoding time they get slapped with an error message.
+@ 
+This single utility function handles both kinds of disjuncts, because
+the main tasks are the same:
+\begin{enumerate}
+\item
+Compute conditions.
+\item
+Convert each sequent to a ``token map,'' which associates values to
+the fields in a token.
+Field bindings translate directly.
+ Range constraints could add bindings to the map, or they could be
+converted to extra conditions.
+We used to call this step ``sanitation.''
+\item
+Compute code to emit a sequence of token maps.
+\item
+Surround the emission code with appropriate checks by calling
+[[earlyBranch]] or [[lastBranch]].
+\end{enumerate}
+<<define [[earlyDisjunct]] and [[lastDisjunct]]>>=
+fun earlyDisjunct (d, arms) = oneDisjunct (SOME arms) d
+and lastDisjunct d = oneDisjunct NONE d
+and oneDisjunct successors d = 
+  let <<local sanitation>>
+      <<emission>>
+      fun addWidthTest (c, arms) = Exp.not' c ==> widthFailure c :: arms
+      val {conds, cknown, fknown, fits} = conditions d
+      val (emit, conds) = emitDisjunct (d, conds)
+      val fitsEmit = Code.IF (P.Exp.Set.foldl addWidthTest [ELSE emit] fits)
+      fun Sclosure x = closureCreation x 
+      val clo = Sclosure (d, NONE)
+  in  case successors
+        of NONE => lastBranch {cknown=cknown, conds=conds, fknown=fknown,
+                               fitsAndEmit=fitsEmit, uncheckedClosure=clo,
+                               conditionFailure=fail(),
+                               checkedClosure=Sclosure(d, SOME conds)}
+         | SOME arms => 
+             earlyBranch ({cknown=union(cknown, fknown), conds=union(conds, fits),
+                           fknown=emptyset, fitsAndEmit=emit, createClosure=clo}, arms)
+  end      
+@ The closure code is probably bogus.
+
+Also note that the toolkit is apparently capable of using fits
+conditions to choose disjuncts, although from reading the code I can't
+tell how.
+@
+<<bind [[conditionFailureMsg]]>>=
+val conditionFailureMsg =
+      if length ds > 1 then "Can't decide on branch" else "Conditions not satisfied"
+<<utility functions>>=
+fun widthFailure c =
+  let val (n, x, fmt, sign) =
+        case c
+          of U.FITSu (x, n) => (n, x, "0x%x", "unsigned")
+           | U.FITSs (x, n) => (n, x, "%d",   "signed")
+           | _ => ErrorMsg.impossible "width condition"
+      val _ = n < !GlobalState.CG.wordsize
+              orelse ErrorMsg.impossible ("test to fit in word: " ^ expstring c)
+  in  Code.FAIL (String.concat [expstring x, " = ", fmt, " won't fit in ",
+                                Int.toString n , " ", sign, " bits"],
+                 [x])
+  end
+<<possibly warn about bad encoding for [[consinfo]]>>=
+(case consinfo 
+   of REAL_CONSTRUCTOR cons =>
+        if C.Set.member(!warnedConstructors, cons) then
+          ()
+        else 
+           (warnedConstructors := C.Set.add(!warnedConstructors, cons) 
+            ; warning ["constructor ", consname, 
+                       " has an encoding with no matches -- maybe a bad address mode?"]
+            )
+    | ARTIFICIAL_CONSTRUCTOR name =>
+        warning ["artifical constructor ", name,
+                 " has an encoding with no matches -- maybe a bad address mode?"])
+@
+\subsection{Preparing sequents for emission}
+Fields within a sequent can be constrained either by field bindings or by range 
+constraints. 
+Given a sequent $S$ and a field $F$, $S$ may contain at most one
+field binding of $F$ and at most one constraint on $F$.
+(The old invariant didn't permit both.)  
+If we have just one or the other, these are the semantics:
+\begin{itemize}
+\item 
+  On output (encoding), a field binding gives an expression that
+  determines the value of the field.
+\item 
+  On input (decoding), a field binding gives an expression that is
+  equated to an identifier standing for the actual value of the field.
+  Equations are solved in the usual way to give the operands.
+\item 
+  On output, a range constraint may determine the value of a field uniquely,
+        in which case that value is assigned to the field.
+  If the
+        constraint doesn't determine the value uniquely, there must be
+        a field binding that does.
+  On input, a constraint limits the number of token sequences that can match.
+\end{itemize}
+When we have both a range constraint and a field binding, conflicts
+are resolved as follows:
+\begin{itemize}
+\item 
+  On input, there can never be a conflict between a constraint and a
+        field binding; they can be handled independently when
+        generating a matcher.
+\item 
+  On output, a conflict is handled by turning the range constraint
+  into an ordinary condition of encoding.  We could be more aggressive
+  when the range holds but a single value, but the benefit would be
+  small for real specifications.
+\end{itemize}
+
+%  These target-code constraints are
+%        similar to constraints generated in the equation solved (as
+%        opposed to the pattern constraints we are discussing here,
+%        which are the components of sequents).  Note that the
+%        transformation doesn't really add extra conceptual overhead;
+%        we already need some sort of sanitize-before-emitting
+%        procedure to make sure the output pattern has exactly one
+%        disjunct.
+%
+
+@
+Here, we're taking a sequent, and returning a map from fields to
+expressions. 
+The range constraints and field bindings form the map.
+We begin with the field bindings, which are guaranteed to bind each
+field at most once.
+Then, we merge in the range constraints, and those that duplicate
+existing field bindings become conditions.
+Note that the check for underconstraining range constraints has been
+moved into this function.
+N.B.~we add field bindings first, then range constraints.
+<<sanitation>>=
+fun outputBindings warning ((class, fbs, rcs), conds) =
+  let <<[[fun insertConstraintConditions =]] \ldots>>
+      fun addBinding((f, e), map) =
+        case FieldMap.find(map, f)
+          of NONE => FieldMap.insert(map, f, e)
+           | SOME _ => ErrorMsg.impossible "duplicate field bindings"
+      fun addConstraint((f, range as {lo, hi}), (map, conds)) =
+        case FieldMap.find(map, f)
+          of SOME e => (map, insertConstraintConditions(conds, f, e, range))
+           | NONE =>
+               if lo + 1 = hi then
+                 (FieldMap.insert(map, f, Exp.const lo), conds)
+               else
+                 (warning ["Field ", #name f, " is underconstrained by ",
+                           Int.toString lo, " <= ", #name f, " < ", Int.toString hi,
+                           "; emitting ", Int. toString ((lo+hi) div 2)]
+                 ; (FieldMap.insert(map, f, Exp.const ((lo+hi) div 2)), conds))
+      val (map, conds) =
+        foldl addConstraint (foldl addBinding FieldMap.empty fbs, conds) rcs
+  in  (class, map, conds)
+  end
+@ 
+If a field mentioned in a field binding also appears in a range
+constraint, the constraint becomes conditions, which eventually govern
+encoding with the rest.
+[[e]] is the value of field~[[f]], which must fit in the half-open
+interval $[ [[lo]], [[hi]])$.
+<<[[fun insertConstraintConditions =]] \ldots>>=
+fun insertConstraintConditions (conds, f, e, {lo, hi}) =
+  let fun cmp (e, relop, n) = Exp.condition(e, relop, Exp.const n)
+      val limit = Field.fmax f
+      val hi' = Word.fromInt hi
+      val conds = if lo > 0      then P.Exp.Set.add(conds, cmp(e, Relop.GE, lo))
+                  else conds
+      val conds = if hi' < limit then P.Exp.Set.add(conds, cmp(e, Relop.LT, hi))
+                  else conds
+  in  conds
+  end
+@
+This code converts all the sequents in a disjunct, possibly adding
+conditions to [[conds]]. 
+The conditions get added if and only if there's a range constraint on
+a field mentioned in a field binding.
+<<local sanitation>>=
+fun sequentsToTokenMaps (PS.DIS(_, _, PS.SEQ(_, ss, _)), conds) =
+  let fun addBindings(c, (maps, conds)) =
+            let val (class, map, conds') = outputBindings warning (c, conds)
+            in  ((class, map) :: maps, conds')
+            end
+  in  foldl addBindings ([], conds) ss
+  end
+@
+[[tokenMapsToEmission]] takes each token map and converts it to an
+emit statement, keeping track of offsets.
+<<token maps to emission>>=
+fun tokenMapsToEmission warning ss =
+  let <<[[token]] to convert token map to value of token>>
+      fun next((h as (class, _))::t, offset) =
+            token(h, offset) :: next(t, offset + #size (class : PS.token_class))
+        | next([], _) = []
+  in  Code.EMIT (next(ss, 0))
+  end
+@ 
+To emit a disjunct:
+<<emission>>=
+fun emitDisjunct (d, conds) =
+  let val (sequents, conds) = sequentsToTokenMaps (d, conds)
+      val emit = disjunctEmission sequents
+  in  (emit, conds)
+  end
+@ 
+There's more going on here than you might expect, but I've lost all
+the old explanations.  I guess this is basically the last chance we
+have to check that things might have gone wrong.
+<<[[token]] to convert token map to value of token>>=
+fun token ((class : PS.token_class, map), offset) =
+  let val _ = FE.mapOverlapCheck map
+      fun addBinding(f, e, parts) =
+        let val x = case Exp.unConst e
+                      of SOME n => if 0 <= n andalso Word.fromInt n < F.fmax f then
+                                     e
+                                   else
+                                     (<<warn of bad range constraint>>;
+                                      Exp.slice(e, {lo=0, width=F.fwidth f}))
+                       | NONE => if checking f = Ast.GUARANTEED then e
+                                 else Exp.slice(e, {lo=0, width=F.fwidth f})
+            <<[[emitShift]]>>
+        in  emitShift(x, #lo (#range f)) :: parts
+        end
+      <<check class size against [[emitUnitBits]]>>
+  in  { value = Exp.orb(FieldMap.foldli addBinding [] map)
+      , width = #size class div !GlobalState.CG.emitUnitBits
+      , offset = offset
+      }
+  end
+<<function to check for overlapping fields in [[map]]>>=
+fun mapOverlapCheck map =
+  let fun overlapCheck(f, _, (overlaps, fields)) =
+        if RangeSet.overlaps(overlaps, #range f) then
+          <<issue error message about overlapping fields>>
+        else
+          (RangeSet.insert(#range f, overlaps), FieldSet.add(fields, f))
+  in  ( FieldMap.foldli overlapCheck (RangeSet.empty, FieldSet.empty) map
+      ; ()
+      )
+  end
+<<issue error message about overlapping fields>>=
+let fun complain (g:Field.field) =
+      if RangeSet.rangesOverlap (#range g, #range f) then
+        Error.errorl ["Cannot use overlapping fields ", #name f, " and ", #name g,
+                      " in the same token"]
+      else ()
+val _ = app print ["about to complain about fields of length ", Int.toString(FieldSet.numItems fields), "\n"]
+in  FieldSet.app complain fields;
+    ErrorMsg.impossible "some fields overlap, but I can't tell which ones"
+end
+@ 
+This is totally bogus --- my first sign that 31-bit integers are
+hurting me.
+<<warn of bad range constraint>>=
+if F.fwidth f < 32 then 
+  warning ["constant value ", Int.toString n, " will not fit in field ", #name f]
+else
+  ()
+@ 
+<<check class size against [[emitUnitBits]]>>=
+val _ = #size class mod !GlobalState.CG.emitUnitBits = 0 orelse
+        Error.errorl ["tokens are emitted in units of ",
+                      Int.toString (!GlobalState.CG.emitUnitBits),
+                      ", but some pattern is ", Int.toString (#size class),
+                      " bits wide"]
+@
+Here's where we doctor things to confound the simplifier if necessary.
+<<[[emitShift]]>>=
+fun emitShift (e, n) =
+  if n = 0 then e
+  else if !GlobalState.CG.simplifyEmits then Exp.shift(e, n)
+  else Exp.shift((Exp.nosimp o Simplify.Super.exp) e, n)
+@ 
+<<fieldexps.sml>>=
+functor FieldExpressionsFun(P : PATTERNS) = struct
+  structure Patterns = P
+  structure Exp = P.Exp
+  type conditions = P.Exp.Set.set 
+  type constraints = Patterns.field Patterns.constraints
+  type exp = Patterns.Exp.exp
+  <<sanitation>>
+  <<function to check for overlapping fields in [[map]]>>
+end
+@ 
+<<encode.sml>>=
+functor EncodeFun(
+  structure Simplify : SIMPLIFIER
+  structure Code : CODE where type Exp.exp = UnifiedExp.exp
+  structure FieldExpressions : FIELD_EXPRESSIONS
+  sharing Code = Simplify.Code
+  sharing FieldExpressions.Patterns = Code.Constructor.Patterns
+  val warnedConstructors : Code.Constructor.Set.set ref
+  val patimage : Code.Constructor.Patterns.Pure.pattern -> PP.pretty
+  val condsimage : Code.Constructor.Patterns.Pure.Exp.Set.set -> PP.pretty
+  val expstring : Code.exp -> string
+) : ENCODER = 
+<<encode.sml>>=
+struct
+  structure Code = Code
+  structure Constructor = Code.Constructor
+  structure Pattern = Constructor.Patterns.Pure
+  structure Exp = Pattern.Exp
+  structure FE = FieldExpressions
+  type emitter = Code.exp * {width:int} -> Code.statement
+  type disjunct =
+      Code.Constructor.Patterns.field
+      Code.Constructor.Patterns.constraints
+      Code.Constructor.Patterns.sequence
+      Code.Constructor.Patterns.disjunct'
+  type pattern = Code.Constructor.Patterns.Pure.pattern
+  type closure = disjunct * Exp.Set.set option
+  type conditions = Code.Constructor.Pattern.Exp.Set.set 
+  type disjunct_emitter = (string list -> unit) ->
+                          (Code.Constructor.Patterns.token_class *
+                           Code.Constructor.Pattern.Exp.exp FieldMap.map) list
+                          -> Code.statement
+
+<<encode.sml>>=
+  local 
+    structure C = Constructor
+    structure PS = C.Patterns
+    structure P = PS.Pure
+    structure F = Field
+    structure U = UnifiedExp
+    structure pp = PP.Short
+    structure Cd = Code
+    infix 9 ==>
+    fun guard ==> stmt = (guard, stmt)
+    fun ELSE stmt = Exp.true' ==> stmt
+    <<utility functions>>
+    val outputBindings = FE.outputBindings
+  in
+    fun protectWithInputWidthChecks (cons, exempt, stmt) =
+      Code.IF (foldr (addInputWidthCheck exempt) [ELSE stmt] (#operands (C.info cons)))
+    type constraints = 
+      Code.Constructor.Patterns.field Code.Constructor.Patterns.constraints
+    type exp = Code.Constructor.Pattern.Exp.exp
+    <<token maps to emission>>
+    <<fun [[argType]]>>
+    <<functions>>
+
+  end
+end
+@ 
+\subsubsection{Arguments}
+<<fun [[argType]]>>=
+local 
+  fun reloc (true,  ty) = Type.RELOCATABLE ty
+    | reloc (false, ty) = ty
+in
+  fun argType (_, C.INTEGER {signed, width=w}, {relocatable=r, field=f}) =
+         reloc(r, Type.INTEGER {signed=signed,  width=w})
+    | argType (_, C.INSTANCE id, _) = Type.INSTANCE id
+end

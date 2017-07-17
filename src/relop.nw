@@ -1,0 +1,49 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: relop.nw,v 1.5 1998/11/11 21:59:23 nr Exp $
+\section{Relational operators}
+
+Here are the relationals, with a few useful functions.
+<<relop.sig>>=
+signature RELOP = sig
+  datatype relop = EQ | NE | LT | LE | GT | GE 
+  val compare'relop : relop * relop -> order
+  val reverse   : relop -> relop  (* a OP b  iff  b (reverse OP) a *)
+  val negate    : relop -> relop  (* a OP b  iff  not (a (negate OP) b) *)
+  val injectInt : relop -> (int * int -> bool)
+  val rangeTest : int * relop * {lo: int, hi:int} -> bool option
+     (* rangeTest (i OP r) = SOME b  iff forall n s.t. lo <= n < hi, i OP n *)
+  val ascii : relop -> string
+end
+@ 
+<<relop.ord>>=
+structure Relop : RELOP = struct
+  datatype relop = EQ | NE | LT | LE | GT | GE 
+%%
+  datatype relop = EQ | NE | LT | LE | GT | GE 
+%%
+  val reverse = fn EQ => EQ | NE => NE | LT => GT | GT => LT | LE => GE | GE => LE
+  val negate  = fn EQ => NE | NE => EQ | LT => GE | GT => LE | LE => GT | GE => LT
+  val injectInt = fn EQ => op = | NE => op <>
+                   | LT => op < | LE => op <=
+                   | GT => op > | GE => op >= : int * int -> bool
+  <<other functions>>
+end
+@ 
+<<other functions>>=
+fun rangeTest (i, EQ, {lo, hi}) =
+      if      i < lo orelse  i >= hi  then SOME false
+      else if i = lo andalso i+1 = hi then SOME true
+      else NONE
+  | rangeTest (i, LT, {lo, hi}) =
+      if      i < lo    then SOME true
+      else if i >= hi-1 then SOME false
+      else NONE
+  | rangeTest (i, GT, {lo, hi}) =
+      if      i >= hi then SOME true
+      else if i <= lo then SOME false
+      else NONE
+  | rangeTest (i, rator, range) = Option.map not (rangeTest (i, negate rator, range))
+@       
+<<other functions>>=
+val ascii = fn EQ => "=" | NE => "!=" | LT => "<" | GT => ">" | LE => "<=" | GE => ">="
+@ 

@@ -1,0 +1,215 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Polymorphic tables}
+<<polytab.sig>>=
+signature POLY_ORD_KEY = sig
+  include ORD_KEY
+  type 'a poly_ord_key
+  val project : 'a poly_ord_key -> ord_key
+end
+
+signature POLY_ORD_MAP = sig
+  structure Key : POLY_ORD_KEY
+
+  type ('k, 'v) map
+
+  val empty : ('k, 'v) map (* The empty map *)
+  val insert : ('k, 'v) map * 'k Key.poly_ord_key * 'v -> ('k, 'v) map
+	(* Insert an item.  *)
+
+  val find : ('k, 'v) map * 'k Key.poly_ord_key -> 'v option
+	(* Look for an item, return NONE if the item doesn't exist *)
+
+  val numItems : ('k, 'v) map ->  int
+	(* Return the number of items in the map *)
+
+  val listItems  : ('k, 'v) map -> 'v list
+  val listItemsi : ('k, 'v) map -> ('k Key.poly_ord_key * 'v) list
+	(* Return an ordered list of the items (and their keys) in the map.
+         *)
+  
+
+(*******
+
+    val collate : ('v * 'v -> order) -> (('k, 'v) map * ('k, 'v) map) -> order
+	(* given an ordering on the map's range, return an ordering
+	 * on the map.
+	 *)
+
+    val unionWith  : ('v * 'v -> 'v) -> (('k, 'v) map * ('k, 'v) map) -> ('k, 'v) map
+    val unionWithi : ('k Key.poly_ord_key * 'v * 'v -> 'v) -> (('k, 'v) map * ('k, 'v) map) -> ('k, 'v) map
+	(* return a map whose domain is the union of the domains of the two input
+	 * maps, using the supplied function to define the map on elements that
+	 * are in both domains.
+	 *)
+
+    val intersectWith  : ('a * 'b -> 'c) -> (('k, 'v) map * 'b map) -> 'c map
+    val intersectWithi : ('k Key.poly_ord_key * 'a * 'b -> 'c) -> (('k, 'v) map * 'b map) -> 'c map
+	(* return a map whose domain is the intersection of the domains of the
+	 * two input maps, using the supplied function to define the range.
+	 *)
+
+    val app  : ('a -> unit) -> ('k, 'v) map -> unit
+    val appi : (('k Key.poly_ord_key * 'a) -> unit) -> ('k, 'v) map -> unit
+	(* Apply a function to the entries of the map in map order. *)
+
+    val map  : ('a -> 'b) -> ('k, 'v) map -> 'b map
+    val mapi : ('k Key.poly_ord_key * 'a -> 'b) -> ('k, 'v) map -> 'b map
+	(* Create a new map by applying a map function to the
+         * name/value pairs in the map.
+         *)
+
+    val foldl  : ('a * 'b -> 'b) -> 'b -> ('k, 'v) map -> 'b
+    val foldli : ('k Key.poly_ord_key * 'a * 'b -> 'b) -> 'b -> ('k, 'v) map -> 'b
+	(* Apply a folding function to the entries of the map
+         * in increasing map order.
+         *)
+
+    val foldr  : ('a * 'b -> 'b) -> 'b -> ('k, 'v) map -> 'b
+    val foldri : ('k Key.poly_ord_key * 'a * 'b -> 'b) -> 'b -> ('k, 'v) map -> 'b
+	(* Apply a folding function to the entries of the map
+         * in decreasing map order.
+         *)
+
+    val filter  : ('a -> bool) -> ('k, 'v) map -> ('k, 'v) map
+    val filteri : ('k Key.poly_ord_key * 'a -> bool) -> ('k, 'v) map -> ('k, 'v) map
+	(* Filter out those elements of the map that do not satisfy the
+	 * predicate.  The filtering is done in increasing map order.
+	 *)
+
+    val mapPartial  : ('a -> 'b option) -> ('k, 'v) map -> 'b map
+    val mapPartiali : ('k Key.poly_ord_key * 'a -> 'b option) -> ('k, 'v) map -> 'b map
+	(* map a partial function over the elements of a map in increasing
+	 * map order.
+	 *)
+
+******)
+end (* ORD_MAP *)
+@ 
+<<polytab.sig>>=
+signature POLY_ORD_SET = sig
+    structure Key : POLY_ORD_KEY
+    type 'a item = 'a Key.poly_ord_key
+    type 'a set
+
+    val empty : 'a set
+	(* The empty set *)
+
+    val singleton : 'a item -> 'a set
+	(* Create a singleton set *)
+
+    val add : 'a set * 'a item -> 'a set
+	(* Insert an item. *)
+
+    val addList : 'a set * 'a item list -> 'a set
+	(* Insert items from list. *)
+
+    val delete : 'a set * 'a item -> 'a set
+	(* Remove an item. Raise NotFound if not found. *)
+
+    val member : 'a set * 'a item -> bool
+	(* Return true if and only if item is an element in the set *)
+
+    val isEmpty : 'a set -> bool
+	(* Return true if and only if the set is empty *)
+
+(********8
+
+    val equal : (set * set) -> bool
+	(* Return true if and only if the two sets are equal *)
+
+    val compare : (set * set) -> order
+	(* does a lexical comparison of two sets *)
+
+    val isSubset : (set * set) -> bool
+	(* Return true if and only if the first set is a subset of the second *)
+*****)
+    val numItems : 'a set ->  int
+	(* Return the number of items in the table *)
+
+    val listItems : 'a set -> 'a item list
+	(* Return an ordered list of the items in the set *)
+
+    val union : 'a set * 'a set -> 'a set
+        (* Union *)
+
+    val intersection : 'a set * 'a set -> 'a set
+        (* Intersection *)
+
+    val difference : 'a set * 'a set -> 'a set
+        (* Difference *)
+
+    val map : ('a item -> 'a item) -> 'a set -> 'a set
+	(* Create a new set by applying a map function to the elements
+	 * of the set.
+         *)
+     
+    val app : ('a item -> unit) -> 'a set -> unit
+	(* Apply a function to the entries of the set 
+         * in decreasing order
+         *)
+
+    val foldl : ('a item * 'b -> 'b) -> 'b -> 'a set -> 'b
+	(* Apply a folding function to the entries of the set 
+         * in increasing order
+         *)
+
+    val foldr : ('a item * 'b -> 'b) -> 'b -> 'a set -> 'b
+	(* Apply a folding function to the entries of the set 
+         * in decreasing order
+         *)
+
+(**********
+    val filter : (item -> bool) -> set -> set
+
+    val exists : (item -> bool) -> set -> bool
+
+    val find : (item -> bool) -> set -> item option
+*******)
+  end (* ORD_SET *)
+
+<<polytab.sml>>=
+functor PolyMapFun(Key : POLY_ORD_KEY) : POLY_ORD_MAP = struct
+  structure Key = Key
+  structure M = BinaryMapFn(Key)
+  type 'a key = 'a Key.poly_ord_key
+  val $ = Key.project
+  fun snd (x, y) = y
+
+  type ('k, 'v) map = ('k key * 'v) M.map
+  val empty = M.empty
+  fun insert (m, k, v) = M.insert(m, $k, (k, v))
+  fun find (m, k) = Option.map snd (M.find (m, $k))
+  val numItems = M.numItems
+  fun listItems  m = map snd (M.listItems m)
+  fun listItemsi m = M.listItems m
+end
+@ 
+<<polytab.sml>>=
+functor PolySetFun(Key : POLY_ORD_KEY) : POLY_ORD_SET = struct
+  structure Key = Key
+  structure M = BinaryMapFn(Key)
+  type 'a item = 'a Key.poly_ord_key
+  val $ = Key.project
+
+  type 'a set = 'a item M.map
+  val empty = M.empty
+  fun singleton x = M.insert(M.empty, $x, x)
+  fun add(m, x)  = M.insert(m, $x, x)
+  fun add'(x, m) = M.insert(m, $x, x)
+  fun addList(m, l) = foldl add' m l
+  fun delete(m, x) = #1 (M.remove (m, $x))
+  fun member(m, x) = isSome(M.find(m, $x))
+  fun isEmpty m = M.numItems m = 0
+  val numItems = M.numItems
+  val listItems = M.listItems
+  fun union (m, m') = M.unionWith #1 (m, m')
+  fun intersection (m, m') = M.intersectWith #1 (m, m')
+  val map = M.map
+  val app = M.app
+  fun difference (m, m') = 
+    M.mapPartiali (fn (k, x) => if isSome(M.find(m', k)) then NONE else SOME x) m
+  val foldl = M.foldl
+  val foldr = M.foldr
+end
+

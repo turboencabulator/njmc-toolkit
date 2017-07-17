@@ -1,0 +1,6 @@
+; module emit
+group is
+  pp.cm
+  error.cm
+
+  emitcode.nw

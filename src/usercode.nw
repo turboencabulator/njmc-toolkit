@@ -1,0 +1,84 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\section{Templates for matchers for toolkit users}
+
+@
+Set up for matchers for Cristina Cifuentes
+<<cc.sml>>=
+structure CC = struct
+  structure Exp = Main.Exp
+  structure Code = Main.Code
+  fun call(f, args) = Code.EVAL (Exp.call (Exp.var f :: args))
+  val templates = 
+    { addressAdd = fn {address, pcUnits} => Exp.add(address, Exp.const pcUnits)
+    , addressToPC = fn x => Exp.call [Exp.var "addressToPC", x]
+    , addressType = Type.VAR {interface=NONE, name="dword"}
+    , fetch = fn {address,width} => 
+                let val rtn = case width of 8  => "getByte" | 16 => "getWord"
+                                          | 32 => "getDword"
+		                          | _  => Impossible.impossible 
+		                                  ("width = " ^ Int.toString width)
+		in  Exp.call [Exp.var rtn, address]
+		end
+    , noMatch = Code.COMMENTED_STMT (call ("assert", [Exp.false']), "no match")
+    }
+  val templates' = 
+    { addressAdd = fn {address, pcUnits} => Exp.add(address, Exp.const pcUnits)
+    , addressToPC = fn x => x : Exp.exp
+    , addressType = Type.INTEGER {signed=false, width=NONE}
+    , fetch = fn {address,width} => Exp.call [Exp.var "fetch", address,Exp.const width]
+    , noMatch = Code.COMMENTED_STMT (call("assert", [Exp.false']), "no match")
+    }
+  val addressAdd = if true then #addressAdd templates else #addressAdd templates'
+  val addressToPC = if true then #addressToPC templates else #addressToPC templates'
+  val addressType = if true then #addressType templates else #addressType templates'
+  val fetch = if true then #fetch templates else #fetch templates'
+  val noMatch = if true then #noMatch templates else #noMatch templates'
+  fun matcher  x = Main.matcher' templates true x
+  fun matcher' x = Main.matcher' templates' true x
+end
+@ 
+and for Rich Piazza.
+<<piazza.sml>>=
+structure Piazza = struct
+  structure Exp = Main.Exp
+  structure Code = Main.Code
+  fun call(f, args) = Code.EVAL (Exp.call (Exp.var f :: args))
+  val templates = 
+    { addressAdd = fn {address, pcUnits} => Exp.add(address, Exp.const pcUnits)
+    , addressToPC = fn x => Exp.call [Exp.var "(unsigned)", x]
+    , addressType = Type.ANY_POINTER
+    , fetch = fn {address,width} => 
+                let val w = Exp.var ("width" ^ Int.toString width)
+		in  Exp.call [Exp.var "fetch", address, w]
+		end
+    , noMatch = Code.COMMENTED_STMT (call ("assert", [Exp.false']), "no match")
+    }
+  fun matcher x = Main.matcher' templates true x
+  fun test () = matcher ["../piazza/big/big.spec"] "../piazza/big/big.m";
+end
+@ 
+And for the xs example.
+<<xs.sml>>=
+structure Xs = struct
+  structure Exp = Main.Exp
+  structure Code = Main.Code
+  fun call(f, args) = Exp.call (Exp.var f :: args)
+  val templates = 
+    { addressAdd = fn {address, pcUnits} => 
+                     if pcUnits = 0 then address else Exp.var "NULL"
+    , addressToPC = fn x => call ("getPC", [x])
+    , addressType = Type.VAR {interface=NONE, name="Machine"}
+    , fetch = fn {address,width} => 
+		     if width = 16 then call("FETCH16", [address])
+                     else Exp.var "THIS_CANT_HAPPEN"
+    , noMatch = Code.COMMENTED_STMT (Code.EVAL (call ("assert", [Exp.false'])),
+                                     "no match")
+    }
+  fun matcher x = Main.matcher' templates true x
+  val tkroot = "../../../toolkit/www"
+  fun test () = matcher [tkroot ^ "/examples/xs/xs.spec"] 
+                        (tkroot ^ "/examples/xs/xs.m");
+end
+@ 
+

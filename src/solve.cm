@@ -1,0 +1,24 @@
+; $Id: solve.cm,v 1.3 1999/09/06 16:03:00 nr Exp $
+(* should be split further, into toolkit-dependent and -independent parts *)
+; module code
+group is
+  exp.cm
+  smlnj-lib.cm
+  pp.cm (* used for debugging, which should be split off *)
+  error.cm (* used to report overlapping slices *)
+  global.cm (* used to get to debugging control *)
+
+  solve.sig@solve.nw
+  solve.sml@solve.nw
+  eliminator.sig@solve.nw
+  inteliminator.sml@solve.nw
+  balance.sml@solve.nw
+  balance.sig@solve.nw
+  balancer.sml@solve.nw
+  fresh.sig@solve.nw
+  fresh.sml@solve.nw
+  balance-debug.sig@solve.nw
+  balancers.sml@solve.nw
+  link-balancers.sml@solve.nw
+  mal-solve.sml@solve.nw
+  pp-solve.sml@solve.nw

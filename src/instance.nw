@@ -1,0 +1,106 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Instance representations}
+
+We have wide latitude regarding how we want to represent instances.
+This code attempts to formalize the idea of an instance type with
+introduction and elimination functions.
+The [[definition]] of an instance type includes the type itself
+(actually, one for each constructor type),
+a method for constructing an instance of each constructor,
+and a method of matching instances.
+The method of matching instances requires that we know the type of the
+instance that we're interested in matching and that 
+<<instance.sig>>=
+signature INSTANCE = sig
+  structure Code : CODE
+
+  type definition =
+    { ty       : Code.constype -> Code.ty
+    , instance : Code.constructor -> Code.exp list -> Code.exp
+    , match    : Code.constype * Code.exp
+                      * (Code.constructor * Code.exp list -> Code.statement) 
+                 -> Code.statement
+    }
+end
+@ 
+<<instance.sml>>=
+functor InstanceFun(Code : CODE) : INSTANCE = struct
+  structure Code = Code
+
+  type definition =
+    { ty : Code.constype -> Code.ty
+    , instance : Code.constructor -> Code.exp list -> Code.exp
+    , match : Code.constype * Code.exp
+                   * (Code.constructor * Code.exp list -> Code.statement) 
+              -> Code.statement
+    }
+end
+@ 
+<<instance-gen.sig>>=
+signature INSTANCE_GEN = sig
+  structure Decoder : DECODER
+  structure Instance : INSTANCE
+    sharing Instance.Code.Constructor = Decoder.Match.SledSpec.Constructor
+
+  type representation =
+    Decoder.Match.SledSpec.Constructor.family * Decoder.recognizer list -> 
+    Instance.definition
+end
+@ 
+\section{Standard Instances}
+
+<<std-instance.sml>>=
+functor StandardInstanceFun(
+   structure Encoder : ENCODER
+   val typeName : Encoder.Code.constype -> string
+) : sig structure Instance : INSTANCE val instance : Instance.definition end =
+struct
+  structure Instance = InstanceFun(Encoder.Code)
+  structure Constructor = Encoder.Code.Constructor
+  structure Exp = Constructor.Patterns.Exp
+  <<standard instance functions>>
+  val instance = { ty = instanceType
+                 , instance = unionInstanceValue
+                 , match =
+                     fn (ty, exp, matcher) => Impossible.impossible "no instance match"
+                 }
+end
+@ 
+
+A user-defined constructor type is represented by $T$[[Instance]], a
+type that stores an instance of a constructor type $T$.
+It contains a union of all possible constructors of type $T$;
+for each one it stores the instance.
+The header [[h]] points to a statically allocated record that contains,
+among other information, a tag that identifies not just the constructor,
+but its branch.%
+\footnote{Somehow, we lost the header, and we're left just with this
+integer tag}
+Here's the template:
+<<standard instance functions>>=
+fun instanceType constype =
+  let fun inputRecord cons =
+	let val { name, operands, ty=constype, ... } = Constructor.info cons
+            val operands = operands : Constructor.operand list
+            val _ = Encoder.argType : Constructor.operand -> Encoder.Code.ty
+	in  (name
+	    ,Type.RECORD (map (fn opr as (n,_,_) => (n, Encoder.argType opr)) operands)
+	    )
+	end
+  in   Type.UNION (map inputRecord (Constructor.members constype))
+  end
+@ 
+The standard kind of instance is an element of a union.
+<<standard instance functions>>=
+fun unionInstanceValue cons =
+  let val {operands, name, ty, ...} = Constructor.info cons
+      val instanceType = Type.VAR {interface=NONE, name=typeName ty}
+      val fieldNames = map #1 operands
+      val recordTy = Type.RECORD (ListPair.zip (fieldNames,
+                                                map Encoder.argType operands))
+  in  fn args => Exp.union (Exp.record (args, { fields = fieldNames, ty = recordTy }),
+                            {name=name, ty=instanceType})
+  end
+
+

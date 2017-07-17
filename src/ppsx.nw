@@ -1,0 +1,32 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Prettyprinting S-Expressions}
+
+<<ppsx.sig>>=
+signature PP_SX = sig
+  val ppsx : Sx.sx -> PP.pretty
+end
+<<ppsx.sml>>=
+structure PPSx : PP_SX = struct
+
+  structure pp = PP.Short
+
+  fun ? (Sx.NIL)   = pp.te "nil"
+    | ? (Sx.INT n) = pp.int n
+    | ? (Sx.ATOM v) = pp.te v
+    | ? (Sx.STRING v) = pp.te ("\"" ^ String.toCString v ^ "\"")
+    | ? (Sx.CONS(car, cdr))  = 
+	   let fun last (Sx.CONS(car, cdr)) = last cdr
+		 | last x = x
+	       fun plist Sx.NIL = []
+		 | plist (Sx.CONS(car, cdr)) = pp.te " " :: pp.cn :: ? car :: plist cdr
+		 | plist _     = [pp.te "<impossible-list>"]
+	   in  case last cdr
+		 of Sx.NIL => pp.li [pp.te "(", pp.be, pp.i 1, ? car,
+                                     pp.li (plist cdr), pp.ou, pp.cn, pp.te ")", pp.en]
+		  | _ => pp.li [pp.te "(", pp.be, pp.i 2, ? car, pp.te " . ", ? cdr,
+                                pp.ou, pp.en, pp.te ")"]
+	   end
+
+  val ppsx = ?
+end

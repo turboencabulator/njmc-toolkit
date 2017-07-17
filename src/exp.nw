@@ -1,0 +1,393 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: exp.nw,v 1.28 1999/09/06 16:07:20 nr Exp $
+\chapter{Expressions}
+I'm currently supporting two different representations of expressions.
+Both representations use ideas from Chris Van~Wyk's \emph{ordered
+linear combinations}, both to make it easy to compare things for
+equality, and to help support equation solving.
+Ordered linear combinations represent constants, sums, and products (expressions
+can be multiplied only by constants); all other expressions are
+``atomic'' (my term).
+The crucial invariant that must be maintained by addition,
+subtraction, multiplication, and substitution is that the terms used
+in sums are atomic.  For example, we always write $x+2y+2z$ and never
+$x+2(y+z)$. 
+Moreover, the terms in a sum are \emph{ordered} according to 
+some arbitrary global ordering of atomic expressions.
+
+The ``OLC'' representation of expressions makes ordered linear
+combinations explicit in the static type system, and the type system
+enforces all the invariants about ordering.
+The ``unified'' representation makes me maintain the invariants on my
+own, but it's easier to match against.
+
+I've given up the idea of using distinct static types for boolean and
+integer expressions.
+
+\section{Expression signatures}
+
+Here are the basic properties of expressions that are hand-implemented
+in either representation:
+<<exp.sig>>=
+signature EXP_BASICS = sig
+  type exp
+  type number = int
+  type big_number = IntInf.int
+  (* leaf expressions *)
+
+  val var : string -> exp
+  val unVar : exp -> string option   (* unVar (var s) = SOME s *)
+  val const : number -> exp
+  val bigConst : big_number -> exp 
+  val unConst : exp -> number option (* unConst(const n) = SOME n *)
+
+  (* finding constant term *)
+  val constantTerm : exp -> number   (* zero if no constant or not a sum *)
+
+  (* arithmetic *)
+
+  val add : exp * exp -> exp    
+  val sub : exp * exp -> exp    
+  val neg : exp -> exp
+  val mul : number * exp -> exp
+end
+@
+The next tier involve functions that walk expressions.
+These are hand-written in the OLC representation, but
+automatically generated in the unified representation.
+<<exp.sig>>=
+signature EXP_WALKERS = sig
+  include EXP_BASICS
+
+  (* predicates on variables *)
+
+  val existsVar  : (string -> bool) -> exp -> bool
+  val forallVars : (string -> bool) -> exp -> bool
+  val isFreeIn   : string * exp -> bool
+
+  (* visit all variables *)
+  val foldFreeVariables : (string * 'a -> 'a) -> 'a -> exp -> 'a
+  (* visit all nodes, in an unspecified order *)
+  val foldExps : (exp * 'a -> 'a) -> 'a -> exp -> 'a
+
+  (* substitution of a value for a variable (or many variables) *)
+  val subst       : string * exp -> exp -> exp
+  val multiSubst  : (string -> exp option) -> exp -> exp
+
+end
+@ 
+Here are a couple of ``walkers'' available only in the unified
+version.
+<<exp-set.sig>>=
+signature EXP_WALKERS_EXTENDED = sig
+  include EXP
+
+  (* rewriting *)
+  val topDownRewrite : (exp -> exp option) -> exp -> exp
+  val bottomUpRewrite : ({old:exp,new:exp} -> exp) -> exp -> exp
+
+end
+@ The function [[topDownRewrite f]] rewrites expressions by applying
+[[f]] to every node of the expression.  If [[f]] returns a value, the
+rewriter returns that value without ever looking at the expression's
+children.
+It's used to transform expressions into expressions that are valid~C.
+[[bottomUpRewrite f]] rewrites the children first,
+then applies [[f]] to the resulting node, and
+[[f]],~which must always return a value, has the strange double
+argument in case it wants to use the old value of the expression to
+cut off rewriting.
+[[bottomUpRewrite]] is used in simplification.
+@
+There's the full set of operations on expressions.
+This set is automatically generated from
+\nwanchorto{ty.html}{a compact specification of
+all the operators}.
+@
+Finally, we have sets of expressions, for use in maintaining
+conditions in patterns:
+<<exp-set.sig>>=
+signature EXP_SET = sig
+  include EXP
+  structure Set : sig
+    include ORD_SET
+    val delTrue : set -> set   (* remove true' from the set, if present *)
+  end
+  where type Key.ord_key = exp
+end
+@
+\section{Unified expressions}
+
+\subsection{Basics: sums, lists, and the order invariant}
+Here's the new code we'll use to add unified expressions, I hope:
+<<unifiedbasics.sml>>=
+structure UnifiedBasics = struct
+  local
+    open UnifiedExp
+    <<sums and lists>>
+    <<big constants>>
+  in
+    type exp = exp
+    type number = int
+    type big_number = IntInf.int
+    <<basic functions for unified exps>>
+    <<constant terms>>
+    val bigConst = bigConst
+  end
+end
+structure ConstrainedUnifiedBasics : EXP_BASICS = UnifiedBasics
+@ 
+The invariant we use is really the same
+invariant used in printing ordered linear combinations, but it has to
+be phrased carefully.
+\begin{itemize}
+\item
+Any node that is not [[ADD]], [[SUB]]%
+\footnote{We could replace [[SUB(l, r)]] with \mbox{[[ADD(l, MUL(~1, r))]]}.
+It's not clear if this is worth doing.}, or [[MUL]] is an \emph{atom}.
+\item
+A node that is not an atom must be a well-formed \emph{sum}.
+\item
+The child of [[MUL]] is always a non--[[CONST]] atom.
+\item
+Call the atoms that are reachable from a sum by going only through
+non-atomic nodes the ``atoms of that sum.''
+Call the ``atoms of an atom'' the atom itself.
+Then
+\begin{itemize}
+\item
+All the atoms of the left child of an [[ADD]] or [[SUB]] node are
+strictly less than the atoms of the right child.
+\item
+The atoms of a sum contain at most one [[CONST]] node.
+\end{itemize}
+\end{itemize}
+The net result is that every sum can be reduced to a mathematical sum
+of atoms with integer coefficients.
+If we express such a sum as a list, we can than add two sums by
+merging the lists.
+The lists satisfy the invariant that each atom appears at most once in
+each list, and that the only [[CONST]] atom that may appear in a list
+is \mbox{[[CONST 1]]}.
+<<sums and lists>>=
+fun coeff neg k = if neg then ~k else k : int
+fun list(ADD(l, r), neg, answers) = list(l, neg, list(r,     neg, answers))
+  | list(SUB(l, r), neg, answers) = list(l, neg, list(r, not neg, answers))
+  | list(MUL(k, a), neg, answers) = (coeff neg k,       a) :: answers
+  | list(CONST 0,   neg, answers) =                           answers
+  | list(CONST k,   neg, answers) = (coeff neg k, CONST 1) :: answers
+  | list(atom,      neg, answers) = (coeff neg 1,    atom) :: answers
+val list : exp * bool -> (int * exp) list = fn (e, neg) => list(e, neg, [])
+@ We use a similar structure to find constant terms.
+<<constant terms>>=
+fun constantTerm(ADD(l, r), neg) =
+      (case constantTerm (l, neg) of 0 => constantTerm(r, neg) | n => n)
+  | constantTerm(SUB(l, r), neg) = 
+      (case constantTerm (l, neg) of 0 => constantTerm(r, not neg) | n => n)
+  | constantTerm(CONST k,   neg) = coeff neg k
+  | constantTerm(atom, neg) = 0
+val constantTerm = fn e => constantTerm(e, false)
+@ To merge two such lists, use the ordering function.
+<<sums and lists>>=
+fun revapp(tail, h'::head') = revapp(h'::tail, head')
+  | revapp(tail, []) = tail
+fun merge (a, [], answer') = revapp(a, answer')
+  | merge ([], a, answer') = revapp(a, answer')
+  | merge ((k1, a1)::l1, (k2, a2)::l2, answer') =
+       case UnifiedExp.compare'exp(a1, a2)
+	 of LESS    => merge(l1, (k2, a2)::l2, (k1, a1)::answer')
+	  | GREATER => merge((k1, a1)::l1, l2, (k2, a2)::answer')
+	  | EQUAL   => if k1+k2 = 0 then
+	                 merge(l1, l2, answer')
+		       else
+			 merge(l1, l2, (k1+k2, a1)::answer')
+@ Now to turn a list back into a sum, we'll make things
+left-associative:
+<<sums and lists>>=
+fun term(1, a) = a
+  | term(k, CONST k') = CONST (k * k')
+  | term(k, a) = MUL(k, a)
+fun add((k, a), e) =
+      if k < 0 then SUB(e, term(~k, a)) else ADD(e, term(k, a))
+fun sum [] = CONST 0
+  | sum (t :: ts) = foldl add (term t) ts
+@ 
+Now we have enough to define the basic functions.
+We export [[list]] because it may be useful for printing later on.
+<<basic functions for unified exps>>=
+val var = VAR
+fun unVar (VAR n) = SOME n | unVar _ = NONE
+val const = CONST
+fun unConst (CONST n) = SOME n | unConst _ = NONE
+fun add(l, r) = sum(merge(list (l, false), list (r, false), []))
+fun sub(l, r) = sum(merge(list (l, false), list (r, true),  []))
+fun neg e = sum (list (e, true))
+fun mul (n, e) = sum (map (fn (k, a) => (n*k, a)) (list(e, false)))
+val list = fn e => list(e, false)
+val sum = sum
+fun listSubst sigma = list o sum o map (fn (k, a) => (k, sigma a))
+@ Unfortunately, if we substitute inside a sum, that doesn't preserve
+the invariant.  So we'll export [[safeSubst]], which takes an unsafe
+substitution and returns a new one that does satisfy the invariant.
+<<basic functions for unified exps>>=
+fun safeSubst sigma =
+  let fun subst (e as ADD _) = substSum e
+	| subst (e as SUB _) = substSum e
+	| subst (e as MUL _) = substSum e
+	| subst e = sigma e
+      and substSum e = sum (foldl substList [] (list e))
+      and substList ((1, a), answer) = merge(answer, list (sigma a), [])
+	| substList ((k, a), answer) =
+            merge(answer, map (fn(k', a') => (k*k', a')) (list (sigma a)), [])
+  in  subst : exp -> exp
+  end
+@ 
+If a value is too big, we express it by shifting and oring smaller values.
+<<big constants>>=
+fun bigConst n =
+  let fun shift (n, 0) = n
+        | shift (n, k) = SHIFT(n, k)
+      fun at(n, k, tail) = shift (CONST (IntInf.toInt n), k) :: tail
+                           handle Overflow =>
+                             let val k' = IntInf.log2 (IntInf.abs n) div 2
+                                 val d = IntInf.pow(IntInf.fromInt 2, k')
+                                 val (q, r) = IntInf.divmod(n, d)
+                             in  at(q, k+k', at(r, k, tail))
+                             end
+      fun orb [x] = x
+        | orb l = ORB l
+  in  orb(at(n, 0, []))
+  end
+@ 
+We also are going to export [[sum]], but in a version that
+\emph{doesn't} require the invariant---instead, it will be a variation
+on merge sort.  This will help implement substitution.
+<<old, bogus basic functions for unified exps>>=
+local
+  fun split l =
+    let fun s(a::b::l, xs, ys) = s(l, a::xs, b::ys)
+          | s([x], xs, ys) = (x :: xs, ys)
+          | s([], xs, ys) = (xs, ys)
+    in  s (l, [], [])
+    end
+  fun sort [] = []
+    | sort [x] = [x]
+    | sort l = let val (x, y) = split l
+	       in  merge(sort x, sort y, [])
+	       end
+in  
+  val sum = sum o sort
+end
+@ 
+\subsection{Testing the basics}
+Some simple tests of arithmetic and substitution.
+<<exptest.sml>>=
+structure ExpTest = struct
+  structure A = UnifiedBasics
+  structure E = UnifiedExp
+  infix ==
+  fun e1 == e2 = E.compare'exp(e1, e2) = EQUAL
+  val /*/ = A.mul
+  val /+/ = A.add
+  val $ = A.const
+  infix 7 /*/
+  infix 6 /+/
+  val x = A.var "x"; val y = A.var "y"; val z = A.var "z";
+  val e = x /+/ y /+/ $ 7
+  val three = A.const 3
+  val four = A.const 4
+  val change = UnifiedExpFuns.subst ("y", A.const 92);
+  val mumble = change e;
+  val _ = mumble == A.add(x, A.const 99)
+          orelse raise Impossible.Impossible "regression"
+  val e' = foldl A.add x [x, y, z, ~3 /*/ x, y, x, A.const 3, A.sub (z, y)];
+  val e'' = change e';
+  val _ = e'' == 2 /*/ z /+/ $ 95
+          orelse raise Impossible.Impossible "regression"
+end
+@ 
+Because things are left-associated, we magically wind up with the
+lists in the correct order---least first.
+<<separation for printing>>=
+local
+  fun split(ADD(l, r), pos, neg) = split(l, r::pos, neg)
+    | split(SUB(l, r), pos, neg) = split(l, pos, r::neg)
+    | split(NEG e,     pos, neg) = (pos, e :: neg)  (* leading - term *)
+    | split(e,         pos, neg) = (e::pos, neg)
+@ 
+Here's some old, orphaned code that we may want to resurrect if we
+ever want to re-establish the old printing conventions.
+\begin{quote}
+@ 
+This is about the most complicated code.
+[[term]] handles an expression multiplied by an integer constant.
+[[elem]] handles the elements, which are the complex expresssions
+(anything that's not a linear combination), and it's defined below.
+[[split]] takes a sum and separates the positive and negative terms.
+<<asdf local declarations>>=
+val join = Util.joinl
+val impossible = ErrorMsg.impossible
+<<asdf fun [[sum]], which prettyprints an ordered linear combination>>=
+local
+  open Exp.OLC
+  fun term (1, factor) = elem factor  (* turn a term into a ppexp *)
+    | term (n, factor) = ppcon n /*/ elem factor : ppexp
+  (* split into lists of positive and negative terms *)
+  fun split (CONST n) = (case Int.compare(n, 0)
+			   of GREATER => ([ppcon n], [])
+			    | EQUAL => ([], [])
+			    | LESS => ([], [ppcon (~n)]))
+    | split (SUM(n, elem, terms)) =
+        let val (pos, neg) = split terms
+        in  if n > 0 then (term(n, elem) :: pos, neg)
+	    else          (pos, term(~n, elem) :: neg)
+        end
+in
+  fun sum (terms : Exp.exp_element olc) =
+    case split terms
+      of ([], []) => ppcon 0
+       | ([], h::t) => join op /-/ (prefix "-" h::t)
+       | (pos, neg) => join op /-/ (join op /+/ pos :: neg)
+end
+@ By clever use of [[join]], I print first the positive, then the
+negative terms.  I'm guaranteed by [[split]] that the constant term
+will go last in the proper group.
+\end{quote}
+
+
+@ 
+\subsection{Putting together real expressions}
+<<unified.sml>>=
+structure UnifiedComplete = struct
+  open UnifiedExp
+  open UnifiedBasics
+  open UnifiedExpFuns
+  val compare = UnifiedExp.compare'exp
+  fun pcSubst e = UnifiedExpFuns.leafSubst
+                    (fn PC => SOME e | PC_KNOWN => SOME (known e) | _ => NONE)
+  fun usesPC e = foldExps (fn (PC,_) => true | (PC_KNOWN,_) => true | (_,u) => u)
+                    false e
+end
+structure UnifiedComplete' : EXP_WALKERS_EXTENDED = UnifiedComplete
+@
+\subsection{Support for sets of booleans}
+<<boolsetexp.sml>>=
+functor BoolSetFun(structure Exp : EXP) : EXP_SET = struct
+  local
+    structure Key = struct
+		      type ord_key = Exp.exp
+		      val compare = Exp.compare
+		    end
+    structure Set' = BinarySetFn(Key)
+  in
+    structure Set = struct  
+      local
+        val truth = Set'.singleton Exp.true'
+      in
+	fun delTrue set = Set'.difference (set, truth)
+      end
+      open Set'
+    end
+    open Exp
+  end
+end

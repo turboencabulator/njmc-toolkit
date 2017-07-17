@@ -1,0 +1,508 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: gencode.nw,v 1.16 1998/11/11 21:15:33 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+\chapter{Code generation for matching}
+This module contains the language-independent part of code generation
+for a matching statement.
+<<gencode.sig>>=
+signature GENCODE = sig
+  structure Dag : DAG
+  structure Code : CODE
+    sharing type Dag.Tree.Match.Patterns.Exp.exp = Code.Exp.exp
+    sharing Dag.Tree.Match.SledSpec.Denotable.Constructor = Code.Constructor
+  type templates = { addressType : Type.ty
+                   , addressAdd : {address : Code.exp, pcUnits : int} -> Code.exp
+                   , addressToPC : Code.exp -> Code.exp
+                   , fetch : {address : Code.exp, width : int} -> Code.exp
+                   , noMatch : Code.statement (* what to do if no match *)
+		   }
+  val gencase : templates ->
+                { optimizeTwoLeaves : bool  (* use if statement for 2-leaf dags *)
+                , compile : 'a -> Code.statement
+                } -> 
+                'a Dag.Tree.Match.match * 'a Dag.dag ->
+		Code.statement
+end
+<<gencode.sml>>=
+functor GencodeFun(structure Dag : DAG
+                   structure Code : CODE
+		     where type Exp.exp = UnifiedExp.exp
+                     sharing type Dag.Tree.Match.Patterns.Exp.exp = Code.Exp.exp
+                     sharing
+                       Dag.Tree.Match.SledSpec.Denotable.Constructor = Code.Constructor
+		   val simplify : Code.exp -> Code.exp
+		   val codeSimp : Code.statement -> Code.statement
+                   val maxRange : int (* largest range OK in case statement *)
+) : GENCODE = struct
+  structure Dag = Dag
+  structure Code = Code
+  structure M = Dag.Tree.Match
+  structure A = M.Patterns.Absolute
+  structure P = Code.Constructor.Patterns
+  structure Exp = P.Exp
+  structure U = UnifiedExp
+  type templates = { addressType : Type.ty
+                   , addressAdd : {address : Code.exp, pcUnits : int} -> Code.exp
+                   , addressToPC : Code.exp -> Code.exp
+                   , fetch : {address : Code.exp, width : int} -> Code.exp
+                   , noMatch : Code.statement (* what to do if no match *)
+		   }
+  local
+    infix 8 ==>
+    fun guard ==> stmt = (guard, stmt)
+    fun ELSE stmt = Exp.true' ==> stmt
+    infix 9 <--
+    fun v <-- e = Code.ASGN(Exp.var v, e)
+    <<utilities>>
+  in
+    <<functions>>
+  end
+end
+@ 
+<<functions>>=
+fun gencase {addressType, addressAdd, addressToPC, fetch, noMatch} 
+            {optimizeTwoLeaves, compile}
+	    ( M.MATCH {value, succptr, sourcemap, region=matchRegion, ...}
+            , dag as (root, namearrays, armsvector)
+	    ) =
+  let fun codeStmt s = compile s
+      fun codeExp (v, ty) = v ty
+      <<fetching>>
+      <<expression conversion>>
+      <<support for name arrays>>
+      <<support for name searching>>
+      <<support for converting arm lists to code>>
+      (* outtree(\ascii_tree, root) *)
+      val armsCodes = Util.vectorMap armsCode armsvector
+      <<bind [[armsUses]] to number of uses of each arm in [[armsvector]]>>
+      <<bind [[armsInvocations]] to code to be used to invoke arms in [[armsvector]]>>
+      <<bind [[armsTab]] to table of codes for arms used more than once>>
+      <<bind [[armsTokens]] to set of tokens in each arm in [[armsvector]]>>
+      <<node generation>>
+      <<bind [[tokens]] to set of tokens in [[root]] or [[armsvector]]>>
+      val matchDefn = ("MATCH_p", Code.VAR (SOME addressType,
+					    SOME (codeExp (value, addressType))))
+      val nameDefn = ("MATCH_name", Code.VAR (SOME Type.STRING, NONE))
+      val defns = foldr addArrayDefn (tokenDefns tokens) namearrays
+      val defns = if usesName root then nameDefn :: defns else defns
+      val defns = matchDefn :: defns
+(*      val body = genNode(root, TokenSet.empty) *)
+      <<paths>>
+      <<new node generation>>
+      val body' = genNode (node root, TokenSet.empty)
+  in  Code.STATEMENT' (sourcemap, matchRegion,
+                       Code.MATCH {defns=defns, decider=body', arms = armsTab})
+  end
+<<support for name arrays>>=
+local
+  val arrayType = Type.ARRAY (Type.STRING, NONE)
+  fun maxIndex tbl = IntMap.foldli (fn (i, _, _) => i) 0 tbl
+  fun elems(~1, tbl, a) = Exp.array a
+    | elems( i, tbl, a) =
+        let val elem = case IntMap.find(tbl, i) of NONE => Exp.missingString
+                                                 | SOME s => Exp.string s
+        in  elems(i-1, tbl, elem :: a)
+	end
+in  
+  fun arrayNumbered i = 
+     case List.find (fn Dag.NAME_ARRAY { uid, ... } => uid = i) namearrays
+       of SOME a => a
+        | NONE => ErrorMsg.impossible "missing name array"
+  fun arrayName (Dag.NAME_ARRAY { field = (f, _), uid, ...}) =
+    String.concat ["MATCH_name_", #name f, "_", Int.toString uid]
+  fun addArrayDefn (a as Dag.NAME_ARRAY { field = (f, _), tbl, uid}, defns) =
+    (arrayName a, Code.VAR (SOME arrayType, SOME (elems (maxIndex tbl, tbl, []))))
+    :: defns
+end
+@ 
+I'm finicky; I want to declare [[MATCH_name]] only if it's needed.
+<<support for name searching>>=
+val usesName = 
+  let fun node (Dag.NODE {children, ...}) = List.exists edge children
+	| node (Dag.LEAF {name, ...}) = isSome name
+      and edge (Dag.EDGE {node=n, ...}) = node n
+  in  node
+  end
+@ 
+I try to do something nifty for the case where a dag has only two
+leaves---I find all the paths to each leaf, and then I test the
+cheapest path.
+<<paths>>=
+datatype path = PATH of (P.absolute_field * RangeSet.set) list
+datatype reachability 
+  = REACHING of path list LeafMap.map  (* has entries for at most two arms *)
+  | TOO_BIG
+@ 
+Adding a test to reachability:
+<<paths>>=
+fun consTest(f, r, TOO_BIG) = TOO_BIG
+  | consTest(f, r, REACHING amap) =
+      let fun path (PATH l) = PATH ((f, r) :: l)
+      in  REACHING (LeafMap.map (map path) amap)
+      end
+@ 
+I use rational numbers to compute costs.
+<<paths>>=
+type rat = {num:int, den:int}
+fun rlt({num=n1, den=d1}:rat, {num=n2, den=d2}) = n1 * d2 < n2 * d1
+fun addSetCost (ranges, c) =
+  RangeSet.foldr (fn ({lo, hi}, cost) => cost + (if lo+1 = hi then 1 else 2)) c ranges
+fun addCost (PATH l, cost) =
+  let fun c((_, ranges) :: t, cost) = c(t, addSetCost(ranges, cost))
+        | c([], cost) = cost
+  in  c(l, cost)
+  end
+fun pathsCost l = {num = foldr addCost 0 l, den=length l}
+@ 
+Here's how we test.
+<<paths>>=
+fun pathTest (PATH l) = Exp.andalso' (map (fn (f, r) => inRanges(afieldExp f, r)) l)
+fun pathsTest l = Exp.orelse' (map pathTest l)
+@ 
+Now I need a version of the dag that includes reachability.
+<<paths>>=
+datatype node' = NODE of { field : Field.absolute_field
+	                 , children : edge list
+                         }
+               | LEAF of { arms : int     (* unique id for arms in this dag *)
+                         , name : Dag.leaf_name option
+                         }
+and      edge = EDGE of { node : node, range : RangeSet.set }
+withtype node = reachability * node'
+<<utilities>>=
+structure LeafKey : ORD_KEY = struct
+  type ord_key = {arms : int, name : Dag.leaf_name option}
+  fun compare ({arms=a1, name=n1}, {arms=a2, name=n2}) =
+      (case Int.compare (a1, a2) 
+        of EQUAL   => Order.compare'option Dag.compare'leaf_name (n1, n2)
+         | diff    => diff)
+end
+structure LeafMap = BinaryMapFn(LeafKey)
+@ 
+If necessary, I turn off optimization by making things [[TOO_BIG]].
+<<paths>>=
+fun emptyReachability l = REACHING (LeafMap.insert(LeafMap.empty, l, [PATH []]))
+fun node (Dag.LEAF l) =
+      (if optimizeTwoLeaves then emptyReachability l else TOO_BIG, LEAF l)
+  | node (Dag.NODE (n as {field, children})) =
+      let val kids = map edge children
+	  fun edgePath (EDGE {range, node=(r, _)}) = consTest(field, range, r)
+          val paths = map edgePath kids
+	  fun mergePaths (REACHING t1, REACHING t2) =
+            	let fun add2 (uid, paths, tbl) =
+                      LeafMap.insert(tbl, uid, getOpt(LeafMap.find(t1, uid), []) @ paths)
+                    val tbl = LeafMap.foldli add2 t1 t2
+                in  if LeafMap.numItems tbl > 2 then TOO_BIG else REACHING tbl
+            	end
+	    | mergePaths _ = TOO_BIG
+      in  (Util.joinl mergePaths paths, NODE {field=field, children=kids})
+      end
+and edge (Dag.EDGE (e as {node=n, range})) = EDGE {node=node n, range=range}
+@ 
+I special-case the case of two children where one has a single range; 
+the generated code is cleaner if I just use one [[if]] statement.
+Actually, I could do this any time I have only two children\ldots\change{28}
+<<utilities>>=
+fun edgeNode  (Dag.EDGE { node,  ...}) = node
+fun edgeRange (Dag.EDGE { range, ...}) = range
+<<node generation>>=
+<<token assignment>>
+fun genNode (Dag.NODE {field=f, children}, tokensSet) =
+      if length children = 1 then
+	genNode (edgeNode (hd children), tokensSet)
+      else
+	let val (assignment, tokensSet) = addAssignment(tokensSet, tokenOf f)
+	    <<function [[normalSplit]] for switch and if>>
+	    <<function [[ifSplit]] for if only>>
+	    fun oneRange e = RangeSet.numItems (edgeRange e) = 1
+	    val decide =
+	      case children
+                of [e1, e2] => if      oneRange e1 then ifSplit {single=e1, other=e2}
+			       else if oneRange e2 then ifSplit {single=e2, other=e1}
+			       else normalSplit children
+		 | _ => normalSplit children
+	in  case assignment
+	      of NONE => decide
+	       | SOME a => Code.BLOCK ([], [a, decide])
+	end
+  | genNode (Dag.LEAF {arms=armsid, name}, tokensSet) = 
+      let fun nameExp (Dag.STRING s) = Exp.string s
+	    | nameExp (Dag.LOOKUP i) = 
+                let val array as Dag.NAME_ARRAY { field, ... } = arrayNumbered i
+		in  Exp.arraySub(Exp.var (arrayName array), afieldExp field)
+		end
+          fun addName stmts =
+	    case name
+	      of SOME n => "MATCH_name" <-- nameExp n :: stmts
+	       | NONE => stmts
+	  val tokensNeeded = TokenSet.difference (Vector.sub(armsTokens, armsid),
+						  tokensSet)
+          fun addTokens stmts =
+	    TokenSet.foldr (fn (t, s) => assignToken t :: s) stmts tokensNeeded
+      in  Code.BLOCK ([], addTokens (addName [Vector.sub(armsInvocations, armsid)]))
+      end
+<<utilities>>=
+fun optmap f = fn NONE => NONE | SOME x => SOME (f x)	        
+<<new node generation>>=
+fun edgeNode  (EDGE { node,  ...}) = node
+fun edgeRange (EDGE { range, ...}) = range
+fun genNode ((REACHING amap, NODE {field=f, children}), tokensSet) =
+      (case LeafMap.listItemsi amap
+	 of [(leafspec, paths)] => genLeaf (leafspec, tokensSet)
+	  | [a1 as (l1, p1), a2 as (l2, p2)] =>
+              let val ((cheapLeaf, paths), (costlyLeaf, _)) =
+		    if rlt (pathsCost p1, pathsCost p2) then (a1, a2) else (a2, a1)
+		  val (assignments, tokensSet) = pathAssignments(paths, tokensSet)
+		  val test = Code.IF [pathsTest paths ==> genLeaf(cheapLeaf, tokensSet)
+				     ,ELSE (genLeaf(costlyLeaf, tokensSet))
+				      ]
+	      in  Code.BLOCK ([], assignments @ [test])
+	      end
+	  | _ => ErrorMsg.impossible "reachability")
+  | genNode ((TOO_BIG, NODE {field=f, children}), tokensSet) =
+      if length children = 1 then
+	genNode (edgeNode (hd children), tokensSet)
+      else
+	let val (assignment, tokensSet) = addAssignment(tokensSet, tokenOf f)
+	    <<function [[normalSplit]] for switch and if>>
+	    <<function [[ifSplit]] for if only>>
+	    fun oneRange e = RangeSet.numItems (edgeRange e) = 1
+	    val decide =
+	      case children
+                of [e1, e2] => if      oneRange e1 then ifSplit {single=e1, other=e2}
+			       else if oneRange e2 then ifSplit {single=e2, other=e1}
+			       else normalSplit children
+		 | _ => normalSplit children
+	in  case assignment
+	      of NONE => decide
+	       | SOME a => Code.BLOCK ([], [a, decide])
+	end
+  | genNode ((_, LEAF lspec), tokensSet) = genLeaf(lspec, tokensSet)
+and genLeaf ({arms=armsid, name}, tokensSet) = 
+      let fun nameExp (Dag.STRING s) = Exp.string s
+	    | nameExp (Dag.LOOKUP i) = 
+                let val array as Dag.NAME_ARRAY { field, ... } = arrayNumbered i
+		in  Exp.arraySub(Exp.var (arrayName array), afieldExp field)
+		end
+          fun addName stmts =
+	    case name
+	      of SOME n => "MATCH_name" <-- nameExp n :: stmts
+	       | NONE => stmts
+	  val tokensNeeded = TokenSet.difference (Vector.sub(armsTokens, armsid),
+						  tokensSet)
+          fun addTokens stmts =
+	    TokenSet.foldr (fn (t, s) => assignToken t :: s) stmts tokensNeeded
+      in  Code.BLOCK ([], addTokens (addName [Vector.sub(armsInvocations, armsid)]))
+      end
+@ 
+Here are some token basics.
+<<utilities>>=
+type absolute_token = {size : int, offset : int}
+fun tokenOf ({class={size,...},...} : P.field, n) = {size=size, offset=n}
+structure TokenKey = struct
+  type ord_key = absolute_token
+  fun compare ({size=w, offset=n}, {size=w', offset=n'}) = 
+    case Int.compare(n, n') of EQUAL => Int.compare(w, w') | ? => ?
+end
+structure TokenSet = BinarySetFn(TokenKey)
+@ 
+We try to assign each token at most once.
+<<token assignment>>=
+fun assignToken tok = tokenName tok <-- fetchToken tok
+fun addAssignment(alreadySet, tok) =
+  if TokenSet.member(alreadySet, tok) then
+   (NONE, alreadySet)
+  else
+   (SOME (assignToken tok), TokenSet.add(alreadySet, tok))
+<<fetching>>=
+fun fetchToken {size, offset=0} = fetch {width=size, address=Exp.var "MATCH_p"}
+  | fetchToken {size, offset} =
+      let val a = addressAdd{address=Exp.var "MATCH_p", pcUnits=P.bitsToPCunits offset}
+      in  fetch {width=size, address=a}
+      end
+@ There's going to need to be some work to avoid making redundant
+assignments to tokens before going to the arms.
+@
+<<paths>>=
+fun pathAssignments(paths, tokensSet) =
+  let fun addToken (tok, (assts, toks)) =
+        if TokenSet.member(toks, tok) then
+	  (assts, toks)
+	else
+	  (assignToken tok :: assts, TokenSet.add(toks, tok))
+      fun addAsst ((f, r), ?) = addToken(tokenOf f, ?)
+      fun addPath (PATH l, ?) = foldr addAsst ? l
+  in  foldl addPath ([], tokensSet) paths
+  end
+@
+To find out what tokens are needed:
+<<utilities>>=
+fun addExpTokens (U.AFIELD f, tokens) = TokenSet.add(tokens, tokenOf f)
+  | addExpTokens (_, tokens) = tokens
+@ and to define them:
+<<utilities>>=
+<<token types and names>>
+fun tokenDefns tokens =
+  let fun addDefn (tok, defns) =
+        (tokenName tok, Code.VAR (SOME (tokenType tok), NONE)) :: defns
+  in  TokenSet.foldr addDefn [] tokens
+  end
+@ 
+Here's where we search for them:
+<<utilities>>=
+fun addDagTokens (Dag.LEAF _, toks) = toks
+  | addDagTokens (Dag.NODE {field, children}, toks) =
+      foldl (fn (Dag.EDGE {node, ...}, toks) => addDagTokens (node, toks))
+            (TokenSet.add(toks, tokenOf field))
+  	    children
+<<bind [[armsTokens]] to set of tokens in each arm in [[armsvector]]>>=
+fun foldArm (M.ARM (_, arm'), tokens) =
+  Dag.Tree.Match.foldExpsArm addExpTokens tokens arm'
+val armsTokens = Util.vectorMap (foldr foldArm TokenSet.empty) armsvector
+<<bind [[tokens]] to set of tokens in [[root]] or [[armsvector]]>>=
+val tokens = addDagTokens (root, TokenSet.empty)
+val tokens = Vector.foldr TokenSet.union tokens armsTokens
+@ 
+<<bind [[armsUses]] to number of uses of each arm in [[armsvector]]>>=
+fun inc(uses, arm) =
+  IntMap.insert(uses, arm, 1 + getOpt(IntMap.find(uses, arm), 0))
+fun addDagUses (Dag.LEAF {arms, ...}, uses) = inc(uses, arms)
+  | addDagUses (Dag.NODE {field, children}, uses) =
+      foldl (fn (Dag.EDGE {node, ...}, uses) => addDagUses (node, uses))
+            uses
+  	    children
+fun useVector uses i = getOpt(IntMap.find(uses, i), 0)
+val armsUses = Vector.tabulate(Vector.length armsvector,
+			       useVector (addDagUses(root, IntMap.empty)))
+<<bind [[armsInvocations]] to code to be used to invoke arms in [[armsvector]]>>=
+fun invokeArm i = 
+   if Vector.sub(armsUses, i) = 1 then Vector.sub(armsCodes, i) else Code.ARM i
+val armsInvocations = Vector.tabulate(Vector.length armsvector, invokeArm)
+<<bind [[armsTab]] to table of codes for arms used more than once>>=
+fun addArms (i, arm, tab) = 
+   if Vector.sub(armsUses, i) = 1 then tab else IntMap.insert(tab, i, arm)
+val armsTab = Vector.foldli addArms IntMap.empty (armsCodes, 0, NONE)
+@
+To split edges, we sort them by their ranges.
+<<function [[normalSplit]] for switch and if>>=
+<<functions to add if arms or case edges (conditionally)>>
+fun normalSplit children =
+  let fun minRange e = #lo (hd (RangeSet.listItems (edgeRange e)))
+      fun sort l = ListMergeSort.sort (fn ((lo : int, e), (lo', e')) => lo > lo') l
+      val edges = map #2 (sort (map (fn e => (minRange e, e)) children))
+      val casestmt = Code.INTCASE (afieldExp f, foldr addEdge [] edges)
+      val ifstmt   = Code.IF (foldr addIfArm [ELSE casestmt] edges)
+  in  ifstmt
+  end
+@ 
+<<function [[ifSplit]] for if only>>=
+fun ifSplit {single, other} =
+  let <<if [[other]]'s range has one element, exchange it with [[single]]>>
+      val f = afieldExp f
+  in  Code.IF [ inRanges(f, edgeRange single) ==> genNode(edgeNode single, tokensSet)
+              , ELSE (genNode(edgeNode other, tokensSet))
+              ]
+  end
+@ 
+<<utilities>>=
+fun inRanges(e, ranges) = 
+  case map (fn r => Exp.inrange(e, r)) (RangeSet.listItems ranges)
+    of [test] => test
+     | tests => Exp.orelse' tests
+@ 
+This little goodie makes it a bit more likely to use just one equality test.
+It's not clear whether it's the right heuristic when both ranges
+contain more than one element.
+<<if [[other]]'s range has one element, exchange it with [[single]]>>=
+val (single, other) =
+  case RangeSet.listItems (edgeRange other)
+    of [{lo, hi}] => if lo+1 = hi then (other, single) else (single, other)
+     | _ => (single, other)
+@
+We use a stylized [[wordname]] to refer to the word containing a particular
+field.  It's uniquely determined by its size and offset.
+<<token types and names>>=
+fun tokenName {size, offset} =
+  String.concat ["MATCH_w_", Int.toString size, "_", Int.toString offset]
+fun tokenType {size, offset} = Type.INTEGER {signed=false, width=SOME size}
+@ A similar trick could give us a unique name for each absolute field,
+\emph{but} we're no longer using that trick; instead, we're grabbing the
+word directly.
+<<utilities>>=
+fun afieldExp (f as ({range={lo, hi}, name, ...}, offset) : P.absolute_field) = 
+  Exp.commented (Exp.slice (Exp.var (tokenName (tokenOf f)), {lo=lo, width=hi-lo}),
+		 String.concat [name, " at ", Int.toString offset])
+@ 
+<<functions to add if arms or case edges (conditionally)>>=
+fun addEdge(e, arms) =
+  let val ranges = RangeSet.filter (fn {lo, hi} => hi - lo <= maxRange) (edgeRange e)
+  in  if RangeSet.isEmpty ranges then
+        arms
+      else
+        (ranges, genNode(edgeNode e, tokensSet)) :: arms
+  end
+<<functions to add if arms or case edges (conditionally)>>=
+fun addIfArm(e, arms) = 
+  let val ranges = RangeSet.filter (fn {lo, hi} => hi - lo > maxRange) (edgeRange e)
+  in  if RangeSet.isEmpty ranges then
+        arms
+      else
+        inRanges(afieldExp f, ranges) ==> genNode(edgeNode e, tokensSet) :: arms
+  end
+@ This misses assignments to words!
+Also misses successor pointer.
+Ought to try to restore the `can no longer do' warning.
+<<support for converting arm lists to code>>=
+fun armsCode arms =
+  let fun addArm (M.ARM (_, { conditions, answers, patlen, name, code, ... }), tail) =
+        let fun addAnswer (name, value, bindings) = 
+	      (name, Code.VAR (NONE, SOME (convertExp value))) :: bindings
+            fun nameDecl n =
+	      (n, Code.VAR(SOME Type.STRING, SOME(Exp.var "MATCH_name")))
+            fun addNameDecl decls =
+              case name of NONE => decls
+                         | SOME n => nameDecl n :: decls
+            (********** can no longer do
+	       if (\a.name & /thenode.name) then {
+		   warning("Name `" || a.name || "' in pattern arm is unbound.\n")
+		   put(decls, Gsetname(a.name, "??name of unnamed pattern??"))
+		   }
+	    ***********)
+            fun bindSucc tl =
+              case (succptr, patlen)
+		of (NONE, _) => tl
+		 | (SOME succ, SOME k) => 
+                     succ <-- addressAdd { address = Exp.var "MATCH_p",
+                                           pcUnits = P.bitsToPCunits k }
+                     :: tl
+		 | _ => ErrorMsg.impossible "successor, but no pattern length"
+	in  Exp.andalso' (map convertExp (A.Exp.Set.listItems conditions)) ==>
+              Code.BLOCK ( addNameDecl (StringMap.foldri addAnswer [] answers)
+	                 , bindSucc [codeStmt code]
+	                 )
+            :: tail
+	end
+  in  codeSimp (Code.IF (foldr addArm [ELSE noMatch] arms))
+  end
+@
+It might be surprising that [[addAnswer]] declares identifiers with
+the null type,
+but that's what we use when the exact type is unknown
+or unimportant.  
+Emitters for languages like SML or Modula-3 can then ignore type
+entirely. 
+@
+We have to eliminate absolute fields.
+<<expression conversion>>=
+local
+  val pc = addressToPC (Exp.var "MATCH_p")
+  fun rewrite {old, new=U.AFIELD f} = afieldExp f
+    | rewrite {old, new=U.FORCE(U.PC)} = pc
+    | rewrite {old, new=U.PC} = pc
+    | rewrite {old, new=U.PC_KNOWN} = U.TRUE
+    | rewrite {old, new} = new
+in 
+  val convertExp = simplify o UnifiedComplete.bottomUpRewrite rewrite
+end
+@ 

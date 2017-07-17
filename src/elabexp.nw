@@ -1,0 +1,1374 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: elabexp.nw,v 1.28 1999/09/06 16:04:37 nr Exp $
+% l2h ignore change {
+
+\section{Elaborating expressions}
+
+The elaborator accepts an ``elaboration context'' that tells us
+whether we're creating encoding procedures or reading a matching
+statement.
+Unfortunately, this context is not used everywhere it should be, and
+the result is that we use [[FORCE]] even when implementing matching statements.
+<<elabexp.sig>>=
+signature ELAB_EXP = sig
+  structure Denotable : DENOTABLE
+                          where type Constructor.Pattern.Exp.exp = UnifiedExp.exp
+  <<exported types>>
+  <<exported values>>
+  datatype context = ENCODING | MATCHING (* context for patterns *)
+  val elab : 
+    { lookup            : Ast.name -> Denotable.denotable Error.error
+    , lookupGlobal      : Ast.name -> Denotable.denotable Error.error
+    , lookupConstructor : Ast.name -> Denotable.Constructor.constructor Error.error
+    , errorContext : Error.error_context
+    , fieldInfo    : FieldInfo.info
+    , elaborationContext : context
+    } ->
+      { elabBool : Ast.exp -> UnifiedExp.exp                              Error.error
+      , elabInt  : Ast.exp -> UnifiedExp.exp                        group Error.error
+      , elabPat  : Ast.exp -> Denotable.Patterns.Labelled.pattern   group Error.error
+      }
+  val eliminateInstances : UnifiedExp.exp -> UnifiedExp.exp
+  val patternLabels : Ast.exp -> Ast.name list (* extract pattern labels *)
+  <<interface for structure [[ElabCons]] (constructor elaboration)>>
+end
+@ The elaborators really ought to return [['a error group]] instead of
+[['a group error]], but I didn't realize it in time, and I'm not ready
+to do it over just to detect more errors faster in bad specifications.
+<<elabexp.sml>>=
+functor ElabExpFun (structure Denotable : DENOTABLE
+                          where type Constructor.Pattern.Exp.exp = UnifiedExp.exp
+                    val simplify : Denotable.Constructor.Pattern.Exp.exp ->
+                                   Denotable.Constructor.Pattern.Exp.exp
+                    val image : Denotable.Constructor.Pattern.Exp.exp -> PP.pretty
+                   ) : ELAB_EXP = 
+struct
+  structure Denotable = Denotable
+  structure Patterns = Denotable.Patterns
+  structure Pattern = Patterns.Labelled
+  datatype context = ENCODING | MATCHING (* context for patterns *)
+  <<exported types>>  
+  structure D = Denotable
+  structure C = Denotable.Constructor
+  structure P = Pattern
+  structure PS = Patterns
+  structure Exp = P.Exp
+  structure ElabCons = struct
+    type interpretation = string * D.denotable StringMap.map
+    <<values for constructor elaboration>>
+  end
+  fun nounOfType noun ty =
+    case C.typeName (C.typeFromId ty)
+      of SOME n => noun ^ " of type " ^ n
+       | NONE => "untyped " ^ noun
+  <<instance elimination>>
+  <<toplevel>>
+end
+@ 
+\subsection{Groups}
+Our language also has the property that an expression could denote a
+single value, or it could ``generate'' a group of values.
+We define [['a group]] for the two alternatives.
+This could go in a structure of its own, but the only place it applies
+is in the elaboration of expressions.
+<<exported types>>=
+datatype 'a group = SINGLE of 'a | GROUP of 'a list
+<<exported values>>=
+val insistSingle : 'a group -> 'a  (* raises error unless single *)
+@ 
+The analog of [[map]] for groups is
+<<toplevel>>=
+fun gmap f (SINGLE x) = SINGLE (f x)
+  | gmap f (GROUP  l) = GROUP (map f l)
+<<exported values>>=
+val gmap : ('a -> 'b) -> 'a group -> 'b group
+@ And we can even do the same with [['a group error]]:
+<<toplevel>>=
+fun gemap f = Error.emap (gmap f)
+@ 
+We can also take an [['a error group]] into [['a group error]].
+<<toplevel>>=
+fun groupErrors (SINGLE x) = Error.emap SINGLE x
+  | groupErrors (GROUP es) = Error.emap GROUP (Error.errorList es)
+@ 
+It's sometimes useful to insist on a single value.
+<<toplevel>>=
+fun insistSingle (SINGLE x) = x
+  | insistSingle (GROUP  _) = Error.error "generating expression not permitted"
+@ 
+When we combine groups as arguments to some operator, we have a
+left-to-right [[LIFO]] evaluation rule.
+The [[lifo]] function implements that rule by flattening an
+[['a group list]] into an [['a list group]]; the effect is to distribute
+the evaluation of generating
+expressions.
+The ``group cons'' operator [[/::/]] adds an [['a]] to the result.
+The crucial part is the [[crosscons]] function.
+We also play the usual games to avoid appending.
+<<toplevel>>=
+local
+  val /::/ : 'a * 'a list group -> 'a list group =
+    fn (x, SINGLE l) => SINGLE (x::l)
+     | (x, GROUP ll) => GROUP (map (fn l => x :: l) ll)
+  infixr /::/
+  fun crosscons(hl, tl) = (* every elem of hl consed with every elem of tl *)
+    let fun cons(h, tl, rest) = foldr (fn (t, rest) => (h :: t) :: rest) rest tl
+        fun all ([], tl, answer) = answer
+          | all(h::t, tl, answer) = cons(h, tl, all(t, tl, answer))
+    in  all(hl, tl, [])
+    end
+in
+  fun lifo(SINGLE x :: t) = x /::/ lifo t
+    | lifo(GROUP  l :: t) =
+        let val tails = case lifo t of SINGLE t => [t] | GROUP tl => tl
+        in  GROUP (crosscons(l, tails))
+        end
+    | lifo [] = SINGLE []
+end
+@
+\subsection{Elaborating}
+There are three contexts, depending on what kind of thing is expected:
+a pattern, a boolean, or an integer.
+We return a function for each context.
+<<toplevel>>=
+structure A = Ast
+fun elab {lookup, lookupGlobal, lookupConstructor, errorContext, fieldInfo,
+          elaborationContext} =
+  let open Error
+      val (smap, _) = errorContext
+      val catch = fn x => catch errorContext x (* watch for value restriction *)
+      val impossible = ErrorMsg.impossible
+      val unimp = Error.unimp
+      <<elab>>
+      fun marked elab = elab o Ast.markApps 
+  in  {elabPat=marked elabPat, elabInt=marked elabInt, elabBool=marked elabBool}
+  end
+@ 
+It's a bit tricky to understand the uses of the [[emap]], [[gmap]], [[gemap]], 
+[[lifo]], [[errorList]], and other combinators.
+Since mostly what they do is move type constructors around,
+I've thrown in a few type annotations, and we'll have to trust to the
+type system to handle the rest. 
+This table might also help:
+<<toplevel>>=
+local 
+  type 'a error = 'a Error.error
+in
+  val _ = Error.emap      : ('a -> 'b) -> 'a error       -> 'b error
+  val _ = gmap            : ('a -> 'b) -> 'a group       -> 'b group
+  val _ = gemap           : ('a -> 'b) -> 'a group error -> 'b group error
+  val _ = lifo            : 'a group list  -> 'a list group
+  val _ = Error.errorList : 'a error list  -> 'a list error
+  val _ = groupErrors     : 'a error group -> 'a group error
+  val _ = Error.strip     : 'a error error -> 'a error
+end
+@ Good thing the compiler can check it!
+@
+Here's the outline.
+We have to be a bit careful to limit mutual recursion so as to get
+the most general types out of some of our polymorphic functions.
+This means being careful about who calls what.
+Basically, things are recursive, plus integer expressions can appear
+in Booleans and patterns, and those are all the containment relations.
+<<elab>>=
+type pattern = Pattern.pattern
+type intexp  = Exp.exp
+type boolexp = Exp.exp
+<<general local>>
+<<elaborate integers>>
+<<local using integers>>
+<<elaborate patterns and booleans>>
+@ 
+\subsubsection{Elaborating patterns}
+We'll see similar structures of machinery for all three contexts.
+Whenever we're interest in [[mumble]], we'll find ourselves working
+with [[mumble group error]], and we'll use those combinators to get
+into the right shape.
+In all cases, the tough stuff is in the business for applying operators.
+<<elaborate patterns and booleans>>=
+<<constructor application>>
+fun found s = error ("expected pattern; found " ^ s)
+fun lookupPat name = emap Denotable.projectPattern (lookup name)
+fun elabPat (A.NARY (rator, exps))  = appPat (rator, exps) : pattern group error
+  | elabPat (A.APP x)               = constructorApp x
+  | elabPat (A.IDENT id)            = emap SINGLE (lookupPat id)
+  | elabPat (A.INT n)               = found "integer literal"
+  | elabPat (A.LITERAL_exp s)       = found "string literal"
+  | elabPat (A.MARK_EXP (rgn, exp)) = catch rgn elabPat exp
+and elabPats es = emap lifo (errorList (map elabPat es)) : pattern list group error
+<<[[and]] patterns elaboration>>
+val elabPat = gemap (Pattern.subst (simplify o eliminateInstances)) o elabPat
+@ 
+For patterns, certain identifiers must denote fields (for constraints)
+or tokens (for [[some]] \emph{class}).
+<<general local>>=
+fun lookupField (A.MARK_EXP (rgn, e)) = catch rgn lookupField e
+  | lookupField (A.IDENT fname) = 
+        emap Denotable.projectField (lookupGlobal fname)
+  | lookupField _ = impossible "non-identifier on LHS of constraint"
+fun lookupToken (A.MARK_EXP (rgn, e)) = catch rgn lookupToken e
+  | lookupToken (A.IDENT tname) = 
+        emap Denotable.projectToken (lookupGlobal tname)
+  | lookupToken _ = impossible "non-identifier after `some'"
+@ 
+The trickiest bit is dealing with constraints.
+For constraints, we must have the name of a field on the left-hand
+side, and we curry in this funny way so that, with the right
+combinators, the right-hand-side can be [[intexp group error]].
+<<local using integers>>=
+fun constraint (left, relop) (right : intexp) =
+  emap (fn f => Pattern.constraint(f, relop, right)) (lookupField left)
+@ 
+The basic operators just require judicious use of [[gemap]] and
+friends.
+Constraints are the only heroic case---again, combinator central.
+<<[[and]] patterns elaboration>>=
+and appPat (rator, es) =
+  let fun app (A.OR, es)     = gemap Pattern.orp  (elabPats es)
+        | app (A.AND, es)    = gemap Pattern.andp (elabPats es)
+        | app (A.CONCAT, es) = gemap Pattern.seqp (elabPats es)
+
+        | app (A.PREFIX_DOTS,  [e]) = gemap Pattern.preDots  (elabPat e)
+        | app (A.POSTFIX_DOTS, [e]) = gemap Pattern.postDots (elabPat e)
+        | app (A.PREFIX_DOTS,  _) = impossible "arity of dots"
+        | app (A.POSTFIX_DOTS, _) = impossible "arity of dots"
+        
+        | app (A.SOME_token, [e]) = emap (SINGLE o Pattern.wildcard) (lookupToken e)
+        | app (A.SOME_token, _) = impossible "arity of some"
+        | app (A.PLABEL l, []) = (OK o SINGLE o Patterns.actualLabel) l
+        | app (A.PLABEL l, _) = impossible "arity of pattern label"
+      
+        | app (A.LIST, es)   = emap (GROUP o single) (elabPats es)
+        | app (A.GEN_to, es) = error "expected pattern; found generating expression"
+      
+        | app (A.RELOP rel, [left, right]) = 
+           strip (emap (groupErrors o (gmap (constraint (left, rel)))) (elabInt right))
+        | app (A.RELOP _, _) = impossible "arity of constraint"
+      
+        | app (A.PLUS,  es) = error "expected pattern; found integer expression"
+        | app (A.MINUS, es) = error "expected pattern; found integer expression"
+        | app (A.TIMES, es) = error "expected pattern; found integer expression"
+        | app (A.DIV,   es) = error "expected pattern; found integer expression"
+      
+        | app (A.SLICE, es)    = error "expected pattern; found integer expression"
+        | app (A.EXTEND, es)   = error "expected pattern; found integer expression"
+        | app (A.WILDCARD, es) = error "expected pattern; found integer expression"
+in 
+    app (rator, es) handle Overflow => (Impossible.impossible "overflow in app")
+end
+@ I enumerate all the cases instead of defaulting because I'm paranoid
+about errors.
+@
+\subsubsection{Elaborating integers}
+The group stuff requires combinator central.
+<<elaborate integers>>=
+fun elabInt' lookup =
+  let fun found s = errorl ["expected integer expression; found ", s]
+      val projectInt = case elaborationContext of ENCODING => Denotable.projectIntE
+                                                | MATCHING => Denotable.projectIntM
+      fun lookupInt name = emap projectInt (lookup name)
+      fun elabInt (A.NARY (rator, exps))  = appInt (rator, exps) : intexp group error
+        | elabInt (A.APP _)               = found "constructor application"
+        | elabInt (A.IDENT id)            = emap SINGLE (lookupInt id)
+        | elabInt (A.INT n)               = OK (SINGLE (Exp.const n))
+        | elabInt (A.LITERAL_exp s)       = found "string literal"
+        | elabInt (A.MARK_EXP (rgn, exp)) = catch rgn elabInt exp
+      and elabInts es = emap lifo (errorList (map elabInt es))
+                                                        : intexp list group error
+      <<[[and]] more integer-elaboration functions>>
+  in  elabInt
+  end
+val elabInt = elabInt' lookup
+val elabInts = emap lifo o errorList o map elabInt
+@ 
+@
+
+To handle binary and unary operators, we deal both with arity and with the
+recursive elaboration.
+<<general local>>=
+fun binapp rator [left, right] = rator(left, right)
+  | binapp _ _ = impossible "arity of binary operator"
+fun unapp rator [e] = rator e
+  | unapp _ _ = impossible "arity of binary operator"
+<<[[and]] more integer-elaboration functions>>=
+and binop' rator es = gemap (binapp rator) (elabInts es) 
+and unop'  rator es = gemap (unapp  rator) (elabInts es) 
+@ We need two versions because these things are part of the mutually
+recursive nest, so their types don't get generalized.
+@
+Here's a local version of [[slice]] that handle arity, and it also
+maps from the AST semantics of bounds to the internal semantics.
+<<general local>>=
+fun constant e = case Exp.unConst e of SOME n => n
+                                        | NONE => impossible "non-constant in slice"
+fun slice [e, lo, hi] = Exp.slice(e, {lo=constant lo, width=constant hi+1-constant lo})
+  | slice [e, lo]     = Exp.slice(e, {lo=constant lo, width=1})
+  | slice _ = impossible "arity of slicing"
+@
+This stuff supports generating expressions.
+The [[gen]] function is defined in [[<<[[gen]] for tables>>]].
+<<general local>>=
+fun single (SINGLE x) = x
+  | single (GROUP  _) = error "cannot nest generating expressions"
+<<[[gen]] for tables>>
+fun genlist [lo, hi, cols] = map Exp.const (gen(lo, hi+1, cols))
+  | genlist [lo, hi]       = map Exp.const (gen(lo, hi+1, 1))
+  | genlist _ = impossible "bad number of arguments to curly generator"
+fun insistInt e = 
+  case Exp.unConst e of SOME n => n
+                         | NONE => error "non-constant bounds to generating expression"
+<<[[and]] more integer-elaboration functions>>=
+and appInt (rator, es) =
+  let <<declare [[times]] and [[divide]]>>
+      <<smart widening>>
+      fun app (A.OR, es)     = error "expected integer expression; found pattern"
+        | app (A.AND, es)    = error "expected integer expression; found pattern"
+        | app (A.CONCAT, es) = error "expected integer expression; found pattern"
+
+        | app (A.PREFIX_DOTS,  _) = error "expected integer expression; found pattern"
+        | app (A.POSTFIX_DOTS, _) = error "expected integer expression; found pattern"
+        
+        | app (A.SOME_token, es) = error "expected integer expression; found pattern"
+        | app (A.PLABEL l, es)   = error "expected integer expression; found pattern"
+      
+        | app (A.LIST, es)   = emap (GROUP o single) (elabInts es)
+        | app (A.GEN_to, es) = emap (GROUP o genlist o (map insistInt) o single)
+                                                                       (elabInts es)
+      
+        | app (A.RELOP rel, _) = 
+            error "expected integer expression; found condition or constraint"
+      
+        | app (A.MINUS, es as [_]) = unop'  Exp.neg    es
+        | app (A.PLUS,  es       ) = binop' Exp.add   es
+        | app (A.MINUS, es       ) = binop' Exp.sub  es
+        | app (A.TIMES, es       ) = binop' times  es
+        | app (A.DIV,   es       ) = binop' divide es
+      
+        | app (A.SLICE, es)    = gemap slice (elabInts es)
+        | app (A.EXTEND, es)   = strip(emap (groupErrors o gmap (unapp smartWiden))
+                                          (elabInts es))
+        | app (A.WILDCARD, es) = OK (SINGLE (Exp.var (Wildcard.new())))
+in 
+    app (rator, es)
+end
+<<declare [[times]] and [[divide]]>>=
+fun times (x, y) =
+  case Exp.unConst x
+    of SOME n => Exp.mul(n, y)
+     | NONE => case Exp.unConst y
+                   of SOME n => Exp.mul(n, x)
+                    | NONE => Error.error "multiplication by non-constant"
+fun divide (x, y) =
+  case Exp.unConst y
+    of SOME n => Exp.div'(x, n)
+     | NONE => Error.error "division by non-constant"
+<<smart widening>>=
+local
+  fun getField name = 
+     emap Denotable.projectField (lookupGlobal name)
+     handle Error (msg, body) => 
+        raise Error(String.concat ["can only widen fields, slices, and narrows, not ",
+                                   name, " (", msg, ")"],
+                    body)
+  fun smartWiden getField e = 
+    case Exp.unSlice e
+      of SOME (_, {lo, width}) => Exp.widen(e, width)
+       | NONE =>
+    case Exp.unNarrow e
+      of SOME {width, ...} => Exp.widen(e, width)
+       | NONE =>
+    case Exp.unVar e
+      of SOME s => Exp.widen (e, Field.fwidth (getField s))
+       | NONE => raise Error("can only widen fields, slices, and narrows, not ",
+                             image e)
+in
+  val smartWiden = Error.errorEnv smartWiden getField
+     : intexp -> intexp error
+  val _ : intexp list group -> intexp group error = 
+     groupErrors o gmap (unapp smartWiden) 
+end  
+@ 
+[[gen]] takes a generating expression given the low value, the
+limit value, and the number of columns, and it returns a list of
+integers.
+Unlike in the concrete syntax, the limit value [[hi]] is \emph{not}
+included in the list.
+<<[[gen]] for tables>>=
+fun gen(lo, hi, cols) =
+  let val rows = (hi - lo) div cols
+      val odd  = (hi - lo) mod cols
+      fun addcols(base, col, tail) =
+        if col = cols then tail
+        else addcols(base + rows, col + 1, base :: tail)
+      fun addrows(base, row, tail) =
+        if row = rows then tail
+        else addrows(base + 1, row + 1, addcols(base, 0, tail))
+  in  if odd = 0 then
+        rev (addrows(lo, 0, []))
+      else
+        raise Error.Error ("bad generator",
+                           PP.LIST (map PP.TEXT
+                                    [Int.toString (hi - lo), " elements won't fit in ",
+                                     Int.toString cols, " columns"]))
+  end
+@ 
+\subsubsection{Elaborating booleans}
+Booleans are a bit simpler than integers and patterns in that they
+never have to be grouped, because they don't support generating
+expressions.
+(This might change one day; [[reg != [4 5]]] is intriguing).
+<<elaborate patterns and booleans>>=
+fun elabBool (A.NARY (rator, exps)) = appBool (rator, exps) : boolexp error
+  | elabBool (A.APP _) = 
+       error "expected boolean expression; found constructor application"
+  | elabBool (A.IDENT id) = 
+       error ("expected boolean expression; found identifier " ^ id)
+                                                      (* need image here *)
+  | elabBool (A.INT n) = error "expect boolean expression; found integer literal"
+  | elabBool (A.LITERAL_exp s) = 
+       error "expected boolean expression; found string literal"
+  | elabBool (A.MARK_EXP (rgn, exp)) = catch rgn elabBool exp
+@ 
+<<local using integers>>=
+fun elabSingleInts es = 
+  emap (fn SINGLE es => es
+              | GROUP _ => error "generating expression in boolean condition")
+     (elabInts es)
+<<elaborate patterns and booleans>>=
+and appBool (rator, es) =
+  let fun app (A.OR, es)     = error "expected boolean expression; found pattern"
+        | app (A.AND, es)    = error "expected boolean expression; found pattern"
+        | app (A.CONCAT, es) = error "expected boolean expression; found pattern"
+
+        | app (A.PREFIX_DOTS,  _) = error "expected boolean expression; found pattern"
+        | app (A.POSTFIX_DOTS, _) = error "expected boolean expression; found pattern"
+        
+        | app (A.SOME_token, es) = error "expected boolean expression; found pattern"
+        | app (A.PLABEL l, es)   = error "expected boolean expression; found pattern"
+      
+        | app (A.LIST, es)   = error "generating expression in boolean condition"
+        | app (A.GEN_to, es) = error "generating expression in boolean condition"
+
+        | app (A.RELOP rel, es) = emap (binapp (fn (l, r) => Exp.condition (l, rel, r)))
+                                     (elabSingleInts es)
+
+        | app (A.PLUS,  es) = error "expected boolean; found integer expression"
+        | app (A.MINUS, es) = error "expected boolean; found integer expression"
+        | app (A.TIMES, es) = error "expected boolean; found integer expression"
+        | app (A.DIV,   es) = error "expected boolean; found integer expression"
+      
+        | app (A.SLICE, es)    = error "expected boolean; found integer expression"
+        | app (A.EXTEND, es)   = error "expected boolean; found integer expression"
+        | app (A.WILDCARD, es) = error "expected boolean; found integer expression"
+in 
+    app (rator, es)
+end
+@ 
+\subsection{Finding pattern labels}
+<<toplevel>>=
+fun patternLabels e =
+  let open Ast
+      fun exp(A.NARY (PLABEL l, es), labels) = foldl exp (l::labels) es
+        | exp(A.NARY (_, es), labels) = foldl exp labels es
+        | exp(A.APP (_, es), labels) = foldl exp labels es
+        | exp(A.IDENT _, labels) = labels
+        | exp(A.INT _, labels) = labels
+        | exp(A.LITERAL_exp _, labels) = labels
+        | exp(A.MARK_EXP (_, e), labels) = exp(e, labels)
+  in  exp(e, [])
+  end
+@ 
+\subsection{Constructor application}
+In the old implementation, we used a single implementation of
+constructor application for both encoding and decoding.
+This led to all sorts of games about ``latent binding instances'' and
+the like.
+Here, I'm trying to split these two contexts so they'll make sense.
+
+@
+\subsubsection{Field inputs}
+Field inputs have unusual semantics: a field name in the position of a
+field argument hides other values that might be bound to that name.
+I've decreed we should issue warnings about this behavior, which means
+substantial juggling.
+<<field environments>>=
+fun flookup field lookup =
+  let fun isInteger n = (Denotable.projectIntE (lookup n); true)
+                        handle Error.Error _ => false
+      val (ftab, _) = FieldInfo.namesOf(field, fieldInfo)
+      fun lookup' n = case StringMap.find(ftab, n)
+                        of NONE   => lookup n
+                         | SOME k => 
+                             ( if isInteger n then <<warn of [[n]] hiding>> else ()
+                             ; Denotable.TMP(Exp.const k, NONE) )
+  in  lookup'
+  end                                
+<<warn of [[n]] hiding>>=
+ErrorMsg.warning sourcemap (region, 
+  ["value ", n, " = ", Int.toString k, " of field ", #name field, " hides integer ", n,
+   " in outer scope (source coordinates may be off)"])
+@ 
+
+
+Every input makes a contribution to the environment.
+I don't try to make constructor inputs visible as labels.
+This is perhaps inconsistent with the treatment of free constructor
+types in matching statements, but I need to hear an argument in favor
+before I'll be convinced to work out a proper semantics.
+@ 
+Old stuff?
+\begin{quote} \em
+OK, the treatment of labels is a dreadful hack.
+The problem is that with the pattern in syntactic form, we don't know
+which disjuncts labels actually belong to.
+The depressing solution is to make multiple passes:
+\begin{enumerate}
+\item 
+Build an environment mapping label names to themselves (make sure
+there are no conflicts with inputs).
+\item
+Convert the pattern to normal form, which will propagate the
+free-variable names into the field bindings.
+\item
+Make a separate pass over each disjunct, converting the label names to
+suitable expressions of type [[Epatlabel]].
+That last pass is done by [[bind_and_remove_patlabel_names]]---it
+also nulls out the [[patlabel]] stuff.
+\end{enumerate}
+<<old Icon code to convert branch [[b]] to a pattern [[q]]>>=
+push(rho, b.soln.answers) # answers already injected by inject_soln
+t := table()
+every n := pattern_label_names(b.pat) do 
+  t[n] := n
+push(rho, t)
+q := freshen_disjuncts(pnf(b.pat, rho))
+pop(rho)
+pop(rho)
+every bind_condition(q, !b.soln.constraints)
+q := bind_and_remove_patlabel_names(q)
+@
+\end{quote}
+@
+\subsection{Applying the patterns}
+[[apply_constructor]] produces the pattern value
+and constraints for a constructor when applied to [[args]] in an output
+pattern in the context of an environment [[rho]].
+We have to freshen pattern labels to maintain the nonduplication invariant.
+<<constructor application>>=
+fun opcode2cons's codes =
+  let fun lookup' n = emap SOME (lookup n) handle Error.Error _ => Error.OK NONE
+      val explode = Error.errorEnv (ElabCons.explodeOpcode (smap, fieldInfo)) lookup'
+  in  Error.strip (emap (Error.errorList o map (lookupConstructor o #1))
+                        (explode codes))
+  end : C.constructor list error
+
+datatype instance = INSTANCE of {cons : C.constructor, args : Exp.exp StringMap.map}
+fun instanceExp (INSTANCE {cons, args}) =
+  let fun argValue (name, ty, _) = 
+        case StringMap.find(args, name)
+          of SOME e => e
+           | NONE => impossible ("no value for constructor argument " ^ name)
+  in  Exp.instance (map argValue (#operands (C.info cons)), C.fullId cons)
+  end
+@ 
+I'm not at all sure about the labels here.  Is the use of
+[[injectNormal]] correct?
+<<constructor application>>=
+fun instancePat (INSTANCE {cons, args}) =
+  let val {property, name, ...} = C.info cons
+      val branches : P.pattern list = map Patterns.injectLatent (#branches property)
+      val sigma = P.subst (Exp.multiSubst (fn n => StringMap.find(args, n)))
+      val PS.PAT (_, ds) = P.subst simplify (P.orp (map sigma branches))
+  in  P.nameUnnamed (name, PS.PAT (NONE, ds))
+             (* overwrite pattern name always, but only default disjuncts *)
+  end      
+@ 
+<<constructor application>>=
+<<[[fun argTable]]\ldots>>
+and constructorInstance lookup (region, cons, args) =
+  let val {name=consname, sourcemap, operands=inputs, ...} = C.info cons
+      val _ = length inputs = length args orelse
+              Error.error
+               (String.concat
+                 ["Constructor ", consname, " expects ", Int.toString (length inputs),
+                  " arguments, but you gave ", Int.toString (length args)])
+      fun instance args = INSTANCE {cons=cons, args=args}
+  in 
+      emap instance (argTable lookup (sourcemap, region, ListPair.zip(inputs, args)))
+  end
+<<constructor application for matching>>=
+<<[[fun argMatch]]\ldots>>
+and constructorInstance lookup (region, cons args) =
+  let val {name=consname, sourcemap, operands=inputs, ...} = C.info cons
+      val _ = length inputs = length args orelse
+              Error.error
+               (String.concat
+                 ["Constructor ", consname, " expects ", Int.toString (length inputs),
+                  " arguments, but you gave ", Int.toString (length args)])
+  in 
+      argMatch lookup (sourcemap, region, ListPair.zip(inputs, args))
+  end
+@
+For constructor applications, we explode the applied constructor's
+name, first using the constructor's ``local'' environment(s) then 
+the global environment to determine the meaning of the applied
+constructor's name. 
+For example, in the definition of the constructors generated by
+[[P^Y]], the pattern [[P]] is bound to [[A]] in the environment
+created for the constructor [[A^Y]] {\em or} 
+is bound to [[B]] in [[B^Y]]'s environment.
+In the definition of the constructor [[R]], however,
+[[P]] is not bound in [[R]]'s environment, therefore its meaning in
+the global enviroment is used, i.e., [[(A | B)(s)]] which is [[A(s) | B(s)]].
+\begin{verbatim}
+patterns     P is A | B
+constructors 
+  P r is r
+  P^Y s is P(s) & Y
+  R s is P(s)
+\end{verbatim}
+The elaboration of a constructor should make sure that on the
+right-hand side, the pattern name is bound to a pattern containing a
+single disjunct.
+<<constructor application>>=
+fun explodeNames lookup' opcodes =
+  let fun lookup n = SOME (lookup' n) handle Error.Error _ => NONE
+      fun component (A.LITERAL_opcode n) = [n]
+        | component (A.OPCODE n) =
+            case lookup n of SOME d => denotableName (n, d) | NONE => [n]
+      and denotableName (n, D.PATTERN (PS.PAT(SOME name, [d]))) = [name]
+        | denotableName (n, D.PATTERN (PS.PAT(SOME name, []))) = [name]
+        | denotableName (n, D.PATTERN (PS.PAT(_, []))) = 
+            Impossible.impossible "name of pattern with no disjuncts"
+        | denotableName (n, D.PATTERN (PS.PAT(_, ds))) = 
+            let fun disName (PS.DIS (SOME n, _, _)) = n
+                  | disName _ = Error.error "unnamed disjunct in opcode"
+            in  map disName ds
+            end
+        | denotableName (n, D.TMP _) = [n]  (* from field opcode component *)
+        | denotableName (n, D.FIELD f) = <<list of names of field [[f]]>>
+        | denotableName (n, d) = D.error("field or pattern in opcode", d, SOME n)
+      datatype protostring = STRING of string list
+      fun prepend s (STRING l) = STRING (s::l)
+      fun string (STRING l) = String.concat l
+      fun addOneComponent (opcode, tail : protostring list) = 
+         let fun addName (name, answer) = 
+                foldr (fn (t, answer) => prepend name t :: answer) answer tail
+         in  foldr (fn (name, answer) => addName(name, answer)) []  (component opcode)
+         end
+  in  map string (foldr addOneComponent [STRING []] opcodes)
+  end
+<<list of names of field [[f]]>>=
+StringMap.foldri (fn (n, _, names) => n :: names) []
+                 (#1 (FieldInfo.namesOf (f, fieldInfo)))
+@ 
+<<constructor application>>=
+fun constructorApp' lookCons ((opcode, rgn'), args) = 
+  let type constructor = C.constructor
+      val constructors = emap (map lookCons) (errorEnv explodeNames lookup opcode)
+           : constructor list error
+      fun apply cons = errorEnv constructorInstance lookup (rgn', cons, args)
+      val instances = strip (emap errorList (emap (map apply) constructors))
+      val instances = strip (emap errorList instances) : instance list error
+      val p = emap P.orp (emap (map instancePat) instances)
+  in  emap SINGLE p : pattern group error
+  end
+fun constructorApp x = strip (errorEnv constructorApp' lookupConstructor x)
+@ 
+<<new constructor application>>=
+fun matchingApp' lookCons ((opcode, rgn'), args) = 
+  let type constructor = C.constructor
+      val constructors = emap (map lookCons) (errorEnv explodeNames lookup opcode)
+           : constructor list error
+      fun apply cons = errorEnv constructorMatch lookup (rgn', cons, args)
+      val matches = strip (emap errorList (emap (map apply) constructors))
+      val matches = strip (emap errorList matches) : pattern list error
+      val p = emap P.orp matches
+  in  emap SINGLE p : pattern group error
+  end
+fun matchingApp x = strip (errorEnv matchingApp' lookupConstructor x)
+
+<<constructor application>>=
+(*
+val constructorInstance = 
+  fn ((opcode, rgn'), args) =>
+    let val cons = opcode2cons opcode
+    in  strip (errorEnv constructorInstance lookup (rgn', cons, args))
+    end
+*)
+@
+[[app_to_instance]] is almost the same, but it produces an instance, not
+the pattern.
+You might wonder why we need it.  
+Well, [[crhs]] produces a pattern in which constructor operands are
+expected to be {\em instances}, not patterns.
+That means that [[apply_constructor]] expects its constructor-typed
+arguments to be instances, not patterns.
+But [[apply_constructor]] itself produces a pattern (which it must do,
+because that pattern is then used to produce an emitter or whatever).
+So then, what are we to do when the argument to a constructor is
+itself a constructor application?  We need a procedure that will apply
+a constructor and produce an instance, therefore [[app_to_instance]].
+Note that the call to [[subst_tab]] in [[apply_constructor]] above
+actually eliminates the instances.  (That's a sneaky hack.)
+
+I wish I knew whether freshening pattern variables was needed here, or how to do it.
+<<[[fun argTable]]\ldots>>=
+fun argTable lookup (sourcemap, region, inargs : (Denotable.Constructor.operand * Ast.exp) list) =
+      emap #3 (foldl (addArg lookup) (OK (sourcemap, region, StringMap.empty)) inargs)
+and addArg lookup (((name, ty, prop), e), ERROR) = ERROR
+  | addArg lookup (((name, ty, prop), e), OK (sourcemap, region, table)) =
+      let fun newTable x = (sourcemap, region, StringMap.insert(table, name, x))
+      in  case ty
+            of C.INSTANCE constype => (<<add constructor input to table [[table]]>>)
+             | C.INTEGER {signed, width=w} =>
+                 (case #field prop
+                    of SOME f => (<<make input [[e]] using field [[f]]>>)
+                     | NONE   => emap newTable ((emap insistSingle o elabInt) e))
+      end
+<<[[fun argMatch]]\ldots>>=
+fun argMatch lookup (sourcemap, region, inargs) =
+      emap #3 (foldl (addArg lookup) (OK (sourcemap, region, StringMap.empty)) inargs)
+and addArg lookup (((name, ty, prop), e), ERROR) = ERROR
+  | addArg lookup (((name, ty, prop), e), OK (sourcemap, region, table)) =
+      let fun newTable x = (sourcemap, region, StringMap.insert(table, name, x))
+      in  case ty
+            of C.INSTANCE constype => (<<add constructor input to table [[table]]>>)
+             | C.INTEGER {signed, width=w} =>
+                 (case #field prop
+                    of SOME f => (<<make input [[e]] using field [[f]]>>)
+                     | NONE => emap newTable ((emap insistSingle o elabInt) e))
+      end
+@
+Field inputs need a special environment, and we agree to recognize
+string literals as fields, but only at top level.
+(We might have to do something about marked string literals.)
+<<make input [[e]] using field [[f]]>>=
+let fun fieldInput(A.MARK_EXP (rgn, e)) = fieldInput e
+      | fieldInput(A.LITERAL_exp s) =
+          let val (ftab, _) = FieldInfo.namesOf(f, fieldInfo)
+          in  case StringMap.find(ftab, s)
+                of SOME i => OK (newTable (Exp.const i))
+                 | NONE => errorl [s, " is not a value of field ", #name f]
+          end
+      | fieldInput e =
+          let <<field environments>>
+              val n = elabInt' (OK o flookup f lookup) e
+          in  emap newTable (emap insistSingle n)
+          end
+in  fieldInput e
+end
+@
+Constructor inputs are fairly straightforward---they must either be
+constructor applications themselves, or they must be constructor
+arguments of the required constructor type.
+<<add constructor input to table [[table]]>>=
+case e
+  of A.APP ((opcode, rgn'), args) =>
+       let fun fromConslist [cons] = 
+                 let val {ty, ...} = C.info cons
+                     fun fromInstance i = newTable(instanceExp i)
+                     val constype' = C.typeid ty
+                 in  if constype' = constype then
+                       emap fromInstance (constructorInstance lookup (rgn', cons,args))
+                     else
+                       <<complain about getting [[constype']] when [[constype]] wanted>>
+                 end
+             | fromConslist l = Error.errorl (
+                   ["opcode stands for ", Int.toString (length l), " constructors"]
+                                              @ consNames 3 ": " l)
+           and consNames _ pfx [] = []
+             | consNames 0 pfx _ = [pfx, "..."]
+             | consNames k pfx (h::t) =
+                 pfx :: #name (C.info h) :: consNames (k-1) ", " t
+       in  strip (emap fromConslist (opcode2cons's (opcode, rgn')))
+       end
+   | A.IDENT n =>
+       (case elaborationContext
+          of ENCODING =>
+               (case lookup n
+                  of D.OPERAND (_, C.INSTANCE constype', _) =>
+                       if constype' = constype then
+                         OK (newTable (Exp.var n))
+                       else
+                         <<complain about getting [[constype']] when [[constype]] wanted>>
+                   | _ => <<complain about constructor of type [[constype]] wanted>>)
+           | MATCHING => OK (newTable (Exp.bindingInstance (n,false,constype))))
+   | A.NARY (A.WILDCARD, []) => 
+       (case elaborationContext
+          of ENCODING => error "cannot use wildcard _ in encoding"
+           | MATCHING => 
+                OK (newTable (Exp.bindingInstance (Wildcard.new(), true, constype))))
+   | A.NARY _ => error "expected constructor; found integer expression"
+   | A.INT _ => error "expected constructor; found integer literal"
+   | A.LITERAL_exp _ => error "expected constructor; found string literal"
+   | A.MARK_EXP (rgn, exp) => catch rgn (addArg lookup)
+                              (((name, ty, prop), exp), OK (sourcemap, rgn, table))
+@ 
+<<complain about getting [[constype']] when [[constype]] wanted>>=
+Error.errorl ["expected operand or ", nounOfType "constructor application" constype,
+              " but got ", nounOfType "something" constype', "instead"]
+<<complain about constructor of type [[constype]] wanted>>=
+Error.errorl ["expected ", nounOfType "operand or constructor application" constype]
+@ 
+
+Field inputs (typically registers)
+may have special names associated with particular values.
+[[fieldNameEnvironment(fieldname)]]
+ returns an environment that is empty for non-field
+inputs, but that contains the special names for field inputs.
+We can afford to put it first because we check elsewhere that these special 
+names never collide with operand names or identifiers used in equations,
+and therefore they can't collide with names in [[rho]].
+They have to go first because the decoding code blindly puts all free identifiers into 
+[[rho]], even if they are one of these special names.
+Extended fields don't use the special names.
+\change{29}
+If we look up a name and get a field, we treat it just as if it
+weren't defined, i.e., we can use it as a free variable. This change
+lets us use the name of a field as a binding instance in a matching
+statement.  God only knows what other consequences it may have.
+<<make [[args[i]]] an unsigned integer input>>=
+super_simplify(gsubst(args[i], unsigned_arg_f, rho, free_env, args, i, ipt))
+<<arg funs>>=
+fun unsignedArg(name, t, width, reloc, rho, elabInt) = 
+  if reloc then
+    let val fieldrho = fieldNameEnvironment(name)
+      
+               (* special env so field names can be used as ints *)
+
+<<*>>=
+procedure unsigned_arg_f(e, rho, free_env, args, i, ipt)
+  local fieldrho
+  return case type(e) of {
+    "string" : {
+       fieldrho := fieldname_env_for_ipt(ipt) ||| rho
+       (if is_defined(e, fieldrho) & type(lookup(e, fieldrho)) ~== "field" then
+          project(lookup(e, fieldrho), "integer") 
+        else 
+          new_binding_instance(e, e, "integer", \free_env)
+       ) | badarg(args, i, ipt, "integer or field")
+    }
+    "literal" : project(lookup(e.s, fieldname_env_for_ipt(ipt)), "integer") |
+                                           badarg(args, i, ipt, "integer or field")
+    "Eapp" : error("Constructor application not allowed; expected integer or field")
+  }
+end
+@
+<<make [[args[i]]] a signed integer input>>=
+Enarrows(super_simplify(gsubst(args[i], signed_arg_f, rho, free_env, args, i, ipt)), 
+         ipt.meaning)
+<<*>>=
+procedure signed_arg_f(e, rho, free_env, args, i, ipt)
+  return case type(e) of {
+    "string" : (if is_defined(e, rho) & type(lookup(e, rho)) ~== "field" then
+                  project(lookup(e, rho), "integer") 
+                else 
+                  new_binding_instance(e, e, "integer", \free_env)
+               ) | badarg(args, i, ipt, "integer or field")
+    "literal" : badarg(args, i, ipt, "integer or field")
+    "Eapp" : error("Constructor application not allowed; expected integer or field")
+  }
+end
+@
+<<make [[args[i]]] a constructor input>>=
+case type(x := untable(args[i])) of {
+  "Papp" : impossible("Papp as constructor arg")
+  "Eapp" :
+    if c := cons_named(x.f) & c.type === ipt.meaning then
+      app_to_instance(c, x.args, rho, free_env)
+    else
+      badarg(args, i, ipt, "constructor of type " || ipt.meaning.name || 
+                           "; denotes " || c.type.name || ")")
+  "string" : 
+      (if is_defined(x, rho) then
+         if x := project(lookup(x, rho), "consop") then
+           if type(x) == "input" then
+              if x.meaning === ipt.meaning then 
+                ipt.name  # stands for an instance, not a pattern
+              else
+                badarg(args, i, ipt, " constructor of type " || ipt.meaning.name || 
+                                     " (not " || x.meaning.name || ")")
+           else
+             impossible("consop projected into non-input")
+         else 
+           if lookup(x, rho) === ipt.meaning then
+             <<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>
+           else
+             &fail
+       else
+         <<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>
+     ) | badarg(args, i, ipt, " constructor of type " || ipt.meaning.name)    
+  default : impossible("argument to constructor")
+}
+@ 
+<<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>=
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    if (/free_env[x] := binding_instance(y, ipt.meaning)) |
+       (type(free_env[x]) == "binding_instance", 
+        type(free_env[x].val) == "Ebinding_instance", 
+        free_env[x].type === free_env[x].val.type === y.type)
+    then
+      &null
+    else
+      error("Can't re-use ", x, "; already used as ", type(free_env[x]), "(", 
+            expimage(free_env[x]), ")",
+            "\n --- new value as ", type(y), "(", expimage(y), ") no good"))
+else
+  &fail
+@ This was the old code.  I don't understand it, but it was causing
+errors that I didn't want, so I changed it.
+<<old possible binding instance [[x]] of constructor type [[ipt.meaning]]>>=
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    (/free_env[x] := binding_instance(y, ipt.meaning)) |
+     error("Can't re-use ", x, "; already used as ", expimage(free_env[x])))
+else
+  &fail
+<<*>>=
+procedure badarg(args, i, ipt, expected)
+  error(expimage(args[i]), " [", image(args[i]), "]",
+        " (", ordinal(i), " arg ", ipt.name, ") ",
+        "does not denote ", if any('aeiou', expected) then "an " else "a ", expected)
+end
+<<insist input lengths match>>=
+*inputs = *args | 
+   error(cons.name, " expects ", *inputs, " arguments, but you gave ", *args)
+@ 
+\subsection{Eliminating instances}
+It's not at all clear that this code should be in this module, but I
+don't know where else to put it for now.
+
+This code is applied to every pattern as the last step in conversion
+to normal form.
+We don't remember why it's the {\em last} step, or if it really has to
+be the last. 
+<<*>>=
+procedure eliminate_instances(e)
+  return gsubst(e, eliminate_instances_f)
+end
+@ 
+[[eliminate_instances_f]] simplifies a pattern by removing constructor instances.
+For some forgotten reason,%
+\footnote{One might suspect the reason has something to do with the complicated
+logic of [[do_unwind_instance_inputs]], which doesn't look like it
+could be implemented with mere rewrite rules.} these transformations
+are not specified by rewrite rules in [[exp.nw]].
+
+The basic idea is that if we have an insance, we can simplify away
+some predicates on the instance and selection of elements of the
+instance. 
+<<what we might write if we were doing this with rewrite rules>>=
+Einstance_tagged(Einstance(c, a), c2, uid) -> if c === c2 then 1 else 0
+Einstance_input(Einstance(c, a), c2, name) -> if c === c2 then a[name] 
+                                              else Efail(expimage(e))
+Einstance_tagged(Ebinding_instance(_, _, _),_, _) -> 1 # why?
+@ The real kicker is dealing with names.  If we have a binding
+instance of a constructor type, we have a name for it.  Now, if we
+want to select an element of that constructor type, we need a name for
+the element, too, since that element itself becomes a binding
+instance.
+The general idea is 
+<<what we might write if we were doing this with rewrite rules>>=
+Einstance_input(Ebinding_instance(name, _, _), c, fname) ->
+   Ebinding_instance(name || "." || c.name || "." || fname)
+@ but the real truth is in [[unwind_instance_inputs]].
+@ 
+We also take this opportunity to make some decisions about latent
+pattern labels.  Latent labels associated with binding instances of
+constructor types become real, but labels associated with literal
+instances ([[Einstance]]) are discarded.
+<<what we might write if we were doing this with rewrite rules>>=
+latent_patlabel(Einstance(_, _)) -> vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -> patlabel(nam, nam)
+@ 
+
+With rewrite rules, we would enjoy the great convenience that the
+rewrite engine would simplify the elements of every expression before
+simplifying the expression itself, since it works bottom-up.
+Unfortunately, we're using [[gsubst]], which works top-down, and the
+code is therefore more labored than one might like.
+@
+Even after all these soothing explanations, Mary may still be afraid
+of this code.  
+She has good judgment.
+<<instance elimination>>=
+structure U = UnifiedExp
+fun eliminateInstances e = UnifiedComplete.bottomUpRewrite rewrite e
+and rewrite {old, new} = elim new
+and elim (U.INSTANCE_TAGGED (U.INSTANCE (_, cons'), {cons, uid})) =
+      if cons = cons' then U.TRUE else U.FALSE
+  | elim (U.INSTANCE_TAGGED (U.BINDING_INSTANCE _, _)) = U.TRUE
+  | elim (e as U.INSTANCE_INPUT ?) = unwindInstanceInputs ?
+(***
+     let val after = unwindInstanceInputs ?
+         val exp = PP.flatten o image
+         val _ = if Exp.compare(e, after) = EQUAL then ()
+                 else app print ["before unwinding, exp = ", exp e, "\n",
+                                 "after  unwinding, exp = ", exp after, "\n"]
+     in  after
+     end
+***)
+     (*************
+    "latent_patlabel" : {
+       e.instance := eliminate_instances(e.instance) # simplify bottom-up
+       case type(e.instance) of { 
+         "Ebinding_instance" : patlabel(e.instance.name, e.instance.name)
+         "string"      : e  # no change
+         "Einstance_input"   : {<<latent pattern label of an instance input>>}
+         "Einstance"         : vanishing_latent_patlabel
+         "Efail"             : Efail("latent pattern label of " || e.instance.msg)
+        default                : impossible("type of latent pattern label")
+      }
+     *************)
+  | elim e = e
+@ 
+That last case has caused much consternation.
+Originally we weren't sure if a latent pattern label of an instance
+input should vanish or just stay unchanged.
+For a long time we just let it stay unchanged.
+I do believe that's right, since I think the recursive call to
+[[eliminate_instances]] handles the cases that need to be handled.
+<<latent pattern label of an instance input>>=
+/issued_warning := 1 & 
+  warning("Yes, Virginia, there are latent labels of instance inputs: ", expimage(e))
+e # change nothing
+@ 
+Let it be noted that at one point we had the following Band-Aid:
+<<Band-Aid that once covered latent pattern label of an instance input>>=
+# fail or vanishing?  or other? not sure!
+# Should this arm should be like the one above? i.e.:
+# This gets us part of the way to binding an a "constructor-typed" operand
+# in a constructor application to a location in an instruction stream, 
+# but it's not quite right. 
+# I have to think about this some more.                           
+eliminate_instances_f(latent_patlabel(unwind_instance_inputs(e.instance, "")))
+@ This was before we introduced bottom-up simplification.
+
+@
+Unwinding the instance inputs may mean using an argument table, or it
+may mean creating a fresh name for a field of a binding instance.
+<<instance elimination>>=
+and unwindInstanceInputs ? =
+  let <<unwinding>>
+      fun wildVar s = Exp.var s before Wildcard.makeWild s
+  in  case unwind (?, [])
+        of BINDING_INSTANCE_VAR (s, wild) => (if wild then wildVar else Exp.var) s
+         | REDUCED e => e
+         | NO_PROGRESS e => e
+  end
+@ [[unwind]] may result in a variable standing for a binding instance
+(or a part thereof), in a reduced expression, or in an expression that
+made no progress at all.
+The latter two cases distinguish when it is safe for [[unwind]] to
+call itself recursively.
+<<unwinding>>=
+datatype result = BINDING_INSTANCE_VAR of string * bool (* boolean==wild *)
+                | REDUCED of Exp.exp
+                | NO_PROGRESS of Exp.exp
+@
+In the arm for [[U.INSTANCE]] below, the ``false'' branch of the
+conditional returns [[U.FAIL]], because nested
+constructor applications can produce nonsense ([[U.FAIL]]) guarded by
+conditions that are statically false.
+For example, in the following pattern, the first
+disjunct is always true, and the second is always false.
+\begin{verbatim}
+  {Y(x) IS Y} => (?Y(x):): <pattern>
+| {Y(x) IS C, ... } => (?Y(x):): (?Y(x).C.B:): <pattern>
+\end{verbatim}
+The binding instance \verb|(?Y(x).C.B:)| is meaningless because
+\verb|Y(x) is C| is false.
+
+Note if we select an input from a binding instance, and if the input
+is of constructor type, then we have a new, wild binding instance with
+a suitable name.
+This actually happens on the Pentium.
+<<unwinding>>=
+fun unwind ((instance, opspec as {cons, operand}), postfixName) =
+  let val trueCons = C.fromId cons
+      val dot = "<dot>"
+      val newname = dot :: #name (C.info trueCons) :: dot :: operand :: postfixName
+  in  case instance
+        of U.INSTANCE (exps, cons' as {typeid, tag, family}) =>
+             REDUCED (if cons = cons' then
+                        C.operandSelect(trueCons, operand, exps)
+                      else
+                        Exp.fail "instance input from mismatched constructor")
+         | U.BINDING_INSTANCE (name, wild, cons) =>
+             (case #2 (C.operandNamed(trueCons, operand))
+                of C.INSTANCE instype =>
+                     REDUCED (U.BINDING_INSTANCE(String.concat(name :: newname),
+                                                 true, instype))
+                 | C.INTEGER _ =>
+                     BINDING_INSTANCE_VAR (String.concat(name :: newname), 
+                                           wild orelse not (null newname)))
+         | U.INSTANCE_INPUT ? =>
+             (case unwind(?, newname)
+                of REDUCED e => unwind((e, opspec), postfixName)
+                       (* guaranteed to terminate *)  (* was newname in old code *)
+                 | NO_PROGRESS e => NO_PROGRESS (U.INSTANCE_INPUT(e, opspec))
+                 | answer as BINDING_INSTANCE_VAR _ => answer)
+         | _ => NO_PROGRESS (U.INSTANCE_INPUT (instance, opspec))
+  end
+@ We figure the name of the binding instance variable on the
+way down, but we put together [[U.INSTANCE_INPUT]] on the way up.
+I think this scheme might be an artifact of old code.
+Note that even if a binding instance is not wild, things selected from
+that binding instance are wild.
+``Wild'' is really a misnomer here; what's going on is those names
+don't get into scope.
+@
+\subsection{Elaborating constructor specifications}
+<<interface for structure [[ElabCons]] (constructor elaboration)>>=
+structure ElabCons : sig
+  type interpretation = string * Denotable.denotable StringMap.map
+  val foldrOpcodeNames  : (string * 'b -> 'b) -> 'b -> Ast.opcode  -> 'b
+  val foldrOperandNames : (string * 'b -> 'b) -> 'b -> Ast.operand list -> 'b
+  val explodeOpcode : SourceMap.sourcemap * FieldInfo.info
+                       -> (string -> Denotable.denotable option)
+                       -> Ast.opcode -> interpretation list
+  val operand : 
+     StringSet.set * ErrorMsg.error_context 
+      -> (string -> Denotable.denotable option)
+      -> (string * Ast.region) * bool 
+      -> Denotable.Constructor.operand Error.error
+end
+@
+\subsection{Exploding opcodes}
+The first part of the elaboration is ``exploding'' the opcode.
+It takes an opcode and environment and returns a list of all the
+interpretations of an opcode.
+An interpretation is a 
+(name, environment) pair and will lead to a constructor.
+The environment gives the bindings of the opcode elements for use on
+the right-hand side of the constructors.
+@
+[[explodeOpcode]] generates these pairs
+by enumerating disjuncts and field values for disjuncts and fields
+that appear in the constructor's opcode.
+Those disjuncts and fields are bound in the initial environment for the constructor.
+[[addInterpretation]] adds one interpretation of the first opcode
+element to all the interpretations in the tail.
+<<values for constructor elaboration>>=
+fun explodeOpcode (smap, info) lookup (codes, rgn) =
+  let open Error 
+      type element = string * D.denotable StringMap.map
+      fun addInterpretation(originalName, expandedName, meaning, tail) =
+        let fun addBinding env =
+              case meaning
+                of NONE => env
+                 | SOME x =>
+                     case StringMap.find(env, originalName)
+                       of SOME _ => errorl ["Replicated opcode element ", originalName]
+                        | NONE => StringMap.insert(env, originalName, x)
+        in  map (fn (n, env) => (expandedName^n, addBinding env)) tail
+        end
+      fun multiplyInterpretations (code, tail) =
+        let fun multiplyDenotable (n, D.FIELD field) = <<enumerate named values>>
+              | multiplyDenotable (n, D.PATTERN p)   = <<enumerate named disjuncts>>
+              | multiplyDenotable (n, d) = 
+                  Denotable.error("field or pattern in opcode", d, SOME n)
+            fun multiplyLookup (n, SOME d) = multiplyDenotable(n, d)
+              | multiplyLookup (n, NONE) = (<<warn of unbound ident>>;
+                                            addInterpretation(n, n, NONE, tail))
+        in
+            case code of Ast.LITERAL_opcode n => addInterpretation(n, n, NONE, tail)
+                       | Ast.OPCODE n => multiplyLookup(n, lookup n)
+        end
+      fun blast [] = [("", StringMap.empty)]
+        | blast (h::t) = multiplyInterpretations(h, blast t)
+  in  blast codes                         
+  end
+<<warn of unbound ident>>=
+if !GlobalState.unboundOpcodeIdentWarning then
+  ErrorMsg.warning smap
+    (rgn, ["Identifier ", n, " is undefined --- assuming \"", n, "\""])
+else
+  ()
+@
+Every name and value pair gets folded in.
+<<enumerate named values>>=
+let val (names, _) = FieldInfo.namesOf (field, info)
+    val size = case field of {range={hi,lo},...} => hi - lo
+    fun addFieldValue(name, k, newInterps) =
+      addInterpretation(n, name, SOME (D.TMP (Exp.const k, SOME field)), tail)
+      @ newInterps
+in  if StringMap.numItems names = 0 then
+      errorl ["Used field `", #name field, "' in opcode without supplying field names"]
+    else
+      StringMap.foldli addFieldValue [] names
+end
+@ 
+<<enumerate named disjuncts>>= 
+let val PS.PAT(_, disjuncts) = p
+    fun addDisjunct(d as PS.DIS(name, _, _), newInterps) =
+      let val newname = case name of SOME dname => dname | NONE => n
+          val disjunct = Denotable.PATTERN (PS.PAT(SOME newname, [d]))
+      in  addInterpretation(n, newname, SOME disjunct, tail) @ newInterps
+      end
+in  foldl addDisjunct [] disjuncts
+end
+@ 
+\subsection{Typing operands}
+We compute the types of operands by looking up their names (in the
+global symbol table).  If we don't find the name, we strip off
+trailing digits and underscores until we find the name or run out of
+trailers. 
+After that, we make a decision based on the denotation of the name (if
+any). [[lookupBase]] does that job.
+We don't strip trailing things to find out if an operand is
+relocatable---the specifier has to write, e.g., [[relocatable addr1]].
+
+
+An [[Operand]] may be the name of a symbol or the name of a constructor
+type trailed by zero or more digits (e.g., [[Address]], [[Address1]], etc).
+Note that variables used as relocatable addresses live in the symbol table.
+Finally, if not recognized, it is treated as a variable.
+Only a field may be sign-extended with a bang.
+<<values for constructor elaboration>>=
+fun operand (relocatable, errorContext) lookup ((name, rgn), signed) = 
+  let fun lookupBase s =
+        let fun isTrailer c = c = #"_" orelse Char.isDigit c
+            fun look [] = NONE
+              | look (s as (h::t)) =
+                  case lookup (implode (rev s))
+                    of SOME x => SOME x
+                     | NONE => if isTrailer h then look t else NONE
+        in  case lookup s of SOME x => SOME x | NONE => look (rev (explode s))
+        end
+      fun int (f, w) =
+            (name, D.Constructor.INTEGER {signed=signed, width=w},
+             {field=f, relocatable=StringSet.member(relocatable, name)})
+      fun operand () = 
+        case lookupBase name
+          of NONE => int (NONE, NONE)
+           | SOME (D.FIELD f) => int (SOME f, SOME (Field.fwidth f))
+           | SOME (D.CONSTYPE c) => 
+               let val _ = D.Constructor.useConstype c
+               in  (name, D.Constructor.INSTANCE (D.Constructor.typeid c),
+                    {relocatable=false, field=NONE})
+               end
+           | SOME d => D.error("unbound name, field, or constructor input",
+                               d, SOME name)
+  in  Error.catch errorContext rgn (Error.OK o operand) ()
+  end
+@ 
+A constructor specification defines one or more constructors.
+(Multiple constructors are specified by enumerating disjuncts of patterns 
+that appear in the opcode, or by enumerating values of fields that appear in the opcode.)
+[[constemplate]] returns a template that is filled in differently for
+each constructor (by [[explode]]).
+[[instantiate_template]] is called by [[explode]] to create a complete
+[[Stype]] from a template and environment [[rho]].
+Differences between a template and a full-fledged constructor:
+\begin{itemize}
+\item A template has no name,  initial environment, or tag
+\end{itemize} 
+<<*>>=
+procedure constemplate(type, opcode, operands, branches)
+  local inputs, inputs_labs
+  <<make [[inputs]] the set of input names, barfing if duplicates exist>>
+  B := []
+  every b := !branches do { # b === [eqns, pat]
+    <<make [[inputs_labs]] [[inputs]] plus labels defined in [[b[2]]], barfing on duplicates>>
+    put(B, branch(b[1], inject_soln(solve(balance_eqns(b[1]), inputs_labs)), 
+                  \b[2] | implicit_pattern(opcode, operands)))
+  }
+  return constructor(&null, &null, operands, type, B, &null, &null)
+end
+@
+[[instantiate_template]] instantiates the templates by assigning name, environment,
+and branch tags.  Both the list of branches and the branches themselves
+have to be copied.
+<<*>>=
+procedure instantiate_template(op, t, rho)
+  /t.type.ntags := 0
+  t.type.ntags +:= 1
+  <<check that [[t.type.ntags]] doesn't overflow tag bits>>
+  return constructor(iname(op), op, t.operands, t.type, t.branches, rho, t.type.ntags)
+end
+<<make [[inputs]] the set of input names, barfing if duplicates exist>>=
+inputs := set()
+every i := inputs_of_operands(operands) do
+  if member(inputs, i.name) then
+    error("Input named ", i.name, " is used twice in one constructor")
+  else
+    insert(inputs, i.name)
+@ 
+Note that duplicate labels are OK, because they could appear in
+different disjuncts.  We have to sort that stuff out later.
+(Also note that implicit patterns never define labels.)
+<<make [[inputs_labs]] [[inputs]] plus labels defined in [[b[2]]], barfing on duplicates>>=
+if \b[2] then {
+  inputs_labs := copy(inputs)
+  every labname := pattern_label_names(b[2]) do
+    if member(inputs, labname) then
+      error("label name ", labname, ": conflicts with constructor input name")
+    else
+      insert(inputs_labs, labname)
+} else {
+  inputs_labs := inputs
+}
+@
+
+@ 
+\subsection{Boilerplate}
+<<obsolete elabcons.sml>>=
+functor ElabConsFun (ElabExp : ELAB_EXP) : ELAB_CONS = struct
+  structure ElabExp = ElabExp
+  structure Denotable = ElabExp.Denotable
+  structure Pattern = Denotable.Pattern
+  structure Exp = Pattern.Exp
+  type interpretation = string * Denotable.denotable StringMap.map
+  structure D = Denotable
+  <<abbreviations for types in [[Denotable.Constructor]]>>
+  <<exported types>>  
+  <<values for constructor elaboration>>
+end
+@ 
+<<values for constructor elaboration>>=
+local 
+  open Ast
+in 
+  fun foldrOpcodeNames f zero (codes, region) =
+    let fun code (LITERAL_opcode _, x) = x
+          | code (OPCODE n, x) = f(n, x)
+    in  foldr code zero codes
+    end
+  fun foldrOperandNames f zero rands =
+    let fun rand (LITERAL_operand _, x) = x
+          | rand (OPERAND ((n, _), _), x) = f(n, x)
+    in  foldr rand zero rands
+    end
+end
+@ 
+<<junk>>=
+
+    template := constemplate(type, opcode, operands, branches)
+    every cons := explode(opcode, template, globals) do {
+        if /constructors[cons.name] := cons then {
+            verbose("New constructor ", cons.name)
+            put(conslist, cons)
+            insert(type.members, cons)
+            <<if first time thru, check for unused definitions in [[cons]]>>
+        } else if *crhs(constructors[cons.name]).disjuncts = 0 then {
+            verbose("Replacing vacuous constructor ", cons.name)
+            constructors[cons.name] := cons
+            put(conslist, cons)
+            insert(type.members, cons)
+            <<if first time thru, check for unused definitions in [[cons]]>>
+        } else if *crhs(cons).disjuncts = 0 then {
+            verbose("Ignoring extra, vacuous constructor ", cons.name)
+        } else {
+            warning("Ignoring duplicate definition of constructor ", cons.name)
+#           PPxwrite(PPnew(&errout), 
+#               "Keeping $t$o", ppexpimage(crhs(constructors[cons.name])), "$b$n",
+#               "Discarding $t$o", ppexpimage(crhs(cons)), "$b")
+        }
+    }
+    return
+end
+
+

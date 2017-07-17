@@ -1,0 +1,12 @@
+; $Id: sledspec.cm,v 1.5 1999/09/06 16:02:59 nr Exp $
+(* this describes an elaborated specification, but not 
+   the machinery needed to produce one *)
+; module semantic
+group is
+ ;  constructor.cm
+  sledcons.cm
+  error.cm
+
+  sledspec.nw
+  denotable.sig@sledspec.nw
+  denotable.sml@sledspec.nw

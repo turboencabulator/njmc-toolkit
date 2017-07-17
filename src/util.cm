@@ -1,0 +1,30 @@
+; $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $
+; module util
+group is
+  impossible.sml@impossible.nw
+  printexn.sml@printexn.nw
+
+  order.sml@order.nw
+
+  rangeset.nw
+  range.sml@rangeset.nw
+
+  existsmap.sml@util.nw
+  stringdict.sml@util.nw
+  stringset.sml@util.nw
+  stringkey.sig@util.nw
+  stringcasekey.sml@util.nw
+  intdict.sml@util.nw
+  intset.sml@util.nw
+  intkey.sig@util.nw
+  util.sml@util.nw
+  wildcard.sml@util.nw
+  constypeutil.ord@util.nw
+  stringutil.sml@util.nw
+
+  relop.sig@relop.nw
+  relop.ord@relop.nw
+
+  polytab.nw
+
+  smlnj-lib.cm

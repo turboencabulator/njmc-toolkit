@@ -1,0 +1,108 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Converting a SLED match to an ICFP character}
+
+This is useful only for purposes of benchmarking various
+ML matching strategies.
+
+<<icfpmatch.sig>>=
+signature ICFPCHAR = sig
+  datatype variable  = VAR of string 
+   and condition = EQUALS of variable * int
+                 | AND of condition list
+                 | OR of condition list
+   and arm       = ARM of int list * stmt
+   and elseif    = ELSEIF of condition * stmt
+   and stmt      = IF of condition * stmt * elseif list * stmt
+                 | DECISION of decision
+                 | CASE of variable * arm list * stmt
+  withtype decision = int option * string
+   type rule  = int list * stmt
+   type character = rule list
+end
+
+<<icfpmatch.sml>>=
+structure Icfpmatch = struct
+  structure Match = ULinked.Match
+  structure M = Match
+  structure C = M.SledSpec.Constructor
+  structure P = M.Patterns
+  structure A = M.Patterns.Absolute
+  structure Exp = A.Exp
+  structure E = Error
+  structure AFSet = AbsoluteFieldSet
+  structure AFMap = AbsoluteFieldMap
+  structure Char = IcfpChar
+  <<aux functions>>
+  <<functions>>
+end
+@ 
+[[mentions]] produces the set containing all
+absolute fields mentioned in a matching statement.
+Mentions in field bindings {\em don't} count; this information is for
+building decision trees only.%
+\footnote{The original design had no field bindings and omitting them seems to be
+the best migration path.}
+<<aux functions>>=
+fun mentions arms =
+  let fun arm(M.ARM (P.PAT (_, ds), _), mentioned) = foldl dis mentioned ds
+      and dis(P.DIS (name, conds, (constraints, _, _)), mentioned) =
+           foldl (fn ((f, e), m) => AFSet.add(m, f)) mentioned constraints
+  in  AFSet.listItems(foldl arm AFSet.empty arms)
+  end
+@ 
+<<functions>>=
+fun dbindings (P.DIS (name, conds, (constraints, _, _))) =
+  let fun binding (f, {lo, hi}) = Char.EQUALS (Char.VAR (fieldName f), lo)
+  in  wrap binding constraints
+  end
+@ 
+<<functions>>=
+fun addCases code (M.ARM (P.PAT (_, ds), { code=c, ...} ), l) =
+  let fun add (d, l) = (dbindings d, code c) :: l
+  in  foldr add l ds
+  end
+
+fun matchCases code (M.MATCH { arms, ... }) = 
+  { ty = (), cases = foldr (addCases code) [] arms }
+@
+<<aux functions>>=
+fun fieldName ({name, range, class}, offset) = name ^ "_at_" ^ Int.toString offset
+
+fun wrap f l =
+      let fun add (x, tail) = f x :: tail
+      in  Char.AND (foldr add [] l)
+      end
+
+@ 
+Now, find it!
+<<functions>>=
+structure D = DecoderFun(Match)
+
+fun matchers espec =
+  let fun name { cons, operands } = #name (C.info cons)
+      fun m { constype, matcher } = matchCases name matcher
+      fun makefun pfx [] = []
+        | makefun pfx ((l, r) :: t) =
+            pfx :: " match " :: l :: " = \"" :: r :: "\"\n" :: makefun "    |" t
+      fun utter r = "Found instruction " ^ r
+          val failed = Char.DECISION (SOME 1, "Did not find an instruction")
+      fun emit { ty, cases } = 
+        case map (fn (l, r) => Char.ELSEIF (l, Char.DECISION (SOME 0, utter r))) cases
+          of Char.ELSEIF (c, s) :: t => Char.IF (c, s, t, failed)
+           | [] => failed
+  in  E.emap (map (emit o m)) (D.decoder espec)
+  end
+
+val matchers = E.strip o E.emap matchers o ReadSLED.elabFiles
+
+fun convert base =
+  let val outputs = matchers [base ^ ".sled"]
+      fun emit k [] = ()
+        | emit k (h :: t) =
+            let val char = (Emit.ppsexp o Unparse.unparse) [([0], h)]
+            in  Emit.ppWrite 78 (base ^ Int.toString k ^ ".icfp") char
+                ; emit (k+1) t
+            end
+  in  E.emap (emit 0) outputs
+  end

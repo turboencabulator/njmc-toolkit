@@ -1,0 +1,364 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: ty.nw,v 1.20 1999/09/06 16:11:22 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+
+To do:
+\begin{itemize}
+\item Ought to formalize GUARDING!!!!!
+\item Associate guards with closures....
+\end{itemize}
+
+
+
+\section{Expressions and types}
+
+\subsection{Type formation rules}
+The datatype [[ty]] represents the type formation rules for this system.
+<<types representing types>>=
+type constype = {family : int, typeid : int}
+type cons = {family : int, typeid : int, tag : int}
+     (* each constructor has unique family, type id, and tag *)
+datatype ty 
+  = INTEGER of { signed : bool, width : int option }
+  | BOOLEAN
+  | STRING
+  | CHAR
+  | RELOCATABLE of ty
+  | RECORD of (string * ty) list
+  | ARRAY of ty * int option
+  | OBJECT of obj
+  | UNION  of (string * ty) list
+  | UNSAFE_UNION of (string * ty) list
+(*  | ENUM of string list  --- subsumed by unions *)
+  | FUNCTION of function
+  | VAR of {interface:string option, name:string}
+  | INSTANCE of constype (* would be nice to eliminate *)
+  | ANY_POINTER     (* used in C to simulate objects? *)
+  | RECURSIVE of (string * ty) list   (* define recursive types *)
+  | UNIT (* type returned by void functions in C, and type of union
+	    members that carry no value, and of failure *)
+and obj
+  = ROOT
+  | SUBCLASS of 
+      { parent : obj
+	, fields : (string * ty) list
+	, methods : (string * function) list
+	}
+withtype function = {parms : (string * ty) list, varargs : bool, return : ty}
+@ 
+\subsection{Introduction and elimination rules}
+The introduction rules are quite odd, because the whole expression
+mechanism is embedded in \nwanchorto{olc-exp.html}{ordered linear
+combinations}, which support equation solving.
+To work around that eccentricity, I've devised a little language that
+helps me show what kinds of  expressions there are and how to type
+them.
+From this description I can derive \nwanchorto{ty.ty.create.sig}{code
+to create expressions}, \nwanchorto{ty.ty.ord.sml}{representations of
+operators} with ordering functions.
+
+Introduction and elimination rules for integers:
+<<expressions>>=
+NARROWs(e, N) : unsigned N		(* signed narrow, can fail *)
+NARROWu(e, N) : unsigned N		(* unsigned narrow, can fail *)
+FITSs(e, N) : bool			(* test if narrow will succeed *)
+FITSu(e, N) : bool			(* test if narrow will succeed *)
+ASSERT_NARROWs(e, N) : signed N		(* asserts type of operand *)
+ASSERT_NARROWu(e, N) : unsigned N	(* unsigned narrow, can fail *)
+SLICE(e, {lo, width}) : unsigned width  (* bit slicing, never fails *)
+WIDEN(e, N) : signed			(* sign extension *)
+SHIFT(e : ty, N) : shiftType(ty, N)     (* shift left N bits *)
+ORB es : orType tys                     (* bitwise or *)
+INRANGE (e, {lo, hi}) : bool            (* range test *)
+@ [[NARROWs]] leaves an unsigned value.  The corresponding ASSERT
+doesn't, because there's no computation involved.
+@
+When shifting by [[N]], we add [[N]] to the width of integer types.
+<<type functions>>=
+fun max (n, m) = if n > m then n else m : int 
+fun shiftType (INTEGER {signed, width}, N) =
+      let fun adjust NONE = NONE
+            | adjust (SOME k) = SOME (max(0, N + k))
+      in  INTEGER {signed=signed, width=adjust width}
+      end 
+  | shiftType _ = raise IllTyped
+@ Bitwise [[OR]] gives us the widest possible value, and if anything's
+signed, they all are.
+<<type functions>>=
+fun orType types = 
+  let fun ot(INTEGER {signed=s1, width=SOME w1}, INTEGER {signed=s2, width=SOME w2}) =
+	         INTEGER {signed=s1 orelse s2, width=SOME (max(w1, w2))}
+	| ot(INTEGER {signed=s1, ...}, INTEGER {signed=s2, ...}) =
+		 INTEGER {signed=s1 orelse s2, width=NONE}
+	| ot _ = raise IllTyped
+  in  foldl ot (INTEGER {signed=false, width=SOME 0 }) types
+  end
+@ 
+<<expressions>>=
+AFIELD (f : Field.absolute_field) : afieldType f
+<<type functions>>=
+fun afieldType (f, n) = unsigned (SOME (FieldTypes.fwidth f))
+<<expressions>>=
+DIV(e : ty, N) : divType(ty, N)		(* divide by N, truncate to minus infinity *)
+MOD(e : ty, N) : modType(ty, N)		(* modulo N *)
+@ 
+For now, division and modulus lose all type information.
+I should find a rule that propagates it:
+<<type functions>>=
+fun divType (t as INTEGER {signed, width}, N) = t
+  | divType _ = raise IllTyped
+fun modType (t as INTEGER {signed, width}, N) = t (* could do *much* better *)
+  | modType _ = raise IllTyped
+@ 
+Introduction and elimination for Booleans:
+<<expressions>>=
+PC_KNOWN : bool				(* good only in field binding or conditions *)
+TRUE : bool
+FALSE : bool
+ANDALSO es : bools tys			(* short-circuit boolean *)
+ORELSE  es : bools tys			(* short-circuit boolean *)
+NOT(e : bool) : bool
+<<expressions>>=
+CONDITION (e1, relop : Relop.relop, e2) : bool
+@
+<<type functions>>=
+fun bools tys =
+  if List.all (fn BOOLEAN => true | _ => false) tys then bool else raise IllTyped
+
+@ 
+Strings.
+[[MISSING_STRING]] may translate to a null pointer in some languages.
+<<expressions>>=
+STRING S : string
+MISSING_STRING : string
+@ 
+Characters.
+[[MISSING_STRING]] may translate to a null pointer in some languages.
+<<expressions>>=
+CHAR c : char
+@ 
+Introduction and elimination for relocatables.
+<<expressions>>=
+PC : RELOCATABLE unsigned     (* meaningful only in field binding or conditions *)
+FORCE(e : RELOCATABLE ty) : ty		(* force relocatable to value *)
+KNOWN(e : RELOCATABLE ty) : bool	(* true iff FORCE would succeed *)
+@ 
+Record and object operations.
+First, elimination.
+<<expressions>>=
+SELECT(e : ty, membername) : selection(ty, membername) (* member of struct/union *)
+CAN_SELECT(e : ty, membername) : canSelect(ty, membername) (* tag test *)
+<<type functions>>=
+local
+  open Type
+  fun match name = List.find (fn (n, _) => name = n)
+  fun memberty (l, name) =
+    case match name l
+      of SOME (_, ty) => ty
+       | NONE => raise IllTyped
+  fun fieldty (ROOT, name) = raise IllTyped
+    | fieldty (SUBCLASS {parent, fields, methods}, name) =
+        case match name fields
+	  of SOME(_, ty) => ty
+	   | NONE => fieldty(parent, name)
+in
+  fun selection(RECORD l, name) = memberty(l, name)
+    | selection(UNION l, name) = memberty(l, name)
+    | selection(UNSAFE_UNION l, name) = memberty(l, name)
+    | selection(OBJECT ob, name) = fieldty(ob, name)
+    | selection _ = raise IllTyped
+  fun canSelect(ty, name) = (selection(ty, name); BOOLEAN)
+end
+@ 
+Now, formation:
+<<expressions>>=
+RECORD (es, {fields, ty}) : record(fields, tys, ty)
+UNION (e : exptype, {name, ty}) : union(exptype, name, ty)
+UNSAFE_UNION (e : exptype, {name, ty}) : union(exptype, name, ty)
+@ 
+<<type functions>>=
+fun zip (l1, l2) = 
+  if length l1 = length l2 then ListPair.zip (l1, l2) else raise IllTyped
+@ 
+We can make a union if we have the right operand.
+<<type functions>>=
+fun listmatch [] n = raise IllTyped
+  | listmatch ((n', x)::t) n = if n=n' then x else listmatch t n
+fun union(exptype, name, u as Type.UNION members) =
+      if exptype = listmatch members name then u else raise IllTyped
+  | union(exptype, name, u as Type.UNSAFE_UNION members) =
+      if exptype = listmatch members name then u else raise IllTyped
+  | union _ = raise IllTyped
+fun record(fields, tys, t as Type.RECORD fieldspecs) =
+      let val ftys = zip (fields, tys)
+      in  if length ftys = length fieldspecs andalso
+             List.all (fn (f, ty) => listmatch fieldspecs f = ty) ftys
+          then
+            t
+          else
+            raise IllTyped
+      end
+  | record(fields, tys, t as Type.VAR _) = t (* I hope *)
+  | record _ = raise IllTyped
+@ 
+Languages like C don't permit us to write union and record
+expressions directly.  To work around those restrictions, I create a
+new kind of expression [[SUTMP]] (short for ``struct/union
+temporary'').
+The idea is that a struct or union expression [[u]] will be replaced
+with an expression [[SUTMP(t, u)]] where [[t]] is a temporary used to
+hold the structure or union.
+<<expressions>>=
+SUTMP(e1 : tmptype, e2 : exptype) : sutmp(tmptype, exptype)
+@ 
+<<type functions>>=
+fun sutmp(tmptype, exptype) = if tmptype = exptype then exptype else raise IllTyped
+@ 
+The two below are specializations of the union idea. 
+It would be nice to get rid of them eventually.
+<<expressions>>=
+INSTANCE_INPUT(e : INSTANCE constype, {cons, operand}) : input(constype, cons, operand)
+INSTANCE_TAGGED(e : INSTANCE constype, {cons, uid}) : tag(constype, cons)
+   (* arg is instance; int is uid *)
+   (* the argument is an instance of cons *)
+<<type functions>>=
+fun input ({typeid=typeid'}, cons as {tag, typeid}, operand) =
+  if typeid = typeid' then
+    operandType(cons, operand)
+  else 
+    raise IllTyped
+fun tag ({typeid=typeid'}, cons as {tag, typeid}) =
+  if typeid = typeid' then bool else raise IllTyped
+@ 
+Now we get into instances, which are very tricky, because they can be
+regular instances, as created with constructor application, or binding
+instances, as used in matching.
+<<expressions>>=
+INSTANCE(es, cons) : instance(tys, cons)   (* make an instance by giving operands *)
+BINDING_INSTANCE (name : string, wild : static_bool, constype) : Type.INSTANCE constype
+@ For binding instances, I have to keep the name even if I have a
+wildcard and I'll never use the name.  It must be kept so that I can
+properly get nonlinear conditions on elements of the  (nonexistent) instance.
+<<type functions>>=
+fun instance(tys, cons as {tag, typeid}) =
+  let val expected = operandTypes cons
+  in  if length tys = length expected andalso ListPair.all op = (expected, tys) then
+        Type.INSTANCE {typeid=typeid}
+      else
+	raise IllTyped
+  end
+@ Extracting from the wrong type of instance can lead to failure.
+<<expressions>>=
+FAIL S : UNIT
+@ 
+We can comment expressions.
+<<expressions>>=
+COMMENTED (e : ty, S) : ty
+@ 
+Arrays.
+<<expressions>>=
+ARRAY es : array tys
+ARRAY_SUB (e1 : ty, e2) : elementType ty
+<<type functions>>=
+fun array [] = Impossible.impossible "empty array"
+  | array (tys as h::t) =
+      if List.all (fn ty => ty = h) t then
+	Type.ARRAY (h, SOME (length tys))
+      else
+	raise IllTyped
+fun elementType (Type.ARRAY (e, _)) = e
+  | elementType _ = raise IllTyped
+@ 
+Finally, we offer calls.
+<<expressions>>=
+CALL es : callType tys
+@ 
+I don't really know what the parameter rules should be.
+<<type functions>>=
+fun assignable (INTEGER _, INTEGER _) = true
+  | assignable (dst, src) = dst = src
+fun callType [] = Impossible.impossible "call with no proc" 
+  | callType (FUNCTION {parms, varargs, return} :: args) =
+      let fun check (formal::formals, actual::actuals) =
+	        if assignable(formal, actual) then check(formals, actuals)
+		else raise IllTyped
+            | check ([], []) = return
+            | check (_, []) = raise IllTyped (* not enough actuals *)
+            | check ([], _) = if varargs then return else raise IllTyped
+		                    (* too many actuals *)
+      in  check(map #2 parms, args)
+      end
+  | callType _ = raise IllTyped (* calling non-function *)
+@ 
+Simplification suppresion doesn't change type
+<<expressions>>=
+NOSIMP(e : ty) : ty			(* suppress the simplifier *)
+@ 
+We can use raw [[Ast.code]] as an expression, provided we specify the
+type.
+<<expressions>>=
+RAW (code : Ast.code, sourcemap : SourceMap.sourcemap, ty : Type.ty) : ty
+@ 
+At minimum I'm missing rules for method invocation and function call.
+There are probably lots of others...
+
+@
+<<ty.ty>>=
+(* %{
+ * type cons = Type.cons
+ * type ty = Type.ty
+ * %}
+ *)
+signature CONS_CHECKER = sig
+  type cons = {tag:int, typeid:int}
+  val operandType : cons * string -> Type.ty
+  val operandTypes : cons -> Type.ty list
+end
+
+functor CheckerFun(Constructor : CONS_CHECKER) = struct
+  open Type
+  open Operators
+  open Constructor
+  exception IllTyped
+
+  val bool = BOOLEAN
+  val string = Type.STRING
+  fun unsigned n = Type.INTEGER {signed=false, width=n}
+  fun signed   n = Type.INTEGER {signed=true,  width=n}
+
+  <<type functions>>
+%%
+<<expressions>>
+@ 
+<<old goo>>=
+  fun operandType(cons, operand) = 
+    Constructor.expType(Constructor.operandNamed(Constructor.fromId cons, operand))
+  fun operandTypes cons =
+    map (Constructor.expType o #2) (Constructor.inputsOf (Constructor.fromId cons))
+@ 
+<<ty.ord>>=
+structure Type = struct
+  <<types representing types>>
+%%
+  <<types representing types>>
+%%
+  val proctype : (string * ty) list -> function =
+    fn parms => {parms=parms, varargs=false, return=UNIT}
+  val funtype  : (string * ty) list * ty -> function =
+    fn (parms, result) => {parms=parms, varargs=false, return=result}
+  val intTy = INTEGER {signed=false, width=NONE}
+  val unsignedTy = INTEGER {signed=true, width=NONE} 
+end
+@ 
+<<checker.sig>>=
+signature CHECKER = sig
+  type nullop
+  type unop
+  type binop
+  type anyop
+  val nulltype : nullop -> Type.ty
+  val untype   : unop  * Type.ty -> Type.ty
+  val bintype  : binop * Type.ty * Type.ty -> Type.ty
+  val anytype  : anyop * Type.ty list -> Type.ty
+end

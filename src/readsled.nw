@@ -1,0 +1,123 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Reading and elaborating a SLED specification}
+[[parseMatch]] reads in a matching statement.
+[[elab]] and [[elabFiles]] read in single and multiple SLED
+specifications.
+[[tokens]] is for debugging lexical analysis.
+<<readsled.sig>>=
+signature READ_SLED = sig
+  structure SledSpec : SLED_SPEC
+  type token
+  val parseMatch : string -> SourceMap.sourcemap * Ast.codefile Error.error
+  val elab : string -> SourceMap.sourcemap * (string list * SledSpec.espec) Error.error
+  val elabFiles : string list -> SledSpec.espec Error.error
+  val tokens : {matcher:bool} -> string -> SourceMap.sourcemap * token list
+end
+<<readsled.sml>>=
+structure ReadSLED : READ_SLED = struct
+  structure SledSpec = ULinked.SledSpec
+  type token = Token.token
+
+  fun tokens {matcher} filename = 
+    let val sourcemap = SourceMap.newmap (2, {fileName=filename, line=1, column=1})
+				(* yes, yypos is initially 2 *)
+        val stream = TextIO.openIn filename
+        fun read n = TextIO.inputN(stream, n)
+        val lexer = Mlex.makeLexer read
+	            (Mlex.UserDeclarations.lexarg (sourcemap, matcher, Impossible.impossible))
+        fun gobble tokens = 
+           case lexer() of (Token.EOF,_) => Token.EOF :: tokens
+                         | (t,_) => gobble (t::tokens)
+           handle Mlex.LexError => tokens 
+		| e => (PrintExn.printExn e; tokens)
+    in  (sourcemap, gobble [])
+    end
+
+  fun parse (initialToken, xform, isMatch) filename =
+    let val sourcemap = SourceMap.newmap (2, {fileName=filename, line=1, column=1})
+				(* yes, yypos is initially 2 *)
+        val stream = TextIO.openIn filename
+        fun read n = TextIO.inputN(stream, n)
+        val lexarg = Mlex.UserDeclarations.lexarg (sourcemap, isMatch, Impossible.impossible)
+        val lexer = Mlex.makeLexer read lexarg
+        val tokens : (Token.token * bool) list ref = ref []
+        val parsearg = { seeing_newlines = #seeing_newlines lexarg
+                       , seeing_ws       = #seeing_ws lexarg
+			(* , tokens_seen = tokens *)
+                       }
+        fun lex_stream () = 
+          let val flag = !(#seeing_newlines lexarg)
+              val (token, rgn) = lexer()
+              (*val _ = tokens := (token, flag) :: !tokens*)
+          in  (token, rgn, Parser.STREAM lex_stream)
+          end
+        fun showError region msgs =
+          Error.catch (sourcemap, ErrorMsg.defaultConsumer()) region Error.errorl msgs
+        open Parser
+        val initial_stream = 
+          STREAM (fn() => (initialToken, SourceMap.nullRegion, STREAM lex_stream))
+        val parser = makeParser parsearg
+	fun lastRegion sourcemap = 
+	  let val pos = SourceMap.lastChange sourcemap in (pos, pos) end
+        val (ast, last) = (Error.OK (parser initial_stream), NONE)
+            handle Expected {expected, parsing, found} =>
+	      (showError (lastRegion sourcemap)
+	                ["Syntax error",
+			 (case parsing of SOME p => " parsing " ^ p
+		                        | NONE => ""), 
+			 ": expected ", expected,
+			 "; found ", TokenString.tokenString found
+			 ]
+               , SOME found
+               )
+            | SyntaxError {parsing, msg, region, found} =>
+                let val msg = if null msg then
+                                ["unexpected ", TokenString.tokenString found]
+                              else
+                                msg
+                in  ( showError region
+                        ("Syntax error parsing " :: parsing :: ": " :: msg)
+                    , SOME found
+                    )
+                end
+    in  (sourcemap, Error.emap xform ast)
+    end
+  val impossible = ErrorMsg.impossible
+  val parseSpec =
+     parse (Token.R'BOGUSSPECMARKER,
+	    fn Ast.SPEC s => s | _ => impossible "spec",
+	    false)
+  val parseMatch =
+     parse (Token.R'BOGUSCODEMARKER,
+	    fn Ast.CODEFILE c => c | _ => impossible "match",
+	    true)
+
+  fun elab filename =
+    let val (sm, specs) = parseSpec filename
+	val _ = LinkEncoderBasics.reset ()   (* for performance only *)
+        val elab = ULinked.Elaborate.elaborate sm
+        fun e specs = 
+          let val espec = foldl elab (ULinked.SledSpec.emptySpec ()) specs
+              val _ = GlobalState.fieldinfo := #fieldInfo espec
+              val ignored = StringSet.listItems (#ignored espec)
+          in  (ignored, espec)
+          end
+    in  (sm, Error.emap e specs)
+    end
+
+  fun elabFiles filenames =
+    let val _ = LinkEncoderBasics.reset () 
+        fun er (x, Error.OK y) = Error.OK (x, y)
+          | er _ = Error.ERROR
+        val parsedSpecs = Error.errorList (map (er o parseSpec) filenames)
+	fun elabParsed ((sm, specs), prev) =
+	  let val espec = foldl (ULinked.Elaborate.elaborate sm) prev specs
+	      val _ = GlobalState.fieldinfo := #fieldInfo espec
+	  in  espec
+	  end
+    in  
+	  Error.emap (foldl elabParsed (ULinked.SledSpec.emptySpec ())) parsedSpecs
+    end
+end
+

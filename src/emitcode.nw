@@ -1,0 +1,130 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\chapter{Support for emission of interfaces and implementations}
+A [[synch]] helps resynchronize code emitted by a prettyprinter, using
+\verb+#line+ or some similar mechanism.
+See [[PP_DYNAMIC]] in \module{pp} for more information.
+<<emitcode.sig>>=
+signature EMIT_CODE = sig
+  datatype language = C | ML
+
+  (* used to emit #line *)
+  type synch = string -> (int * string list -> unit) * int -> int
+  val csynch  : synch
+  val mlsynch : synch
+  val nosynch : synch
+
+  (* write direct to a file, or produce a consumer *)
+  val ppWrite    : synch -> int -> string -> PP.pretty -> unit
+  val ppConsumer : synch -> int -> string -> TextIO.outstream * (PP.pretty -> int)
+
+  type ('int, 'imp, 'match) printer = 
+    { implementation  : 'imp -> PP.pretty
+    , implementation' :  (PP.pretty -> unit) -> 'imp -> unit
+    , interface       : 'int -> PP.pretty
+    , match           : 'match -> PP.pretty
+    }
+  type ('int, 'imp) transformer = {ximp:'imp -> 'imp, xint:'int -> 'int}
+
+  (* args are language, language-emitter printer, xform, and function
+     to produce interfaces and implementations to be emitted.
+     Result is functions to do the emitting, given output basename *)
+
+  val emitters : language
+               * ({hex:bool, pcUnit:int} -> 'a * ('int, 'imp, 'b) printer)
+               * ('int, 'imp) transformer
+               -> {imps:'imp list, ints:'int list}
+               -> {emitBoth  : string -> unit, emitDotInt: string -> unit}
+
+  val idx : ('int, 'imp) transformer
+end
+@ 
+<<emitcode.sml>>=
+structure EmitCode : EMIT_CODE = struct
+  datatype language = C | ML
+  type synch = string -> (int * string list -> unit) * int -> int
+  type ('int, 'imp, 'match) printer = 
+    { implementation  : 'imp -> PP.pretty
+    , implementation' :  (PP.pretty -> unit) -> 'imp -> unit
+    , interface       : 'int -> PP.pretty
+    , match           : 'match -> PP.pretty
+    }
+  type ('int, 'imp) transformer = {ximp:'imp -> 'imp, xint:'int -> 'int}
+  <<functions>>
+
+end
+@ 
+Line-number syncherronization.
+<<functions>>=
+fun csynch file (emit, n) = 
+  1 before emit(0, ["#line ", Int.toString (n+2), " \"", file, "\""]) 
+fun mlsynch file (emit, n) = 
+  1 before emit(0, ["(*#line ", Int.toString (n+1), " \"", file, "\"*)"]) 
+fun nosynch _ _ = 0
+@ 
+Emission to a file or a consumer.
+<<functions>>=
+fun ppWrite synch width filename pp = 
+  let val out = TextIO.openOut filename
+      val normal = PPNormal.normalize pp
+  in  PPDynamic.set (PPDynamic.standardEmitLine out, synch filename, width) normal;
+      TextIO.closeOut out
+  end      
+fun ppConsumer synch width filename =
+  let val out = TextIO.openOut filename
+  in  ( out
+        , PPDynamic.set (PPDynamic.standardEmitLine out, synch filename, width)
+        o PPNormal.normalize
+        )
+  end      
+@ 
+Assembling the prettyprinters.
+[[ppImp]] does a full implementation at once.
+[[ppInt]] does a full interface at once.
+[[ppImp']] does an implementation incrementally, one top-level
+declaration at a time.
+<<functions>>=
+fun ('a, 'b, 'c) mkpps printers =
+  let val (_,
+           {implementation=ppImp, interface=ppInt, implementation'=ppImp', match=_}
+           : ('a, 'b, 'c) printer) =
+              printers {hex=false, pcUnit=8} (* bogus !!! *)
+  in  {ppImp=ppImp, ppImp'=ppImp', ppInt=ppInt}
+  end
+@ 
+We might compose a transformation of an interface or an
+implementation.
+[[idx]] is the identity transformation.
+<<functions>>=
+fun xform {ppImp, ppInt, ppImp'} ({ximp, xint} : ('a, 'b) transformer) =
+      {ppImp = ppImp o ximp, ppInt = ppInt o xint,
+         ppImp' = fn cons => ppImp' cons o ximp}
+val idx = {ximp = fn x => x, xint = fn x => x}
+@ 
+
+<<functions>>=
+fun intname  C  base = base ^ ".h"
+  | intname  ML base = base ^ ".sig"
+fun impname  C  base = base ^ ".c"
+  | impname  ML base = base ^ ".sml"
+fun sizename C  base = base ^ "-size.c"
+  | sizename ML base = base ^ "-size.sml"
+@ 
+<<functions>>=
+fun emitters (codegen, printers, transformation) =
+  let val {ppImp, ppInt, ppImp'} = xform (mkpps printers) transformation
+      val nl = PP.Short.nl
+      val ppInts = PP.LIST o foldr (fn (i, t) => ppInt i :: nl :: nl :: t) []
+      val synch = case codegen of C => csynch | ML => mlsynch
+  in  fn {ints, imps} =>
+        { emitDotInt = fn s => ppWrite nosynch 78 (s ^ ".int") (ppInts ints)
+        , emitBoth = fn s =>
+            let val (cout, ccons) = ppConsumer synch 78 (impname codegen s)
+            in  ( ppWrite synch 78 (intname codegen s) (ppInts ints)
+                ; app (ppImp' (ignore o ccons)) imps
+                ; TextIO.closeOut cout
+                )
+            end
+        }
+  end
+@

@@ -1,0 +1,5 @@
+; module encoding
+group is
+  encode.cm
+
+  instance-gen.sig@instance.nw

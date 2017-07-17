@@ -1,0 +1,261 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: code.nw,v 1.21 1998/11/11 20:56:55 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+
+\section{Representing interfaces and implementations}
+
+These types are intended to support the generation of idiomatic code
+in a variety of high-level languages.
+I'm taking an experimental approach in which I intend to target to a
+very high-level interface, then rewrite towards a lower level when
+necessary.
+For example:
+\begin{itemize}
+\item
+I intend to target discriminated unions for addressing modes, etc.
+A back end that generates~C will require a previous rewriting step to
+convert each discrimated union into the usual structure pairing a
+C~union with a tag.
+A back end that generates Modula-3 will require a rewriting step that
+uses the object system to implement discriminated unions, using
+[[TYPECASE]] to discriminate.
+In both cases, the rewriting engine may rewrite simple unions into
+enumerations when possible.
+\item
+One way to handle printing is to pass in an object with a method like
+[[printf]].
+In some cases, particularly for~C, it may be best to rewrite such
+objects into pairs of (function, pointer to first argument) instead of
+using a more general mechanism involving heap-allocated structures
+full of function pointers.
+\end{itemize}
+
+This interface is very preliminary---in its current state, it's not
+powerful enough to meet the goals above.
+\nwanchorto{ty.html}{Types and expressions} are defined elsewhere.
+You can \nwanchorto{emit-c.html}{browse a preliminary emitter for~C}.
+<<code types>>=
+type ty = Type.ty
+datatype statement
+  = STATEMENT' of SourceMap.sourcemap * SourceMap.region * statement
+  | BLOCK_COMMENT of PP.pretty
+  | COMMENTED_STMT of statement * string
+  | RESYNCH_STMT of string * int  (* file, line *)
+  | EMIT of token list
+  | BLOCK of defn list * statement list
+  | IF of (exp * statement) list  (* Dijkstra-style guarded if *)
+  | TAGCASE of exp * constype * consarm list 
+		     (* should be general discrimination on union! *)
+  | INTCASE of exp * (RangeSet.set * statement) list
+  | SKIP 
+  | FAIL of string * exp list (* printf-like *)
+  | ALLOC_CLOSURE of unit (* bogus ??? *)
+  | RETURN of exp
+  | ASGN of exp * exp
+  | EVAL of exp  (* e.g., call *)
+  | METHOD_CALL of exp * string * exp list (* should be an exp *)
+  | RAISE of exp * exp list
+  | ARM of int (* invoke arm list with given index (only inside matching statements) *)
+  | RAW of PP.pretty (* raw code, e.g., inside a matching statement *)
+  | MATCH of matcher
+and defined
+  = VAR of  ty option * exp option
+  | CONST of  exp * ty option
+  | TYPEDEF of  ty
+  | FUNCTION of function * statement
+  | EXCEPTION of ty option
+withtype token = { value : exp, width : int, offset : int }
+and function = {parms : (string * ty) list, varargs : bool, return : ty}
+and defn = string * defined
+and top_defn = {exported:bool} * defn
+and consarm = constructor * statement
+and range = {lo: int, hi: int}
+and casearm = range list * statement
+and <<definition of [[matcher]]>>
+<<code types>>=
+datatype interface_spec (* imported interface *)
+  = MC_LIBRARY				(* emission, reloc block library *)
+  | STANDARD_IO				(* print, etc *)
+  | ASM_OUTPUT				(* asmprintf and friends *)
+  | INSTRUCTION_SIZE                    (* for measuring size of instructions *)
+  | RELOCATABLE_ADDRESSES               (* define relocatable address *)
+  | SIGN_EXTENSION
+  | FAIL_LIBRARY				(* error handling? *)
+  | NAMED_INTERFACE of {name : string, signature' : string}
+datatype exported
+  = EXPORTED_TYPE      of ty option (* type might be unspecified *)
+  | EXPORTED_CONSTANT  of exp * ty option
+  | EXPORTED_VARIABLE  of ty
+  | EXPORTED_FUNCTION  of function
+  | EXPORTED_EXCEPTION of ty option
+type export = string * exported
+@  The interface stuff is considerably overloaded, so we can hope to
+support parameterized modules in ML and Modula-3 as well as plain old
+C~code. 
+One day there might even be a way to use C$++$ templates.
+<<code types>>=
+type interface      = { name : string option
+                      , parameters : interface_spec list
+                      , imports : interface_spec list
+                      , exports : export list
+                      } 
+type implementation = { name : string option
+                      , parameters : interface_spec list
+                      , imports : interface_spec list
+		      , exports : interface_spec list
+                      , body    : top_defn list
+                      }
+@ The intended semantics is that, in general, an importable item has both a
+name and a signature.  This is true only in ML, and signatures will be
+ignored in other languages.
+In interfaces, [[parameters]] become substructures of ML signatures, or
+they become parameters to a Modula-3 generic module.
+[[imports]] aren't mentioned explicitly in ML signatures, but they are
+named by [[IMPORT]] in Modula-3.
+
+In implementations, [[parameters]] are functor or generic parameters,
+and imports are either mentioned explicitly (as in Modula-3) or not
+(as in~ML).
+@
+Because of the DAG nature of matching, matchers are split into two
+parts.
+The \emph{decider} is the implementation of a decision tree.
+The leaves of the decider may be inline code, or they may be jumps
+(resp.\ tail calls) to \emph{arms} which have been pulled out of line
+to enable code sharing.
+Both the decider and the arms need the tokens and other values defined
+in [[defns]], but the trailer does not.
+<<definition of [[matcher]]>>=
+matcher = { defns : defn list         (* program counter, tokens *)
+          , decider : statement
+          , arms : statement IntMap.map
+             (* only arms that are not inlined appear here *)
+          }
+<<code types>>=
+type match_file = { header : Ast.code
+		  , matchers : (statement * Ast.code) list
+		  , sourcemap: SourceMap.sourcemap
+		  }
+@ 
+In C, if an interface imports another interface, it should stand for
+``must inclusion.''
+@ 
+<<code.sig>>=
+signature CODE = sig
+  structure Constructor : SLED_CONSTRUCTOR
+  structure Exp : EXP
+  sharing type Constructor.Patterns.Pure.Exp.exp = Exp.exp
+  type exp = Exp.exp
+  type pattern = Constructor.Patterns.Pure.pattern
+  type constructor = Constructor.constructor
+  type constype = Constructor.constype
+  <<code types>>
+  val exported : defn -> top_defn
+  val hidden   : defn -> top_defn
+  val subst    : (exp -> exp) -> statement -> statement
+  val existsExp: (exp -> bool) -> statement -> bool
+end
+@ 
+  
+<<code.sml>>=
+functor CodeFun (structure Constructor : SLED_CONSTRUCTOR
+                 structure Exp : EXP
+		 sharing type Constructor.Patterns.Pure.Exp.exp = Exp.exp
+                ) = struct
+  structure Constructor = Constructor
+  structure Exp = Exp
+  type pattern = Constructor.Patterns.Pure.pattern
+  type exp = Exp.exp
+  type constructor = Constructor.constructor
+  type constype = Constructor.constype
+
+  <<code types>>
+  fun exported d = ({exported=true},  d)
+  fun hidden   d = ({exported=false}, d)
+  <<substitution>>
+  <<expression search>>
+end
+@ 
+<<substitution>>=
+local
+  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
+in
+  fun subst sigma =
+    let fun stmt (STATEMENT' (smap, rgn, s)) = STATEMENT' (smap, rgn, stmt s)
+          | stmt SKIP = SKIP
+          | stmt (st as BLOCK_COMMENT _) = st
+          | stmt (st as COMMENTED_STMT (s, c)) = COMMENTED_STMT(stmt s, c)
+          | stmt (st as RESYNCH_STMT _) = st
+          | stmt (st as EMIT tokens) =
+              EMIT (map (fn {value, width, offset} =>
+			       {value=sigma value, width=width, offset=offset}) tokens)
+          | stmt (st as BLOCK (defns, stmts)) = 
+              BLOCK (map (fn (n, d) => (n, defn d)) defns, map stmt stmts)
+          | stmt (st as IF arms) = 
+	      IF (map (fn(e, s) => (sigma e, stmt s)) arms)
+          | stmt (st as TAGCASE (instance, ty, arms)) = 
+              TAGCASE(sigma instance, ty, map (fn (c, s) => (c, stmt s)) arms)
+          | stmt (st as INTCASE (value, arms)) = 
+              INTCASE(sigma value, map (fn (r, s) => (r, stmt s)) arms)
+          | stmt (st as FAIL (msg, args)) = FAIL(msg, map sigma args)
+          | stmt (st as ALLOC_CLOSURE _) = st
+          | stmt (st as RETURN e) = RETURN (sigma e)
+          | stmt (st as ASGN (l, r)) = ASGN(sigma l, sigma r)
+          | stmt (st as EVAL e) = EVAL (sigma e)
+          | stmt (st as METHOD_CALL (obj, method, args)) =
+                            METHOD_CALL(sigma obj, method, map sigma args)
+          | stmt (st as RAISE (exn, args)) = RAISE (sigma exn, map sigma args)
+          | stmt (st as ARM _) = st
+          | stmt (st as RAW _) = st
+          | stmt (MATCH {defns, decider, arms}) =
+              MATCH { defns = map (fn (n, d) => (n, defn d)) defns
+                    , decider = stmt decider
+                    , arms = IntMap.map stmt arms
+                    }
+	and defn (VAR (t, e)) = VAR (t, optmap sigma e)
+          | defn (CONST (e, t)) = CONST (sigma e, t)
+          | defn (d as TYPEDEF _) = d
+          | defn (d as EXCEPTION _) = d
+          | defn (FUNCTION (f, body)) = FUNCTION (f, stmt body)
+   in  stmt
+   end
+end
+<<expression search>>=
+local
+  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
+in
+  fun existsExp p =
+    let fun stmt (STATEMENT' (_, _, s)) = stmt s
+          | stmt SKIP = false
+          | stmt (BLOCK_COMMENT _) = false
+          | stmt (COMMENTED_STMT (s, c)) = stmt s
+          | stmt (RESYNCH_STMT _) = false
+          | stmt (EMIT tokens) = List.exists (p o #value) tokens
+          | stmt (BLOCK (defns, stmts)) =
+              List.exists (defn o #2) defns orelse List.exists stmt stmts
+          | stmt (IF arms) = List.exists (fn(e, s) => p e orelse stmt s) arms
+          | stmt (TAGCASE (instance, ty, arms)) =
+              p instance orelse List.exists (stmt o #2) arms
+          | stmt (INTCASE (value, arms)) = 
+              p value    orelse List.exists (stmt o #2) arms
+          | stmt (FAIL (msg, args)) = List.exists p args
+          | stmt (ALLOC_CLOSURE _) = false
+          | stmt (RETURN e) = p e
+          | stmt (ASGN (l, r)) = p l orelse p r
+          | stmt (EVAL e) = p e
+          | stmt (METHOD_CALL (obj, method, args)) = p obj orelse List.exists p args
+          | stmt (RAISE (exn, args)) = p exn orelse List.exists p args
+          | stmt (ARM _) = false
+          | stmt (RAW _) = false
+          | stmt (MATCH {defns, decider, arms}) =
+              List.exists (defn o #2) defns orelse stmt decider orelse
+              IntMap.exists stmt arms
+	and defn (VAR (t, e)) = (case e of SOME e => p e | NONE => false)
+          | defn (CONST (e, t)) = p e
+          | defn (d as TYPEDEF _) = false
+          | defn (d as EXCEPTION _) = false
+          | defn (FUNCTION (f, body)) = stmt body
+   in  stmt
+   end
+end

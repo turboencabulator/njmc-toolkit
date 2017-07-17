@@ -1,0 +1,408 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: simplify.nw,v 1.21 1998/11/11 21:51:30 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+\section{Simplifier}
+I discovered late in the day that there need to be two kinds of simplification.
+Basically, some of the simplifying rules reduce the strength of operations, 
+and after strength reduction the solver can't always invert the results.
+On the other hand, there are situations in which one simply can't do without 
+simplification, as when it eliminates an unsolvable disjunct (see bug \#2).
+A tentative fix is to designate some simplification rules as 
+[[<<super rewrite rules>>]], and to use them only on expressions that won't be
+further transformed.
+They are used in [[super_simplify]] only.\change{11}
+<<simplify.sig>>=
+signature SIMPLIFY = sig
+  structure Code : CODE
+  val pattern : Code.pattern -> Code.pattern
+  val exp     : Code.exp -> Code.exp
+  val code    : Code.statement -> Code.statement
+end
+
+signature SIMPLIFIER = sig
+  include SIMPLIFY
+  structure Super : SIMPLIFY where type Code.Exp.exp = Code.exp
+  sharing type Code.statement = Super.Code.statement
+      and type Code.pattern = Code.pattern
+end
+<<simplify.sml>>=
+functor TrivialSimplifyFun (Code : CODE) : SIMPLIFY = struct
+  structure Code = Code
+  fun pattern p = p
+  fun exp e = e
+  fun code s = s
+end
+
+functor TrivialSimplifierFun (Simplify : SIMPLIFY) : SIMPLIFIER = struct
+  structure Super = Simplify
+  open Simplify
+end
+@ 
+I need [[Constructor]] so I can simplify width tests on instance inputs.
+<<simplify.sml>>=
+signature EXPRESSION_SIMPLIFY = sig
+  structure Constructor : SLED_CONSTRUCTOR
+  val rewrite : {old : UnifiedExp.exp, new : UnifiedExp.exp} -> UnifiedExp.exp
+end
+
+functor UnifiedExpSimpFun (structure Exp : EXP_WALKERS_EXTENDED
+			   where type exp = UnifiedExp.exp
+			   structure Constructor : SLED_CONSTRUCTOR
+			   val expstring : Exp.exp -> string) =
+struct
+  structure Constructor = Constructor
+  structure U = UnifiedExp
+  <<bitwise operators>>
+  <<utilities>>
+  fun rewrite {old=old as U.NOSIMP _,new} = old
+    | rewrite {new,...} = exp new
+  and exp (U.TRUE) = U.TRUE
+      <<rewrite rules>>
+    | exp e = e
+  structure Super = struct
+    structure Constructor = Constructor
+    fun rewrite {old=old as U.NOSIMP _,new} = old
+      | rewrite {new,...} = exp new
+    and exp (U.TRUE) = U.TRUE
+      <<super rewrite rules>>
+      <<rewrite rules>>
+      <<trailing super rewrite rules>>
+      | exp e = e
+  end
+end
+
+signature UNIFIED_SIMPLIFY =
+  SIMPLIFY where type Code.Constructor.Pattern.Exp.exp = UnifiedExp.exp
+
+
+signature UNIFIED_SIMPLIFIER = 
+  SIMPLIFIER where type Code.Exp.exp = UnifiedExp.exp
+	   (*  and   type Super.Code.Exp.exp = UnifiedExp.exp -- redundant *)
+
+functor UnifiedSimplifyFun (structure Code : CODE where type Exp.exp = UnifiedExp.exp
+			    structure ES : EXPRESSION_SIMPLIFY
+				sharing Code.Constructor = ES.Constructor)
+    : UNIFIED_SIMPLIFY =
+struct
+  structure Code = Code
+  val exp = UnifiedComplete.bottomUpRewrite ES.rewrite
+  val pattern = Code.Constructor.Patterns.Pure.subst exp
+  structure C = Code
+  structure U = UnifiedExp
+  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
+  fun stmt C.SKIP = C.SKIP
+      <<stmt rules>>
+  and consStmt (C.BLOCK ([], body), ss) = foldr consStmt ss body
+    | consStmt (s, ss) = s :: ss
+  and stmts ss = foldr consStmt [] (map stmt ss) 
+  <<[[and defn]]\ldots>>
+  val code = stmt
+end
+
+functor UnifiedSimplifierFun
+    (structure Code : CODE where type Exp.exp = UnifiedExp.exp
+     val expstring : Code.Exp.exp -> string) : UNIFIED_SIMPLIFIER =
+struct
+  structure Simps = UnifiedExpSimpFun(structure Exp = UnifiedComplete
+				      structure Constructor = Code.Constructor
+				      val expstring = expstring)
+  structure Basic = UnifiedSimplifyFun(structure Code = Code
+				       structure ES = Simps)
+  open Basic
+  structure Super = UnifiedSimplifyFun(structure Code = Code
+				       structure ES = Simps.Super)
+end
+@ 
+<<bitwise operators>>=
+local
+  fun binary $ (a, b) = Word.toInt($(Word.fromInt a, Word.fromInt b))
+in
+  val ior = binary Word.orb
+  val iand = binary Word.andb
+  val ishift = binary Word.<<
+  fun imask n = (ishift(1, n-1) - 1) + ishift(1, n-1)
+end
+@ 
+I simplify equations involving constants.
+<<rewrite rules>>=
+| exp(e as U.CONDITION (U.CONST l, relop, U.CONST r)) =
+    injectBool (Relop.injectInt relop (l, r))
+<<super rewrite rules>>=
+| exp (e as U.CONDITION(U.NARROWs(l, n), Relop.EQ, U.SLICE(r, {lo=0, width=n'}))) =
+    if n = n' andalso Exp.compare(l, r) = EQUAL then exp(U.FITSs(l, n)) else e
+| exp (e as U.CONDITION(U.SLICE(r, {lo=0, width=n'}), Relop.EQ, U.NARROWs(l, n))) =
+    if n = n' andalso Exp.compare(l, r) = EQUAL then exp(U.FITSs(l, n)) else e
+<<rewrite rules>>=
+| exp(e as U.CONDITION (l, Relop.EQ, r)) =
+        if Exp.compare(l, r) = EQUAL then U.TRUE else e
+<<rewrite rules>>=
+| exp (U.ORB args) = 
+    let fun orb (U.CONST n, (es, k)) = (es,    ior(n, k))
+          | orb (e,         (es, k)) = (e::es, k) 
+    in  case foldl orb ([], 0) args
+	  of ([], k)  => Exp.const k
+	   | ([e], 0) => e
+	   | (es, 0)  => Exp.orb(es)
+           | (es, k)  => Exp.orb(U.CONST k :: es)
+    end    
+<<rewrite rules>>=
+| exp (U.INRANGE (U.CONST n, {lo, hi})) = injectBool (lo <= n andalso n < hi)
+<<rewrite rules>>=
+| exp (U.ANDALSO args) = 
+    let exception False
+	fun and' (U.TRUE,  es) = es
+          | and' (U.FALSE, es) = raise False
+          | and' (e, es)       = e :: es
+    in  (case foldl and' [] args
+	   of [] => U.TRUE
+	    | es => U.ANDALSO es) handle False => U.FALSE
+    end (* should try to reuse this for sets *)
+| exp (U.ORELSE args) = 
+    let exception True
+	fun or' (U.TRUE,  es) = raise True
+          | or' (U.FALSE, es) = es
+          | or' (e, es)       = e :: es
+    in  (case foldl or' [] args
+	   of [] => U.FALSE
+	    | es => U.ORELSE es) handle True => U.TRUE
+    end
+| exp(U.SLICE(U.CONST N, {lo, width})) = U.CONST(iand(ishift(N, ~lo), imask(width)))
+<<super rewrite rules>>=
+| exp(U.SLICE(U.SHIFT(x, n), {lo=m, width=k})) =
+    if m - n >= 0 then U.SLICE(x, {lo=m-n, width=k})
+    else U.SLICE(U.SHIFT(x, n-m), {lo=0, width=k})
+| exp(e as U.SLICE(y as U.NARROWu(x, n), {lo=0, width=m})) = if n <= m then y else e
+| exp(e as U.SLICE(y as U.NARROWs(x, n), {lo=0, width=m})) = if n <= m then y else e
+| exp(U.SLICE(U.SLICE(x, {lo=l1, width=n1}), {lo=l2, width=n2})) = 
+    if l2 >= n1 then U.CONST 0
+    else U.SLICE(x, {lo=l1+l2, width=if n2 < n1-l2 then n2 else n1-l2})
+<<super rewrite rules>>=
+| exp(e as U.SLICE(y as U.INSTANCE_INPUT (x, opspec), {lo=0, width=n})) =
+    (case integerOperandInfo (x, opspec)
+       of (false, SOME w) => if w <= n then y else e
+        | _ => e)
+| exp(e as U.SLICE(x, {lo=0, width=n})) = if n = !GlobalState.CG.wordsize then x else e
+<<rewrite rules>>=
+| exp(U.SHIFT(e, 0)) = e
+@ 
+<<rewrite rules>>=
+| exp (U.SHIFT (U.CONST N, n)) = 
+    U.CONST (Word.toInt (Word.<< (Word.fromInt N, Word.fromInt n)))
+<<rewrite rules>>=
+| exp (e as U.NARROWu(U.CONST N, n)) = 
+    if fitsu(N, n) then U.CONST N else U.FAIL (expstring e)
+<<super rewrite rules>>=
+| exp (e as U.NARROWu(y as U.SLICE(x, {lo=lo, width=n}), m)) = if n <= m then y else e
+<<trailing super rewrite rules>>=
+| exp (e as U.NARROWu(x, M)) = if M >= !GlobalState.CG.wordsize then x else e
+@ 
+To widen a value, I shift left, then shift right to bring in sign
+bits.
+<<rewrite rules>>=
+| exp (e as U.WIDEN (U.CONST N, n)) =
+   if Word.wordSize >= n then
+     let val k = Word.fromInt (Word.wordSize - n)
+     in  U.CONST (Word.toIntX(Word.~>> (Word.<< (Word.fromInt N, k), k)))
+     end
+   else if n >= !GlobalState.CG.wordsize then 
+     U.CONST N
+   else 
+     e
+| exp (e as U.NARROWs(U.CONST N, n)) = 
+   if fitss(N, n) then U.CONST (iand(N, imask n)) else U.FAIL (expstring e)
+<<trailing super rewrite rules>>=
+| exp (e as U.WIDEN(x, n)) = if n = !GlobalState.CG.wordsize then x else e
+<<super rewrite rules>>=
+| exp (e as U.NARROWs(y as U.SLICE(x, {lo=lo, width=n}), m)) = if n < m then y else e
+<<rewrite rules>>=
+| exp(e as U.NARROWs(U.WIDEN(x, n), m)) = if n = m then x else e
+| exp(e as U.NARROWs(y as U.NARROWs(x, n), m)) = if n = m then y else e
+@ Here's a new rewrite rule that might not actually be needed\ldots
+<<rewrite rules>>=
+| exp(e as U.NARROWu(y as U.NARROWu(x, n), m)) = if n <= m then y else U.NARROWu(x, m)
+@ 
+Note we can't rewrite [[U.WIDEN(U.NARROWs(x, N), N)]] as [[x]] because
+there's no way to pick up [[U.FITSs(x, N)]].  Ugh.
+<<trailing super rewrite rules>>=
+| exp (e as U.NARROWs(x, M)) = if M >= !GlobalState.CG.wordsize then x else e
+| exp (U.DIV(U.CONST N, M)) = U.CONST (N div M) (* truncates toward minus infinity *)
+| exp (e as U.DIV(x, N)) = 
+    (case exactlog2 N
+       of SOME log => exp(U.SHIFT(x, ~log))
+	| NONE => e)
+<<rewrite rules>>=
+| exp (U.MOD(U.CONST n, m)) = Exp.const (n mod m)
+<<trailing super rewrite rules>>=
+| exp (e as U.MOD(x, N)) =
+   let fun asLog (x, N) =
+         case exactlog2 N
+	   of SOME k => U.SLICE(x, {lo=0, width=k})
+	    | NONE => U.MOD(x, N)
+       val k = Exp.constantTerm x
+   in  if k <> 0 andalso k mod N = 0 then
+         asLog(Exp.sub(x, U.CONST k), N)
+       else
+	 asLog(x, N)
+   end
+<<utilities>>=
+fun pow2 k = Word.<< (0w1, k)
+fun fitsu' (N, n) = N < pow2 n
+fun fitss' (N, n) = fitsu'(N + pow2 (n - 0w1), n)
+fun wordpair (x, y) = (Word.fromInt x, Word.fromInt y)
+fun injectBool p = if p then U.TRUE else U.FALSE
+val fitsu = fitsu' o wordpair
+val fitss = fitss' o wordpair
+<<rewrite rules>>=
+| exp (e as U.FITSu(U.CONST n, m)) = injectBool (fitsu(n, m))
+<<rewrite rules>>=
+| exp (e as U.FITSu(U.NARROWu(x, n), m)) = if n <= m then U.TRUE else e
+| exp (e as U.FITSu(U.NARROWs(x, n), m)) = if n <= m then U.TRUE else e
+| exp (e as U.FITSu(U.SLICE(x, {lo, width}), m)) = if width <= m then U.TRUE else e
+| exp (e as U.FITSu(U.SHIFT(x, n), m)) = exp (Exp.fitsu(x, m-n))
+| exp (e as U.FITSu(U.ASSERT_NARROWu(_, n), m)) = if n <= m then U.TRUE else e
+| exp (e as U.FITSu(U.INSTANCE_INPUT(x, opspec), m)) =
+    (case integerOperandInfo (x, opspec)
+       of (false, SOME w) => if w <= m then U.TRUE else e
+        | _ => e)
+| exp (e as U.FITSu(x, M)) = if M >= !GlobalState.CG.wordsize then U.TRUE else e
+<<utilities>>=
+fun integerOperandInfo (input as (instance, {cons, operand})) =
+  let val cons = Constructor.fromId cons
+      val (_, ty, _) = Constructor.operandNamed (cons, operand)
+  in  case ty of Constructor.INTEGER {signed,width} => (signed, width)
+               | Constructor.INSTANCE _ => 
+      Impossible.impossible (String.concat 
+	  ["integer operation on operand ", operand, " of constructor ",
+	   #name (Constructor.info cons), 
+	   ", which is an instance of some constructor type: ", 
+	   expstring (U.INSTANCE_INPUT input)])
+  end
+<<rewrite rules>>=
+| exp (e as U.FITSs(U.NARROWu(x, n), m)) = if n < m then U.TRUE else e
+| exp (e as U.FITSs(U.NARROWs(x, n), m)) = if n < m then U.TRUE else e
+| exp (e as U.FITSs(U.SLICE(x, {lo, width}), m)) = if width < m then U.TRUE else e
+| exp (e as U.FITSs(U.SHIFT(x, n), m)) = exp(U.FITSs(x, m-n))
+| exp (e as U.FITSs(U.ASSERT_NARROWs(_, n), m)) = if n <= m then U.TRUE else e
+| exp (e as U.FITSs(U.ASSERT_NARROWu(_, n), m)) = if n <  m then U.TRUE else e
+| exp (e as U.FITSs(U.CONST n, m)) = injectBool (fitss(n, m))
+| exp (e as U.FITSs(U.WIDEN(U.SLICE(x, {lo, width=n}), m), mm)) =
+    if n = m andalso m <= mm then U.TRUE
+    else if lo > 0 then
+      exp(U.FITSs(U.WIDEN(U.SLICE(x, {lo=0, width=n+lo}), m+lo), mm+lo))
+    else e
+| exp (e as U.FITSs(U.INSTANCE_INPUT(x, opspec), m)) =
+    (case integerOperandInfo (x, opspec)
+       of (_, NONE) => e
+	| (signed, SOME w) => if signed andalso w <= m then U.TRUE
+			      else if not signed andalso w < m then U.TRUE
+			      else e)
+| exp (e as U.FITSs(x, M)) = if M >= !GlobalState.CG.wordsize then U.TRUE else e
+<<rewrite rules>>=
+| exp (U.FORCE(x as U.FORCE _)) = x
+| exp (U.FORCE(n as U.CONST _)) = n
+| exp (U.KNOWN(U.CONST n)) = U.TRUE
+| exp (U.NOT(U.TRUE)) = U.FALSE
+| exp (U.NOT(U.FALSE)) = U.TRUE
+| exp (U.NOT(U.NOT x)) = x
+| exp (U.NOT(U.CONDITION(a, $, b))) = U.CONDITION(a, Relop.negate $, b)
+@ 
+<<rewrite rules>>=
+| exp (U.ARRAY_SUB(U.ARRAY elems, U.CONST n)) =
+   (List.nth(elems, n) handle Subscript => U.FAIL "array subscript out of range")
+@ 
+See [[eliminate_instances]] for an explanation of why the
+transformations below are no longer implemented as rewrite rules.
+<<former rewrite rules now implemented by [[eliminate_instances]]>>=
+Einstance_tagged(Einstance(c, a), c2, uid) -> if c === c2 then 1 else 0
+Einstance_input(Einstance(c, a), c2, name) -> if c === c2 then a[name] 
+                                              else Efail(expimage(e))
+Einstance_tagged(Ewildcard(_), _, _) -> 1
+Einstance_input(Ewildcard(iname), c, fname) ->
+   Ewildcard(iname || "." || c.name || "." || fname)
+latent_patlabel(Einstance(_, _)) -> vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -> patlabel(nam, nam)
+<<utilities>>=
+fun exactlog2 n =
+  let (* invariant $2^k = m$ *)
+      fun f(k, m) = if m = n then SOME k
+		    else if m < n then f(k+1, 2*m)
+		    else NONE
+  in  f(0, 1)
+  end
+@ 
+\section{Statements}
+<<stmt rules>>=
+| stmt (st as C.STATEMENT'(smap, rgn, s)) = C.STATEMENT'(smap, rgn, stmt s)
+| stmt (st as C.BLOCK_COMMENT _) = st
+| stmt (st as C.COMMENTED_STMT (s, c)) = C.COMMENTED_STMT(stmt s, c)
+| stmt (st as C.RESYNCH_STMT _) = st
+| stmt (st as C.EMIT tokens) =
+    C.EMIT (map (fn {value, width, offset} =>
+		      {value=exp value, width=width, offset=offset}) tokens)
+| stmt (st as C.BLOCK ([], [])) = C.SKIP
+| stmt (st as C.BLOCK ([], [s])) = stmt s
+| stmt (st as C.BLOCK (defns, ss)) = 
+    C.BLOCK (map (fn (n, d) => (n, defn d)) defns, stmts ss)
+| stmt (st as C.IF arms) = <<simplify if statement with [[arms]]>>
+| stmt (st as C.TAGCASE (instance, ty, arms)) = 
+    C.TAGCASE(exp instance, ty, map (fn (c, s) => (c, stmt s)) arms)
+| stmt (st as C.INTCASE (U.CONST n, arms)) = 
+    (case List.find (fn (r, s) => RangeSet.overlaps(r, {lo=n, hi=n+1})) arms
+       of SOME (_, arm) => stmt arm
+	| NONE => C.FAIL ("INTCASE statement has no matching range", []))
+| stmt (st as C.INTCASE (value, arms)) = 
+    C.INTCASE(exp value, map (fn (r, s) => (r, stmt s)) arms)
+| stmt (st as C.FAIL (msg, args)) = C.FAIL(msg, map exp args)
+| stmt (st as C.ALLOC_CLOSURE _) = st
+| stmt (st as C.RETURN e) = C.RETURN (exp e)
+| stmt (st as C.ASGN (l, r)) = C.ASGN(exp l, exp r)
+| stmt (st as C.EVAL e) = C.EVAL (exp e)
+| stmt (st as C.METHOD_CALL (obj, method, args)) =
+                  C.METHOD_CALL(exp obj, method, map exp args)
+| stmt (st as C.RAISE (exn, args)) = C.RAISE (exp exn, map exp args)
+| stmt (st as C.RAW _) = st
+| stmt (st as C.ARM _) = st
+| stmt (C.MATCH {defns, decider, arms}) =
+   C.MATCH { defns = map (fn (n, d) => (n, defn d)) defns
+           , decider = stmt decider
+           , arms = IntMap.map stmt arms
+           }
+
+<<simplify if statement with [[arms]]>>=
+let fun simpArms [] = []
+      | simpArms ((g, s) :: arms) =
+          let val g = exp g
+              val s = stmt s
+          in  case g
+                of U.TRUE => [(g, s)]
+                 | U.FALSE => simpArms arms
+                 | _ => (g, s) :: simpArms arms
+          end 
+    val arms = simpArms arms
+in  case arms
+      of [] => C.SKIP
+       | [(U.TRUE, s)] => s
+       | _ => C.IF arms
+end
+<<[[and defn]]\ldots>>=
+and defn (C.VAR (t, e)) = C.VAR (t, optmap exp e)
+  | defn (C.CONST (e, t)) = C.CONST (exp e, t)
+  | defn (d as C.TYPEDEF _) = d
+  | defn (d as C.EXCEPTION _) = d
+  | defn (C.FUNCTION (f, body)) = C.FUNCTION (f, stmt body)
+@ 
+<<simptest.sml>>=
+structure SimpTest = struct
+  open ExpTest
+  structure S = USimplify
+  structure E = UnifiedComplete
+  infix ==
+  infix 7 /*/
+  infix 6 /+/
+
+  val /<</ = E.shift
+  infix 5 /<</
+  val e = x /<</ 0
+  val e' = S.exp e
+end

@@ -1,0 +1,135 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: errormsg.nw,v 1.12 1998/11/11 21:59:15 nr Exp $
+\chapter{Error messages}
+I borrowed this design wholesale from the SML/NJ sources.
+I'm quite unhappy with it---perhaps I don't understand it as well as I ought.
+In any case, I haven't had time to design one I like better.
+<<errormsg.sig>>=
+(* Copyright 1989 by AT&T Bell Laboratories *)
+signature ERRORMSG =
+ sig
+    datatype severity = WARNING | ERROR | FATAL
+    type complainer = severity -> string -> PP.pretty -> unit
+    type error_body = PP.pretty
+    val nullErrorBody : error_body
+    type errorFn = SourceMap.region -> complainer
+    type error_context = SourceMap.sourcemap * (PP.pretty -> unit)
+    val error : error_context -> errorFn
+    val defaultConsumer : unit -> PP.pretty -> unit
+
+    val warning : SourceMap.sourcemap -> SourceMap.region * string list -> unit
+    val ppwarning : SourceMap.sourcemap -> SourceMap.region * PP.pretty list -> unit
+
+    val impossible : string -> 'a
+    val impossibleWithBody : string -> error_body -> 'a
+
+    val verbosity : bool ref
+    val verbose : string list -> unit
+    val verboseWithBody : string list -> error_body -> unit
+
+ end
+@ 
+<<errormsg.sml>>=
+(* Copyright 1989 by AT&T Bell Laboratories *)
+(* modifications copyright 1996 by Norman Ramsey *)
+structure ErrorMsg : ERRORMSG =
+struct
+
+  open SourceMap
+
+ (* error reporting *)
+
+  exception Error  (* was Syntax, changed to Error in 0.92 *)
+
+  datatype severity = WARNING | ERROR | FATAL
+
+  type complainer = severity -> string -> PP.pretty -> unit
+  type errorFn = region -> complainer
+  type error_body = PP.pretty 
+  type error_context = SourceMap.sourcemap * (PP.pretty -> unit)
+
+  fun defaultConsumer () pp = (* pretty -> unit *)
+    ignore (
+      PPDynamic.set (PPDynamic.standardEmitLine TextIO.stdErr, fn _ => 0, 78)
+                    (PPNormal.normalize pp))
+
+  val nullErrorBody : error_body = PP.Short.li []
+
+  fun impossible msg =
+      let open TextIO
+          fun shout s = (output (stdErr, s); flushOut stdErr) 
+      in  app shout  ["Error: Toolkit bug: impossible ", msg, "\n"];
+          raise Error
+      end
+@ 
+With the advent of source-map resynchronization (a.k.a
+[[(*#line...*)]]), a contiguous region as seen by the compiler can
+correspond to one or more contiguous regions in source code.
+We can imagine myriad ways of displaying such information, but we
+confine ourselves to two:
+\begin{itemize}
+\item
+When there's just one source region, we have what we had in the old
+compiler, and we display it the same way:
+\begin{quote}
+{\tt \emph{name}:\emph{line}.\emph{col}} or\\
+{\tt \emph{name}:\emph{line1}.\emph{col1}-\emph{line2}.\emph{col2}}
+\end{quote}
+\item
+When there are two or more source regions, we use an ellipsis instead
+of a dash, and if not all regions are from the same file, we provide
+the file names of both endpoints (even if the endpoints are the same
+file).
+\end{itemize}
+<<errormsg.sml>>=
+  val locationString = SourceMap.locationString
+
+@ Emulating my predecessors, I've gone to some trouble to avoid list appends (and the
+corresponding allocations).
+<<errormsg.sml>>=
+  structure P = PP.Short
+  fun ppmsg(errConsumer,location,severity,msg,body) =
+     errConsumer (P.li [ P.te location, P.be, P.i 2, 
+			 P.te (case severity
+				 of WARNING => " Warning: "
+				  | ERROR => " Error: "
+				  | FATAL => " Fatal error: "),
+			 P.te msg, body, P.ou, P.en, P.nl ])
+
+  fun error (source:SourceMap.sourcemap, errConsumer)
+            (p1:int,p2:int) (severity:severity)
+	    (msg: string) (body) = 
+      ppmsg(errConsumer,(locationString source (p1,p2)),severity,msg,body)
+
+  fun impossibleWithBody msg body =
+      (defaultConsumer() (P.li [P.te "Error: Toolkit bug: ", P.i 4, P.on,
+				P.te msg, body, P.ou, P.nl ]);
+       raise Error)
+
+  <<verbosity>>
+
+  <<warnings>>
+
+end  (* structure ErrorMsg *)
+@ 
+<<verbosity>>=
+val verbosity = ref true   (* will be false eventually *)
+fun verbose msg =
+  if !verbosity then
+    let open TextIO
+        fun shout s = (output (stdErr, s); flushOut stdErr) 
+    in  app shout msg; shout "\n"
+    end
+  else ()
+
+fun verboseWithBody msg body =
+  if !verbosity then
+    (defaultConsumer() (P.li [P.li (map P.te msg), body]))
+  else ()
+@ 
+
+<<warnings>>=
+fun warning smap (rgn, l) =
+  error (smap, defaultConsumer()) rgn WARNING (String.concat l) (PP.TEXT "")
+fun ppwarning smap (rgn, pp) =
+  error (smap, defaultConsumer()) rgn WARNING "" (P.li pp)

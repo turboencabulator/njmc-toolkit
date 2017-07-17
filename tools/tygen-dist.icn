@@ -1,0 +1,1664 @@
+
+
+
+#===================================================================  tygen.icn
+
+
+
+#line 9 "tygen.nw"
+#====== link ebnflex
+procedure reserved(w)
+  static words
+  initial words := set([
+    "%%",
+    "%{",
+    "%}",
+    "(",
+    ")",
+    ",",
+    ".",
+    ":",
+    "INSTANCE",
+    "RELOCATABLE",
+    "bool",
+    "signed",
+    "static_bool",
+    "unsigned",
+    "{",
+    "}",
+    "."])
+  if member(words, w) then return w
+end
+procedure P_Spec()
+    local ii1, ii2, ii3, ii4
+
+    case token of {
+        "%%" | "%{" | CODE | RESYNCH : # Spec : Spec_1 "%%" NEWLINE Spec_2
+            return {
+                ii1 :=  P_Spec_1()
+                ii2 :=  expect("%%", "Spec")
+                ii3 :=  expect(NEWLINE, "Spec")
+                ii4 :=  P_Spec_2()
+#line 22 "tygen.nw"
+             ii1 
+#line 1000"generated code"
+            }
+        default : error("syntax error parsing Spec")
+    }
+end
+
+procedure P_Spec_2()
+
+    case token of {
+        "INSTANCE" | IDENT | RESYNCH | EOF : # Spec_2 : {Spec_2_1}
+            return {
+                ii1 := []
+                while token == ("INSTANCE" | IDENT | RESYNCH) do
+                    put(ii1,  P_Spec_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Spec_2")
+    }
+end
+
+procedure P_Spec_2_1()
+    local ii1, ii2, ii3
+
+    case token of {
+        "INSTANCE" | IDENT | RESYNCH : # Spec_2_1 : Spec_2_1_1 NEWLINE Spec_2_1_2
+            return {
+                ii1 :=  P_Spec_2_1_1()
+                ii2 :=  expect(NEWLINE, "Spec_2_1")
+                ii3 :=  P_Spec_2_1_2()
+#line 21 "tygen.nw"
+             if type(ii1) == "operator" then every put(ii1.comments, !ii3) 
+#line 2000"generated code"
+            }
+        default : error("syntax error parsing Spec_2_1:\n\texpected 'INSTANCE', IDENT, or RESYNCH")
+    }
+end
+
+procedure P_Spec_2_1_2()
+
+    case token of {
+        "INSTANCE" | COMMENT | IDENT | RESYNCH | EOF : # Spec_2_1_2 : {Spec_2_1_2_1}
+            return {
+                ii1 := []
+                while token == (COMMENT) do
+                    put(ii1,  P_Spec_2_1_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Spec_2_1_2")
+    }
+end
+
+procedure P_Spec_2_1_2_1()
+    local ii1, ii2
+
+    case token of {
+        COMMENT : # Spec_2_1_2_1 : COMMENT NEWLINE
+            return {
+                ii1 :=  expect(COMMENT, "Spec_2_1_2_1")
+                ii2 :=  expect(NEWLINE, "Spec_2_1_2_1")
+#line 20 "tygen.nw"
+            ii1
+#line 3000"generated code"
+            }
+        default : error("syntax error parsing Spec_2_1_2_1:\n\texpected COMMENT")
+    }
+end
+
+procedure P_Spec_2_1_1()
+
+    case token of {
+        "INSTANCE" | IDENT : # Spec_2_1_1 : Rule
+            return P_Rule()
+        RESYNCH : # Spec_2_1_1 : Resynch
+            return P_Resynch()
+        default : error("syntax error parsing Spec_2_1_1:\n\texpected 'INSTANCE', IDENT, or RESYNCH")
+    }
+end
+
+procedure P_Spec_1()
+
+    case token of {
+        "%%" | "%{" | CODE | RESYNCH : # Spec_1 : {Spec_1_1}
+            return {
+                ii1 := []
+                while token == ("%{" | CODE | RESYNCH) do
+                    put(ii1,  P_Spec_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Spec_1")
+    }
+end
+
+procedure P_Spec_1_1()
+    local ii1
+
+    case token of {
+        CODE : # Spec_1_1 : CODE
+            return {
+                ii1 :=  expect(CODE, "Spec_1_1")
+#line 19 "tygen.nw"
+            ii1
+#line 4000"generated code"
+            }
+        RESYNCH : # Spec_1_1 : RESYNCH
+            return {
+                ii1 :=  expect(RESYNCH, "Spec_1_1")
+#line 19 "tygen.nw"
+            ii1
+#line 5000"generated code"
+            }
+        "%{" : # Spec_1_1 : Decls
+            return P_Decls()
+        default : error("syntax error parsing Spec_1_1:\n\texpected '%{', CODE, or RESYNCH")
+    }
+end
+
+procedure P_Decls()
+    local ii1, ii2, ii3
+
+    case token of {
+        "%{" : # Decls : Decls_1 Decls_2 "%}"
+            return {
+                ii1 :=  P_Decls_1()
+                ii2 :=  P_Decls_2()
+                ii3 :=  expect("%}", "Decls")
+#line 26 "tygen.nw"
+             put(decls, ii2); &null 
+#line 6000"generated code"
+            }
+        default : error("syntax error parsing Decls:\n\texpected '%{'")
+    }
+end
+
+procedure P_Decls_2()
+
+    case token of {
+        "%}" | CODE | RESYNCH : # Decls_2 : {Decls_2_1}
+            return {
+                ii1 := []
+                while token == (CODE | RESYNCH) do
+                    put(ii1,  P_Decls_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Decls_2:\n\texpected '%}', CODE, or RESYNCH")
+    }
+end
+
+procedure P_Decls_2_1()
+    local ii1
+
+    case token of {
+        CODE : # Decls_2_1 : CODE
+            return {
+                ii1 :=  expect(CODE, "Decls_2_1")
+#line 26 "tygen.nw"
+            ii1
+#line 7000"generated code"
+            }
+        RESYNCH : # Decls_2_1 : RESYNCH
+            return {
+                ii1 :=  expect(RESYNCH, "Decls_2_1")
+#line 26 "tygen.nw"
+            ii1
+#line 8000"generated code"
+            }
+        default : error("syntax error parsing Decls_2_1:\n\texpected CODE or RESYNCH")
+    }
+end
+
+procedure P_Decls_1()
+    local ii1
+
+    case token of {
+        "%{" : # Decls_1 : "%{"
+            return {
+                ii1 :=  expect("%{", "Decls_1")
+#line 25 "tygen.nw"
+             put(decls, [resynch(filename, lineno)]) 
+#line 9000"generated code"
+            }
+        default : error("syntax error parsing Decls_1:\n\texpected '%{'")
+    }
+end
+
+procedure P_Rule()
+    local ii1, ii2, ii3, ii4, ii5, ii6
+
+    case token of {
+        "INSTANCE" | IDENT : # Rule : Rule_1 Operands ":" Rule_2 ResultType Rule_3
+            return {
+                ii1 :=  P_Rule_1()
+                ii2 :=  P_Operands()
+                ii3 :=  expect(":", "Rule")
+                ii4 :=  P_Rule_2()
+                ii5 :=  P_ResultType()
+                ii6 :=  P_Rule_3()
+#line 29 "tygen.nw"
+             rule(ii1, flatten(ii2), ii5, ii6, ii4) 
+#line 10000"generated code"
+            }
+        default : error("syntax error parsing Rule:\n\texpected 'INSTANCE' or IDENT")
+    }
+end
+
+procedure P_Rule_3()
+
+    case token of {
+        COMMENT | NEWLINE : # Rule_3 : [Rule_3_1]
+            return {
+                ii1 := &null
+                if token == (COMMENT) then
+                    ii1 := ( P_Rule_3_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Rule_3:\n\texpected COMMENT or NEWLINE")
+    }
+end
+
+procedure P_Rule_3_1()
+    local ii1
+
+    case token of {
+        COMMENT : # Rule_3_1 : COMMENT
+            return {
+                ii1 :=  expect(COMMENT, "Rule_3_1")
+#line 28 "tygen.nw"
+            ii1
+#line 11000"generated code"
+            }
+        default : error("syntax error parsing Rule_3_1:\n\texpected COMMENT")
+    }
+end
+
+procedure P_Rule_2()
+
+    case token of {
+        "(" | ")" | "," | "." | "INSTANCE" | "RELOCATABLE" | "bool" | "signed" | "unsigned" | "{" | "}" | IDENT | INT : # Rule_2 :
+            return {
+#line 28 "tygen.nw"
+             thispos 
+#line 12000"generated code"
+            }
+        default : error("syntax error parsing Rule_2")
+    }
+end
+
+procedure P_Rule_1()
+    local ii1
+
+    case token of {
+        IDENT : # Rule_1 : IDENT
+            return {
+                ii1 :=  expect(IDENT, "Rule_1")
+#line 28 "tygen.nw"
+            ii1
+#line 13000"generated code"
+            }
+        "INSTANCE" : # Rule_1 : "INSTANCE"
+            return {
+                ii1 :=  expect("INSTANCE", "Rule_1")
+#line 28 "tygen.nw"
+            ii1
+#line 14000"generated code"
+            }
+        default : error("syntax error parsing Rule_1:\n\texpected 'INSTANCE' or IDENT")
+    }
+end
+
+procedure P_Operands()
+    local ii1, ii2, ii3
+
+    case token of {
+        IDENT : # Operands : IDENT
+            return {
+                ii1 :=  expect(IDENT, "Operands")
+#line 31 "tygen.nw"
+             operand(ii1, default_type(ii1, &null), "tys") 
+#line 15000"generated code"
+            }
+        "(" : # Operands : "(" OperandList ")"
+            return {
+                ii1 :=  expect("(", "Operands")
+                ii2 :=  P_OperandList()
+                ii3 :=  expect(")", "Operands")
+#line 33 "tygen.nw"
+            ii2
+#line 16000"generated code"
+            }
+        ":" : # Operands :
+            return {
+#line 33 "tygen.nw"
+             [] 
+#line 17000"generated code"
+            }
+        default : error("syntax error parsing Operands:\n\texpected '(', ':', or IDENT")
+    }
+end
+
+procedure P_OperandList()
+    local ii1, ii2
+
+    case token of {
+        "{" | IDENT : # OperandList : Operand OperandList_1
+            return {
+                ii1 :=  P_Operand()
+                ii2 :=  P_OperandList_1()
+#line 36 "tygen.nw"
+             push (ii2, ii1) 
+#line 18000"generated code"
+            }
+        default : error("syntax error parsing OperandList:\n\texpected '{' or IDENT")
+    }
+end
+
+procedure P_OperandList_1()
+
+    case token of {
+        ")" | "," | "}" : # OperandList_1 : {OperandList_1_1}
+            return {
+                ii1 := []
+                while token == (",") do
+                    put(ii1,  P_OperandList_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing OperandList_1:\n\texpected ')', ',', or '}'")
+    }
+end
+
+procedure P_OperandList_1_1()
+    local ii1, ii2
+
+    case token of {
+        "," : # OperandList_1_1 : "," Operand
+            return {
+                ii1 :=  expect(",", "OperandList_1_1")
+                ii2 :=  P_Operand()
+#line 36 "tygen.nw"
+            ii2
+#line 19000"generated code"
+            }
+        default : error("syntax error parsing OperandList_1_1:\n\texpected ','")
+    }
+end
+
+procedure P_Punctuation()
+    local ii1
+
+    case token of {
+        "(" : # Punctuation : "("
+            return {
+                ii1 :=  expect("(", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 20000"generated code"
+            }
+        ")" : # Punctuation : ")"
+            return {
+                ii1 :=  expect(")", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 21000"generated code"
+            }
+        INT : # Punctuation : INT
+            return {
+                ii1 :=  expect(INT, "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 22000"generated code"
+            }
+        "," : # Punctuation : ","
+            return {
+                ii1 :=  expect(",", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 23000"generated code"
+            }
+        "{" : # Punctuation : "{"
+            return {
+                ii1 :=  expect("{", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 24000"generated code"
+            }
+        "}" : # Punctuation : "}"
+            return {
+                ii1 :=  expect("}", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 25000"generated code"
+            }
+        "." : # Punctuation : "."
+            return {
+                ii1 :=  expect(".", "Punctuation")
+#line 38 "tygen.nw"
+            ii1
+#line 26000"generated code"
+            }
+        default : error("syntax error parsing Punctuation")
+    }
+end
+
+procedure P_ResultType()
+    local ii1, ii2
+
+    case token of {
+        "signed" | "unsigned" : # ResultType : ResultType_1 ResultType_2
+            return {
+                ii1 :=  P_ResultType_1()
+                ii2 :=  P_ResultType_2()
+#line 39 "tygen.nw"
+             [ii1, ["SOME", \ii2] | "NONE"] 
+#line 27000"generated code"
+            }
+        "RELOCATABLE" : # ResultType : "RELOCATABLE" ResultType
+            return {
+                ii1 :=  expect("RELOCATABLE", "ResultType")
+                ii2 :=  P_ResultType()
+#line 40 "tygen.nw"
+             [ii1, ii2] 
+#line 28000"generated code"
+            }
+        "bool" : # ResultType : "bool"
+            return {
+                ii1 :=  expect("bool", "ResultType")
+#line 41 "tygen.nw"
+             ["bool"] 
+#line 29000"generated code"
+            }
+        "(" | ")" | "," | "." | "INSTANCE" | "{" | "}" | IDENT | INT : # ResultType : ResultType_3 ResultType_4
+            return {
+                ii1 :=  P_ResultType_3()
+                ii2 :=  P_ResultType_4()
+#line 43 "tygen.nw"
+             push(ii2, ii1) 
+#line 30000"generated code"
+            }
+        default : error("syntax error parsing ResultType")
+    }
+end
+
+procedure P_ResultType_4()
+
+    case token of {
+        "(" | ")" | "," | "." | "INSTANCE" | "RELOCATABLE" | "{" | "}" | COMMENT | IDENT | INT | NEWLINE : # ResultType_4 : {ResultType_4_1}
+            return {
+                ii1 := []
+                while token == ("(" | ")" | "," | "." | "INSTANCE" | "RELOCATABLE" | "{" | "}" | IDENT | INT) do
+                    put(ii1,  P_ResultType_4_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing ResultType_4")
+    }
+end
+
+procedure P_ResultType_4_1()
+    local ii1
+
+    case token of {
+        IDENT : # ResultType_4_1 : IDENT
+            return {
+                ii1 :=  expect(IDENT, "ResultType_4_1")
+#line 43 "tygen.nw"
+            ii1
+#line 31000"generated code"
+            }
+        "INSTANCE" : # ResultType_4_1 : "INSTANCE"
+            return {
+                ii1 :=  expect("INSTANCE", "ResultType_4_1")
+#line 43 "tygen.nw"
+            ii1
+#line 32000"generated code"
+            }
+        "(" | ")" | "," | "." | "{" | "}" | INT : # ResultType_4_1 : Punctuation
+            return P_Punctuation()
+        "RELOCATABLE" : # ResultType_4_1 : "RELOCATABLE"
+            return {
+                ii1 :=  expect("RELOCATABLE", "ResultType_4_1")
+#line 43 "tygen.nw"
+            ii1
+#line 33000"generated code"
+            }
+        default : error("syntax error parsing ResultType_4_1")
+    }
+end
+
+procedure P_ResultType_3()
+    local ii1
+
+    case token of {
+        IDENT : # ResultType_3 : IDENT
+            return {
+                ii1 :=  expect(IDENT, "ResultType_3")
+#line 42 "tygen.nw"
+            ii1
+#line 34000"generated code"
+            }
+        "INSTANCE" : # ResultType_3 : "INSTANCE"
+            return {
+                ii1 :=  expect("INSTANCE", "ResultType_3")
+#line 42 "tygen.nw"
+            ii1
+#line 35000"generated code"
+            }
+        "(" | ")" | "," | "." | "{" | "}" | INT : # ResultType_3 : Punctuation
+            return P_Punctuation()
+        default : error("syntax error parsing ResultType_3")
+    }
+end
+
+procedure P_ResultType_2()
+
+    case token of {
+        COMMENT | IDENT | INT | NEWLINE : # ResultType_2 : [ResultType_2_1]
+            return {
+                ii1 := &null
+                if token == (IDENT | INT) then
+                    ii1 := ( P_ResultType_2_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing ResultType_2")
+    }
+end
+
+procedure P_ResultType_2_1()
+    local ii1
+
+    case token of {
+        IDENT : # ResultType_2_1 : IDENT
+            return {
+                ii1 :=  expect(IDENT, "ResultType_2_1")
+#line 39 "tygen.nw"
+            ii1
+#line 36000"generated code"
+            }
+        INT : # ResultType_2_1 : INT
+            return {
+                ii1 :=  expect(INT, "ResultType_2_1")
+#line 39 "tygen.nw"
+            ii1
+#line 37000"generated code"
+            }
+        default : error("syntax error parsing ResultType_2_1:\n\texpected IDENT or INT")
+    }
+end
+
+procedure P_ResultType_1()
+    local ii1
+
+    case token of {
+        "signed" : # ResultType_1 : "signed"
+            return {
+                ii1 :=  expect("signed", "ResultType_1")
+#line 39 "tygen.nw"
+            ii1
+#line 38000"generated code"
+            }
+        "unsigned" : # ResultType_1 : "unsigned"
+            return {
+                ii1 :=  expect("unsigned", "ResultType_1")
+#line 39 "tygen.nw"
+            ii1
+#line 39000"generated code"
+            }
+        default : error("syntax error parsing ResultType_1:\n\texpected 'signed' or 'unsigned'")
+    }
+end
+
+procedure P_Resynch()
+    local ii1
+
+    case token of {
+        RESYNCH : # Resynch : RESYNCH
+            return {
+                ii1 :=  expect(RESYNCH, "Resynch")
+#line 46 "tygen.nw"
+             filename := ii1.file ; lineno := ii1.line - 1 
+#line 40000"generated code"
+            }
+        default : error("syntax error parsing Resynch:\n\texpected RESYNCH")
+    }
+end
+
+procedure P_Operand()
+    local ii1, ii2, ii3
+
+    case token of {
+        IDENT : # Operand : IDENT Operand_1
+            return {
+                ii1 :=  expect(IDENT, "Operand")
+                ii2 :=  P_Operand_1()
+#line 96 "tygen.nw"
+             operand(ii1, default_type(ii1, ii2), ii2) 
+#line 41000"generated code"
+            }
+        "{" : # Operand : "{" OperandList "}"
+            return {
+                ii1 :=  expect("{", "Operand")
+                ii2 :=  P_OperandList()
+                ii3 :=  expect("}", "Operand")
+#line 97 "tygen.nw"
+             mark_rec(ii2) 
+#line 42000"generated code"
+            }
+        default : error("syntax error parsing Operand:\n\texpected '{' or IDENT")
+    }
+end
+
+procedure P_Operand_1()
+
+    case token of {
+        ")" | "," | ":" | "}" : # Operand_1 : [Operand_1_1]
+            return {
+                ii1 := &null
+                if token == (":") then
+                    ii1 := ( P_Operand_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Operand_1")
+    }
+end
+
+procedure P_Operand_1_1()
+    local ii1, ii2
+
+    case token of {
+        ":" : # Operand_1_1 : ":" Type
+            return {
+                ii1 :=  expect(":", "Operand_1_1")
+                ii2 :=  P_Type()
+#line 96 "tygen.nw"
+            ii2
+#line 43000"generated code"
+            }
+        default : error("syntax error parsing Operand_1_1:\n\texpected ':'")
+    }
+end
+
+procedure P_Type()
+    local ii1, ii2
+
+    case token of {
+        IDENT : # Type : IDENT Type_1
+            return {
+                ii1 :=  expect(IDENT, "Type")
+                ii2 :=  P_Type_1()
+#line 104 "tygen.nw"
+             every ii1 ||:= !ii2
+                                         if *ii2 = 0 then ii1 else othertype(ii1) # ?! 
+#line 44000"generated code"
+            }
+        "unsigned" : # Type : "unsigned"
+            return {
+                ii1 :=  expect("unsigned", "Type")
+#line 106 "tygen.nw"
+             exptype("Type.INTEGER { signed=false, ... }") 
+#line 45000"generated code"
+            }
+        "signed" : # Type : "signed"
+            return {
+                ii1 :=  expect("signed", "Type")
+#line 107 "tygen.nw"
+             exptype("Type.INTEGER { signed=true, ... }") 
+#line 46000"generated code"
+            }
+        "bool" : # Type : "bool"
+            return {
+                ii1 :=  expect("bool", "Type")
+#line 108 "tygen.nw"
+             exptype("Type.BOOLEAN") 
+#line 47000"generated code"
+            }
+        "static_bool" : # Type : "static_bool"
+            return {
+                ii1 :=  expect("static_bool", "Type")
+#line 109 "tygen.nw"
+             othertype("bool") 
+#line 48000"generated code"
+            }
+        "RELOCATABLE" : # Type : "RELOCATABLE" Type
+            return {
+                ii1 :=  expect("RELOCATABLE", "Type")
+                ii2 :=  P_Type()
+#line 111 "tygen.nw"
+             exptype("Type.RELOCATABLE (" || type_pattern(ii2) || ")") 
+#line 49000"generated code"
+            }
+        "INSTANCE" : # Type : "INSTANCE" IDENT
+            return {
+                ii1 :=  expect("INSTANCE", "Type")
+                ii2 :=  expect(IDENT, "Type")
+#line 113 "tygen.nw"
+             exptype("Type.INSTANCE " || ii2) 
+#line 50000"generated code"
+            }
+        default : error("syntax error parsing Type")
+    }
+end
+
+procedure P_Type_1()
+
+    case token of {
+        ")" | "," | "." | "}" : # Type_1 : {Type_1_1}
+            return {
+                ii1 := []
+                while token == (".") do
+                    put(ii1,  P_Type_1_1()
+                    )
+                ii1
+            }
+        default : error("syntax error parsing Type_1")
+    }
+end
+
+procedure P_Type_1_1()
+    local ii1, ii2
+
+    case token of {
+        "." : # Type_1_1 : "." IDENT
+            return {
+                ii1 :=  expect(".", "Type_1_1")
+                ii2 :=  expect(IDENT, "Type_1_1")
+#line 104 "tygen.nw"
+             ii1||ii2
+#line 51000"generated code"
+            }
+        default : error("syntax error parsing Type_1_1:\n\texpected '.'")
+    }
+end
+
+#line 50 "tygen.nw"
+global filename, lineno
+record operator(name, operands, others, exps, explist, result,
+                comments, file, line, col)
+procedure rule(name, operands, result, comment, column)
+  local rator
+  rator := make_rator(name, operands, result, comment, column)
+  if *rator.explist = 1 then
+    put(nary, rator)
+  else 
+    put(fixed[*rator.exps], rator)
+  put(operators, rator)
+  return rator
+end
+
+procedure make_rator(name, operands, result, comment, column)
+  t := table()
+  /column := 0
+  every t["explist"|"exptype"|"othertype"] := []
+  every o := !operands do put(t[type(o.ty)], o)
+  if *t["explist"] = 1 then {
+    *t["exptype"] = 0 | error("exps and lists")
+  } else {
+    *t["explist"] = 0 | error("exps and lists")
+  }
+  return operator(name, operands, t["othertype"], t["exptype"], t["explist"],
+		  result, [comment], filename, lineno, column)
+end
+
+procedure arity(n)
+  return case n of {
+    0 : "NULLARY"
+    1 : "UNARY"
+    2 : "BINARY"
+    default : impossible("arity")
+  }
+end
+#line 92 "tygen.nw"
+record operand(name, ty, explicit_type, rec)
+record exptype(match_pattern, always_matches)
+record explist()
+record othertype(mltype)
+#line 117 "tygen.nw"
+procedure type_pattern(ty)
+  return case type(ty) of {
+    "exptype" : ty.match_pattern
+    "string" : ty
+    "null" : "_"
+    default : impossible("type")
+  }
+end
+#line 128 "tygen.nw"
+procedure carried(operands, match)
+  if *operands = 0 then return ""
+  /match := "datatype"
+  pfx := ""
+  s := case match of {
+         "datatype" : " of "
+         "pattern" | "value"  : "("
+         "argtype"  : ""
+         default : impossible("match")
+       }
+  l := copy(operands)
+  while *l > 0 do {
+    s ||:= pfx || 
+           if \l[1].rec then rectype(l, match)
+	   else case match of {
+              "pattern" | "value" : get(l).name
+              "datatype" | "argtype" :
+		case type(x := get(l).ty) of {
+		  "othertype" : x.mltype
+		  "exptype" : "exp"
+		  "explist" : "exp list"
+		}
+	    }
+    pfx := if match == ("pattern"|"value") then ", " else " * "
+  }
+  return s || case match of {
+                "pattern" | "value" : ")"
+                "datatype" : ""
+                "argtype" : " -> "
+	      }
+end
+
+procedure rectype(types, match)
+  pfx := "{"
+  s := ""
+  while \types[1].rec do {
+    t := get(types)
+    s ||:= pfx || t.name || case match of {
+         "pattern" : ""
+         "datatype" | "argtype" : " : " || t.ty.mltype
+         "value" : " = " || t.name
+       }
+    pfx := ", "
+  }
+  return s || "}"
+end
+#line 175 "tygen.nw"
+procedure mark_rec(ty)
+  case type(ty) of {
+    "list" : every mark_rec(!ty)
+    "operand" : ty.rec := 1
+    default : impossible("mark")
+  }
+  return ty
+end
+#line 184 "tygen.nw"
+procedure default_type(name, ty)
+  if type(ty) == ("null"|"string") then
+    return case name of {
+      "N" | "M" : othertype("int")
+      "S" : othertype("string")
+      "c" : othertype("char")
+      "fields" | "Ss" : othertype("string list")
+      "e" | "e1" | "e2" : if \ty then exptype("_", 1) else exptype("Type.INTEGER _")
+      "es" : explist()
+      "membername"  | "operand" | "name" : othertype("string")
+      "cons" : othertype("Type.cons")
+      "constype" : othertype("Type.constype")
+      "ty" : othertype("Type.ty")
+      default : othertype("int")
+    }
+  else 
+    return ty
+end
+#line 206 "tygen.nw"
+global fixed, nary, operators, force
+global decls
+procedure openout(f)
+  return (if \force then open(f, "w") else open("cpif " || f, "pw")) |
+      error("can't open output file ", f)
+end
+
+procedure main(args)
+  delay(1500)   # ensures derived files will have later time stamps,
+                # even at 1-second granularity
+  if args[1] == "-force" then force := get(args)
+  *args = 1 | impossible("bad argument list")
+  input := get(args)
+  infile := open(input) | error("can't open input file ", input)
+  pass_through_resynch := 1
+  fixed := table()
+  every operators | nary | fixed[0 to 2] := []
+  decls := []
+  lex(infile)
+  codes := P_Spec()
+  token == EOF | error("leftover tokens ")
+
+  rators := openout(input || ".ord")
+  write(rators, "(* this code generated automatically by 'tygen ", input, "' *)")
+  write(rators, "structure Operators = struct")
+  every 1 to 2 do {
+    every dump_code(rators, !!decls)
+    datatype(rators, "nullop", fixed[0])
+    datatype(rators, "unop",   fixed[1])
+    datatype(rators, "binop",  fixed[2])
+    datatype(rators, "anyop",  nary)
+    write(rators, "%%")
+  }
+  write(rators, "end")
+  close(rators)
+
+  allrators := exp_builtins() ||| fixed[0] ||| fixed[1] ||| fixed[2] ||| nary
+  oneexp := openout(input || ".exp.ord")
+  write(oneexp, "(* this code generated automatically by 'tygen ", input, "' *)")
+  write(oneexp, "structure UnifiedExp = struct")
+  every 1 to 2 do {
+    every dump_code(oneexp, !!decls)
+    datatype(oneexp, "exp", allrators, 1)
+    write(oneexp, "%%")
+  }
+  if (!allrators).name == "SLICE" then
+    write(oneexp, "fun unSlice (SLICE x) = SOME x | unSlice _ = NONE")
+  else
+    write(oneexp, "fun unSlice _ = NONE")
+  pfx := "fun "
+  if (!allrators).name == "NARROWs" then {
+    write(oneexp, pfx, "unNarrow (NARROWs(e, n)) = SOME {exp=e, width=n, signed=true}")
+    pfx := "  | "
+  }
+  if (!allrators).name == "NARROWu" then {
+    write(oneexp, pfx, "unNarrow (NARROWu(e, n)) = SOME {exp=e, width=n, signed=false}")
+    pfx := "  | "
+  }
+  write(oneexp, pfx, "unNarrow _ = NONE")
+  write(oneexp, "end")
+  close(oneexp)
+
+  allrators := exp_builtins() ||| fixed[0] ||| fixed[1] ||| fixed[2] ||| nary
+  tosx := openout(input || ".sx.sml")
+  write(tosx, "(* this code generated automatically by 'tygen ", input, "' *)")
+  write(tosx, "structure ExpToSx = struct")
+  write(tosx, "  structure U = UnifiedExp")
+  sxconversion(tosx, "tosx", allrators)
+  write(tosx, "end")
+  close(tosx)
+
+  expfuns := openout(input || ".exp.sml")
+  write(expfuns, "(* this code generated automatically by 'tygen ", input, "' *)")
+  write(expfuns, "structure UnifiedExpFuns = struct")
+  write(expfuns, "  structure U = UnifiedExp")
+##    write(expfuns, "  fun mul(k, U.CONST k') = (k*k', U.CONST 1)")
+##    write(expfuns, "    | mul(k, a) = (k, a)")
+  emitsubst(expfuns, "subst", allrators)
+  emitsubst(expfuns, "leafSubst", allrators)
+  emitsubst(expfuns, "multiSubst", allrators)
+  emitsubst(expfuns, "topDownRewrite", allrators)
+  emitsubst(expfuns, "bottomUpRewrite", allrators)
+  emitexists(expfuns, "existsVar", allrators)
+  emitexists(expfuns, "forallVars", allrators)
+  emitfold(expfuns, "foldFreeVariables", allrators)
+  emitfold(expfuns, "foldExps", allrators)
+  write(expfuns, "  fun isFreeIn (x, e) = existsVar (fn x' => x' = x) e")
+  every o := !operators do
+    write(expfuns, "  val ", valstyle(o.name), " = U.", o.name)
+  write(expfuns, "end")
+  close(expfuns)
+
+  checker := openout(input || ".check")
+  write(checker, "(* this code generated automatically by 'tygen ", input, "' *)")
+  every dump_code(checker, \!codes, 1)
+  gencode(checker)
+  typecheck(checker, "nulltype", fixed[0], 0)
+  typecheck(checker, "untype",   fixed[1], 1)
+  typecheck(checker, "bintype",  fixed[2], 2)
+  typecheck(checker, "anytype",  nary,     1)
+  write(checker, "end")
+  close(checker)
+
+  matcher := openout(input || ".match")
+  write(matcher, "fun match(Exp.VAR s) = ???")
+  expmatch(matcher, "Exp.NULLARY", fixed[0], 0)
+  expmatch(matcher, "Exp.UNARY",   fixed[1], 1)
+  expmatch(matcher, "Exp.BINARY",  fixed[2], 2)
+  expmatch(matcher, "Exp.NARY",    nary,     0, 1)
+  matchtrans(matcher, "Exp.NULLARY", fixed[0], 0)
+  matchtrans(matcher, "Exp.UNARY",   fixed[1], 1)
+  matchtrans(matcher, "Exp.BINARY",  fixed[2], 2)
+  matchtrans(matcher, "Exp.NARY",    nary,     0, 1)
+  close(matcher)
+
+  crsig := openout(input || ".create.sig")
+  write(crsig, "(* this code generated automatically by 'tygen ", input, "' *)")
+  every write(crsig, "signature FULL_OLC_EXP = sig" | "  include OLC_EXP")
+  every create_sig(crsig, !operators)
+  write(crsig, "end")
+  close(crsig)
+
+  expsig := openout(input || ".exp.sig")
+  write(expsig, "(* this code generated automatically by 'tygen ", input, "' *)")
+  every write(expsig, 
+    "signature EXP = sig" | 
+    "  include EXP_WALKERS" |
+    "  val compare : exp Order.T" |
+    "  val pcSubst : exp -> exp -> exp" |
+    "  val usesPC  : exp -> bool" |
+    "  val unSlice : exp -> (exp * {lo : int, width : int}) option" |
+    "      (* unSlice is needed for the ``smart widen'' to sign-extend slices *)" |
+    "  val unNarrow : exp -> {exp:exp, width:int, signed:bool} option" |
+    "      (* unNarrow is needed for the ``smart widen'' to sign-extend narrows *)" |
+    ""
+    )
+  every create_sig(expsig, !operators)
+  write(expsig, "end")
+  close(expsig)
+
+  crfun := openout(input || ".create.sml")
+  write(crfun, "(* this code generated automatically by 'tygen ", input, "' *)")
+  every write(crfun, 
+    "functor FullExpFun(structure Exp : OLC_EXP" |
+    "		        where structure Operators = Operators) : FULL_OLC_EXP = struct" |
+    "  structure O = Operators" |
+    "  open Exp" |
+    "  structure Operators = O" |
+    "  fun unexp (EXP e) = e" | 
+    "  val inject = EXP o OLC.inject")
+  every create_fun(crfun, !operators)
+  write(crfun, "end")
+  close(crfun)
+
+##  ucrfun := openout(input || ".exp.create.sml")
+##  write(ucrfun, "(* this code generated automatically by 'tygen ", input, "' *)")
+##  every write(ucrfun, 
+##    "functor UnifiedExpFun(structure Exp : EXP_WALKERS" |
+##    "		       sharing Exp.Operators = Operators) : FULL_OLC_EXP = struct" |
+##    "  structure O = Operators" |
+##    "  open Exp" |
+##    "  structure Operators = O" |
+##    "  fun unexp (EXP e) = e" | 
+##    "  val inject = EXP o OLC.inject")
+##  every unified_create_fun(ucrfun, !operators)
+##  write(ucrfun, "end")
+##  close(ucrfun)
+
+
+  return
+end
+#line 383 "tygen.nw"
+procedure exp_builtins() 
+  local binary, unary, inttype, intrand, result, const
+  static builtins
+  initial {
+    l := []
+    inttype := exptype("Type.INTEGER _")
+    binary := [operand("e1", copy(inttype)), operand("e2", copy(inttype))]
+    unary  := [operand("e", copy(inttype))]
+    result := ["signed", "NONE"]
+    const := operand("n", othertype("int"))
+    every put(l, make_rator("ADD" | "SUB", copy(binary), result))
+#   put(l,       make_rator("NEG",         copy(unary),  result))
+    put(l, make_rator("MUL", [copy(const), operand("e", copy(inttype))], result))
+    put(l, make_rator("CONST", [copy(const)], result))
+    put(l, make_rator("VAR", [operand("x", othertype("string"))], result))
+    builtins := l
+  }
+  return builtins
+end
+#line 406 "tygen.nw"
+procedure sxconversion(outfile, name, members)
+  if *members = 0 then {
+    write(outfile, "  fun ", name, "() = Sx.NIL")
+  } else {
+    pfx := "fun"
+    every m := !members do {
+      write(outfile, "    ", pfx, " ", name, " (U.", m.name,
+	    carried(m.operands, "pattern"),
+	    ") = ", sxapp(m.name, m.operands))
+      pfx := "  |"
+    }
+  }
+  return
+end
+#line 421 "tygen.nw"
+procedure sxapp(name, operands)
+  s := "SxUtil.list [Sx.ATOM " || image(name)
+  every o := !operands do
+    s ||:= ", " ||
+      if \o.rec then sxrec(o)
+      else case type(o.ty) of {
+        "exptype" : "tosx " || o.name
+        "explist" : "SxUtil.list (map tosx " || o.name || ")"
+        "othertype" :
+           case o.ty.mltype of {
+	     "int" : "Sx.INT " || o.name
+	     "string" : "Sx.STRING " || o.name
+	     "bool"   : "if " || o.name || " then Sx.ATOM \"t\" else Sx.NIL"
+	     "char"   : "Sx.STRING (str " || o.name || ")"
+	     "string list" : "SxUtil.list (map Sx.STRING " || o.name || ")"
+	     "Type.cons" : "Sx.ATOM \"<constructor>\""
+	     "Type.constype" : "Sx.ATOM \"<constructor-type>\""
+	     "Type.ty" : "Sx.ATOM \"<Type.ty>\""
+	     "Ast.code" : "Sx.ATOM \"<raw-code>\""
+	     "SourceMap.sourcemap" : "Sx.ATOM \"<sourcemap>\""
+	     "Relop.relop" : "Sx.ATOM (Relop.ascii " || o.name || ")"
+	     "Field.absolute_field" :
+		 "SxUtil.list [Sx.ATOM (#name (#1 " || o.name || ")), " ||
+		 "Sx.ATOM \"at\", Sx.INT (#2 " || o.name || ")]"
+	     default : "Sx.ATOM " || image("unknown-of-type-" || o.ty.mltype)
+	   }
+	default : "this can't happen -- ty is " || image(o.ty)
+      }
+  return s || "]"
+end
+#line 452 "tygen.nw"
+procedure sxrec(o)
+  return "Sx.ATOM " || image("<record>")
+end
+#line 459 "tygen.nw"
+procedure datatype(outfile, name, members, include_exps)
+  static comcol
+  initial comcol := 42
+  if *members = 0 then {
+    write(outfile, "  type ", name, " = unit")
+  } else {
+    pfx := "="
+    write(outfile, "  datatype ", name)
+    every m := !members do {
+      init := "    " || pfx || " " || m.name ||
+	 carried(if \include_exps then m.operands else m.others)
+      if \m.comments[1] then {
+        c := comcol
+        if *init + *m.comments[1] < 80 then
+          c := c > 80 - *m.comments[1]
+        if *init < c then init := left(init, c)
+        write(outfile, init, m.comments[1])
+      } else
+        write(outfile, init)
+      every write(outfile, "    ", m.comments[2 to *m.comments])
+      pfx := "|"
+    }
+  }
+  return
+end
+#line 492 "tygen.nw"
+procedure emitsubst(outfile, name, operators)
+  local firstarg, substbody, pfx, npfx
+  case name of {
+    "subst" : {
+      firstarg := "(name, value)"
+      substbody := "if x = name then value else exp"
+    }
+    "leafSubst" : {
+      firstarg := "sigma"
+      substbody := "(case sigma exp of NONE => exp | SOME e => e)"
+    }
+    "multiSubst" : {
+      firstarg := "sigma"
+      substbody := "(case sigma x   of NONE => exp | SOME e => e)"
+    }
+    "topDownRewrite" : {
+      firstarg := "sigma"
+      substbody := "(case sigma exp of SOME e => e | NONE => exp)" # leaves only
+    }
+    "bottomUpRewrite" : {
+      firstarg := "sigma"
+      substbody := "sigma {old=exp,new=exp}" # leaves only
+    }
+    default : impossible("bad substitution function")
+  }
+    
+  write(outfile, "  fun ", name, " ", firstarg, " = ")
+  pfx  := "    let fun subst' "
+  npfx := "          | subst' "
+  every o := !operators do {
+    writes(outfile, pfx, "(exp as U.", o.name, carried(o.operands, "pattern"), ") = ")
+    pfx := npfx
+    if o.name == ("ADD"|"SUB"|"MUL"|"NEG") then {
+      write(outfile, "Impossible.impossible \"unsafe substitution through ",
+	             o.name, "\"")
+    } else if *o.exps = 0 & *o.explist = 0 then {
+      if o.name == "VAR" | name == ("leafSubst"|"topDownRewrite"|"bottomUpRewrite")
+      then 
+	  write(outfile, substbody)
+      else
+	  write(outfile, "exp")
+    } else {
+      if name == "topDownRewrite" then {
+	writes(outfile, "(case sigma exp of SOME e => e | NONE =>")
+      }
+      write(outfile)
+      
+#line 553 "tygen.nw"
+pfx2 := repl(" ", *pfx-3) || "let "
+npfx2 := repl(" ", *pfx-3+4)
+every e := !o.exps do {
+  write(outfile, pfx2, "val ", e.name, " = subst ", e.name)
+  pfx2 := npfx2
+}
+every e := !o.explist do {
+  write(outfile, pfx2, "val ", e.name, " = map subst ", e.name)
+  pfx2 := npfx2
+}
+#line 539 "tygen.nw"
+      e := "U." ||  o.name || carried(o.operands, "value")
+      if name == "bottomUpRewrite" then e := firstarg || " {old=exp,new=" || e || "}"
+      write(outfile, repl(" ", *pfx-3), "in  ", e)
+      write(outfile, repl(" ", *pfx-3), "end",
+	             if name == "topDownRewrite" then ")" else "")
+    }
+  }
+  write(outfile, "        and subst e = UnifiedBasics.safeSubst subst' e")
+  write(outfile, "    in  subst")
+  write(outfile, "    end")
+  write(outfile)
+  return
+end
+#line 566 "tygen.nw"
+procedure emitexists(outfile, name, operators)
+  local firstarg, substbody, pfx, npfx, conjunction, basis, conj, list
+  if match("exists", name) then {
+    conjunction := " orelse "
+    basis := "false"
+    list := "List.exists"
+  } else {
+    conjunction := " andalso "
+    basis := "true"
+    list := "List.all"
+  } 
+  write(outfile, "  fun ", name, " p = ")
+  pfx  := "    let fun search "
+  npfx := "          | search "
+  every o := !operators do {
+    writes(outfile, pfx, "(exp as U.", o.name, carried(o.operands, "pattern"), ") = ")
+    pfx := npfx
+    if o.name == "VAR" then
+      write(outfile, "p x")
+    else {
+      conj := ""
+      every e := !o.exps do {
+	writes(outfile, conj, "search ", e.name)
+	conj := conjunction
+      }
+      every e := !o.explist do {
+        writes(outfile, conj, list, " search ", e.name)
+	conj := conjunction
+      }
+      write(outfile, if conj == "" then basis else "")
+    }
+  }
+  write(outfile, "    in  search")
+  write(outfile, "    end")
+  write(outfile)
+  return
+end
+#line 605 "tygen.nw"
+procedure emitfold(outfile, name, operators)
+  local firstarg, substbody, pfx, npfx, conjunction, basis, conj, list
+  write(outfile, "  fun ", name, " g = ")
+  write(outfile, "    let fun fold zero =")
+  pfx  := "      let fun exp "
+  npfx := "            | exp "
+  every o := !operators do {
+    writes(outfile, pfx, "(exp as U.", o.name, carried(o.operands, "pattern"), ") = ")
+    pfx := npfx
+    if o.name == "VAR" & name == "foldFreeVariables" then
+      write(outfile, "g(x, zero)")
+    else {
+      s := if name == "foldFreeVariables" then "zero"
+           else "g(exp, zero)"
+      every e := !o.exps do {
+        if s ~== "zero" then s := "(" || s || ")"
+	s := "fold " || s || " " || e.name
+      }
+      every e := !o.explist do {
+        if s ~== "zero" then s := "(" || s || ")"
+        s := "foldl (fn (e, x) => fold x e) " || s || " " || e.name
+      }
+      write(outfile, s)
+    }
+  }
+  write(outfile, "      in  exp")
+  write(outfile, "      end")
+  write(outfile, "    in  fold")
+  write(outfile, "    end")
+  write(outfile)
+  return
+end
+#line 640 "tygen.nw"
+procedure typecheck(outfile, name, members, arity)
+  if *members = 0 then {
+    writes(outfile, "  fun ", name, "(_")
+    every 1 to arity do writes(outfile, ", _")
+    writes(outfile, ") = ErrorMsg.impossible ", image("no operator of this arity"))
+  } else {
+    pfx := "fun "
+    every m := !members do {
+      writes(outfile, "  ", pfx, name, "(", m.name, carried(m.others, "pattern"))
+      every e := !m.exps do {
+#line 662 "tygen.nw"
+writes(outfile, ", ", 
+  case type(e.explicit_type) of {
+    "string" : if e.explicit_type ~=== e.ty then e.explicit_type || " as " else ""
+    default : ""
+  }, type_pattern(e.ty))
+#line 649 "tygen.nw"
+                                                         }
+      every !m.explist do writes(outfile, ", tys")
+      writes(outfile, ") = ")
+      writes(outfile, "(*#line ", m.line, ".", m.col, " ", image(m.file), "*)")
+      every writes(outfile, !paren_flatten(m.result))
+      gencode(outfile)
+      pfx := "  | "
+      if /(!m.exps).ty.always_matches then {
+#line 668 "tygen.nw"
+writes(outfile, "  ", pfx, name, "(", m.name, carried(m.others, "pattern"))
+every e := !m.exps do writes(outfile, ", _")
+every !m.explist do writes(outfile, ", _")
+write(outfile, ") = raise IllTyped")
+#line 656 "tygen.nw"
+                                                                            }
+    }
+  }
+  return
+end
+#line 674 "tygen.nw"
+procedure expmatch(outfile, cons, members, arity, list)
+  if *members = 0 then
+    members := [operator("()", &null, [])]
+  every m := !members do {
+    writes(outfile, "  | match(", cons, " (", m.name, carried(m.others, "pattern"))
+    every i := 1 to arity do
+	writes(outfile, ", e", if arity = 1 then "" else i)
+    if \list then writes(outfile, ", exps")
+    write(outfile, ")) = ???")
+  }
+  return
+end
+#line 687 "tygen.nw"
+procedure matchtrans(outfile, cons, members, arity, list)
+  if *members = 0 then
+    members := [operator("()", &null, [])]
+  every m := !members do {
+    writes(outfile, "s/")
+    every writes(outfile, bsquote(cons | " (" | m.name | carried(m.others, "pattern")))
+    every i := 1 to arity do
+	writes(outfile, ", e", if arity = 1 then "" else i)
+    if \list then writes(outfile, ", exps")
+    writes(outfile, "))/")
+    writes(outfile, "U.", m.name, carried(m.operands, "value"))
+    write(outfile, "/")
+  }
+  return
+end
+
+procedure bsquote(s)
+  static specials
+  initial specials := '\\*[]^$/'
+  r := ""
+  s ? {
+    while r ||:= tab(upto(specials)) do
+      while any(specials) do r ||:= "\\" || move(1)
+    return r || tab(0)
+  }
+end      
+#line 720 "tygen.nw"
+global token, tval, file, line
+#line 724 "tygen.nw"
+global EOF, IDENT, COMMENT, NEWLINE, INT, CODE, RESYNCH
+#line 734 "tygen.nw"
+record resynch(file, line)
+
+procedure scantokens(eol)
+  static alphanum, hexdigits, multichar, code, quote
+  initial { 
+    alphanum   := &letters ++ &digits ++ '_'
+    hexdigits  := &digits ++ 'abcdefABCDEF'
+    multichar := set([])
+    code := 1
+    quote := "\""
+    
+#line 726 "tygen.nw"
+COMMENT := " comment "
+EOF     := " end of file "
+IDENT   := " identifier "
+INT     := " integer "
+NEWLINE := " newline "
+CODE    := " code "
+RESYNCH := " resynch "
+#line 745 "tygen.nw"
+  }
+
+  if (pos(1), ="#line", white(), n := integer(tab(many(&digits))), white(),
+      =quote, f := tab(upto('"')), =quote, (white() | ""), pos(0)) 
+  then {
+    tval := resynch(f, n)
+    return RESYNCH
+  } 
+  if \code then 
+    if \eol then fail
+    else if (pos(1), token := tval := =("%%"|"%{"|"%}"), pos(0)) then {
+      if token == "%%" then code := &null
+      return token
+    } else {
+      tval := tab(0)
+      return CODE
+    }
+  else {
+    if \eol then return NEWLINE
+    if {white(); not pos(0)} then {
+      thispos := &pos
+      if tval := (="(*" || tab(upto("*)")) || ="*)") then {
+        token := COMMENT
+      } else if tval := (any(&digits), integer(tab(many(&digits)))) then {
+        token := INT
+      } else if tval := (any(&letters), tab(many(alphanum))) then {
+        token := reserved(tval) | IDENT
+      } else if tval := =!multichar then {
+        token := tval
+      } else {
+        token := tval := move(1)
+      }
+      return token
+    }
+  }
+end
+#line 782 "tygen.nw"
+procedure white()
+  suspend tab(many(' \t'))
+end
+#line 786 "tygen.nw"
+procedure flatten(stuff)
+  l := []
+  every put(l, elements(stuff))
+  return l
+end
+
+procedure elements(x)
+  suspend case type(x) of {
+    "list" : elements(!x)
+    default : x
+  }
+end
+#line 802 "tygen.nw"
+procedure paren_flatten(exp, l)
+  /l := []
+  if type(exp) == "string" then return put_with_space(l, exp)
+  every x := !exp do case type(x) of {
+    "list" : { put_with_space(l, "("); paren_flatten(x, l); put_with_space(l, ")") }
+    "string" | "integer" : put_with_space(l, x)
+    default : impossible("parens")
+  }
+  return l
+end
+
+procedure put_with_space(l, x)
+  static noleft, noright
+  initial { noleft  := set(["(", "{", "[", "."])
+	    noright := set([")", "}", "]", ",", ";", "."])
+	  }
+  if *l = 0 | member(noleft, l[-1]) | member(noright, x) then
+    put(l, x)
+  else
+    every put(l, " " | x)
+  return l
+end
+#line 826 "tygen.nw"
+procedure create_sig(outfile, rator)
+  write(outfile, "  val ", valstyle(rator.name), " : ",
+	carried(rator.operands, "argtype"), "exp")  
+  return
+end
+
+procedure valstyle(old)
+  static reserved
+  initial reserved := set(["true", "false", "not", "orelse", "andalso", "div", "mod"])
+  s := ""
+  old ? {
+    s := map(tab(upto('_') | 0))
+    while ="_" do
+      s ||:= uppercase(move(1)) || map(tab(upto('_') | 0))
+  }
+  if member(reserved, s) then s ||:= "'"
+  return s
+end
+
+procedure uppercase(s)
+  return map(s, &lcase, &ucase)
+end
+#line 850 "tygen.nw"
+procedure create_fun(outfile, rator)
+  static arities
+  initial arities := ["NULLARY", "UNARY", "BINARY"]
+  writes(outfile, "  ", if *rator.operands = 0 then "val" else "fun", " ",
+	 valstyle(rator.name), " ", carried(rator.operands, "pattern"),
+	 " = inject (")  
+  if *rator.explist = 1 then
+    writes(outfile, "NARY(Operators.", rator.name, carried(rator.others, "value"),
+	           ", map unexp ", rator.explist[1].name, ")")
+  else {
+    a := \arities[*rator.exps+1] | impossible("arity = ", *rator.exps)
+    writes(outfile, arities[*rator.exps+1], "(Operators.", rator.name,
+	            carried(rator.others, "value"))
+    every writes(outfile, ", unexp ", (!rator.exps).name)
+    writes(outfile, ")")
+  }    
+  write(outfile, ")") # matches inject
+  return
+end
+
+
+#line 874 "tygen.nw"
+procedure dump_code(outfile, s, showre)
+  case type(s) of {
+    "string" : write(outfile, s)
+    "resynch" : if \showre then
+	          write(outfile, "(*#line ", s.line - 1, " ", image(s.file), "*)")
+                else
+		  &null
+    default : impossible("code")
+  }
+  return
+end
+
+procedure gencode(outfile)
+  static n
+  initial n := 0
+  write(outfile, "(*#line ", n +:= 1000, " ", image("generated-code"), "*)")
+  return
+end
+
+  
+
+
+
+#========================================  /home/cellar/nr/src/icon/ebnflex.icn
+
+
+
+#line 25 "/u/norman/src/ebnf/ebnflex.nw"
+global token, tval, filename, lineno
+global thisline, thispos
+#line 30 "/u/norman/src/ebnf/ebnflex.nw"
+global EOF
+#line 34 "/u/norman/src/ebnf/ebnflex.nw"
+procedure lex(newfile)
+  static toks,  infile
+  local eol
+  initial {EOF    := " end of file "; /lineno := 0; toks := [];
+           infile := &input; filename := "standard input"}
+  filename := image(infile := \newfile)[6:-1]
+  if \newfile then lineno := 0
+  if *toks = 1 & token := scantokens(pop(toks)) then
+    return token
+  else if *toks = 2 & (pop(toks) ? { 
+      tab(thispos := pop(toks))
+      if token := scantokens() then {
+        every push(toks, if pos(0) then 1 else &pos | &subject)
+        return token
+      } 
+    }) then &null
+  else {
+    while thisline := read(infile) do {
+      lineno +:= 1
+      thispos := 1
+      thisline ?    
+        if (="#line ", lineno := integer(tab(many(&digits)))-1, 
+            =" \"", filename := tab(upto('"')), ="\"", pos(0)) |
+           (="<* LINE ", lineno := integer(tab(many(&digits)))-1, 
+            =" \"", filename := tab(upto('"')), ="\" *>", pos(0)) then { }
+        else {
+          if token := scantokens() then {
+            every push(toks, if pos(0) then 1 else &pos | &subject)
+            return token
+          }
+        }
+    }
+  }
+  return token := tval := EOF
+end
+#line 74 "/u/norman/src/ebnf/ebnflex.nw"
+procedure gobble(t)
+    if token == t then return 1(.tval, lex())
+end
+
+procedure expect(t, nt)
+    return gobble(t) | 
+    error("when parsing "||\nt||", " | "", 
+          "expected ", image(t), " but found ", image(tval))
+end
+
+procedure lexwhere(outfile)
+  /outfile := &errout
+  write(outfile, thisline)
+  write(outfile, repl(" ", thispos-1), "^", repl(" ", 0 <= *thisline-thispos) | "", "$")
+  return
+end
+
+procedure erroratfl(file, line, L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+  stop()
+end
+
+procedure errorat(loc, L[])
+  write ! ([&errout, loc, ": "] ||| L)
+  stop()
+end
+
+procedure error(L[])
+  
+#line 117 "/u/norman/src/ebnf/ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 103 "/u/norman/src/ebnf/ebnflex.nw"
+  stop()
+end
+
+procedure warning(L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": Warning -- "] ||| L)
+end
+
+procedure impossible(L[])
+  push(L, "This can't happen: ")
+  
+#line 117 "/u/norman/src/ebnf/ebnflex.nw"
+write ! ([&errout, image(filename), ", line ", lineno, ": "] ||| L)
+lexwhere()
+write(&errout, "token = ", token, " [", image(tval), "]")
+#line 113 "/u/norman/src/ebnf/ebnflex.nw"
+  write(&errout, "\n")
+  &null[0]
+end

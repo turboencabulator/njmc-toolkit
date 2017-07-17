@@ -1,0 +1,375 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: dag.nw,v 1.15 1998/11/11 21:59:12 nr Exp $
+% l2h ignore change {
+@
+\section{Converting trees to dags}
+The problem with the trees generated in the previous section is that
+there's a different edge, and therefore a different child, for each
+possible interval of the field tested, even if those children both
+execute exactly the same ``original'' arm of the case statement.
+The code in this section converts the trees to dags, and as part of
+the process it combines edges pointing to the same node.
+This can reduce the size of the tree by huge factors.
+
+In comparison with the trees, edges are now labelled by sets of
+ranges, arms are referred to by an integer ID, and names can be
+transformed from strings into name-array lookups.
+<<types>>=
+datatype node = NODE of { field : Field.absolute_field
+			, children : edge list
+			}
+              | LEAF of { arms : int     (* unique id for arms in this dag *)
+			, name : leaf_name option
+			}
+and      edge = EDGE of { node : node, range : RangeSet.set }
+and leaf_name = STRING of string 
+              | LOOKUP of int (* lookup by unique id of ``name array'' *)
+@
+\subsection {Comparison functions}
+@
+To convert trees to dags I need to be able to compare two nodes
+for structural identity.
+I haven't quite got name conversion the way I want yet.
+<<node comparison functions>>=
+fun compare'node (LEAF _, NODE _) = LESS
+  | compare'node (NODE _, LEAF _) = GREATER
+  | compare'node (NODE {field=f1, children=c1}, NODE {field=f2, children=c2}) = 
+      (case Field.compare'absolute_field(f1, f2)
+	 of EQUAL => Order.compare'list compare'edge (c1, c2)
+	  | difference => difference)
+  | compare'node (LEAF {arms=a1, name=n1}, LEAF {arms=a2, name=n2}) = 
+      (case Int.compare (a1, a2)
+	 of EQUAL => Order.compare'option compare'leaf_name (n1, n2)
+	  | difference => difference)
+and compare'edge (EDGE {range=r1, node=n1}, EDGE {range=r2, node=n2}) =
+      (case RangeSet.compare (r1, r2)
+	 of EQUAL => compare'node (n1, n2)
+	  | difference => difference)
+@ 
+Because arms are polymorphic, I can't use them as keys.
+Therefore, I have to project them to something monomorphic, then use
+them as keys.
+That's one reason for the [[uid]].
+<<arm projection>>=
+type arm_projection = {uid : int, conditions : M.Patterns.Exp.Set.set, 
+                       answers : M.Patterns.Exp.exp  StringMap.map,
+                       patlen : int option}
+fun project'arm( M.ARM (_, {original={uid=u1,...}, conditions=c1,
+			   answers=a1, patlen=l1, ...})
+               ) = {uid=u1, conditions=c1, answers=a1, patlen=l1}
+<<arm comparison functions>>=
+fun compare'projection( {uid=u1, conditions=c1, answers=a1, patlen=l1}
+                      , {uid=u2, conditions=c2, answers=a2, patlen=l2}
+	              ) =
+      (case Int.compare(u1, u2)
+	 of EQUAL => (case Order.compare'option Int.compare (l1, l2)
+			of EQUAL => (case compare'conditions (c1, c2)
+				       of EQUAL => compare'answers(a1, a2)
+					| difference => difference)
+			 | difference => difference)
+	  | difference => difference)
+and compare'conditions ? = M.Patterns.Exp.Set.compare ?
+and compare'answers ? = StringMap.collate M.Patterns.Exp.compare ?
+and compare'arm (a1, a2) = compare'projection(project'arm a1, project'arm a2)
+<<old comparison functions>>=
+fun compare'node (T.LEAF _, T.NODE _) = LESS
+  | compare'node (T.NODE _, T.LEAF _) = GREATER
+  | compare'node (T.NODE {field=f1, children=c1}, T.NODE {field=f2, children=c2}) = 
+      (case FieldOrder.compare'absolute_field(f1, f2)
+	 of EQUAL => Order.compare'list compare'edge (c1, c2)
+	  | difference => difference)
+  | compare'node (T.LEAF {arms=a1, name=n1}, T.LEAF {arms=a2, name=n2}) = 
+      (case Order.compare'option compare'name (n1, n2)
+	 of EQUAL => Order.compare'list compare'arm (a1, a2)
+	  | difference => difference)
+and compare'edge (T.EDGE {range=r1, node=n1}, T.EDGE {range=r2, node=n2}) =
+      (case RangeSet.compare (r1, r2)
+	 of EQUAL => compare'node (n1, n2)
+	  | difference => difference)
+and compare'arm( M.ARM (_, {original={uid=u1,...}, conditions=c1,
+			   answers=a1, patlen=l1, ...})
+	       , M.ARM (_, {original={uid=u2,...}, conditions=c2,
+			    answers=a2, patlen=l2, ...})
+	       ) =
+      (case Int.compare(u1, u2)
+	 of EQUAL => (case Order.compare'option Int.compare (l1, l2)
+			of EQUAL => (case compare'conditions (c1, c2)
+				       of EQUAL => compare'answers(a1, a2)
+					| difference => difference)
+			 | difference => difference)
+	  | difference => difference)
+and compare'conditions ? = M.Absolute.Exp.Set.compare ?
+and compare'answers ? = StringMap.compare M.Absolute.Exp.compare ?
+@
+The complicated stuff here is merging strings together into ``name
+arrays.''
+Each leaf potentially has a name which is a string.
+Ordinarily, we couldn't merge two leaves with different names, even
+if the leaves were otherwise identical.
+To get around that restriction, we change the representation so that
+the string is either given directly, or is given as an index into a
+``name array.''
+The indexing trick represents a lookup of a field value in the table,
+and we can merge leaves with the same lookup, even though they might
+get different answers when the field value would be different.
+<<types>>=
+datatype name_array = 
+  NAME_ARRAY of { field : Tree.Match.Patterns.absolute_field   (* index to the array *)
+                , tbl : string IntMap.map	      (* names of various values *)
+                , uid : int		              (* unique within one dag *)
+		}
+type 'a dag = node * name_array list * 'a Tree.Match.arm list vector
+@ The fields [[codename]] and [[storageclass]] can be defaulted (to a
+gensym'ed name and to [[static]], respectively).
+<<name arrays>>=
+fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
+@
+<<structure for name arrays>>=
+structure Arrays = struct
+  val MAXRANGE = 32
+  fun tooBig {lo, hi} = hi - lo > MAXRANGE
+  type arrays = name_array list AbsoluteFieldMap.map * int
+  val empty = (AbsoluteFieldMap.empty, 0)
+  <<name-array functions>>
+  fun arrays (amap, _) = 
+    let fun gt (NAME_ARRAY {uid=u1, ...}, NAME_ARRAY {uid=u2, ...}) = u1 > u2
+    in  ListMergeSort.sort gt (AbsoluteFieldMap.foldl op @ [] amap)
+    end
+end
+@ 
+This gets all the arrays we know about for a given field:
+<<name-array functions>>=
+fun arraysFor (amap, f) = getOpt(AbsoluteFieldMap.find(amap, f), [])
+@ To select an array, we need one that is empty (or has the name
+already) in all relevant 
+ranges.
+We create a new table by binding all values in the range.
+We update the list of arrays for a field by adding bindings to the
+first usable array.
+<<name-array functions>>=
+fun bindName(f, {lo, hi}, name, (amap, cnt)) =
+  let fun usableAt(NAME_ARRAY {tbl, ...}, n) = getOpt(IntMap.find(tbl, n), name) = name
+      fun usable(na, lo, hi) = if lo = hi then true 
+			       else usableAt(na, lo) andalso usable(na, lo+1, hi)
+      fun newTbl(tbl, lo, hi) = if lo = hi then tbl
+				else newTbl(IntMap.insert(tbl, lo, name), lo+1, hi)
+      fun update((h as NAME_ARRAY {uid, tbl, ...})::t, bad, cnt) =
+	    if usable(h, lo, hi) then
+              let val na = NAME_ARRAY {field=f, uid=uid, tbl=newTbl(tbl, lo, hi)}
+	      in  (uid, List.revAppend(bad, na::t), cnt)
+	      end
+	    else
+	      update(t, h::bad, cnt)
+	| update ([], bad, cnt) = 
+            update([NAME_ARRAY {field=f, tbl=IntMap.empty, uid=cnt}], bad, cnt+1)
+      val (uid, arrays, cnt) = update(arraysFor(amap, f), [], cnt)
+  in  (uid, (AbsoluteFieldMap.insert(amap, f, arrays), cnt))
+  end
+<<name-array signature>>=
+signature NAME_ARRAY = sig
+  type arrays
+  val tooBig : FieldTypes.range -> bool
+  val empty : arrays
+  val bindName : FieldTypes.absolute_field * FieldTypes.range * string * arrays ->
+                 int * arrays
+  val arrays : arrays -> name_array list
+end
+@ 
+If we have a name array with only one element, we will want to convert
+it back to a string.  That's true even if the element appears with
+multiple indexes.%
+\footnote{This sort of thing can happen when the pattern contains
+complete and redundant tests, like [[i = 0 | i = 1]] on the SPARC.
+Eventually, disjunct simplification will clobber such patterns, and
+these singleton arrays will find themselves parts of higher arrays,
+but until then look to the matching of, e.g., the [[alu]] group on the
+SPARC.}
+<<function [[trimArrays]]>>=
+fun singletonArrays([], singletab) = ([], singletab)
+  | singletonArrays((a as NAME_ARRAY { tbl, uid, ... }) :: arrays, singletab) =
+      let val (arrays, singletab) = singletonArrays (arrays, singletab)
+      in  case uniqueElement (IntMap.listItems tbl)
+	    of SOME x => (arrays, IntMap.insert(singletab, uid, x))
+	     | NONE   => (a :: arrays, singletab)
+      end
+and uniqueElement [] = NONE
+  | uniqueElement (h::t) = if List.all (fn x => x = h) t then SOME h else NONE
+
+fun trimArrays (node, arrays) = 
+  let val arrays = Arrays.arrays arrays
+      val (arrays, singletons) = singletonArrays (arrays, IntMap.empty)
+      <<singleton substitution>>
+      val node = if IntMap.numItems singletons > 0 then replace node else node
+  in  (node, arrays)
+  end
+@ 
+We replace lookups in singleton arrays with the string values
+themselves.
+<<singleton substitution>>=
+fun replace (NODE {field, children}) = 
+      NODE {field=field, children = map edge children}
+  | replace (leaf as LEAF {name=SOME (LOOKUP uid), arms}) =
+      (case IntMap.find(singletons, uid)
+	 of SOME s => LEAF {name=SOME (STRING s), arms=arms}
+	  | NONE => leaf)
+  | replace (leaf as LEAF _) = leaf
+and edge (EDGE {range, node}) = EDGE {range=range, node = replace node}
+@ 
+The main conversions done on leaves are to turn arms into unique ids
+and to turn names into (possibly) name arrays.
+Unique ids of arms just come from the size of the table.
+Array binding is more complicated and lives in its own substructure.
+<<functions [[dagArms]] and [[dagName]]>>=
+fun dagName (name, arrays) =
+  if Arrays.tooBig range then
+    (SOME (STRING name), arrays)
+  else
+    let val (uid, arrays) = Arrays.bindName(parentField, range, name, arrays)
+    in  (SOME (LOOKUP uid), arrays)
+    end
+fun dagArms (arms, armtab) = 
+  case ArmListMap.find(armtab, arms)
+    of SOME id => (id, armtab)
+     | NONE => 
+         let val id = ArmListMap.numItems armtab
+         in  (id, ArmListMap.insert(armtab, arms, id))
+         end
+@ 
+Conversion to dag is the usual bottom-up hashing; here I compute the
+string and then use the string to index into a table.
+The real work of merging edges is done by [[combinechildren]].
+If edge merging results in a single each, the node is replaced by
+its child, provided the edge really covers all possible values
+of the field.
+<<functions>>=
+<<name arrays>>
+fun node2dag({ field, children }, arrays, armtab) =
+  let val _ = () (*  outtree(\ascii_dag, n) *)
+      val (children, arrays, armtab) = combineChildren (field, children, arrays,armtab)
+  in  (NODE {field=field, children=children}, arrays, armtab)
+      before () (* outtree(\ascii_dag, n) *)
+  end
+     (* missing:
+        if *n.children = 1 then {
+            e := n.children[1]
+            if covers(n.children[1], fwidth(n.field.field)) then
+                n := n.children[1].node     # all roads to child: hoist it
+            else
+                warning("node with one child doesn't match all cases")    
+        }
+     *)
+and leaf2dag(parentField, range, {name, arms}, arrays, armtab) = 
+      let <<functions [[dagArms]] and [[dagName]]>>
+	  val (armid, armtab) = dagArms (arms, armtab)
+	  val (name, arrays) = case name of NONE => (NONE, arrays)
+	                                  | SOME n => dagName (n, arrays)
+      in  (LEAF {name=name, arms=armid}, arrays, armtab)
+      end
+<<function [[combineChildren]]>>
+<<function [[trimArrays]]>>
+fun tree2dag(T.NODE nspec) = 
+      let val (node, arrays, armtab) = node2dag(nspec, Arrays.empty, ArmListMap.empty)
+	  val (node, arrays) = trimArrays (node, arrays)
+          fun sort l = ListMergeSort.sort (fn ((_, n:int), (_, n')) => n > n') l
+	  val armvec = Vector.fromList(map #1 (sort (ArmListMap.listItemsi armtab)))
+      in  (node, arrays, armvec) : 'a dag
+      end
+  | tree2dag(T.LEAF {name, arms}) = 
+      (LEAF {name=optmap STRING name, arms=0}, [], #[arms])
+@
+Here's where I check coverage.
+Only success or failure of [[covers]] is meaningful, not
+the value returned.
+<<*>>=
+procedure covers(e, width)
+    l := sort(e.lo ++ e.hi)
+    return *l = 2 & l[1] = 0 & l[2] = 2^width
+end
+<<function [[combineChildren]]>>=
+and combineChildren (parentfield, edges, arrays, armtab) =
+  let fun addEdge (T.EDGE { node, range = range }, (nr, arrays, armt)) =
+        let fun dag (T.NODE nspec) = node2dag(nspec, arrays, armt)
+	      | dag (T.LEAF lspec) = leaf2dag(parentfield, range, lspec, arrays, armt)
+	    val (node, arrays, armt) = dag node
+	    val previous = getOpt(NodeMap.find(nr, node), RangeSet.empty)
+	in  (NodeMap.insert(nr, node, RangeSet.insert(range, previous)), arrays, armt)
+	end
+      val (nodeRanges, arrays, armtab) =
+	foldl addEdge (NodeMap.empty, arrays, armtab) edges
+      fun gt((_, r), (_, r')) = RangeSet.compare(r, r') = GREATER
+      val nodeRanges = ListMergeSort.sort gt (NodeMap.listItemsi nodeRanges)
+  in  (map (fn (n, r) => EDGE {node=n, range=r}) nodeRanges, arrays, armtab)
+  end
+@
+<<change names of children from strings to namearrays when possible>>=
+mightuse := set()           # name arrays we might use must have right field
+every na := !\natable[n.field] do
+    insert(mightuse, na)
+every e := arraycandidates(n) & na := !mightuse do
+    if \na.tbl[e.lo to e.hi - 1] ~== e.node.name then  # slot used with wrong name
+        delete(mightuse, na)
+if *mightuse > 0 then
+    willuse := ?mightuse
+else {
+    /natable[n.field] := set()
+    insert(natable[n.field], willuse := namearray(n.field, table(), 0))
+}
+every e := arraycandidates(n) &
+      e.lo - willuse.hi <= MAXRANGE do {
+          every willuse.tbl[e.lo to e.hi - 1] := e.node.name;
+          e.node.name := willuse
+          willuse.hi <:= e.hi
+      }
+@
+<<*>>=
+procedure namesused(n, result)
+    /result := set()
+    if type(n.name) == "namearray" then insert(result, n.name)
+    every namesused((!n.children).node, result)
+    return result
+end
+@ 
+<<dag.sig>>=
+signature DAG = sig
+  structure Tree : TREE
+  <<types>>
+  structure NodeMap    :      ORD_MAP where type Key.ord_key = node
+  structure ArmListMap : POLY_ORD_MAP 
+                          where type 'a Key.poly_ord_key = 'a Tree.Match.arm list
+  val tree2dag   : 'a Tree.node -> 'a dag
+  val nameString : leaf_name -> string
+  val compare'leaf_name : leaf_name Order.T
+end
+<<dag.sml>>=
+functor DagFun(structure Tree : TREE) : DAG = 
+struct
+  structure Tree = Tree
+  structure T = Tree
+  structure M = T.Match
+  <<types>>
+  <<leaf-name comparison>>
+  <<structure for name arrays>>
+  structure ArmListKey = struct
+    <<arm projection>>
+    <<arm comparison functions>>
+    type ord_key = arm_projection list
+    type 'a poly_ord_key = 'a M.arm list
+    val compare = Order.compare'list compare'projection
+    fun project l = List.map project'arm l
+  end
+  structure ArmListMap = PolyMapFun(ArmListKey)
+  structure NodeKey = struct
+    type ord_key = node
+    <<node comparison functions>>
+    val compare = compare'node
+  end
+  structure NodeMap = BinaryMapFn(NodeKey)
+  <<functions>>
+  fun nameString (STRING s) = s
+    | nameString (LOOKUP uid) = "lookup in array " ^ Int.toString uid
+end
+<<leaf-name comparison>>=
+fun compare'leaf_name (STRING L, STRING R) = String.compare (L, R)
+  | compare'leaf_name (STRING _, LOOKUP _) = LESS
+  | compare'leaf_name (LOOKUP _, STRING _) = GREATER
+  | compare'leaf_name (LOOKUP L, LOOKUP R) = Int.compare (L, R)

@@ -1,0 +1,9 @@
+; $Id: fieldexps.cm,v 1.1 1999/09/06 16:02:08 nr Exp $
+; module elaborate
+
+group is
+  pattern.cm
+  error.cm
+
+  fieldexps.sig@encode.nw
+  fieldexps.sml@encode.nw

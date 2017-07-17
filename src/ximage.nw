@@ -1,0 +1,307 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: ximage.nw,v 1.2 1998/11/11 21:59:29 nr Exp $
+<<ximage.sml>>=
+structure UnifiedImage = struct
+  structure Unparser = StdUnparser
+  structure Prec = PrecedenceFun()
+  structure Unparser = Unparser.Unparser
+  structure U = UnifiedExp
+  structure E = UnifiedComplete
+  structure pp = PP.Short
+  <<images>>
+end
+@ 
+<<images>>=
+<<local declarations>>
+type ppexp = Unparser.ast
+val textatom = Unparser.AST_ATOM o pp.te
+<<unparsing utilities>>
+fun typeName {typeid, family} = "constype " ^ Int.toString typeid
+<<functions>>
+val exp = pp.li o Unparser.unparse o exp
+val expstring = PP.flatten o exp
+@ 
+\subsection{Patterns and Expressions}
+
+We use the general unparsing mechanism for expressions.
+
+\subsubsection {Setup for  unparsing expressions}
+Here's the general unparsing mechanism---we use operator names and
+look up the precedence and fixities.
+By default, infix operators have spaces, prefix don't.
+<<unparsing utilities>>=
+<<[[prec]] and [[assoc]]>>
+local
+  fun space $ = pp.te (" " ^ $ ^ " ")
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+in
+  fun binary' namer $ (l, r) = 
+    let val prec = prec $
+        val fixity = assoc prec
+        val _ = case fixity of Assoc.INFIX _ => () | _ => Impossible.impossible "fixity"
+	val $ = (namer $, prec, fixity)
+    in  Unparser.BINARY(l, $, r)
+    end
+  fun binary $ = binary' space $
+  fun binopt $ = binary' opt $
+  fun nary' namer $ args = 
+    let val prec = prec $
+        val fixity = assoc prec
+        val _ = case fixity of Assoc.INFIX Assoc.NONASSOC => ()
+                             | _ => Impossible.impossible "fixity"
+	val $ = (namer $, prec, fixity)
+    in  Unparser.NARY($, args)
+    end
+  fun nary $ = nary' space $
+  fun nopt $ = nary' opt $
+  fun prefix  $ e = Unparser.UNARY((pp.te $, prec "postfix", Assoc.PREFIX ), e)
+  fun postfix $ e = Unparser.UNARY((pp.te $, prec "postfix", Assoc.POSTFIX), e)
+end
+@ Note the flagrant cheat on the unary precedence, exploiting the fact
+that all C unary operators have the same precedence.
+@
+Now we can simulate all those yummy C-like operators!
+<<[[prec]] and [[assoc]]>>=
+local
+  val N = Assoc.INFIX Assoc.NONASSOC
+  val L = Assoc.INFIX Assoc.LEFT
+  val R = Assoc.INFIX Assoc.RIGHT
+  val E = Assoc.PREFIX
+  val O = Assoc.POSTFIX
+in
+  val ops = [(N, ["low"]),
+             (L, ["|"]),   (* patterns *)
+             (L, [";"]),
+	     (N, [","]),
+	     (R, [":="]),
+             (L, ["&", "&&"]),
+             (N, ["==", "!="]),
+             (L, ["<=", "<", ">=", ">"]),
+
+             (L, [">>", "<<"]),
+             (L, ["+", "-"]),
+             (L, ["%", "/", "*"]),
+             (E, ["not "]),
+	     (O, ["postfix"]),
+             (L, [".", "->", "app", "call", "subscript"]),
+	     (L, ["parens"]),
+             (N, ["high", "hi"])
+             ]
+end
+val {prec, assoc} = Prec.funs ops
+<<parenthesization>>
+@ 
+Some of these functions are likely to come in handy; we can use them
+in ML~code to create C expressions.
+Note the difference between [[binary]] and [[binopt]]; that
+difference determines the placement of optional line breaks.
+<<unparsing utilities>>=
+val comma  = nary' (fn _ => pp.$ ", $o") ","
+val /:=/  = binary ":="
+val /||/ = binopt "||"
+val /&&/ = binopt "&&"
+val /|/  = binopt "|"
+val /&/  = binary "&"
+val /==/ = binary "=="
+val /!=/ = binary "!="
+val /</  = binary "<"
+val />/  = binary ">"
+val /<=/ = binary "<="
+val />=/ = binary ">="
+val /<</ = binary "<<"
+val />>/ = binary ">>"
+val /+/  = binopt "+"
+val /-/  = binopt "-"
+val /*/  = binary "*"
+val ///  = binary' (fn _ => pp.te " div ") "/"
+val /%/  = binary' (fn _ => pp.te " mod ") "%"
+val not'  = prefix "not "
+fun dot (e, tag) = Unparser.UNARY((pp.te ("." ^ tag), prec ".", Assoc.POSTFIX), e)
+val /~/  = prefix "~"
+val /->/ = binary "->"
+fun relop Relop.EQ = /==/
+  | relop Relop.NE = /!=/
+  | relop Relop.LE = /<=/
+  | relop Relop.LT = /</
+  | relop Relop.GE = />=/
+  | relop Relop.GT = />/
+@ 
+ML doesn't offer nearly enough levels of precedence to handle
+C~operators.
+Ideally I'd like to declare all the levels of C operators at a
+precedence lower than that of any ML infix operator.
+Since I have only ten levels total, however, I've instead decided
+never to mix ML and C operators in the same expression, and I've
+avoided infixing a couple of levels I hope I can do without.
+<<unparsing utilities>>=
+infixr 0 /:=/
+infix  1 /||/
+infix  2 /&&/
+infix  3 /|/
+infix  4 /&/
+infix  5 /==/ /!=/ /</ /<=/ />/ />=/
+infix  6 />>/ /<</
+infix  7 /-/ /+/
+infix  8 /*/ /// /%/
+infix  9 dot
+@ 
+\subsubsection{Expressions and their operators}
+<<[[exp]] auxiliaries>>=
+fun ppcon' n = pp.te (Int.toString n)
+val ppcon = Unparser.AST_ATOM o ppcon'
+@
+We begin with the basics of arithmetic.
+The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
+<<functions>>=
+<<[[exp]] auxiliaries>>
+fun exp(U.VAR s) = textatom s
+  | exp(U.ADD (U.MUL(~1, e1), e2)) = exp (U.SUB(e2, e1))
+  | exp(U.ADD (e1, e2)) = exp e1 /+/ exp e2
+  | exp(U.SUB (e1, e2)) = exp e1 /-/ exp e2
+  | exp(U.MUL (1, e)) = exp e
+  | exp(U.MUL (n, e)) = ppcon n /*/ exp e
+  | exp(U.CONST n) = ppcon n
+<<functions>>=
+  | exp(U.PC_KNOWN) = textatom "FORCEABLE(<program counter>)"
+  | exp(U.TRUE) = textatom "true"
+  | exp(U.FALSE) = textatom "false"
+  | exp(U.STRING(S)) = textatom (Cimage (*String.toCString*) S)
+  | exp(U.MISSING_STRING) = textatom "<NULL string>"
+<<local declarations>>=
+fun Cimage s =
+  let val slashes = explode "\n\t\\\""
+      fun slashed c = List.exists (fn x => c = x) slashes
+      fun \ c l = #"\\" :: c :: l
+      fun char (c, l) = if slashed c then \ c l else c :: l
+  in  implode (#"\"" :: foldr char [#"\""] (explode s))
+  end
+<<functions>>=
+  | exp(U.PC) = textatom "FORCE(<program counter>)"
+  | exp(U.NARROWs(e, N)) = postfix ("[" ^ Int.toString N ^ "!]") (exp e)
+  | exp(U.NARROWu(e, N)) = postfix ("[" ^ Int.toString N ^ "]")  (exp e)
+<<functions>>=
+  | exp(U.FITSu(e, N)) = exp(call "FITSU" [e, E.const N])
+  | exp(U.FITSs(e, N)) = exp(call "FITSS" [e, E.const N])
+
+  | exp(U.ASSERT_NARROWs(e, N)) = exp(call "ISS" [e, E.const N])
+  | exp(U.ASSERT_NARROWu(e, N)) = exp(call "ISU" [e, E.const N])
+<<functions>>=
+  | exp(U.SLICE(e, {lo = lo, width = width})) =
+      postfix (String.concat
+	       ["[", Int.toString lo, ":", Int.toString (lo+width-1), "]"]) (exp e)
+  | exp(U.WIDEN(e, N)) = postfix ("!" ^ Int.toString N) (exp e)
+  | exp(U.SHIFT(e, N)) = 
+      if N < 0 then exp e />>/ ppcon (~N) else exp e /<</ ppcon N
+  | exp(U.AFIELD ({name, ...},n)) =
+      textatom (String.concat ["{", name, " at ", Int.toString n, "}"])
+  | exp(U.DIV(e, N)) = exp e /// ppcon N
+  | exp(U.MOD(e, N)) = exp e /%/ ppcon N
+  | exp(U.NOT(e)) = not' (exp e)
+<<[[exp]] auxiliaries>>=
+fun call f args = E.call (E.var f :: args)
+<<functions>>=
+  | exp(U.FORCE(e)) = exp (call "FORCE" [e])
+  | exp(U.KNOWN(e)) = exp (call "FORCEABLE" [e])
+<<[[exp]] auxiliaries>>=
+val impossible = Impossible.impossible
+<<functions>>=
+  | exp(U.SELECT(e, membername)) = exp e dot membername
+  | exp(U.CAN_SELECT(e, membername)) = exp (call "CAN_SELECT" [e, E.string membername])
+<<[[exp]] auxiliaries>>=
+  (* show things in modula-3 constructor style *)
+fun constructor name args = 
+  let fun arg (name, value) = textatom name /:=/ value
+      val args = if null args then textatom "" else comma (map arg args)
+      val args = pp.li (Unparser.unparse args)
+      val f = textatom name
+      fun call args = binary' (fn _ => pp.te "") "call" (f, Unparser.AST_ATOM (pp.li args))
+  in  
+      call [pp.$ "{${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.$ "$}}"]
+  end
+<<functions>>=
+  | exp(U.UNION(e, {name = name, ty = ty})) = 
+      constructor "??need type image??" [(name, exp e)]
+  | exp(U.UNSAFE_UNION(e, {name = name, ty = ty})) = 
+      constructor "??need type image??" [(name, exp e)]
+  | exp(U.SUTMP(tmp, e)) = exp(call "SUTMP" [tmp, e])
+  | exp(U.CONDITION (l, rel, r)) = relop rel (exp l, exp r)
+  | exp(U.INSTANCE_INPUT(e, {cons = cons, operand = operand})) =
+        exp e dot "u" dot consname cons dot operand
+  | exp(U.INSTANCE_TAGGED(e, {cons = cons, uid = uid})) = 
+	exp e dot "tag" /==/ exp (E.var (consname cons ^ "_TAG"))
+  | exp(U.NOSIMP(e)) = exp e
+  | exp(U.ORB []) = ppcon 0
+  | exp(U.ORB(exps)) = Util.joinl op /|/ (map exp exps)
+  | exp(U.INRANGE (e, {lo, hi})) = ppcon lo /<=/ exp e /</ ppcon hi
+  | exp(U.ANDALSO []) = exp (U.TRUE)
+  | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
+  | exp(U.ORELSE []) = exp (U.FALSE)
+  | exp(U.ORELSE(exps)) = Util.joinl op /||/ (map exp exps)
+  | exp(U.RECORD (exps, {fields, ty})) = 
+	constructor "??need image??" (ListPair.zip (fields, map exp exps))
+  | exp(U.INSTANCE(exps, cons)) =
+        let fun operands (i, []) = []
+              | operands (i, h::t) = (Int.toString i, exp h)::operands(i+1, t)
+	in  constructor (consname cons) (operands(1, exps))
+	end
+  | exp(U.BINDING_INSTANCE(name, wild, constype)) = 
+	textatom (if wild then "_"
+		  else "BINDING(" ^ name ^ " : " ^ typeName constype ^ ")")
+  | exp(U.FAIL s) = textatom ("bad exp: " ^ s)
+  | exp(U.COMMENTED (e, comment)) = ecomment (exp e, comment)
+<<[[exp]] auxiliaries>>=
+fun ecomment (e, comment) = 
+  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+                         pp.te "/*", pp.te comment, pp.te "*/", pp.ou, pp.en], 
+                  prec "hi",
+                  Assoc.POSTFIX),
+      	   e)
+<<functions>>=
+  | exp(U.ARRAY _) = Impossible.unimp "image of array literal"
+  | exp(U.ARRAY_SUB(a, n)) = 
+      let open Unparser Assoc
+	  val index = pp.li (unparse (exp n))
+          val subscript = pp.li [pp.$ "[|${", index, pp.$ "$}|]"]
+      in  BINARY(exp a, (pp.te "", prec "subscript", INFIX LEFT), AST_ATOM subscript)
+      end
+  | exp(U.CALL []) = Impossible.impossible "call"
+@ 
+The call is a bit tricky because of the indentation.
+For functions of up to [[limit]] characters, we indent the limit of
+the function.  For longer functions, we indent 2 and require a break
+after the open parenthesis.
+<<functions>>=
+  | exp(U.CALL (f::args)) = 
+      let open Unparser Assoc
+	  val f = exp f
+          val limit = 12 (* max willing indent *)
+          <<bind [[fwidth]] to the number of characters [[f]] will use>>
+	  val args = if null args then textatom "" else comma (map exp args)
+	  val args = pp.li (unparse args)
+	  fun call args = binary' (fn _ => pp.te "") "call"
+	                                      (f, Unparser.AST_ATOM (pp.li args))
+      in  
+	  if fwidth < limit then
+	    call [pp.$ "(${", pp.i (fwidth + 1), args, pp.ou, pp.$ "$})"]
+	  else
+	    call [pp.$ "(${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.te "$})"]
+      end
+<<bind [[fwidth]] to the number of characters [[f]] will use>>=
+val fwidth = (size o PP.flatten o pp.li o Unparser.unparse) 
+               (Unparser.UNARY((pp.te "", prec "call", Assoc.POSTFIX), f))
+<<local declarations>>=
+fun consname {family, typeid, tag} =
+ String.concat ["{type=", Int.toString typeid, ", tag=", Int.toString tag, "}"]
+<<functions>>=
+  | exp(U.RAW (code as (lines, region), smap, ty)) =
+      textatom ("<raw code at " ^ SourceMap.locationString smap region ^ ">")
+@ 
+\subsection{Utility functions used for expressions}
+Parenthesization is a bit odd, because we have to fool the unparser
+into using it.
+We can do it by slapping a very high-precedence invisible operator in
+front of the expression.
+<<parenthesization>>=
+fun parenthesize e = Unparser.UNARY((pp.te "", prec "parens", Assoc.PREFIX), e)
+@ 
+String stuff\ldots

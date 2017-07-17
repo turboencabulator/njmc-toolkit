@@ -1,0 +1,30 @@
+; modules used to run things -- very near main
+
+; module link
+group is
+  smlnj-lib.cm
+  ast.cm
+  emit.cm
+  emitcode.cm
+  match.cm
+  decoder.cm
+  encode.cm
+  elaborate.cm
+  image.cm
+  error.cm
+  parse.cm
+  fusion.cm
+  size.cm
+  std-instance.cm
+
+  tree-image.sml@images.nw
+  sxtree.nw
+  ppsx.nw
+
+  readsled.nw
+  rundecoder.nw
+  link1.sml@link.nw 
+  link2.sml@link.nw 
+  link3.sml@link.nw 
+  link4.sml@link.nw 
+

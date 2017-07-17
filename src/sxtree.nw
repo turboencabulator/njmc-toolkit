@@ -1,0 +1,84 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: sxtree.nw,v 1.2 1998/11/11 21:59:25 nr Exp $
+<<sxtree.sig>>=
+signature TREE_DAG_SX = sig
+  structure Dag : DAG
+  val tree : ('a -> Sx.sx) -> 'a Dag.Tree.node -> Sx.sx
+  val dag  : ('a -> Sx.sx) -> 'a Dag.dag       -> Sx.sx
+end
+@ 
+<<sxtree.sml>>=
+functor TreeDagSxFun(structure Dag : DAG
+		     val exp : Dag.Tree.Match.Patterns.Exp.exp -> Sx.sx)
+: TREE_DAG_SX =
+struct
+  structure Dag = Dag
+  structure D = Dag
+  structure T = D.Tree
+  structure M = T.Match
+  structure Exp = M.Patterns.Exp
+  structure pp = PP.Short
+
+  fun app s l = SxUtil.list (Sx.ATOM s :: l)
+
+  fun arm encode (M.ARM (_, {conditions, answers, code, ...})) =
+    let val body = app "arm" [encode code]
+	fun answer (name, value, tail) = app name [exp value] :: tail
+	val body = if StringMap.numItems answers = 0 then body
+                   else app "let" (StringMap.foldli answer [body] answers)
+        val body =
+	  if Exp.Set.isEmpty conditions then body
+          else app "when" [exp (Exp.andalso' (Exp.Set.listItems conditions)), body]
+    in  body
+    end
+  fun armList encode = map (arm encode)
+
+  fun stdRange {lo, hi} =
+    if lo+1 = hi then Sx.INT lo
+    else SxUtil.list [Sx.INT lo, Sx.ATOM "..", Sx.INT (hi-1)]
+
+  fun sxopt f x = case x of SOME z => f z | NONE => Sx.NIL
+
+  fun tree encode =
+    let fun tree (T.NODE {field=(f, n), children}) =
+              app "switch" [SxUtil.list [Sx.ATOM (#name f), Sx.ATOM "at", Sx.INT n],
+                            SxUtil.list (map edge children)]
+	  | tree (T.LEAF {arms=[], ...}) = Sx.ATOM "<NO-MATCH>"
+	  | tree (T.LEAF {arms, name}) = 
+              app "leaf" [sxopt Sx.ATOM name, SxUtil.list (armList encode arms)]
+	and edge (T.EDGE {range=r, node}) =
+              SxUtil.list [stdRange r, Sx.ATOM "=>", tree node]
+    in  tree
+    end
+
+  fun rangeSet set = app "range-set" (map stdRange (RangeSet.listItems set))
+
+  fun arrayImage (D.NAME_ARRAY { field, tbl, uid }) =
+    let val bindings =
+          map (fn (n, s) => SxUtil.list [Sx.INT n, Sx.ATOM "=>", Sx.STRING s]) o
+          IntMap.listItemsi
+    in  app "name-array" [app "uid" [Sx.INT uid], SxUtil.list (bindings tbl)]
+    end
+	                     
+  fun dag encode (node, arrays, arms) =
+    let fun armsImage [] = Sx.ATOM "<NO-MATCH>"
+	  | armsImage a's = SxUtil.list (armList encode a's)
+	fun shortArms (_, []) = Sx.ATOM "<NO-MATCH>"
+	  | shortArms (i, _) = app "arm-list" [Sx.INT i]
+	fun addArm(i, a) = app "arm-list" [Sx.INT i, armsImage a] 
+        fun leafname (D.STRING s) = Sx.STRING s
+          | leafname (D.LOOKUP n) = app "name-array-lookup" [Sx.INT n]
+	fun dag (D.NODE {field=(f, n), children}) =
+              app "switch" [SxUtil.list [Sx.ATOM (#name f), Sx.ATOM "at", Sx.INT n],
+                            SxUtil.list (map edge children)]
+	  | dag (D.LEAF {arms=armid, name}) = 
+              app "leaf" [app "name" [sxopt leafname name],
+                          shortArms(armid, Vector.sub(arms, armid))]
+	and edge (D.EDGE {range=r, node}) = app "in" [rangeSet r, dag node]
+        val sxarms = Vector.mapi addArm (arms, 0, NONE)
+        val sxarrays = map arrayImage arrays
+    in  app "dag" [app "arrays" sxarrays, app "tree" [dag node],
+                   app "arms" (Vector.foldr op :: [] sxarms)]
+    end
+
+end

@@ -1,0 +1,544 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: pp.nw,v 1.20 2000/02/16 16:40:20 nr Exp $
+\chapter{Prettyprinting}
+Prettyprinting.
+Based on 
+Pugh, William~W. and Steven~J. Sinofsky. 1987~(January).
+ A new language-independent prettyprinting algorithm.
+ Technical Report TR 87-808, Cornell University.
+
+
+
+\section{Basic prettyprinting streams}
+
+It's possible we should enforce matching of begins and ends by using a
+[[BLOCK]] constructor instead, but that might make the programming
+model more awkward, so for now I stick with the general 
+begin/end. 
+[[SYNCH]] is always a forced newline.
+It may emit line-numbering directives.
+<<[[pretty]] type>>=
+datatype break = OPTIONAL | CONNECTED | FORCED
+datatype pretty = BEGIN 
+                | END 
+                | INDENT of int 
+                | OUTDENT 
+                | BREAK of break_info
+                | TEXT of string 
+                | LIST of pretty list
+                | SYNCH
+withtype break_info = {break: break, pre:string, post:string, none:string}
+@ Indentation is an absolute quantity, not realtive.
+[[LIST]] is a grouping mechanism only; we work with the flattened sequence.
+@
+The [[Short]] substructure has nifty abbreviations, etc.
+<<pp.sig>>=
+signature PP = sig
+  <<[[pretty]] type>>
+  structure Short : sig
+    val be : pretty
+    val en : pretty
+    val i  : int -> pretty
+    val ou : pretty
+    val nl : pretty
+    val on : pretty
+    val cn : pretty
+    val te : string -> pretty
+    val li : pretty list -> pretty
+    val sy : pretty
+    val $  : string -> pretty   (* implement $ escapes *)
+    val int : int -> pretty
+    val char : char -> pretty
+  end
+  val format : string -> pretty list -> pretty  (* $ escapes plus % escapes *)
+  val textMap : (string -> string) -> pretty -> pretty
+  val flatten : pretty -> string
+  val synch : pretty
+end
+@ [[synch]] stands for a newline, plus whatever goo is necessary to
+resynchronize the output to the current file. 
+<<prettyprinter.sig>>=
+signature PRETTYPRINTER = sig
+  val print : {width : int, print : string -> unit} -> PP.pretty -> unit
+end
+@ 
+Here's the implementation.  The only interesting part is the
+processing of the [[$]] escapes.
+<<pp.sml>>=
+structure PP : PP = struct
+  <<[[pretty]] type>>
+  structure Short = struct
+    val be = BEGIN
+    val en = END
+    val i  = INDENT
+    val ou = OUTDENT
+    val nl = BREAK {break=FORCED, pre="", post="", none=""}
+    val on = BREAK {break=OPTIONAL, pre="", post="", none=""}
+    val cn = BREAK {break=CONNECTED, pre="", post="", none=""}
+    val te = TEXT
+    val li = LIST
+    val sy = SYNCH
+    val int = TEXT o Int.toString
+    val char = TEXT o Char.toString
+    fun dollar percent s inserts =
+      let infixr 5 :::
+          fun [] ::: l = l
+            | r  ::: l = TEXT (String.implode (rev r)) :: l
+          fun e(#"$" :: #"{" :: s, r, inserts) =  r ::: be  :: e(s, [], inserts)
+            | e(#"$" :: #"}" :: s, r, inserts) =  r ::: en  :: e(s, [], inserts)
+            | e(#"$" :: #"t" :: s, r, inserts) =  r ::: i 2 :: e(s, [], inserts)
+            | e(#"$" :: #"b" :: s, r, inserts) =  r ::: ou  :: e(s, [], inserts)
+            | e(#"$" :: #"n" :: s, r, inserts) =  r ::: nl  :: e(s, [], inserts)
+            | e(#"$" :: #"o" :: s, r, inserts) =  r ::: on  :: e(s, [], inserts)
+            | e(#"$" :: #"c" :: s, r, inserts) =  r ::: cn  :: e(s, [], inserts)
+            | e(#"$" :: #"#" :: s, r, inserts) =  r ::: sy  :: e(s, [], inserts)
+            | e(#"$" :: #"$" :: s, r, inserts) = e(s, #"$" :: r, inserts)
+            | e(#"$" :: d    :: s, r, inserts) =
+                if #"0" <= d andalso d <= #"9" then
+                  r ::: i (ord d - ord #"0") :: e(s, [], inserts)
+                else
+                  r ::: te ("((internal PP bug --- unknown escape $" ^ str d ^ "))")
+                     :: e(s, [], inserts)
+            | e(#"\n" :: s, r, inserts) = r ::: nl :: e(s, [], inserts)
+            | e(#"%"  :: #"s" :: s, r, inserts) = 
+                if percent then
+                  case inserts
+                    of i :: ii => r ::: i :: e(s, [], ii)
+                     | [] => r ::: te "((internal bug: bad call to PP \
+                                      \[missing %s argument]))" :: e(s, [], [])
+                else
+                  e(#"s" :: s, #"%" :: r, inserts)
+            | e(#"%"  :: c :: s, r, inserts) = 
+                if percent then
+                  e(s, c :: r, inserts)
+                else
+                  e(c :: s, #"%" :: r, inserts)  (* N.B. c could be #"$" *)
+            | e(c::s, r, inserts) = e(s, c::r, inserts)
+            | e([], r, []) = r ::: nil
+            | e([], r, inserts) = r ::: te ("((internal bug: bad call to PP -- " ^
+                                             Int.toString (length inserts) ^
+                                             " leftover %s arguments: ")
+                                     :: inserts @ [te "))"]
+      in LIST (e (explode s, [], inserts))
+      end
+    fun $ s = dollar false s []
+  end
+  val format = Short.dollar true
+  fun flatten BEGIN     = ""
+    | flatten END       = ""
+    | flatten (INDENT _)= ""
+    | flatten OUTDENT   = ""
+    | flatten (BREAK {break=FORCED, pre, post, none}) = pre ^ "\n" ^ post
+    | flatten SYNCH = "\n"
+    | flatten (BREAK {break=_, pre, post, none}) = none
+    | flatten (TEXT s)  = s
+    | flatten (LIST l)  = String.concat(map flatten l)
+  val synch = LIST [Short.nl, TEXT "#line 999 \"generated-code\"", Short.nl]
+  val synch = SYNCH
+  fun textMap sigma = 
+    let fun m (TEXT s)  = TEXT (sigma s)
+          | m (LIST l)  = LIST (map (textMap sigma) l)
+          | m p = p
+    in  m
+    end
+end
+@ Note that the current implementation of [[synch]] is bogus.
+The [[ungenerate]] program has to be run on the generated code.
+Eventually, I'll patch the prettyprinter to track line numbers and
+emit proper synchronization directives on the way out.
+@
+\section{Building an unparser using the prettyprinting stream}
+We make a general unparser (\nwanchorto{unparse.html}{q.v.}) in which
+the atomic elements are parts of a prettyprinting stream.
+<<unparse-pp.sml>>=
+signature UNPARSE_PP = sig
+  structure Unparser : UNPARSER
+  where type Atom.atom = PP.pretty
+end
+
+functor PPUnparseFun (
+  structure P : UNPARSEABLE_PRECEDENCE
+  val juxtarator : PP.pretty * P.precedence * Assoc.associativity
+) : UNPARSE_PP = struct
+  structure Atom = struct
+    type atom = PP.pretty
+    fun parenthesize l =
+      PP.LIST [ PP.TEXT "(", PP.BEGIN, PP.LIST l, PP.END, PP.TEXT ")" ]
+    structure Precedence = P
+    val bogus = PP.TEXT "bogus sentinel operator"
+    val juxtapositionSpec as (juxAtom, juxPrec, juxAssoc) = juxtarator
+    val juxtarator = (juxAtom, juxPrec, Assoc.INFIX juxAssoc)
+  end
+  structure Unparser = UnparserFun(Atom)
+end
+structure StdUnparser = PPUnparseFun(
+  structure P = struct
+    type precedence = int
+    val min = ~1
+    val max = 101 (* bogus *)
+    val compare = Int.compare
+  end
+  val juxtarator = (PP.TEXT "???", 0, Assoc.LEFT)
+)
+@ 
+\section{Doing the prettyprinting}
+
+\subsection{Normal form}
+Step one is to transform [[PP.pretty]] into [[PPNormal.normal]].
+Breaks get bound to their indentations, blocks are explicit, and
+everything else becomes text.
+The indentation of a break is the amount to indent if the break is taken.
+<<ppnormal.sml>>=
+structure PPNormal = struct
+  type indentation = int
+  datatype normal = BLOCK of normal list
+                  | BREAK of indentation * PP.break_info
+                  | TEXT  of string
+                  | SYNCH of indentation
+  val normalize : PP.pretty -> normal = fn l => <<normalize [[l]]>>
+  fun listify normal = 
+    let fun flat(TEXT s, tail) = s::tail
+          | flat(BREAK (_, {none, ...}), tail) = none::tail
+          | flat(BLOCK l, tail) = foldr flat tail l
+          | flat(SYNCH _, tail) = tail
+    in  flat(normal, [])
+    end
+end
+@ 
+\subsection{Least-cost setting of the normal form}
+The dynamic-programming algorithm below finds the least-cost
+collection of line breaks, but we have to have a definition of cost.
+<<ppdyn.sig>>=
+signature PP_COST = sig
+  type cost
+  val initialCost : cost (* cost of empty output *)
+  val addNewline  : cost * int * string list -> cost (* cost of another newline *)
+     (* cost of prev break, depth, parts of line in reverse order *)
+  val < : cost * cost -> bool
+end
+@ 
+The simplest cost is the number of newlines.
+<<ppdyn.sml>>=
+structure NewlinePPCost = struct
+  type cost = int
+  val initialCost = 0
+  val op < = op < : cost * cost -> bool
+  fun addNewline (cost, depth, revline) = cost + 1
+end
+@ 
+A better cost is to break ties on depth.
+For this, we need a cost that tracks not only the total number of
+newlines, but which ones occur at which depth.
+The invariant on depths is 
+\begin{itemize}
+\item Each [[depth]] appears at most once.
+\item Larger [[depth]]s appear before smaller ones.
+\item Depths are nonnegative.
+\end{itemize}
+<<ppdyn.sml>>=
+structure NewlineDepthPPCost = struct
+  type cost = int * { depth : int, count : int } list 
+  local
+    fun count depths depth = 
+      let fun cnt [] = 0
+            | cnt ({depth=d, count=n}::t) = case Int.compare (depth, d) 
+                                              of LESS => cnt t
+                                               | EQUAL => n
+                                               | GREATER => 0
+      in  cnt depths
+      end
+    fun maxDepth [] = 0
+      | maxDepth ({depth, count}::t) = depth
+    (* add a newline at depth *)
+    fun addAtDepth ([], depth') = [{depth=depth', count=1}]
+      | addAtDepth(depths as ({depth, count}::t), depth') =
+          case Int.compare (depth, depth')
+            of LESS => {depth=depth', count=1} :: depths
+             | EQUAL => {depth=depth, count=count+1} :: t
+             | GREATER => {depth=depth,count=count} :: addAtDepth(t, depth')
+    fun lt ((newlines, depths), (newlines', depths')) = 
+      case Int.compare (newlines, newlines')
+        of LESS => true
+         | GREATER => false
+         | EQUAL =>
+             let val c = count depths
+                 val c' = count depths'
+                 fun cmp depth = Int.compare(c depth, c' depth)
+                 fun lt 0 = cmp 0 = LESS
+                   | lt n = case cmp n of LESS => true
+                                        | EQUAL => lt (n-1)
+                                        | GREATER => false
+             in  lt (Int.max (maxDepth depths, maxDepth depths'))
+             end
+  in
+    val initialCost : cost = (0, [])
+    fun addNewline ((newlines, depths), depth, revline) =
+          (newlines+1, addAtDepth(depths, depth))
+    val op < = lt   
+  end
+end
+@ 
+Now, the dynamic programming!
+First, just simply minimize the number of line breaks
+[[set]] takes an emitter, a synchronizer, and a width, and it returns
+the number of lines emitted.
+The integer passed to the synchronizer is the number of lines already emitted.
+The synchronizer returns the number of lines \emph{it} emits
+(normally~1, sometimes~0).
+<<ppdyn.sig>>=
+signature PP_DYNAMIC = sig
+  type emitter = int * string list -> unit
+  type syncher = emitter * int -> int
+  val set : emitter * syncher * int -> PPNormal.normal -> int
+  val standardEmitLine : TextIO.outstream -> int * string list -> unit
+end
+<<ppdyn.sml>>=
+functor PPDynamicFun(Cost:PP_COST) : PP_DYNAMIC = struct
+  type emitter = int * string list -> unit
+  type syncher = emitter * int -> int
+  type cost = Cost.cost
+  <<dynamic>>
+end
+
+structure PPDynamic' = PPDynamicFun(NewlinePPCost)
+structure PPDynamic = PPDynamicFun(NewlineDepthPPCost)
+@ 
+The [[feasible]] structure represents a choice of breakpoints, going
+all the way back to the beginning of the document.
+The [[partial]] structure represents a partial line, which may be
+added to.
+Knuth's paper on breaking paragraphs into lines, or the relevant
+chapter in the {\TeX}book, would be a good place to go to read about
+doing line breaking using dynamic programming.
+<<dynamic>>=
+datatype feasible = INITIAL
+                  | PREV of partial
+withtype partial = { revline : string list  (* contents of the line *)
+                   , indent : int           (* amount to indent this line *)
+                   , remaining : int        (* width - indent - size of revline *)
+                   , prev : feasible        (* chain of all previous breaks *)
+                   , cost : cost            (* cost of breaking at prev *)
+                   , synch : bool           (* #line preceding this line *)
+                   }
+@ 
+When choosing a breakpoint, we look for the best candidate according
+to [[Cost.<]], omitting overfull lines.
+If all lines are overfull, we choose the least overfull line.
+<<dynamic>>=
+local
+  fun addText "" x = x
+    | addText s {revline, cost, remaining, prev, indent, synch} =
+    {revline = s::revline, cost = cost, remaining = remaining - size s , prev = prev,
+     indent=indent, synch=synch}
+  fun betterOverfull(a, b : partial) = if #remaining a > #remaining b then a else b
+  fun betterCost(a, b : partial) = if Cost.<(#cost a, #cost b) then a else b
+  fun findBest better (h::t) = foldl better h t
+    | findBest _ [] = Impossible.impossible "candidate invariant violated"
+  fun removeOverfull (candidates : partial list) =
+      let val c = List.filter (fn c => #remaining c >= 0) candidates
+      in  if null c then [findBest betterOverfull candidates] else c
+      end
+  structure N = PPNormal
+  <<[[setSolid]]>>
+in
+  fun set (emitLine, emitSynch, width) pretty =
+    let <<functions>>
+        val init : partial = {revline=[], cost=Cost.initialCost, synch=false,
+                              remaining=width, indent=0, prev=INITIAL}
+        val answer = findBest betterCost (append([pretty], 0, [init]))
+        fun emit (PREV {revline, prev, indent, synch, ...}) =
+              let val n = emit prev
+                  val s = if synch then emitSynch (emitLine, n) else 0
+              in  ( emitLine (indent, rev revline)
+                  ; n + s + 1
+                  )
+              end
+          | emit INITIAL = 0
+    in  emit (PREV answer)
+    end
+  fun standardEmitLine stream (n, l) =
+    let fun puts s = TextIO.output(stream, s)
+        fun emit(0, l) = (List.app puts l; puts "\n")
+          | emit(n, l) = (puts " "; emit(n-1, l))
+    in  if n >= 0 then emit(n, l)
+        else (puts "((pp error: negative indent))"; emit(0, l))
+    end
+end
+@ 
+If a newline is not taken, we have to be able to set a block solidly.
+To set something solid, just convert it to a string.
+Impossible if there's a forced newline, or if to do so would create an
+overfull line.
+<<[[setSolid]]>>=
+exception CannotSetSolid
+fun setSolid (l, remaining) =
+  let fun text (s, (r, revline)) =
+            let val r = r - size s
+            in  if r < 0 then raise CannotSetSolid else (r, s :: revline)
+            end
+      and addString(N.TEXT s, (r, revline)) = text(s, (r, revline))
+        | addString(N.BREAK (_, {break=PP.FORCED, ...}), _) = raise CannotSetSolid
+        | addString(N.BREAK (_, {none,...}), (r, revline)) = text(none, (r, revline))
+        | addString(N.SYNCH _, _) = raise CannotSetSolid
+        | addString(N.BLOCK b, (r, l)) = addString(N.TEXT (setSolid (b, r)), (r, l))
+      val (_, revline) = foldl addString (remaining, []) l
+  in  String.concat (rev revline)
+  end
+@ 
+So we have a list of feasible breakpoints, and each one is followed by
+some text.  Each one perforce breaks the group it's in.
+We want to append an item.
+Calling [[append]] only makes sense in the middle of a group that is
+known to contain a newline.
+Note if we hit a connected break, we must break there, because this
+connected break is not inside a block, and therefore the break at the
+beginning of this line is in the same group.
+<<functions>>=
+(* invariant: candidates is never empty *)
+local
+  fun newCandidates "" candidates = candidates
+    | newCandidates s candidates = removeOverfull (map (addText s) candidates)
+  fun newPartial (best, depth, synch, i) : partial =
+        { cost = Cost.addNewline (#cost best, depth, #revline best), synch = synch,
+          indent = i, revline = [], remaining = width - i, prev = PREV best }
+  fun append(N.TEXT s :: tail, depth, candidates) = 
+        append(tail, depth, newCandidates s candidates)
+    | append(N.BREAK (i, {break, pre, post, none}) :: tail, depth, candidates) =
+        let val forced = case break of PP.CONNECTED => true
+                                     | PP.FORCED => true
+                                     | PP.OPTIONAL => false
+            val best = findBest betterCost (newCandidates pre candidates)
+            val new = addText post (newPartial (best, depth, false, i))
+            val candidates = newCandidates none candidates
+        in  append(tail, depth, if forced then [new] else new :: candidates)
+        end
+    | append(N.SYNCH i :: tail, depth, candidates) =
+        let val best = findBest betterCost candidates
+            val new = newPartial (best, depth, true, i)
+        in  append(tail, depth, [new])
+        end
+    | append(N.BLOCK b :: tail, depth, candidates) =
+        <<add block [[b]] to [[candidates]] (at [[depth]]) and continue with [[tail]]>>
+    | append([], _, candidates) = candidates
+in 
+  val append = append
+end
+@ Handling blocks is tricky.
+The basic idea is this: either we set the block solid, which means
+taking no breaks, or else we recursively call [[append]] (using
+[[foldl append]] on the contents of the block), in which case we
+guarantee to take all connected and forced breaks.
+The problem is that if a block contains no forced
+or connected breaks, [[foldl append]] will create a candidate
+identical to that created by [[setSolid]], and the number of
+candidates will grow exponentially.
+We use the following more careful case analysis to decide what to do
+with a block: 
+\begin{itemize}
+\item
+If the block contains a forced newline, simply call [[foldl append]].
+\item
+If the block contains no forced newlines and no connected newlines,
+simply call [[foldl append]], and it will get all the proper
+candidates.
+\item
+Otherwise, the block contains no forced newline, but it does contain a
+connected newline.  In that case, we can either take no breaks
+([[setSolid]]), or we take a break, in which case we must take all the
+connected newlines, of which there is at least one, so we can call
+[[foldl append]] without worrying that we might duplicate the
+candidate from [[setSolid]].
+\end{itemize}
+Now, do we have to worry about forced newlines and such in blocks
+nested within blocks?  It says here no---the existing code in
+[[setSolid]] deals for us.  But I have no proof.
+<<add block [[b]] to [[candidates]] (at [[depth]]) and continue with [[tail]]>>=
+let fun isBreak category (N.BREAK(_, {break=cat', ...})) = category = cat'
+      | isBreak _ _ = false
+    val hasForced    = List.exists (isBreak PP.FORCED)    b
+    val hasConnected = List.exists (isBreak PP.CONNECTED) b
+    val candidates =
+      if hasForced orelse (not hasForced andalso not hasConnected) then
+        append(b, depth+1, candidates)
+      else
+        let val openCandidates = append(b, depth+1, candidates)
+            val maxRemaining = foldl (fn(c, r) => Int.max (#remaining c, r))
+                                     0 candidates
+        in  let val s = setSolid (b, maxRemaining)
+            in  removeOverfull(
+                  foldl (fn (c, cs) => addText s c :: cs) openCandidates candidates)
+            end handle CannotSetSolid => openCandidates
+        end
+in  append(tail, depth, candidates)
+end
+@ 
+\subsection{Converting a stream into normal form}
+To convert into this form,
+I keep indendation on a stack called [[indents]], and I cache the sum
+of all [[indents]] in the variable [[indent]].
+[[next]] parses a single block.
+[[current]] contains items from the current block, and [[waiting]]
+contains items from enclosing blocks.
+<<normalize [[l]]>>=
+let fun ppfold f zero (PP.LIST l) = foldl (fn (p, z) => ppfold f z p) zero l
+      | ppfold f zero p = f(p, zero)
+    type indent = { size : int, stack : int list }
+    val brev = BLOCK o rev
+    fun bad _ = Impossible.impossible "bad prettyprinting" (* will need to improve *)
+    fun errmsg msg = TEXT ("((pp error: " ^ msg ^ "))")
+    fun next(pp, (indent as {size, stack}, waiting, current)) =
+      let fun add i = (indent, waiting, i::current)
+          val addError = add o errmsg
+          fun n (PP.BEGIN)    = (indent, current::waiting, [])
+            | n (PP.END)      = (case waiting of h::t => (indent, t, brev current::h)
+                                               | []   => addError "unmatched end")
+            | n (PP.INDENT n) = ({size=size+n, stack=n::stack}, waiting, current)
+            | n (PP.OUTDENT)  = (case stack
+                                   of n::t => ({size=size-n,stack=t}, waiting, current)
+                                    | [] => addError "unmatched outdent")
+            | n(PP.BREAK b)   = add (BREAK(#size indent, b))
+            | n(PP.SYNCH)     = add (SYNCH (#size indent))
+            | n(PP.TEXT t)    = add (TEXT t)
+            | n(PP.LIST _)    = Impossible.impossible "can't happen -- bad ppfold"
+       in   n pp
+      end
+    val (indent, waiting, current) = ppfold next ({size=0,stack=[]}, [], []) l
+    val current = case indent of {stack=[], ...} => current
+                               | _ => errmsg "unclosed indent" :: current
+    fun matchBegins ([], cur) = cur
+      | matchBegins (h::t, cur) =
+          matchBegins(t, brev cur :: errmsg "unmatched begin" :: h)
+    val current = matchBegins (waiting, current)
+in  brev current
+end
+@ 
+\subsection{Test structure}
+The tester uses the C preprocessor rule for synchronization.
+<<pptest.sml>>=
+structure PPTest = struct
+  fun readPP' stream =
+    let fun get r = 
+          let val l = TextIO.inputLine stream
+          in  if size l = 0 then PP.LIST (rev r)
+              else get(PP.Short.$ l :: r)
+          end
+    in  get []
+    end
+  fun readPP filename =
+    let val s = TextIO.openIn filename
+        val pp = readPP' s
+    in  TextIO.closeIn s; pp
+    end
+  val readNormal = PPNormal.normalize o readPP
+  fun filter width infile outfile =
+    let val normal = readNormal infile
+        fun synch (emit, n) = 
+          1 before emit(0, ["#line ", Int.toString (n+2), " \"", outfile, "\""]) 
+        val out = TextIO.openOut outfile
+    in  PPDynamic.set (PPDynamic.standardEmitLine out, synch, width) normal;
+        TextIO.closeOut out
+    end      
+end
+<<pptest.in>>=
+$tnow is the time $#for all good men$n#line your mama$chere she is$t$#back to
+regularly scheduled$b$b$cprogrammming

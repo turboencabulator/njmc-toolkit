@@ -1,0 +1,81 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+<<emit.sml>>=
+structure Emit = struct
+  structure P = Sexp
+  <<*>>
+end
+@ 
+<<junk>>=
+fun emit limit =
+  let fun newline k = 
+        let fun space 0 = () | space k = (print " "; space (k-1))
+        in  (print "\n"; space k)
+        end
+      fun put (indent, cur) s =
+        if cur + len s <= limit then (oneline s; (indent, cur + len s))
+        else if indent + len s <= limit then
+            (newline indent; oneline s; (indent, indent + len s))
+        else
+          case s
+            of P.PARENSipt (l as h :: _) =>
+                let fun laydown pfx (indent, cur) [] =
+                          if cur + 1 + size pfx <= limit orelse cur = indent then
+p                            (print pfx; print ")"; newline indent; (indent, indent))
+                          else
+                            (newline indent; laydown "" (indent, indent) [])
+                      | laydown pfx (indent, cur) (h :: t) =
+                          (print pfx; laydown " " (put (indent, cur + size pfx) h) t)
+                    val _ = print "("
+                    val (_, cur) = laydown "" (indent + atomLen (h, 2) + 1, cur+1) l
+                in  (indent, cur)
+                end
+             | x => if cur > indent then (newline indent; put (indent, indent) x)
+                    else (oneline x; newline indent; (indent, indent))
+      and oneline (P.SYMipt s) = print s
+        | oneline (P.STRINGipt s) = (print "\""; print s; print "\"")
+        | oneline (P.INTipt n) = print (Int.toString n)
+        | oneline (P.PARENSipt []) = print "()"
+        | oneline (P.PARENSipt l) = (print "("; onelist l)
+      and onelist [] = print ")"
+        | onelist [x] = (oneline x; print ")")
+        | onelist (h::t) = (oneline h; print " "; onelist t)
+      and len (P.SYMipt s) = size s
+        | len (P.STRINGipt s) = size s + 2
+        | len (P.INTipt n) = size (Int.toString n)
+        | len (P.PARENSipt []) = 2
+        | len (P.PARENSipt l) = foldl (fn (x, n) => len x + n + 1) 1 l
+      and atomLen (P.PARENSipt (h::t), k) = k
+        | atomLen (x, _) = len x
+  in  fn s => (put (0, 0) s; print "\n")
+  end
+@ 
+<<*>>=
+structure pp = PP.Short
+val ppsexp =
+  let fun out (P.SYMipt s) = pp.te s
+        | out (P.STRINGipt s) = pp.te ("\"" ^ s ^ "\"")
+        | out (P.INTipt n) = pp.te (MyInt.toString n)
+        | out (P.PARENSipt []) = pp.te "()"
+        | out (P.PARENSipt (h :: t)) = 
+            let val indent = case h of P.PARENSipt (_ :: _) => 2 | x => len x + 2
+            in  pp.li ([pp.be, pp.i indent, pp.te "(", out h] @
+                       foldr (fn (x, tail) => pp.$ " $o" :: out x :: tail)
+                       [pp.te ")", pp.ou, pp.en] t)
+            end
+      and len (P.SYMipt s) = size s
+        | len (P.STRINGipt s) = size s + 2
+        | len (P.INTipt n) = size (MyInt.toString n)
+        | len (P.PARENSipt []) = 2
+        | len (P.PARENSipt l) = foldl (fn (x, n) => len x + n + 1) 1 l
+  in  out
+  end
+fun ppWrite width filename pp = 
+  let val out = TextIO.openOut filename
+      val normal = PPNormal.normalize pp
+  in  PPDynamic.set (PPDynamic.standardEmitLine out, fn _ => 0, width) normal;
+      TextIO.closeOut out
+  end      
+fun ppshow pp = 
+  let val normal = PPNormal.normalize pp
+  in  PPDynamic.set (PPDynamic.standardEmitLine TextIO.stdOut, fn _ => 0, 78) normal
+  end

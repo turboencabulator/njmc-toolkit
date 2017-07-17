@@ -1,0 +1,15 @@
+; $Id: test.cm,v 1.5 1999/09/06 16:03:02 nr Exp $
+; module -none
+(* to run test code *)
+group is
+  toolkit.cm
+  error.cm
+
+  unparse-test.cm
+
+  solvertest.sml@solve.nw
+  simptest.sml@simplify.nw
+
+  cc.sml@usercode.nw
+  piazza.sml@usercode.nw
+  xs.sml@usercode.nw

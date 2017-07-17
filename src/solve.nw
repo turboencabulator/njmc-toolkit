@@ -1,0 +1,3110 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: solve.nw,v 1.23 1999/09/06 16:10:28 nr Exp $
+\documentclass[dvips]{article}
+\usepackage{nchicago,noweb,array,fields,tabularx,epsfig}
+%\usepackage{noweb,spe,array,fields,tabularx,epsfig}
+
+% l2h substitution arccos arc#cos
+% l2h substitution arccos cos
+% l2h substitution balances &nbsp;|&gt;&lt;|&nbsp;
+% l2h let citeyear cite
+
+% l2h substitution div div
+% l2h substitution mod mod
+
+% l2h substitution star *
+% l2h substitution mapsto |--&gt;
+
+% l2h substitution forall <b>A</b>
+
+% l2h ignore textup
+
+% l2h substitution pm +/-
+
+% l2h substitution sum <b>Sum</b>
+
+\noweboptions{shortxref,shift}
+
+\newcommand{\fig}[1]{Figure~\ref{fig:#1}}
+
+% l2h macro fig 1 Figure~\ref{fig:#1}
+
+\newcommand{\explt}{\mathrel{<\!\!\cdot}}
+% l2h substitution explt <b>&lt;@</b>
+
+\title{A Balancing Equation Solver Written in ML}
+\author{Norman Ramsey}
+
+\def\nwdocspar{\vskip0pt plus2in\penalty-400\vskip0pt plus -2in}
+\def\nwendcode{\endtrivlist\endgroup} % ditches filbreak
+\def\nwendcode{\endtrivlist\endgroup\vskip 0pt plus1in\penalty-200\vskip 0pt plus -1in} % ditches filbreak
+
+\def\remark#1{\marginpar{\raggedright\hbadness=10000
+        \def\baselinestretch{0.8}\scriptsize
+        \it #1\par}}
+
+\newcommand\missing[2][Stuff]
+  {\@latex@warning{#1 is missing}%
+   \marginpar{\small\itshape\raggedright #1 is missing here.}%
+   \textsl{#2}}
+
+\newcommand\metafont{METAFONT}
+
+
+\newcommand\balances{\bowtie}
+\newcommand\widenop{{\mathord{\uparrow}}}
+\newcommand\narrowop{{\mathord{\downarrow}}}
+\newcommand\widen[2]{{#1}\widenop_{#2}}
+\newcommand\narrow[2]{{#1}\narrowop_{#2}}
+\newcommand\narrows[2]{{#1}\narrowop^S_{#2}}
+\newcommand\narrowu[2]{{#1}\narrowop^U_{#2}}
+\let\narrows=\narrow
+%\let\narrowu=\undefined
+
+% l2h macro narrow 2 #1[#2!]
+% l2h macro narrows 2 #1[#2!]
+% l2h macro narrowu 2 #1[#2]
+% l2h macro widen 2 #1!#2
+
+\newcommand\slice{}
+\def\slice#1[#2:#3]{#1[#2\mathord:#3]}
+
+% l2h let slice relax
+
+\newcommand\balovern[1]{% line to go in balances
+  \multicolumn{3}{c}{%
+   \leavevmode\kern#1\relax%
+   \leaders \hrule height \minusht depth \minusdp \hfill \kern0pt\relax}}
+\newcommand\balover{\balovern{0pt}}
+\newdimen\minusht
+\minusht=0.5ex
+\newdimen\minusdp
+\minusdp=-\minusht
+\advance\minusdp by 0.4pt
+
+\newdimen\spacedimen
+% l2h ignore spacedimen =
+\setbox0=\hbox{\nowebsize~}
+\spacedimen=\wd0
+\def\csnotdef{nw@notdef}
+\makeatletter
+\let\old@subpageref=\subpageref
+\renewcommand{\subpageref}[1]{%
+    \def\@tmp{#1}%
+    \ifx\@tmp\csnotdef
+      \kern-\spacedimen\/
+    \else
+      \old@subpageref{#1}%
+    \fi}
+\makeatother
+
+\renewcommand\nwnotused[1]{\relax}
+
+
+
+\newcommand\pc{\mathtt{\char`\$pc}}
+\renewcommand\pc{\mathtt{pc}}
+
+\newcommand\mod{\bmod}
+\renewcommand\div{\mskip-\medmuskip\mkern5mu
+  \mathbin{\mathrm{div}}\penalty900\mkern5mu\mskip-\medmuskip}
+
+\newcommand\rator[1]{\mathrm{#1}\ }
+\newcommand\rand{\mathit}
+\newcommand\field{\mathbf}
+
+% l2h let rand textit
+% l2h let field textbf
+
+\setcounter{secnumdepth}{0}
+
+\overfullrule=0pt
+
+%%% while not spe style
+
+\let\ltxcite=\cite
+\def\cite{ \ltxcite}
+
+\newif\iftr
+\trtrue 
+\let\fillin\textsc
+
+% l2h ignore fillin
+
+\begin{document}
+
+\maketitle
+
+\maketitle
+
+\begin{abstract}
+This report presents a simple equation solver.
+The solver finds solutions for
+sets of linear equations extended with several 
+nonlinear operators, including integer division and modulus, sign
+extension, and bit extraction.
+The solver uses a technique called \emph{balancing}, which can
+eliminate some nonlinear operators from a set of equations before
+applying Gaussian elimination.
+The solver's principal advantages are simplicity, reusability, and ability
+to handle some nonlinear operators, including nonlinear functions of
+more than one variable.
+
+The solver is part of an
+application generator that provides encoding and decoding of machine
+instructions based on equational specifications.
+The solver is presented not as pseudocode but as a literate program,
+ which guarantees that
+the code shown in the paper is the same code that is actually used.
+Using real code exposes more detail than using pseudocode, but
+literate-programming techniques help manage the detail.
+ The detail
+should benefit
+readers who want to implement their own solvers based on
+the  techniques presented here.
+\end{abstract}
+
+
+{\em\noindent
+This report is based on \citeN{ramsey:solver}, which describes the
+same equation solver, but written in~Icon.
+This report describes a similar solver written in Standard~ML
+\cite{milner:definition}. 
+Why?
+First, 
+the ML solver is better structured and more reusable than the version
+written in~Icon, and this report serves as documentation for the code.
+Second, the code may interest those studying~ML, since it is a
+small but nontrivial ML~program, and one that
+illustrates the use of the ML modules system.
+The report is intended for readers that are already familiar with~ML;
+it does not explain the use of ML~constructors.
+Readers may wish to consult \citeN{paulson:ml},
+\citeN{ullman:elements}, or \citeN{tofte:four} for introductions
+to~ML.
+}
+
+\section{Introduction}
+
+This report describes a general-purpose solver for arithmetic equations
+in which 
+the meanings of
+operators are defined in advance, and in which solutions are sought in
+the
+integers.
+(With modest effort, the solver could be generalized to find solutions
+in floating-point numbers, which is a slightly easier problem.)
+The solver is built on an extension of
+Gaussian
+elimination. 
+Similar solvers include the solver in Metafont,
+a tool for generating digital letterforms, which uses equations to
+constrain the relative positions of the parts of
+letters\cite{knuth:metafontbook}. 
+Its solver uses a variant of Gaussian elimination over the reals, plus an extension
+that records when two expressions are known to be
+equal\cite[\S585]{knuth:metafont}.
+The HEQS solver extends Knuth's technique by adding a rewriting
+step that transforms some nonlinear equations into linear ones, e.g.,
+rewriting $1 = 3/a$ to $a=3$\cite{derman:simple}.
+If the HEQS solver can't immediately rewrite an equation into linear
+form, it enqueues the equation and retries it later.
+
+This report presents a different extension to Gaussian elimination, one
+which handles ``balanceable'' nonlinear operators.
+The idea is to move nonlinear operators from the equations into data
+structures called
+\emph{balances}, which tell how to solve a simple nonlinear equation
+using a function and its inverse.
+If enough nonlinear operators can be removed, the equations can be
+solved using ordinary linear techniques.
+For example, if we have the equation $x = y + 2 \times \cos \theta$, we
+introduce a fresh variable $\theta_1$ to stand for $\cos \theta$, and
+we note the ``balanced'' relationship $\theta_1 = \cos \theta$ and 
+$\theta = \arccos \theta_1$.
+The equation becomes $x = y + 2 \times \theta_1$, which is a linear
+equation that can be solved with Gaussian elimination, and the balance
+is used either to compute $\theta$ given $\theta_1$, or to compute
+$\theta_1$ given $\theta$.
+The balancing technique applies to any invertible function with
+multiple inputs and multiple outputs.
+
+The solver described here is used to analyze
+machine-code  descriptions that use two balanceable nonlinear
+operators \cite{ramsey:specifying}.
+The bit-extraction operator, e.g., $\slice n[3:7]$,
+extracts bits 3~through~7 of the two's-complement representation
+of the integer~$n$.
+The sign-extension operator, e.g., $\widen n {16}$, takes
+the least significant 16~bits of $n$ as a two's-complement signed
+integer.
+Two more balanceable operators, integer division and modulus, are
+introduced by the solver in the process of restricting solutions to
+the integers.
+
+Balancing is not the only way to handle bit extraction, sign extension,
+division, and modulus.
+The last part of this report shows how to rewrite
+``mostly linear'' equations involving these operators
+as integer linear programs.
+Although
+integer linear programming is an
+NP-complete problem{\let\hbox\relax\cite{papadimitriou:combinatorial}}, 
+there are powerful, practical methods for solving some classes of
+integer linear programs\cite{pugh:practical}.
+ These methods are
+complex; 
+substantial effort is needed to implement them, and sometimes
+even to reuse existing implementations.
+In a special-purpose application, little language, program transformer, or
+application generator, 
+it may be cheaper to implement a simpler technique, like the balancing
+technique,
+ than to
+create an interface to a more general implementation that already
+exists. 
+This choice has worked well in the machine-code toolkit.
+
+
+This report shows how to implement Gaussian elimination with balancing.
+After a description of balancing,  the implementation appears in
+three parts: 
+the basic solving engine, which is like that of  Knuth\cite{knuth:metafont},
+the extension that uses balances to eliminate terms containing
+nonlinear operators,
+and the code that creates balances.
+The concepts and code are illustrated with example equations and balances taken
+from machine descriptions. 
+
+\subsection{A Literate Program}
+
+This report not only describes an implementation of a balancing
+equation solver, it \emph{is} the implementation.
+The {\tt noweb} system\cite{ramsey:simplified} for 
+{literate programming}\cite{knuth:literate} extracts this report
+and a working implementation from a single source.
+This source contains the prose of the article interleaved with named
+``code chunks.''
+The code chunks are written in the order best suited to describing the
+solver, not the order dictated by a compiler.
+Chunks contain source code and references to other chunks.
+The names of chunks appear italicized and in angle brackets:
+<<summarize the problem>>=
+print "Inputs are:";
+<<for every [[i]] that is an input, print a blank space and then [[i]]>>;
+print "\n"
+<<for every [[i]] that is an input, print a blank space and then [[i]]>>=
+app (fn i => (print " "; print i)) inputs
+@ The $\equiv$ sign indicates the definition of a chunk.
+Definitions of a chunk can be continued in a later chunk; 
+{\tt noweb} concatenates their contents.
+Such a concatenation is indicated by a $+\equiv$ sign in the definition:
+<<summarize the problem>>=
+app print ["Starting to solve ", Int.toString (length eqns), " equations"]
+@ {\tt noweb} adds navigational aids to the paper.
+Each chunk name ends with the number of the page on which the chunk's
+definition begins.
+When more than one definition appears on a page, they are distinguished by
+appending lower-case letters to the page number.
+When a chunk's definition is continued, {\tt noweb} includes pointers to the 
+previous and next
+definitions, written ``{\nwtagstyle\nwprevdefptr{NW-sumL-1}}'' and
+``{\nwtagstyle\nwnextdefptr{NW-sumL-2}}.'' 
+The notation ``{\let~=\relax\nwusesondefline{\\{NW-sumL-1}}}'' shows where a
+chunk is used.
+Chunks with no numbers are included in the source file, but they don't
+appear in this report.
+For purposes of exposition, such chunks play the role of pseudo-code,
+but unlike pseudo-code they have real implementations.
+@
+The complete source code for the solver, as extracted from this
+paper, is available for anonymous {\tt ftp} from Internet host {\tt
+ftp.cs.virginia.edu} in the directory {\tt pub/nr/mlsolver}.
+%%  this report includes just enough chunks to show how to
+%%  implement a balancing equation solver, without overwhelming readers
+%%  with detail.
+The advantage of presenting a literate program instead of just an
+algorithm is 
+that readers see
+%% (part of)
+a working implementation;
+because the source code in the paper is compiled and 
+produces a working solver, they can be confident that 
+the paper is correct.
+The level of detail should enable
+other implementors of little languages and application
+generators to build solvers based on the program presented
+here.
+@
+
+\section{Equations with nonlinear operators}
+
+To illustrate the techniques involved in balancing nonlinear
+operators, I have taken equations and operators from the
+description of the MIPS~R3000 architecture in the New Jersey
+Machine-Code Toolkit\cite{ramsey:tk-architecture}.
+The nonlinear operators used to describe machine code include
+widening (sign extension), narrowing,
+bit extraction, and integer division and modulus.
+The first three operate on a two's-complement representation of integers.
+Widening, or $\widen n k$, takes the low-order $k$~bits of a
+two's-complement integer~$n$ and considers those $k$~bits themselves
+as a two's-complement integer.
+This operation, also called sign extension, is commonly applied to
+some fields of machine instructions to produce signed operands.
+Narrowing, or $\narrow n k$, is the inverse operation, considering
+only the low-order $k$~bits of the integer~$n$.
+%It has signed and unsigned variants $\mathord{\downarrow}^S$ and
+%$\mathord{\downarrow}^U$. 
+The narrowing operation succeeds only if it can be performed without
+loss of information.
+Bit extraction, or $\slice n[i:j]$, considers bits $i$ through $j$ of~$n$
+as an unsigned integer, where bit~0 is the least significant bit.
+The difference between $\slice n[0:k-1]$ and $\narrow n k$ is that
+$\slice n[0:k-1]$ always succeeds, whereas $\narrow n k$ contains an
+implicit assertion that the value of~$n$ fits in $k$~bits, and the
+narrow fails if that assertion does not hold.
+This section shows how these operators are used in equations that
+describe machine instructions, and it shows what it means to
+``balance'' the operators.
+@
+Sign extension is used in the description of the MIPS load
+instruction, which loads a word into register $\rand{rt}$:
+\[\rator{load} \rand{rt}, \rand{offset}, \rand{base}.\]
+The operands $\rand{rt}$, $\rand{offset}$ and $\rand{base}$
+are used to compute the corresponding fields of the
+instruction, which we write in $\field{bold}$ font ($\field{rt}$,
+$\field{offset}$ and $\field{base}$). 
+The distinction between operands and fields is what differentiates the
+assembly-language and machine-language forms of an instruction.
+The New Jersey Machine-Code Toolkit uses the solver described here to
+transform a set of operands to a set of fields, or vice versa.
+The transformation is specified by the following equations,
+which indicate that the operand $\rand{offset}$ is obtained
+by sign-extending the 16-bit field $\field{offset}$:
+\begin{eqnarray*}
+  \field{rt} &=& \rand{rt} \\
+  \widen{\field{offset}}{16} &=& \rand{offset} \\
+  \field{base} &=& \rand{base} 
+\end{eqnarray*}
+These equations can be used by themselves as the basis for a
+fields-to-operands (decoding) transformation.
+For the inverse transformation,
+we solve for the fields in terms of the operands:
+\begin{eqnarray*}
+  \field{rt} &=& \rand{rt} \\
+  \field{offset} &=& \narrows{\rand{offset}}{16} \\
+  \field{base} &=& \rand{base} 
+\end{eqnarray*}
+The result shows we compute the value of the $\field{offset}$ field by
+narrowing the $\rand{offset}$ operand to 16~bits.
+
+@
+Bit extraction is used to describe the MIPS jump instruction, whose sole
+operand is the target address $\rand{target}$.
+The architecture manual specifies that this target address is computed
+by taking its most significant
+four bits from the current program counter,
+using zero as its least significant two bits, and taking the remaining bits from
+the 26-bit $\field{target}$ field:
+\begin{eqnarray*}
+  \slice{\rand{target}}[28:31] &=& \slice\pc[28:31] \\
+  \slice{\rand{target}}[0:1]      &=& 0 \\
+  \slice{\rand{target}}[2:27]  &=& \field{target}
+  \end{eqnarray*}
+When encoding, we know $\pc$ and $\rand{target}$, so
+the third equation provides a value for the
+field $\field{target}$, while the first two become constraints on
+the value of the operand $\rand{target}$.
+When decoding, however, we know $\pc$ and $\field{target}$, and we
+need all three equations to come up with this solution
+for $\rand{target}$:
+\[\rand{target} = 2^{28} \times \slice\pc[28:31] + 2^2 \times \field{target}.\]
+
+@
+Integer division and modulus don't appear explicitly in the
+descriptions of MIPS instructions, but they have to be introduced to
+solve the equations describing relative branches.
+Like jumps, branches have a single
+$\rand{target}$ operand, but the target address is computed
+by sign-extending the $\field{offset}$ field, multiplying it by~4,
+and adding it to the
+address of the instruction in the delay slot, which is $\pc+4$:
+\[\rand{target} = (\pc + 4) + 4 \times \widen{\field{offset}}{16}.\]
+Solving this equation for encoding yields a way to compute the 
+$\field{offset}$ field, plus a constraint on the operand $\rand{target}$:
+\[\begin{array}{lrcl}
+& \field{offset} &=& \narrows{((\rand{target} - \pc - 4) \div 4)}{16}\\
+ \mathrm{Constrain}&  (\rand{target} - \pc - 4) \mod 4 &=& 0
+  \end{array}
+\]
+
+
+In these examples, one of two sets of variables (operands or
+fields) is known initially, and we have to solve for the others.
+In each case, we can ``invert'' or ``balance'' a term involving a
+nonlinear operator so that we are always using the nonlinear operators
+only to compute functions of known variables.
+By choosing the proper half of the balance, we can solve for nonlinear
+terms in a linear solver.
+We express the balance relationship by introducing fresh variables
+for nonlinear terms, and writing \emph{balancing equations} for those
+variables.
+So, for example, when we see 
+$\widen{\field{offset}}{16} = \rand{offset}$, 
+we introduce the fresh variable $\field{offset}_1$ to stand for 
+$\widen{\field{offset}}{16}$, and we write $\field{offset}_1 \balances
+\field{offset}$ (pronounced ``offset-sub-1 balances offset'').
+More completely,  we write equations by which the
+variables on either side of the balance can be computed using only the
+values of the variables on the opposite side:
+\iftrue
+\[  \field{offset}_1 = \widen{\field{offset}}{16} 
+           \balances
+    \field{offset} = \narrows{\field{offset}_1}{16}
+\]
+\else
+\[\begin{array}{clcl}
+&   \field{offset}_1 &=& \widen{\field{offset}}{16}\\
+\field{offset}_1 \balances \field{offset}&\balover\\
+&   \field{offset} &=& \narrows{\field{offset}_1}{16}
+  \end{array}
+\]
+This notation means that the variables on the left of the $\balances$
+can be computed from the variables on the right using the equations
+above the line, and similarly, that the variables on the right of the
+$\balances$ can be computed from the variables on the left using the
+equations below the line.
+
+\fi
+We write a balance for the slicing example this way, introducing fresh
+variables
+$\rand{target}_1$,
+$\rand{target}_2$,
+and
+$\rand{target}_3$:
+\iftrue
+\[\begin{array}{c}
+     \rand{target}_1 = \slice\rand{target}[0:1],
+     \rand{target}_2 = \slice\rand{target}[2:27],
+     \rand{target}_3 = \slice\rand{target}[28:31] \\
+                 \balances\\
+     \rand{target} = \rand{target}_1 + 2^{28}\times\rand{target}_3 + 
+                         2^2\times\rand{target}_2
+  \end{array}
+\]
+\else
+\[\begin{array}{clcl}
+ &\rand{target}_1 &=& \slice\rand{target}[0:1]\\
+ &\rand{target}_2 &=& \slice\rand{target}[2:27]\\
+ &\rand{target}_3 &=& \slice\rand{target}[28:31]\\
+\rand{target}_1, \rand{target}_2, \rand{target}_3 \balances \rand{target}\kern20pt&
+                                                            \balovern{20pt}\\
+ &\rand{target} &=& \rand{target}_1 + 2^{28}\times\rand{target}_3 + 
+                     2^2\times\rand{target}_2
+  \end{array}
+\]
+\fi
+Again, when the variables on either side of the $\balances$ are known,
+the variables on the other side can be computed.
+
+Finally, the balance for division by~4 has this form:
+\iftrue
+\[
+ q = n \div 4,
+ r = n \mod 4
+   \balances 
+n = 4 \times q + r
+\]
+\else
+\[\begin{array}{clcl}
+ &q &=& x \div 4\\
+ &r &=& x \mod 4\\
+q, r \balances x&\balover\\
+&x &=& 4 \times q + r
+  \end{array}
+\]
+\fi
+
+The solver described in this report works in two steps.
+The first step introduces fresh variables to stand for nonlinear
+terms, creating balances describing those variables.
+The second step finds a solution given the equations and the balances,
+using a Knuth-style eliminator with an extension to use the balances.
+The first step depends on the set of nonlinear operators chosen, 
+but the second step is general.
+Because of that generality, and because it is easier to understand
+the technique by learning how balances are used before learning
+where they come from, I discuss the eliminator first.
+
+
+
+\section{Solving balanced equations}
+
+\ifhtml \subsection{Classification of variables}\fi
+
+This section describes the basic solving engine.
+Both the terminology for describing the technique
+and the general outline  
+of the implementation come from Knuth's implementation of
+Gaussian elimination \citeyear[\S585]{knuth:metafont}.
+There is a modest difference in that Knuth's solver provides numerical
+answers directly, whereas my solver uses a level of indirection.
+Certain variables of the equations are designated as \emph{inputs}, 
+and the solver finds  expressions that compute the values of other
+variables as functions of the inputs.
+From these expressions one can generate C or Modula-3 code to solve
+any instance of the problem described by the equations.
+In the degenerate case in which no variables are designated as inputs, 
+my solver behaves as does Knuth's solver, finding a numerical solution.
+
+\def\.#1{\mbox{$(\mathcal{#1})$}}
+% l2h ignore .
+
+\begin{figure}
+\setlength{\unitlength}{0.01in}%
+\begin{center}
+\begin{picture}(417,260)(43,480)
+\thicklines
+\put( 80,680){\framebox(100,60){}}
+\put( 80,580){\framebox(100,60){}}
+\put( 80,480){\framebox(100,60){}}
+\put(360,680){\framebox(100,60){}}
+\put(360,710){\vector(-1, 0){178}}
+\put(360,700){\vector(-2,-1){178}}
+\put(130,680){\vector( 0,-1){ 38}}
+\put(130,710){\makebox(0,0){{\strut dependent}}}
+\put(130,610){\makebox(0,0){{\strut known}}}
+\put(130,510){\makebox(0,0){{\strut inputs}}}
+\put(410,710){\makebox(0,0){{\strut unknown}}}
+\put(270,725){\makebox(0,0)[b]{{elimination \.E}}}
+\put(260,650){\makebox(0,0)[lt]{%
+     \begin{tabular}{c}elimination \.E\\or balancing \.B\end{tabular}}}
+\put(130,660){\makebox(0,0)[r]{%
+     \begin{tabular}{c}substitution \.S\\ or balancing \.B\end{tabular}}}
+\end{picture}
+\end{center}
+
+\caption{Different states of variables}
+\label{fig:state-diagram}
+\end{figure}
+
+
+Figure~\ref{fig:state-diagram} shows how the variables of the
+equations make transitions among the states used by the solver.
+All variables other than the designated
+inputs are initially \emph{unknown}, which
+means nothing is known about their values.
+As the solver works,
+they may become {dependent} or {known}.
+A \emph{dependent} variable is a function of other variables, either inputs
+or unknowns.
+A \emph{known} variable is function of inputs alone.
+The sets on the left side of Figure~\ref{fig:state-diagram} overlap;
+every input is known, and every known variable is either dependent or
+an input.
+
+An unknown variable becomes dependent by Gaussian elimination of that variable; 
+if the expression giving the value of that variable contains only inputs, 
+then that variable is known.
+Dependent variables become known when all the unknowns on which they
+depend have been eliminated;
+For example, if $y = x - z$, and $z$ is found (by elimination) to be $x - 4$,
+then when $x-4$ is substituted for $z$, $y$ is now known to be~4.
+When all the variables on one side of a balance become known,
+the balance is ``completed,'' i.e., 
+the solver uses the balance's equations to make the 
+variables on the other side known, too.
+
+
+We use two other special terms.
+Should there be more equations than variables, and should the
+extra equations not be redundant, some equations become
+\emph{constraints} on the inputs.
+Finally, we call an expression \emph{computable} if it is a function
+of inputs.
+This definition of ``computable'' is not standard.
+
+\ifhtml \subsection{Representing expressions}\fi
+
+Manipulating expressions by computer is complicated when the same
+expression can be represented in many different
+ways.
+In a typical tree representation, 
+an expression like $2b+3c+4+5a$ can
+have over a hundred different equivalent
+representations, which vary only in the order in which operands are
+added or multiplied\cite{derman:simple}.
+This solver \emph{ordered linear combinations} as proposed in
+\citeN{derman:simple}.
+The assumption is that every expression~$e$ can be written in the form
+$e = \sum_i k_i a_i$, where
+\begin{itemize}
+\item
+Each $k_i$ is a (constant) number.
+\item
+Each $a_i$ is an \emph{atomic} expression.
+The number~1 is the only atomic number.
+All other expressions are atomic except sums, differences, negations, and
+products of numbers and expressions.
+\item
+Expressions are totally ordered. We write the total order $\explt$.
+\item
+The sums are ordered, i.e., 
+if $e=\sum_i k_i a_i$, then
+$i<j \Rightarrow a_i \explt a_j$.
+\end{itemize}
+We can formalize these assumptions in an ML signature.
+<<solve.sig>>=
+signature SOLVER_EXP = sig
+  type exp
+  type number
+  type olc = (number * exp) list
+  val olc : exp -> olc			(* decompose into OLC form *)
+  val sum : olc -> exp			(* add up the elements of the OLC *)
+  val compare : exp * exp -> order	(* the total order used in the olc's *)
+  <<other functions on expressions>>
+end
+@ The chunk [[<<other functions on expressions>>]] represents other
+assumptions that are documented below.
+@
+Here's the interface to the solver.
+We pass in a list of equations, together with a set of identifiers
+designated as \emph{inputs}.
+The solver does as much as possible to solve for the remaining free
+variables in terms of the inputs.
+The solutions for the non-input
+variables go in [[answers]], where they are expressed as expressions
+over [[inputs]].
+If some equations are redundant (e.g. $x = 3, x = y + 1, y = 2$), the
+solver will transform these equations into [[constraints]], which are
+boolean expressions again over only the inputs (e.g., $2=2$).
+Any unsolved equations are returned in [[unsolved]].
+Such equations are transformed so that the only free variables are
+[[inputs]] and variables that are not keys in [[answers]].
+For most uses, [[unsolved]] should be empty.
+<<solve.sig>>=
+signature SOLVER = sig
+  structure Exp : SOLVER_EXP
+
+  val solve : 
+    { inputs : StringSet.set
+    , eqns   : Exp.condition list
+    } -> { answers     : Exp.exp StringMap.map  (* functions of inputs only *)
+         , constraints : Exp.condition list     (* function of inputs only *)
+         , unsolved    : Exp.condition list     (* leftovers *)
+         }
+end
+@
+The solver is functorized so it works with \emph{any} representation
+of expressions that satisfies certain assumptions. 
+These assumptions include not only the ability to create ordered
+linear combinations, as explained above, but other assumptions 
+given here.
+
+\emph{Conditions}, which represent equations,
+inequalities, or Booleans, may be
+distinct from expressions, which represent integers.
+Some conditions, but not all, are equations.
+<<other functions on expressions>>=
+type condition  (* represent an inequality, equality, or other constraint *)
+val equals     : exp * exp -> condition
+val unEquation : condition -> (exp * exp) option
+  (* unEquation(equals(x, y)) = SOME (x, y) *)
+  (* unEquation(other) = NONE *)
+@ We need to be able to add and subtract expressions, and we need zero.
+<<other functions on expressions>>=
+val add : exp * exp -> exp
+val sub : exp * exp -> exp
+val zero : exp
+@ To solve integer equations with non-unit coefficients, we need to be
+able to introduce division and modulus.  The names are primed to avoid
+awkwardness with [[div]] and [[mod]], which are infix identifiers in
+the initial basis. 
+<<other functions on expressions>>=
+val div' : exp * number -> exp
+val mod' : exp * number -> exp
+@ We also need to be able to create and recognize expressions
+representing simple variables:
+<<other functions on expressions>>=
+val var : string -> exp
+val unVar : exp -> string option
+  (* unVar(var x) = SOME x *)
+  (* unVar(_)     = NONE *)
+@ 
+In order to determine whether an expression is computable, we have
+to be able to look at its free variables.
+The most general way to do this is [[foldFreeVariables]], which visits
+all the variables.  
+[[existsVar]] and [[forallVars]] provide common shortcuts.
+The order in which variables are visited is not specified, and the
+same variable may be visited more than once if it appears more than once.
+<<other functions on expressions>>=
+val foldFreeVariables : (string * 'a -> 'a) -> 'a -> exp -> 'a
+val existsVar  : (string -> bool) -> exp -> bool
+val forallVars : (string -> bool) -> exp -> bool
+@ For convenience, we require a test to see if a variable is
+free in an expression.
+<<other functions on expressions>>=
+val isFreeIn : string * exp -> bool (* = fn (v, e) => existsVar (fn v' => v = v') e *)
+@
+We have to be able to substitute expressions for variables,
+both singly and in groups.
+<<other functions on expressions>>=
+val subst      : string * exp           -> exp -> exp    (* replace one variable *)
+val multiSubst : (string -> exp option) -> exp -> exp    (* replace many variables *)
+@ We also have to be able to substitute for whole expressions, so the
+balancer can take expressions involving nonlinear operators and
+replace them with variables.  I've chosen to require a function
+[[topDownrewrite]] such that \mbox{[[topDownRewrite f]]} rewrites
+expressions by applying 
+[[f]] to the expression and every subexpression. 
+If [[f e]] returns a value, the
+rewriter must return that value without touching [[e]]'s~subexpressions.
+<<other functions on expressions>>=
+val topDownRewrite : (exp -> exp option) -> exp -> exp
+@ 
+Some of the operations we perform on expessions, we also need to
+perform on conditions.
+We could provide completely general ways to break up and reassemble	
+conditions (\mbox{[[condition -> exp list * (exp list -> condition)]]}), 
+but since we only change conditions by substitution, it seems more
+sensible to require it directly, plus the ability to produce the
+top-level expressions in a condition.
+Because we expect the number of such expressions to be small (one or
+two), it's acceptable simply to cons up a list.
+<<other functions on expressions>>=
+val cmap : (exp -> exp) -> condition -> condition
+val cexps : condition -> exp list
+@
+This solver is specialized for integers.
+It would be a bit more work to generalize it to work either on
+floating-point numbers or on integers.
+<<solve.sml>>=
+functor SolverFun(structure Elim : ELIMINATOR where type Exp.number = int
+		  structure Balancer : BALANCER
+		  sharing Balancer.Exp = Elim.Exp
+		  <<debug: debugging argument to solver functor>>
+		 ) : SOLVER =
+struct
+  structure Exp = Elim.Exp
+  structure Fresh = Balancer.Fresh
+  <<debug: general debugging support>>
+  <<solver functions>>
+  <<solver>>
+end
+<<debug: debugging argument to solver functor>>=
+structure Debug : BALANCER_DEBUGGING
+sharing type Debug.exp = Elim.Exp.exp
+sharing type Debug.condition = Elim.Exp.condition
+<<debug: general debugging support>>=
+open Debug
+structure pp = PP.Short
+fun show_inputs inputs = 
+  pp.$ "Inputs are: $t$c" ::
+  StringSet.foldr (fn (s, l) => pp.te s :: pp.te " " :: pp.on :: l) [pp.ou] inputs
+fun show_exp msg e = [pp.te msg, pp.te " ", image e]
+fun show_eqn msg (e, e') = [pp.te msg, pp.te " ", image e, pp.te " == ", image e']
+fun show_zero msg z = [pp.te msg, pp.te " ", image (Exp.sum z), pp.te " == 0"]
+@
+\ifhtml \subsection{The solver and its data structures}\fi
+
+The solver maintains the following data structures:\\
+\begin{tabularx}{\textwidth}{>{\tt}lX}% \begin{fields*}
+inputs&The set of input variables.\\
+value&A table in which the keys are known variables and the values
+        are expressions giving the values of those variables in terms
+        of inputs and unknowns.  [[value]] initially contains only
+        inputs; the value of an input~[[x]] is [[x]].\\
+zeroes&A list of ordered linear combinations representing 
+	expressions that are known to be zero.
+        It is computed initially by subtracting the right-hand sides
+        of the equations from the left-hand sides.\\
+pending&
+        A temporary list,  holding elements of [[zeroes]] from
+        which no variable can be eliminated.
+        These [[pending]] OLCs are returned to [[zeroes]] at the
+        end of each step of the solving algorithm.\\
+constraints&
+        A list of 
+        constraints that must be satisfied if the equations are to
+        have a solution.  They come from 
+        equations in which all variables are known.
+        The list is initially empty.\\
+%\end{fields*}
+\end{tabularx}\\
+The solver transfers information from [[zeroes]] to
+[[value]] and [[constraints]].
+It looks at the zero-valued expressions in [[zeroes]] one step at a
+time.
+At each step, it tries to eliminate a variable, while maintaining
+ the following invariants:
+{\renewcommand\theenumi{\Roman{enumi}}% roman invariants
+\begin{enumerate}
+%% \item
+%% Ranges and extensions of expressions (as opposed to variables or fields)
+%% appear only when the expressions are computable.
+\item \label{no-dependent-key}
+No variable in [[zeroes]], [[pending]], or [[constraints]] is
+dependent.
+% really key, not variable
+\item \label{no-dependent-value}
+No variable appearing in an expression in [[value]] is dependent.
+\item \label{balance-known}
+If all the variables on one side of a balance are known,
+then all the variables on the other side of that balance are known.
+\end{enumerate}
+}
+Invariant~\ref{balance-known} is maintained by
+the balance machinery, which is described in the next section.
+The solver communicates with the balance machinery by adding variables
+to the set [[newlyknown]] as they  become known.
+
+
+\ifhtml \subsection{The large-scale organization of the solver} \fi
+
+The first step is to balance out nonlinear operators, which creates a
+new set of equations.  [[balanceEqns]], from the [[Balancer]]
+structure, 
+performs this step.
+<<solver>>=
+fun solve {eqns, inputs} =
+  let fun isInput v = StringSet.member(inputs, v)
+      <<solver functions that use [[inputs]]>>
+      <<debug: show inputs>>
+      <<let [[originalVariables]] be all the variables in [[inputs]] and [[eqns]]>>
+      val (eqns, balances, fresh) =
+	     Balancer.balanceEqns (eqns, Fresh.new originalVariables)
+@ We have to tell the balancer about all the variables in use, so that
+the variables it introduces don't accidently collide with them.
+<<let [[originalVariables]] be all the variables in [[inputs]] and [[eqns]]>>=
+fun addString(element, set) = StringSet.add(set, element)
+fun addVars (e, vars) = Exp.foldFreeVariables addString vars e
+fun addVarsC(c, vars) = foldl addVars vars (Exp.cexps c)
+val originalVariables = foldl addVarsC inputs eqns
+@
+Once we have the balanced equations, we can initialize the solver.
+[[value]] maps all inputs to themselves.
+[[constraints]] holds constraints, and [[zeroes]] holds sums equal to zero.
+<<solver>>=
+      val value = StringSet.foldl
+                  (fn (ipt, dict) => StringMap.insert(dict, ipt, Exp.var ipt))
+                  StringMap.empty
+                  inputs
+      val (constraints, zeroes) = parseEqns eqns
+@ [[parseEqns]] separates true equations and constraints, and it
+rewrites each equation into an ordered linear combination that must
+equal zero.
+<<solver functions>>=
+fun parseEqns eqns =
+  let fun p([],   c, z) = (c, z)
+        | p(h::t, c, z) = 
+            case Exp.unEquation h
+	      of NONE => p(t, h::c, z)
+	       | SOME (e, e') => p(t, c, Exp.olc(Exp.sub(e, e')) :: z)
+  in  p(eqns, [], [])
+  end
+@
+We can now initialize the balance machinery and see if the input
+variables complete any balance.
+The manipulation of balances is described below.
+<<solver>>=
+      val balinfo = {newlyknown=StringSet.empty, alreadyknown=StringSet.empty,
+		     balances=balances}
+      <<if inputs make one side of balances known, make the other sides known>>
+@
+The main step is to run the solver.
+[[solve]] runs itself repeatedly (using tail calls) until it has
+gotten all available information.
+%nAfterwards we identify which variables are not yet known, 
+%and we build answers from the known ones.
+<<solver>>=
+    <<function [[solve]]: take expressions from [[zeroes]], eliminating a variable at each step>>
+    val (value, constraints, unsolved) =
+      solve(zeroes, [], constraints, value, fresh, balinfo)
+    val unsolved = (* add unknown values to unsolved equations *)
+      StringMap.foldli 
+      (fn (v, e, unsolved) => if computable e then unsolved
+			      else Exp.equals(Exp.var v, e) :: unsolved)
+      unsolved
+      value
+      (* N.B. should transform to eliminate fresh variables *)
+    val value = StringMap.filter computable value
+  in
+    {answers=StringMap.filteri (not o isInput o #1) value,
+     constraints=constraints, unsolved=unsolved}
+  end
+@ After running the solver, we look at all the keys in~[[value]].
+Those keys representing dependent variables are transformed into
+additional unsolved equations.
+Then [[value]] is limited to those keys representing known variables,
+which are those whose corresponding expressions are computable.
+Finally, we remove the inputs from [[value]] to make [[answers]].
+
+It's possible that we should also strip out anything not involving the
+original variables, but for now, we'll leave them in to help us debug.
+(It's possible, for example, that we need to use [[Fresh.exp2var]] to restore
+the unsolved equations to original form.)
+@
+As defined above,
+an expression is deemed {computable} if all its free variables
+are inputs.
+<<solver functions that use [[inputs]]>>=
+val computable = Exp.forallVars isInput
+@
+\ifhtml \subsection{Iterating through equations} \fi
+
+The iterative part of the solver makes progress by looking for unknown
+variables to 
+eliminate.
+(If there are no unknown variables, then all dependent variables must
+be known, and we have a solution.)
+For guidance,
+chunks are marked \.E, \.S, and \.B when they correspond to 
+the elimination, substitution, and balancing steps depicted in
+Figure~\ref{fig:state-diagram}. 
+  
+To find a variable to eliminate, the solver
+looks at each expression~[[z]] in [[zeroes]].
+The expression gets normalized, and then we look for a candidate variable to eliminate.
+If we find one, we eliminate it.
+Because we want the solver to work either with integers or reals, and because the
+elimination strategies differ, we encapsulate these functions:
+<<eliminator.sig>>=
+signature ELIMINATOR = sig
+  structure Exp : SOLVER_EXP
+  val normalize : Exp.olc -> Exp.olc
+                (* normalize must be called before seeking candidate *)
+  val candidate : Exp.olc * StringSet.set -> string option
+  val eliminate : string * Exp.olc -> Exp.olc
+end
+@ The second argument to [[candidate]] represents variables that are
+deemed not to be candidates for elimination, no matter what the
+eliminator thinks---the inputs.
+@
+The usual step in solving is to choose an ordered linear
+combination~[[z]], which must equal zero, and to remove a
+variable~[[v]] by Gaussian elimination.
+If no variable can be eliminated, but [[z]]~does have an
+unknown variable, it goes into
+[[pending]], because future substitution for a dependent variable may
+make it possible to eliminate the unknown.
+Finally, if [[z]] doesn't have any unknown variables, it is a constraint.
+<<function [[solve]]: take expressions from [[zeroes]], eliminating a variable at each step>>=
+fun solve(z::zeroes, pending, constraints, value, fresh, balinfo) =
+      let val z = Elim.normalize z (* divide out gcd of all coefficients *)
+	  <<debug: show solving step with a zero>>
+      in  case Elim.candidate (z, inputs)
+            of SOME v =>
+                <<debug: announce new dependendent variable [[v]] in [[z]]>> andthen
+                <<make progress by eliminating variable [[v]] from [[z]] \.E>>
+             | NONE =>
+                if Exp.existsVar (not o isInput) (Exp.sum z) then (
+                    (* z has an unknown variable *)
+                  <<debug: announce lack of dependendent variable>> andthen
+                  solve(zeroes, z::pending, constraints, value, fresh, balinfo)
+					(* add z to pending *)
+                ) else (
+		  <<debug: announce new constraint>> andthen
+		  (* should try to check if [[z]] is satisfiable *)
+                  solve(zeroes, pending, zero2constraint z :: constraints, value,
+			fresh, balinfo)
+                )
+      end
+  | solve([], [], constraints, value, fresh, balinfo) = (value, constraints, [])
+  | solve(zeroes as [], pending, constraints, value, fresh, balinfo) =
+  (*    <<debug: show solving step with no zeroes>> andthen *)
+      <<if a [[pending]] exp can be fixed with [[div]] or [[mod]], fix it, otherwise give up>>
+@ When we run out of [[zeroes]], either we're finished, or we can
+attempt to do something with  [[pending]].
+@
+When a value~[[z]] known to be zero consists entirely of known
+variables, it becomes a constraint. 
+Instead of simply asserting that [[z]]~is zero, I rewrite the equation
+to make
+all coefficients 
+positive.  
+This step is not necessary for correctness, but it leads to more readable
+constraints (and therefore to more readable code).
+<<solver functions>>=
+fun zero2constraint s = 
+  let val left   = List.filter (fn (k, e) => k > 0) s
+      val right' = List.filter (fn (k, e) => k < 0) s
+  in  Exp.equals(Exp.sum left, Exp.sub(Exp.zero, Exp.sum right'))
+  end
+@
+The main elimination step~\.E takes place in three stages.
+First,
+if a variable [[v]] in [[z]] can be eliminated, it becomes dependent,
+and we can compute a value for it.
+<<make progress by eliminating variable [[v]] from [[z]] \.E>>=
+  let val v'sVal = Exp.sum(Elim.eliminate(v, z))
+      <<fail if [[v]] wasn't really eliminated from [[v'sVal]]>>
+      val _ = <<debug: show value of [[v'sVal]]>>
+      val value = StringMap.insert(value, v, v'sVal)
+@ 
+After installing [[v]] in the [[value]] table, 
+we substitute the new value for every occurrence of~[[v]], maintaining
+invariant \ref{no-dependent-key}.
+Invariant \ref{no-dependent-value} is maintained automatically, by
+virtue of invariant \ref{no-dependent-key}.
+Because the substitution might enable an elimination that had been
+impossible, we move all the [[pending]] expressions back to [[zeroes]].
+<<make progress by eliminating variable [[v]] from [[z]] \.E>>=
+      val olcSubst = Exp.olc o Exp.subst (v, v'sVal) o Exp.sum
+      val zeroes = map olcSubst (pending @ zeroes)
+      val value = StringMap.map (Exp.subst(v, v'sVal)) value
+      val pending = []
+@ Finally, if [[v]] is not just dependent but known (its value is
+computable), we put it in 
+[[newlyknown]] and activate the balance mechanism.
+The balance mechanism checks to see if the newly known variable
+\emph{completes} the balance, that is, if it makes all the variables
+on one side of the balance known.
+<<make progress by eliminating variable [[v]] from [[z]] \.E>>=
+      val vcpz = {value=value, constraints=constraints, pending=pending, zeroes=zeroes}
+      val ({value, constraints, pending, zeroes}, balinfo) =
+            if computable v'sVal then
+              completeBalances(vcpz, Balance.makeKnown(v, balinfo))
+            else
+              (vcpz, balinfo)
+  in  solve(zeroes, pending, constraints, value, fresh, balinfo)
+  end
+@ When the solver finishes, the [[value]] table contains the 
+values of all the variables; the solver returns these values, plus any
+constraints that may have been generated.
+@
+
+\ifhtml \subsection{Simple example of solving} \fi
+
+We can illustrate the operation of the solver with a simple example
+containing two variables and no inputs:
+\[\begin{array}{rcrcr}
+2\times x &+& 3\times y &=& 11\\
+ x &-& y &=& -2\\
+ x &+& 2\times y &=& 7
+  \end{array}\]
+The solver reaches a solution in four steps:
+\begin{enumerate}
+\item 
+ The solver considers
+$2\times x + 3\times y = 11$, cannot find a variable to eliminate, and
+adds it to [[pending]].
+\item
+ $x$ can be eliminated from
+$x-y=-2$, yielding $x = y-2$, which the solver adds to [[value]].
+It also substitutes $y-2$ for $x$ in the
+pending and remaining equations, and it returns the pending equation
+to [[zeroes]].
+\item 
+The original pending equation is now
+$3\times y = 9$.
+[[Elim.normalize]] rewrites this equation to $y = 3$.
+After eliminating~[[y]] and substituting,
+[[value]] holds $x=1$ and $y=3$.
+\item
+Substitution has transformed the last equation to $0=0$, which has no
+unknown variables and therefore become a constraint.
+A post-solver pass given in [[<<mal-solve.sml>>]]
+uses
+[[simplify]] and [[Exp.Set.delTrue]] to eliminate such trivially
+satisfied constraints.
+\end{enumerate}
+This example shows all three of the alternatives in the main
+loop of [[solve]]: elimination, transfer to [[pending]], and
+transformation into a constraint.
+@
+When the solver is finished, the [[value]] table contains values not
+just for the ``interesting'' variables, but for all the variables used
+in solving the equations, including inputs and fresh variables introduced by
+the balancer.
+To compute a solution, we use only the interesting variables from [[value]].
+(At the moment, we still haven't got the balancer straight, so only
+inputs are deemed uninteresting, which we do by filtering on the
+predicate \mbox{[[not o isInput o #1]]}.)
+@
+\section{Using balances to make variables known}
+
+To see if a variable completes a balance, we need to know how balances are
+represented. 
+The left- and right-hand sides of a [[balance]] are 
+lists of [[balitems]], where a [[balitem]] holds a variable 
+and an expression for the value of that variable.
+@  For example, given the balance
+\[  \field{offset}_1 = \widen{\field{offset}}{16} 
+           \balances
+    \field{offset} = \narrows{\field{offset}_1}{16}
+\]
+we can represent it as
+\begin{verbatim}
+  { left  = [E.var "offset#1" <-- E.widen (E.var "offset",   16)] 
+  , right = [E.var "offset"   <-- E.narrow(E.var "offset#1", 16)] 
+  }
+\end{verbatim}
+The balancing solver can work with any representation of expressions,
+so the  representation of balances is parameterized by the type of expressions.
+<<balance.sml>>=
+structure Balance = struct
+  datatype 'exp balitem = <-- of string * 'exp   (* compute v from expression *)
+  type 'exp balance = {left : 'exp balitem list, right : 'exp balitem list}
+  <<more basics of balances>>
+end
+@ The only free variables in the [[exp]] parts of [[balitem]]s are the
+variables on the left-hand sides of the [[balitem]]s  on the opposite
+side of the balance. 
+The solver assumes that variable names used in balances don't collide
+with other names;  whatever agent provides
+the balances must make it so.
+@
+If all the variables on one side of a balance are known, we can turn
+it into a [[complete_balance]].
+<<more basics of balances>>=
+type 'exp complete_balance = 
+                    {known : 'exp balitem list, unknown : 'exp balitem list}
+@ 
+[[balinfo]] represents information that helps control the maintenance of
+invariant~\ref{balance-known}. 
+When variables become known, [[makeKnown]] adds them to the set
+[[newlyknown]].
+Periodically, [[newlyknown]] is emptied of variables, as they are
+moved to [[alreadyknown]]; thus [[newlyknown]] acts as a work queue.
+<<more basics of balances>>=
+type 'exp balinfo = { newlyknown : StringSet.set
+                    , alreadyknown : StringSet.set
+                    , balances : 'exp balance list
+                    }
+fun makeKnown (v, info as {newlyknown, alreadyknown, balances}) =
+  if StringSet.member(alreadyknown, v) then info
+  else {newlyknown=StringSet.add(newlyknown, v), alreadyknown=alreadyknown,
+	  balances=balances}
+fun addBalance (b, {newlyknown, alreadyknown, balances}) =
+      {newlyknown=newlyknown, alreadyknown=alreadyknown, balances=b::balances}
+@ As a short cut, [[makeKnown]] has no effect if a variable is already
+known.
+@
+The balancer needs to be able to introduce fresh variables to stand
+for expressions.
+The machinery needed to provide fresh variables is described below.
+The [[Fresh.state]] argument to [[balanceEqns]] \emph{must} know about
+all the free variables of the equations, and also the inputs, so it
+won't steal any of those variables.
+<<balance.sig>>=
+signature BALANCER = sig
+  structure Exp : SOLVER_EXP
+  structure Fresh : FRESH
+  sharing Fresh.Exp = Exp
+  type eqn = Exp.condition
+  val balanceEqns : eqn list * Fresh.state ->
+                    eqn list * Exp.exp Balance.balance list * Fresh.state
+end
+@ 
+\def\({[\![}
+\def\){]\!]}
+
+We use a na\ifhtml i\else\"{\i}\fi ve algorithm to determine whan a variable completes a balance:
+whenever a variable first becomes known, check all  balances in which
+that variable appears to see if there is a side of the balance on
+which all variables are known.
+For efficiency's sake, we only check balances against
+variables that have just become known; i.e., we use 
+[[newlyknown]] as a work queue.
+To check just a single variable, we have the function [[maybeCompleteBalanceWithV]].
+Because 
+substitution or balancing might make more variables known, 
+[[completeBalances]] runs [[maybeCompleteBalanceWithV]]
+over and over until no more variables have become
+known.
+We also expose [[maybeCompleteBalanceWithV]], so if a new balance
+is added dynamically, it can be checked against all variables, not
+just those that are newly known.
+<<solver functions that use [[inputs]]>>=
+(* while a variable in newlyknown completes a balance, use it to make others known *)
+fun completeBalances (vcpz as {value, ...}, info as {newlyknown, ...}) =
+  if StringSet.isEmpty newlyknown then (* halt loop *)
+    (vcpz, info)
+  else
+    completeBalances(StringSet.foldl maybeCompleteBalanceWithV (vcpz, info) newlyknown)
+@ 
+% enable page break
+\noindent This code mostly manages sets and bindings; the real work is done in
+the nested function [[completeV'sBalances]].
+<<solver functions that use [[inputs]]>>=
+and maybeCompleteBalanceWithV (v, (vcpz, {newlyknown, alreadyknown, balances})) =
+  let val newlyknown = StringSet.difference(newlyknown, StringSet.singleton v)
+      val alreadyknown = StringSet.add(alreadyknown, v)
+      val _ = <<debug: announce [[v]] as newly known>>
+      open Balance
+      infix 2 <--
+      val {value, ...} = vcpz
+      <<function [[completeV'sBalances]]: if [[v]] completes half of a balance, make the other half known>>
+      val (balances, newlyknown, vcpz as {value, ...}) =
+              completeV'sBalances (balances, [], newlyknown, vcpz)
+      <<function [[foldKnownVars]]: visit every known variable in [[value]]>>
+      (* add every known variable in [[value]] to [[newlyknown]] *)
+      val newinfo = foldKnownVars makeKnown {alreadyknown=alreadyknown,
+                                             newlyknown=newlyknown,
+                                             balances=balances}
+ in  (vcpz, newinfo)
+ end
+@ 
+A variable in [[value]] is known if its associated value is a
+computable expression.
+<<function [[foldKnownVars]]: visit every known variable in [[value]]>>=
+fun foldKnownVars f zero =
+  let val computable = Exp.forallVars (fn v => StringSet.member(inputs, v))
+      fun visitPair (v, e, zero) = if computable e then f(v, zero) else zero
+  in  StringMap.foldli visitPair zero value
+  end
+@
+The task remaining is twofold:
+find the balances that [[v]]~completes, and make the
+variables on the other sides known.
+ We use the function [[completedBalance]] and
+ the nested function [[makeUnknownsKnown]].
+<<function [[completeV'sBalances]]: if [[v]] completes half of a balance, make the other half known>>=
+<<fun [[makeUnknownsKnown]]: take the unknown vars from complete balance; make them known>>
+<<function [[completedBalance]]>>
+fun completeV'sBalances ([], newbals, newlyknown, vcpz) = (newbals, newlyknown, vcpz)
+  | completeV'sBalances ((b as {left, right}) :: t, newbals, newlyknown, vcpz) =
+      let fun Vappears l = List.exists (fn v' <-- _ => v = v') l
+      in  if Vappears left orelse Vappears right then
+            case completedBalance(b, #value vcpz, inputs)
+              of NONE => completeV'sBalances(t, b :: newbals, newlyknown, vcpz)
+	       | SOME complete =>
+		   let val (newlyknown, vcpz) =
+		              makeUnknownsKnown (complete, newlyknown, vcpz)
+                   in  completeV'sBalances(t, newbals, newlyknown, vcpz)
+		   end
+	  else
+	    completeV'sBalances(t, b :: newbals, newlyknown, vcpz)
+      end
+@ This process must delete the complete balances, otherwise, when
+the variables on the other side of a complete balance become known, that
+completes it again, which makes all the variables on the first side
+known, and so on to infinite regress.
+The deletion uses the accumulating parameter [[newbals]].
+@
+The function [[completedBalance]] returns a complete balance if and only if
+there is a side of the balance on which all variables are known.
+In a complete balance, the items with the known \emph{variables} (not
+the known expressions) are so named.
+<<function [[completedBalance]]>>=
+fun completedBalance (bal as {left, right}, value, inputs) =
+  let fun computable v =
+        case StringMap.find(value, v)
+	  of NONE => false
+           | SOME e => Exp.forallVars (fn v => StringSet.member(inputs, v)) e
+      fun allKnown side = List.all (fn v <-- e => computable v) side
+  in  if allKnown left then
+        SOME {known=left,  unknown=right}
+      else if allKnown right then
+        SOME {known=right, unknown=left}
+      else
+        <<debug: print debugging info for balance not completed>> andthen
+        NONE
+  end
+@
+<<debug: print debugging info for balance not completed>>=
+let fun find p l = case List.find p l of SOME x => x
+                                       | NONE => Impossible.impossible "list finding"
+    fun valimage v = case StringMap.find(value, v)
+		       of SOME e => image e
+			| NONE => pp.te "<NO VALUE?!>"
+    fun show _ = 
+      let val vl <-- _ = find (fn v <-- e => not (computable v)) left
+	  val vr <-- _ = find (fn v <-- e => not (computable v)) right
+      in  [pp.$ "Balance not completed:$4$n",
+	   pp.te vl, pp.te " = ", pp.$ "${$6", valimage vl, pp.$ "$b$} $o",
+	   pp.$ "unknown on left and $n",
+	   pp.te vr, pp.te " = ", pp.$ "${$6", valimage vr, pp.$ "$b$} $o",
+	   pp.$ "unknown on right$b"]
+      end
+in  debug show ()
+end
+@ 
+Once a complete balance is identified, each unknown variable~[[u]] can be
+made known using the corresponding expression in the balance item.
+This expression gives [[u]] as a function of the known variables
+on the other side of the balance.
+Because these variables are known, their values are in the [[value]] table,
+and we can get the value of~[[u]] by substitution.
+What we do with this value is a bit tricky, so it is defined in the
+function [[rebindValue]].
+No matter what we do, however,  [[u]]  becomes known, so we add it to [[newlyknown]].
+<<fun [[makeUnknownsKnown]]: take the unknown vars from complete balance; make them known>>=
+<<function [[rebindValue]], to update data based on [[u]]'s new value>>
+fun makeUnknownsKnown ({known, unknown}, newlyknown, vcpz) =
+  let fun bindUnknown(u <-- e, (newlyknown, vcpz)) =
+        <<debug: show balance result before substitution>> andthen
+        let val e = Exp.multiSubst (fn x => StringMap.find(value, x)) e
+	    val _ = <<debug: show balance result after substitution>>
+	    val vcpz = rebindValue (u, e, vcpz)
+	    val _ = Exp.forallVars (fn x => StringSet.member(inputs, x)) e
+		    orelse Impossible.impossible "balance var not known"
+	    val newlyknown = StringSet.add(newlyknown, u)
+	in  (newlyknown, vcpz)
+	end
+  in  foldl bindUnknown (newlyknown, vcpz) unknown
+  end
+<<debug: show balance result before substitution>>=
+debug (fn _ =>
+       map pp.te ["=> before substitution, balancing tells us ",
+                  u, " = "] @ [image e]) ()
+<<debug: show balance result after substitution>>=
+debug (fn _ => map pp.te ["=> balancing tells us ", u, " = "] @ [image e]) ()
+@ 
+The function [[rebindValue]] implements the state transitions labelled
+\.B in \fig{state-diagram}.
+We can't just put the new value in the [[value]] table, because the
+[[value]] table 
+may already contain vital information about~[[u]].
+As \fig{state-diagram} shows, [[u]] may be known, dependent, or
+unknown, so there are three ways to treat the new value.
+<<function [[rebindValue]], to update data based on [[u]]'s new value>>=
+(* make [[u]]'s value [[e]], without losing current information about [[u]]'s value *)
+fun rebindValue (u, e, {value, constraints, pending, zeroes}) =
+  case StringMap.find(value, u)
+    of SOME e' =>
+	 if computable e' then		(* u is known *)
+           <<create new constraint [[e = e']]>>
+         else				(* u is dependent *)
+           <<force dependent [[u]] to be equal to [[e]]>>
+     | NONE =>				(* u is unknown *)
+           <<bind [[e]] to the previously unknown variable [[u]]>>
+@ 
+If [[u]] is known, then the new value must be consistent with
+the old one, and we have a new constraint.
+([[u]] remains known, so no state transition is shown in \fig{state-diagram}.)
+<<create new constraint [[e = e']]>>=
+let val constraint = Exp.equals(e, e')
+    val _ = <<debug: show new constraint>>
+    (*progress("By balance completion (known), constrain ", u, " = ", e, " = ", e') *)
+in  {constraints=constraint::constraints, value=value, zeroes=zeroes, pending=pending}
+end
+<<debug: show new constraint>>=
+debug (show_eqn "new constraint (balance completion) ") (e, e')
+@ If [[u]] is dependent, the new value still must be consistent with the
+old, but we have a new equation, not a new constraint.
+<<force dependent [[u]] to be equal to [[e]]>>=
+let val z = Exp.olc (Exp.sub(e, e'))              (* new equation *)
+    val value = StringMap.insert(value, u, e)  (* makes [[u]] known *)
+    (*****
+      progress("By balance completion (dependent), new equation ",          # omit
+           u, " = ", expimage(u_val), " = ", expimage(value[u]))        # omit
+      *******)
+    val _ = <<assert that [[u]] couldn't be free in [[zeroes]], [[pending]], or [[value]]>>
+in  {constraints=constraints, value=value, zeroes=z::zeroes, pending=pending}
+end
+@ 
+% enable page break
+\noindent Only if [[u]] is unknown can we simply  assign [[e]] to
+[[value[u]]], and then we must remember to substitute [[e]]
+for all occurrences of~[[u]].
+<<bind [[e]] to the previously unknown variable [[u]]>>=
+let val value = StringMap.insert(value, u, e)  (* makes [[u]] known *)
+    val update = Exp.subst(u, e)
+    val updateOlc = Exp.olc o update o Exp.sum
+    val zeroes = map updateOlc zeroes
+    val constraints = map (Exp.cmap update) constraints
+    val pending = map updateOlc pending
+    val value = StringMap.map update value
+in  
+    (****  progress("By balance completion (unknown), new dependent variable ", 
+           u, " = ", expimage(u_val))    *********)
+    (* <update def-use info for [[u]]> *)
+    {constraints=constraints, value=value, zeroes=zeroes, pending=pending}
+end
+@ 
+This chunk gives us a little assertion checking.
+<<assert that [[u]] couldn't be free in [[zeroes]], [[pending]], or [[value]]>>=
+let fun uFree e = Exp.isFreeIn(u, e)
+    fun olcFree olc = List.exists (fn (_, e) => uFree e) olc
+in  if List.exists olcFree zeroes orelse List.exists olcFree pending
+    orelse StringMap.foldl (fn (e, free) => free orelse uFree e) false value
+    then
+     Impossible.impossible "u a free variable?!"
+    else
+      ()
+end
+@ 
+The inputs themselves can complete a balance without any variable ever
+becoming known.
+The solver handles inputs as it handles newly known variables, by
+executing this code, which runs after the solver initializes the balance machinery but
+before it looks at [[zeroes]]:
+<<if inputs make one side of balances known, make the other sides known>>=
+val balinfo = StringSet.foldl Balance.makeKnown balinfo inputs
+val ({value, constraints, pending, zeroes}, balinfo) =
+  completeBalances 
+    ({value=value, constraints=constraints, pending=[], zeroes=zeroes}, balinfo)
+val _ = null pending orelse Impossible.impossible "got pending eqns from balancing"
+@
+Now that we've seen how balances are used in solving, it's time to
+consider where they come from.
+@
+\section{Introducing balances}
+
+We introduce balances in order to eliminate nonlinear operators from
+ equations to be solved.
+We do it in a rewriting step, then pass the rewritten equations and the
+balances to the solver described above.
+An algorithm for introducing a balance can be described in three parts:
+\emph{substitution rules} that show how to replace nonlinear terms with
+fresh variables,
+the \emph{balance} that is introduced, and
+\emph{equations} that relate the fresh variables to existing
+variables.
+Before considering implementation, let's look at the rules for
+``balancing out'' narrow and widen, integer division and modulus, and
+bit slicing.
+@
+When we see an expression widened from or narrowed to a constant
+width,
+we can substitute a variable for the widen or narrow and
+introduce a balance.  
+Using mnemonic names,
+the rules for eliminating a widen operator are:\label{eliminate-widen}
+% xxx % l2h environment eqnarray 0 \begin{array}{lcl}
+\begin{eqnarray}
+\widen e k &\mapsto&w \label{bal:rewrite}\\
+w = \widen n k&\balances&n = \narrow w k \label{bal:bal}\\
+n &=& e \label{bal:eqns}
+\end{eqnarray}
+where  $w$ stands for a wide variable, 
+$n$ for a narrow variable, $e$
+for an expression, and $k$ for an integer constant.
+The meanings of the rules are:
+\begin{enumerate}
+\item[(\ref{bal:rewrite})]
+When an expression of the form $\widen e k$ is found, introduce a
+fresh variable $w$ to stand for that expression, and replace that
+expression by~$w$ everywhere it occurs.
+\item[(\ref{bal:bal})]
+Introduce another fresh variable~$n$, and add the balance $w \balances
+n$, showing how to compute $n$ from $w$ or $w$ from $n$.
+\item[(\ref{bal:eqns})]
+Add the equation $n = e$.
+\end{enumerate}
+The rules for eliminating narrow are similar:
+\begin{eqnarray*}
+\narrow e k &\mapsto&n\\
+w = \widen n k&\balances&n = \narrow w k\\
+w &=& e\\
+\end{eqnarray*}
+@
+The balancer can eliminate division and modulus by an integer
+constant~$k$, provided both division and modulus appear in the equations.
+\begin{eqnarray*}
+e \div k &\mapsto&q\\
+e \mod k &\mapsto&m\\
+d = q \times k + m &\balances& q = d \div k, m = d \mod k\\
+d &=& e\\
+\end{eqnarray*}
+$d$ is the dividend, $q$ is the quotient, and $m$ is the modulus.
+@
+We call the ranges of bits extracted from an value ``slices,'' by
+analogy with slices of Ada arrays.
+The balancer can eliminate bit slices over constant ranges, provided
+that the slices cover the full range of the value being sliced (e.g.,
+32~bits). 
+In general, slices can overlap and be nested inside one another, which
+leads to tricky code.
+This solver rejects equations in which slices overlap, but it handles
+nested slices.
+The
+common case is one in which the ranges $\slice {} [l_i:h_i]$
+{partition} the bits of the value
+being extracted, and there is no nesting.
+For example, the ranges 
+$\slice \rand{target} [0:1]$,
+$\slice \rand{target} [2:27]$,
+and
+$\slice \rand{target} [28:31]$
+partition a 32-bit address.
+In such a case, we can write:\label{slice-example}
+\begin{eqnarray*}
+\slice e [l_1:h_1]&\mapsto&s_1\\
+&\vdots&\\
+\slice e [l_n:h_n]&\mapsto&s_n\\
+w = \sum_i 2^{l_i} \times s_i&\balances&
+    s_1 = \slice w [l_1:h_1], \ldots, s_n = \slice w [l_n:h_n]\\
+w &=& e\\
+\end{eqnarray*}
+$w$ is the wide value, each $s_i$ is a slice, and $l_i$ and $h_i$ are
+the low and high ends of the range over which slice~$s_i$ is taken.
+
+
+
+\subsection{The rewriting step}
+
+We can introduce a balance if and only if all its substitution rules
+can be applied.
+For example, it is pointless to introduce a balance if we see only $e
+\mod 4$,
+but we should introduce a balance if we see both $e \mod 4$  and $e
+\div 4$, because the two together are necessary and sufficent to
+determine~$e$. 
+We use a three-pass process to introduce balances:
+{\renewcommand\theenumi{\Alph{enumi}}% roman invariants
+\begin{enumerate}
+\item \label{find-substitutions}
+\emph{Find applicable substitutions}.
+Find sub-expressions of forms for which we might substitute.
+Create fresh variables to stand for such sub-expressions, and save the
+sub-expressions and variables in special tables.
+\item\label{add-balances}
+\emph{Add balances and equations}.
+Examine the tables used in step~\ref{find-substitutions}, 
+and when a balance can be introduced, do so.
+When introducing a balance, add its associated equations to the list
+of all equations,  and add its
+associated substitutions to the table [[balmap]], which maps
+expressions to variables of the balance.
+In general, only some of the substitutions found in
+step~\ref{find-substitutions} are added to [[balmap]].
+\item \label{perform-substitutions}
+\emph{Perform substitutions}.
+Using [[balmap]], perform all of the substitutions associated with the
+balances introduced in step~\ref{add-balances}.
+%%  This requires an odd form of top-down substitution; see 
+%%  [[balsub_f]] for more information.
+\end{enumerate}}
+Steps \ref{find-substitutions} and \ref{add-balances},
+can be performed separately for each kind of balance, whereas
+step \ref{perform-substitutions} is done for all balances at once.
+We can encapsulate the first two steps using a signature, but first,
+let's consider the state that the balancer itself uses:
+<<balance.sig>>=
+signature BALANCER_TYPES = sig
+  structure Fresh : FRESH
+  type exp = Fresh.Exp.exp
+  type eqn = exp * exp
+  type balstate = 
+    { fresh : Fresh.state		  (* keeper of fresh variables *)
+    , balances : exp Balance.balance list (* balances being accumulated *)
+    , eqns : eqn list			  (* equations for balance variables *)
+    , balmap : string Fresh.ExpMap.map
+    }
+  val addEqn : eqn list * exp * exp -> eqn list
+end
+@ [[fresh]] enables us to introduce new variables easily.
+[[balances]] and [[eqns]] are our current lists of balances and
+equations, which we accumulate gradually.
+[[balmap]] is accumulated in step~\ref{find-substitutions}, and it is
+used in step~\ref{perform-substitutions}
+@ Now, the signature for steps \ref{find-substitutions} and \ref{add-balances},
+<<balance.sig>>=
+signature BALANCE_TRANSFORMATION = sig
+  structure Types : BALANCER_TYPES
+  type state
+  (* step A --- visit all sub expressions, and note what is seen in state *)
+  val initial : state 
+  val visitExps : Types.exp * (Types.Fresh.state * state) -> Types.Fresh.state * state
+  (* step B *)
+  val addBalances : state * Types.balstate -> Types.balstate
+end
+@ 
+The balancer works on a single transformation, which is represented by
+the structure~[[BX]].  We'll see below how to combine an arbitrary set
+of transformations into a single transformation, but before we go any
+further, we should explain the introduction of fresh variables.
+@
+\ifhtml \subsection{Fresh variables} \fi
+
+The variables
+appearing in the original equations are called the ``original
+variables.''
+The variables used in balances must be distinct from the original
+variables, and they are called ``fresh variables.''
+Each fresh variable stands for an expression involving original
+variables, or possibly an expression involving original variables and
+previously introduced fresh variables.
+The function [[varFor]] introduces a fresh variable to stand for an
+expression.
+[[varFor]] never introduces variables superfluously.
+In particular (and ignoring [[state]]), 
+\begin{itemize}
+\item 
+If [[e]] is an expression consisting solely of the
+variable~[[v]], then \mbox{[[varFor e = v]]}.
+\item
+If [[e1 = e2]], then \mbox{[[varFor e1 = varFor e2]]}.
+\end{itemize}
+<<fresh.sig>>=
+signature FRESH = sig
+  structure Exp : SOLVER_EXP
+  structure ExpMap : ORD_MAP 
+    sharing type ExpMap.Key.ord_key = Exp.exp
+  type state
+  val new : StringSet.set -> state
+  val var2exp : state * string -> Exp.exp
+  val varFor  : state * Exp.exp -> state * string
+end
+@ The relationships between fresh variables and expressions are
+preserved in the type~[[state]], so that fresh variables can be mapped
+to expressions, which is done by the function [[var2exp]].
+We are guaranteed \mbox{[[var2exp (varFor (s, e)) = e]]}.
+
+The structure [[ExpMap]] is needed to implement [[varFor]], and it
+also provides a way to implement [[balmap]].
+@
+The implementation of the [[FRESH]] signature is essentially
+uninteresting. For completeness, it is included at the end of this report.
+@
+\ifhtml \subsection{The balancer itself} \fi
+
+Now that we've explained all the machinery, the balancer itself is
+straightforward. 
+The hard work is in the structure~[[BX]], which implements the
+balancing transformation.
+It is provided as a parameter to the balancing functor.
+<<balancer.sml>>=
+functor BalancerFun(structure BX : BALANCE_TRANSFORMATION
+		    <<debug: structures for balancer debugging>>
+		   ) : BALANCER = 
+struct
+  structure Fresh = BX.Types.Fresh
+  structure Exp = Fresh.Exp
+  type eqn = Exp.condition
+  <<debug: balancer debugging support>>
+  <<function [[balanceEqns]]: introduce balances using the three steps>>
+end
+@
+Because inequalities don't contribute to a solution, this
+implementation doesn't balance them.
+After it removes inequalities, it implements
+Step~\ref{find-substitutions} by repeated calls to [[BX.visitExps]].
+It implements
+Step~\ref{add-balances} by calling [[BX.addBalances]].
+Because the expressions corresponding to variables in balances may
+themselves correspond to variables in other balances, the
+implementation of  Step~\ref{perform-substitutions} requires deep and
+repeated rewriting, involving a mutual recursion of [[rewriteNode]],
+[[rewriteExp]], and [[Exp.topDownRewrite]].
+{\hfuzz=1pt\par}
+<<function [[balanceEqns]]: introduce balances using the three steps>>=
+fun balanceEqns (eqns, fresh) =
+  if null eqns then (eqns, [], fresh)  (* common short cut *)
+  else
+    let <<let [[eqns]] be true equations and [[constraints]] be inequalities>>
+	<<debug: bind [[originalEqns]] to [[eqns]]>>
+	(* A. Find applicable substitutions *)
+        fun visitEqn((e, e'), ?) = BX.visitExps(e', BX.visitExps(e, ?))
+	val (fresh, bxstate) = foldl visitEqn (fresh, BX.initial) eqns
+	(* B. Add balances and equations *)
+	val {fresh, balances, eqns, balmap} = 
+	   BX.addBalances(bxstate,
+		  {fresh=fresh, balances=[], eqns=eqns, balmap=Fresh.ExpMap.empty})
+        (* C. Perform substitutions *)
+        fun rewriteNode e =
+          case Fresh.ExpMap.find(balmap, e)
+            of SOME v => SOME (rewriteExp (Exp.var v)) (* is this recursion needed? *)
+             | NONE => NONE
+        and rewriteExp e = Exp.topDownRewrite rewriteNode e
+        val eqns = map (fn (e, e') => (rewriteExp e, rewriteExp e')) eqns
+    in  (constraints @ map Exp.equals eqns, balances, fresh) 
+        before <<debug: brain dump>>
+    end
+@ 
+Splitting off inequalities is straightforward.
+<<let [[eqns]] be true equations and [[constraints]] be inequalities>>=
+local
+  fun split([], eqns, constraints) = (eqns, constraints)
+    | split(eqn::t, eqns, constraints) =
+        case Exp.unEquation eqn
+	  of SOME eq => split(t, eq::eqns, constraints)
+	   | NONE => split(t, eqns, eqn::constraints)
+in
+  val (eqns, constraints) = split(eqns, [], [])
+end
+<<debug: structures for balancer debugging>>=
+structure Debug : BALANCER_DEBUGGING
+sharing type Debug.exp = BX.Types.Fresh.Exp.exp
+<<debug: balancer debugging support>>=
+structure pp = PP.Short
+open Debug
+@
+\ifhtml \subsection{Combining balancing transformations} \fi
+
+Ideally, we would like simply to make lists of balancing transformations,
+but that's impossible in general  because each one may have a different
+[[state]], and the ML type system won't let us make a
+\mbox{$\forall \mathit{state}. \cdots \mathit{state} \cdots \mathtt{list}$.}
+Therefore, we use this functor to compose them instead.
+<<balancer.sml>>=
+functor CombineBalancerFun(structure B1 : BALANCE_TRANSFORMATION
+			   and       B2 : BALANCE_TRANSFORMATION
+			   sharing B1.Types = B2.Types)
+    : BALANCE_TRANSFORMATION =
+struct
+  structure Types = B1.Types
+  type state = B1.state * B2.state
+  val initial = (B1.initial, B2.initial)
+  fun visitExps (e, (fresh, (s1, s2))) =
+    let val (fresh, s1) = B1.visitExps(e, (fresh, s1))
+	val (fresh, s2) = B2.visitExps(e, (fresh, s2))
+    in  (fresh, (s1, s2))
+    end
+  fun addBalances ((s1, s2), balstate) = 
+        B2.addBalances(s2, B1.addBalances(s1, balstate))
+end  
+@ This functor is used as follows:
+<<link-balancers.sml>>=
+functor BXAllFun (structure Debug : BALANCER_DEBUGGING
+		   where type exp = UnifiedComplete.exp) : BALANCE_TRANSFORMATION =
+struct
+  local
+    structure BXW = BXWidenFun  (structure Debug = Debug)
+    structure BXD = BXDivModFun (structure Debug = Debug)
+    structure BXS = BXSliceFun  (structure Debug = Debug)
+    structure BXN = BXNarrowuFun(structure Debug = Debug)
+    structure BX = CombineBalancerFun(structure B1 = BXW and B2 = BXD)
+    structure BX = CombineBalancerFun(structure B1 = BX  and B2 = BXS)
+    structure BX = CombineBalancerFun(structure B1 = BX  and B2 = BXN)
+  in
+    open BX
+  end
+end
+@
+\ifhtml \subsection{Example balancing transformations} \fi
+Everything up to this point has been paramterized by the type of
+expressions, using the [[SOLVER_EXP]] signature.
+We could continue functorizing, showing the properties of expressions
+needed for the individual balancers, but I have deemed it more
+convenient to use the ``unified expression'' representation from the
+MAL processor.
+The rest of this report is therefore \emph{not} self-contained; it
+requires reference to unified expressions.
+The details of unified expressions are not, however, needed to
+understand the sample balancing transformations.
+@
+
+\ifhtml \let\x\subsubsection \else \let\x\subsection \fi 
+\x{Balancing out widens and narrows}
+
+Two tables are needed to balance out widens and narrows.
+[[widens]] and [[narrows]] are tables that remember
+what widens and narrows have been seen.
+They are implemented by structure [[VKMap]], which  uses a key [[(v,
+k)]], where [[v]] is the fresh variable 
+introduced for the expression widened (or narrowed), and [[k]] is the number of bits
+used in the widen (or narrow).
+For example, if we see something of the form $\widen e k$ and we introduce
+the fresh variable $n$ to stand for $e$, then the table lookup
+\mbox{[[VKMap.find(widens, (n, k))]]]} produces the expression~$\widen e k$.
+This [[visitExps]] function, like all the others, uses [[U.foldExps]] to
+visit every expression node, adding information to [[widens]] and [[narrows]].
+<<function [[visitExps]] for widening and narrowing>>=
+fun recordWidensAndNarrows (e, stuff as (fresh, (widens, narrows))) =
+  case e
+    of U.WIDEN (e', k) =>
+         let val (fresh, v) = Fresh.varFor(fresh, e')
+             val widens = VKMap.insert(widens, (v, k), e)
+         in  (fresh, (widens, narrows))
+         end
+     | U.NARROWs (e', k) =>
+         let val (fresh, v) = Fresh.varFor(fresh, e')
+             val narrows = VKMap.insert(narrows, (v, k), e)
+         in  (fresh, (widens, narrows))
+         end
+     | _ => stuff
+fun visitExps (e, stuff) = U.foldExps recordWidensAndNarrows stuff e
+@ The structure~[[U]] holds the ``unified'' representation of
+expressions; [[WIDEN]] and [[NARROWs]] are the relevant constructors.
+(There is also a [[NARROWu]] constructor, which represents an unsigned
+narrow.)
+@
+We can introduce a balance for each widen and each narrow.
+Widens and narrows are unusual in that  the same balance might
+possibly be
+introduced both by a widen and by a narrow.
+Duplicate balances would result in unnecessary constraints in the solver.
+The constraints would be tautological, but it is easier to recognize and 
+eliminate duplicate balances than to recognize tautologies.
+To do so, we keep track of pairs of variables that are balanced, using
+the set [[nwPairs]].
+
+We use an extra dirty trick; since widens and narrows are duals, in
+Step~\ref{add-balances} we can
+use the same function for both.
+If [[narrowInside]] is [[true]], the narrow quantity is on the inside,
+and we have a widen; \mbox{[[outere = U.WIDEN(e', k)]]}, and [[innerv]]
+stands for~[[e']].
+If [[narrowInside]] is [[false]], we have a narrow.
+<<function [[addBalances]] for widening and narrowing>>=
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>
+fun balanceWN narrowInside
+      ((innerv, k), outere, (balstate as {fresh, balances, eqns, balmap}, nwPairs)) =
+  let val (fresh, outerv) = Fresh.varFor(fresh, outere)
+      val (n, w) = if narrowInside then (innerv, outerv) else (outerv, innerv)
+      val (balances, nwPairs) =
+        if StringPairSet.member(nwPairs, (n, w)) then (* already have this balance *)
+          (balances, nwPairs)
+          <<debug: show duplicate balance>>
+        else
+          let val nwPairs = StringPairSet.add(nwPairs, (n, w))
+              val balance = { left  = [w <-- Exp.widen  ($n, k)]
+                            , right = [n <-- Exp.narrows($w, k)]
+                            }
+          in  (balance :: balances, nwPairs)
+	      <<debug: show new balance [[balance]]>>
+          end
+  in   ({fresh=fresh, balances=balances, 
+         eqns = Types.addEqn (eqns, $innerv, Fresh.var2exp (fresh, innerv)),
+         balmap = ExpMap.insert(balmap, outere, outerv)},
+        nwPairs)
+  end
+@ The final result takes care of the equations and substitution rules.
+For example, if we're eliminating a widen, as described on
+page~\pageref{eliminate-widen}, we
+ add the equation $n = e$,
+and  update [[balmap]] so that in
+step~\ref{perform-substitutions}
+the variable $w$ will be
+substituted for every occurrence of~$\widen e k$.
+The [[$]]~sign is an abbreviation for [[Exp.var]], and
+[[Types.addEqn]] is used to avoid adding tautological equations.
+@
+To perform Step~\ref{add-balances}, we must run [[balanceWN]] over
+both the [[narrows]] and [[widens]] tables.
+<<function [[addBalances]] for widening and narrowing>>=
+fun addBalances ((widens, narrows), balstate) =
+  let val xxx = VKMap.foldli (balanceWN true) (balstate, StringPairSet.empty) widens
+  in  #1 (VKMap.foldli (balanceWN false) xxx narrows)
+  end
+@
+All that remains is to put the transformation into a structure with
+signature [[BALANCE_TRANSFORMATION]].
+This boilerplate provides integer elimination, fresh variables, and
+balancer types for unified expressions.
+<<balancers.sml>>=
+<<structure [[UnifiedSolverExp]]>>
+<<functor [[BalancerTypesFun]]>>
+structure UnifiedElim = IntEliminatorFun(structure Exp = UnifiedSolverExp)
+structure UnifiedFresh = FreshFun(structure Exp = UnifiedSolverExp)
+structure UnifiedBalancerTypes = BalancerTypesFun(UnifiedFresh)
+<<balancers.sml>>=
+<<structure [[VKMap]]>>
+functor BXWidenFun(structure Debug : BALANCER_DEBUGGING
+		   where type exp = UnifiedComplete.exp)
+ : BALANCE_TRANSFORMATION =
+struct
+  structure Types = UnifiedBalancerTypes
+  structure U = UnifiedSolverExp
+  structure Exp = U
+  structure Fresh = Types.Fresh
+  structure ExpMap = Fresh.ExpMap
+  
+  type state = Types.exp VKMap.map * Types.exp VKMap.map  (* (widens, narrows) *)
+  val initial = (VKMap.empty, VKMap.empty)
+
+  <<function [[visitExps]] for widening and narrowing>>
+  <<function [[addBalances]] for widening and narrowing>>
+end
+@ The only reason for functorizing the balancing transformation is to
+avoid a nasty circular 
+dependency in the debugging code.
+(The dependency seems to have resulted from putting too many image
+functions in one structure.)
+@
+<<debug: show duplicate balance>>=
+before debug (fn _ => map pp.te ["DUPLICATE balance ", n, " |><| ", w]) ()
+<<debug: show new balance [[balance]]>>=
+before debug showNewBalance balance
+@
+
+@
+\ifhtml \let\x\subsubsection \else \let\x\subsection \fi 
+\x {Balancing out division and modulus}
+
+
+The strategy used to find opportunities to eliminate division and
+modulus is like that used to eliminate narrows and widens.
+Step~\ref{find-substitutions} uses auxiliary tables [[divs]] and
+[[mods]], which are organized on the same principle as [[narrows]] and
+[[widens]]. 
+<<function [[visitExps]] for division and modulus>>=
+fun divmod (e as U.DIV (e', k), (fresh, (divs, mods))) =
+      let val (fresh, v) = Fresh.varFor (fresh, e')
+          val divs = VKMap.insert(divs, (v, k), e) (* e = v div k *)
+      in  (fresh, (divs, mods))
+      end
+  | divmod (e as U.MOD (e', k), (fresh, (divs, mods))) =
+      let val (fresh, v) = Fresh.varFor (fresh, e')
+          val mods = VKMap.insert(mods, (v, k), e) (* e = v mod k *)
+      in  (fresh, (divs, mods))
+      end
+  | divmod (e, ?) = ?
+fun visitExps (e, stuff) = U.foldExps divmod stuff e
+@
+To create a balance, we need to have seen
+both $e \div k$ and $e \mod k$.
+If the variable $d$ is the fresh variable introduced to stand for~$e$,
+we need to find all variables $d$ that are keys in both [[divs]] and [[mods]]
+with the same~$k$.
+We then introduce $q$ to stand for the quotient,
+$m$ to stand for the modulus,
+and add the balance
+\[q = d \div k, m = d \mod k \balances d = k \times q + m,\]
+and we equate $d$ to the original dividend (recovered with [[varmap]]).
+Finally, we update [[balmap]] so that in
+step~\ref{perform-substitutions}
+the fresh variables $q$ and $m$ will be substituted for all
+sub-expressions of forms $e \div k$ and $e \mod k$.
+@
+The implementation works on a key [[(d, k)]] from the [[divs]] table,
+then looks for the same thing in~[[mods]].
+An alternative would be to merge [[divs]] and [[mods]] into a single
+table containing both quotient and modulus.
+<<function [[addBalances]] for division and modulus>>=
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>
+fun balanceDiv mods ((d, k), quotient, (balstate as {fresh, balances, eqns, balmap})) =
+  case VKMap.find(mods, (d, k)) of
+    SOME modulus =>
+      let val (fresh, q) = Fresh.varFor(fresh, quotient)
+	  val (fresh, m) = Fresh.varFor(fresh, modulus)
+	  val balance = { left  = [q <-- Exp.div'($d, k), m <-- Exp.mod'($d, k)]
+			, right = [d <-- Exp.add(Exp.mul(k, $q), $m)]
+			}
+	  val balmap = ExpMap.insert(balmap, quotient, q)
+	  val balmap = ExpMap.insert(balmap, modulus, m)
+	  <<debug: show new balance [[balance]]>> (* need after val balance = ... *)
+      in  {fresh=fresh, balances=balance::balances, balmap=balmap,
+	   eqns=Types.addEqn(eqns, $d, Fresh.var2exp(fresh, d))}
+      end
+  | NONE => balstate
+      <<debug: note div but no mod>>
+fun addBalances ((divs, mods), balstate) = VKMap.foldli (balanceDiv mods) balstate divs
+<<debug: note div but no mod>>=
+before debug (fn _ => [pp.te "found ", image quotient, pp.te " but no mod"]) ()
+@
+Here's the functor boilerplate.
+<<balancers.sml>>=
+functor BXDivModFun(structure Debug : BALANCER_DEBUGGING
+		    where type exp = UnifiedComplete.exp)
+ : BALANCE_TRANSFORMATION =
+struct
+  structure Types = UnifiedBalancerTypes
+  structure U = UnifiedSolverExp
+  structure Exp = U
+  structure Fresh = Types.Fresh
+  structure ExpMap = Fresh.ExpMap
+  type state = Types.exp VKMap.map * Types.exp VKMap.map  (* (divs, mods) *)
+  val initial = (VKMap.empty, VKMap.empty)
+
+  <<function [[visitExps]] for division and modulus>>
+  <<function [[addBalances]] for division and modulus>>
+end
+@ 
+\ifhtml \let\x\subsubsection \else \let\x\subsection \fi 
+\x{Balancing out slices}
+
+Whenever a collection of slices partitions a value, we can introduce a
+balance and a new equation.
+Slices themselves may be partitioned by other slices; for example, the
+slice $\slice x[0:15]$ is partitioned by $\slice x [0:7]$ and $\slice
+x [8:15]$. 
+We can imagine a tree in which the value being sliced is the root, and
+in which the children of each node partition that node.
+We can \emph{find} partitions if we  order children by
+least-significant bit.
+When two slices have the same least significant bit, we should order them
+\emph{widest} first,
+because that way the ordering is a preorder traversal
+of the slice tree.
+The following code gives us an ordered set of slices, using this ordering:
+<<structure [[SliceSet]]>>=
+structure SliceSet = BinarySetFn(struct
+    type ord_key = {lo : int, width : int} (* a slice *)
+    fun compare ({lo, width}, {lo=lo', width=width'}) =
+      case Int.compare(lo, lo')
+	of EQUAL => Int.compare(width', width)  (* note opposite order *)
+	 | diff => diff
+  end)				      
+@ 
+The set [[slices]] maps each variable~[[v]] to the set of slices taken
+of that variable.  By using [[Fresh.varFor]], we can record the slices
+taken of any expression.
+<<function [[visitExps]] for slicing>>=
+fun insertSet(slices, key, value) =
+  let val set = getOpt(StringMap.find(slices, key), SliceSet.empty)
+      val set = SliceSet.add(set, value)
+  in  StringMap.insert(slices, key, set)
+  end
+fun saveSlice(e as U.SLICE (e', slice as {lo, width}), (fresh, slices)) =
+      let val (fresh, v) = Fresh.varFor(fresh, e')
+      in  (fresh, insertSet(slices, v, slice))
+      end
+  | saveSlice(_, ?) = ?
+fun visitExps (e, stuff) = U.foldExps saveSlice stuff e
+@ 
+Once we have a set of slices, we can search for partitions.
+To know if the underlying expression is partitioned, we need to know
+its width in bits. 
+Unfortunately, that information is hard to discover, so we simply use
+32~bits, even though that's bogus.
+All the real work is done in [[slicetree]], which may discover
+multiple partitions.
+<<function [[addBalances]] for slicing>>=
+<<function [[slicetree]]>>
+fun balanceSlice (v, slices, balstate) =
+  let val e = Fresh.var2exp (#fresh balstate, v)
+      val slices = SliceSet.foldr op :: [] slices
+      <<overlap checking>>
+      val _ = checkOverlaps slices
+      val bitsize = (app print ["bogus bitsize 32\n"]; 32)
+      val (slices, balstate) = slicetree(v, e, 0, bitsize, slices, balstate)
+      val {fresh, balances, eqns, balmap} = balstate
+  in  {fresh=fresh, balances=balances, balmap=balmap, eqns=Types.addEqn(eqns, $v, e)}
+  end
+fun addBalances (slices, balstate) = StringMap.foldli balanceSlice balstate slices
+@
+The arguments to [[slicetree]] and the conditions they satisfy are:
+\begin{itemize}
+\item 
+[[e]] is the expression being sliced.
+\item 
+[[lo]] and [[hi]] give the range of bits for which we are balancing
+slices, by \mbox{$\mathtt{lo} \le b < \mathtt{hi}$}.
+At the initial call of [[slicetree]], they are [[0]] and [[bitsize]],
+and they cover the entire width
+of~[[e]].
+When making
+internal calls,			
+ they may be used to cover different parts of~[[e]].
+(Internal calls happen only when there are nested slices.)
+\item 
+[[w]] is a variable that stands for a slice of [[e]] from [[lo]] to
+[[hi]]; it is used in the last balance added by this call to [[slicetree]].
+\item
+[[slices]] is a list of \emph{specifications} for slices of~[[e]],
+that is, a list of pairs [[{lo, width}]].
+Slices appear in order of least-significant bit ([[lo]]).
+Slices with the same least-significant bit appear widest first.
+\item
+A precondition of [[slicetree]] is that for all elements of
+[[slices]], the [[lo]] value is at least as large as the [[lo]]
+parameter.
+(Because of the ordering invariant, this is true iff the first slice
+is in the right spot, or vacuously true if there are no slices.)
+\item
+Another precondition of [[slicetree]] is that no two slices overlap.
+\item 
+[[slicetree]] returns a new [[balstate]], plus a list of slices not in
+the range from [[lo]]~to~[[hi]].
+\end{itemize}
+We could one day fill in gaps between slices, but as yet I see no
+value in doing so.
+
+The inner function [[nextSlice]] loops, accumulating the ``balance items''
+\mbox{$s_i = \slice w [l_i:h_i]$}, which will form one side of a
+balance,
+and the terms of the sum $\sum_i 2^{l_i} \times
+s_i$, which will be used on the other side, as described on
+page~\pageref{slice-example}. 
+This accumulation takes place on the last two lines before the
+recursive call.
+The rest of the code handles boundary conditions, introduces the
+variable~$s_i$, and makes a recursive call to [[slicetree]] in case
+$\slice w [l_i:h_i]$ is itself partitioned by other slices.
+<<function [[slicetree]]>>=
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>
+fun slicetree(w, e, lo, hi, slices, balstate) =
+  <<debug: announce slicing>>
+  let fun nextSlice(lo, hi, slices, left, sum,
+		    balstate as {fresh, balances, eqns, balmap}) = 
+        if lo = hi then <<add a balance and return>>
+        else 
+          case slices
+	    of [] => ([], balstate) (* lose *)
+             | (first as {lo=lo', width}) :: rest =>
+                 if lo <> lo' then (<<[[slices]] after [[hi]]>>, balstate) (* lose *)
+                 else                   
+                   let val slice = Exp.slice(e, first)
+		       val (fresh, s) = Fresh.varFor(fresh, slice)
+		       val (rest, balstate as {fresh, balances, eqns, balmap}) = 
+                              slicetree(s, e, lo, lo+width, rest,
+					{fresh=fresh, balances=balances,
+					 eqns=eqns, balmap=balmap})
+		       val left = (s <-- slice) :: left
+		       val sum = Exp.add(sum, Exp.shift($s, lo))
+		   in  nextSlice(lo+width, hi, rest, left, sum, balstate)
+                   end
+  in  if null slices orelse #lo (hd slices) >= hi then (slices, balstate)
+      else nextSlice(lo, hi, slices, [], Exp.const 0, balstate)
+  end
+@ The recursive call adds the width of the current slice to~[[lo]].
+If the slices do partition~[[e]], that value will be the [[lo]] of the
+next slice.
+<<debug: announce slicing>>=
+let fun showSlice (s as {lo, width}, l) = pp.te " " :: image(Exp.slice(e, s)) :: l
+    val sliceRange = map pp.te [" from ", Int.toString lo, " to ", Int.toString hi]
+in  debug (fn _ => pp.te "Slicing" :: foldr showSlice sliceRange slices) ()
+end andthen
+@ 
+When [[lo]] reaches [[hi]], we have the complete  $\sum_i 2^{l_i} \times
+s_i$, which gives the value of~$w$, so we can introduce
+ the balance.
+We also update
+[[balmap]] with the collection of substitutions for the slices.
+<<add a balance and return>>=
+let val _ = if null slices orelse #lo (hd slices) >= hi then ()
+            else Impossible.impossible "slice consumption"
+    val balance = {left = left, right = [w <-- sum]}
+    val _ = () <<debug: show new balance [[balance]]>>
+    fun addMap (Balance.<-- (v, e), balmap) = ExpMap.insert(balmap, e, v)
+    val balmap = foldl addMap balmap left
+    val eqns = eqns : Types.eqn list (* no warning about type var generalization *)
+    (* only *one* equation is added, and that has to be done at top level *)
+in  (slices, {fresh=fresh, balances=balance::balances, eqns=eqns, balmap=balmap}) 
+end
+@ We add no equation here because the only equation needed is added in
+[[<<function [[addBalances]] for slicing>>]]; the fresh-variable trick
+avoids the need for other equations, since it introduces the same
+variable for what would be both sides.
+@
+This code helps maintain the [[slicetree]] invariant by dropping
+irrelevant slices.
+It is executed only if there is a gap in slices, and therefore no partition.
+<<[[slices]] after [[hi]]>>=
+let fun drop [] = []
+      | drop(slices as {lo, width} :: t) = if lo >= hi then slices else drop t
+in  drop slices
+end
+@ 
+Here's the functor boilerplate.
+<<balancers.sml>>=
+functor BXSliceFun(structure Debug : BALANCER_DEBUGGING
+		   where type exp = UnifiedComplete.exp)
+ : BALANCE_TRANSFORMATION =
+struct
+  structure Types = UnifiedBalancerTypes
+  structure U = UnifiedComplete
+  structure Exp = U
+  structure Fresh = Types.Fresh
+  structure ExpMap = Fresh.ExpMap
+  <<structure [[SliceSet]]>>
+  type state = SliceSet.set StringMap.map
+  val initial = StringMap.empty
+
+  <<function [[visitExps]] for slicing>>
+  <<function [[addBalances]] for slicing>>
+end
+@ 
+\ifhtml \let\x\subsubsection \else \let\x\subsection \fi 
+\x{Balancing out unsigned narrows}
+
+It turns out I may also have to balance out \emph{unsigned} narrows,
+using these rules:
+\begin{eqnarray*}
+\narrowu e k &\mapsto&n\\
+w = n&\balances&n = \narrowu w k\\
+w &=& e\\
+\end{eqnarray*}
+Note that no corresponding widen operation is needed.
+These rules assume that if the narrow value is available, it does
+indeed fit in the number of bits reserved for it.
+<<function [[visitExps]] for unsigned narrows>>=
+fun recordNarrows (e, stuff as (fresh, narrows)) =
+  case e
+    of U.NARROWu (e', k) =>
+         let val (fresh, v) = Fresh.varFor(fresh, e')
+             val narrows = VKMap.insert(narrows, (v, k), e)
+         in  (fresh, narrows)
+         end
+     | _ => stuff
+fun visitExps (e, stuff) = U.foldExps recordNarrows stuff e
+@ 
+We can introduce a balance for each narrow.
+<<function [[addBalances]] for unsigned narrows>>=
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>
+fun balanceNarrow ((w, k), e, balstate as {fresh, balances, eqns, balmap}) =
+  let val (fresh, n) = Fresh.varFor(fresh, e)
+      val balance = { left  = [w <-- $n]
+		    , right = [n <-- Exp.narrowu($w, k)]
+                    }
+      val _ = () <<debug: show new balance [[balance]]>>
+  in  {fresh=fresh, balances=balance :: balances, 
+       eqns = Types.addEqn (eqns, $w, Fresh.var2exp (fresh, w)),
+       balmap = ExpMap.insert(balmap, e, n)}
+  end
+<<function [[addBalances]] for unsigned narrows>>=
+fun addBalances (narrows, balstate) = VKMap.foldli balanceNarrow balstate narrows
+@
+All that remains is to put the transformation into a structure with
+signature [[BALANCE_TRANSFORMATION]].
+This boilerplate provides integer elimination, fresh variables, and
+balancer types for unified expressions.
+<<balancers.sml>>=
+functor BXNarrowuFun(structure Debug : BALANCER_DEBUGGING
+		       where type exp = UnifiedComplete.exp)
+ : BALANCE_TRANSFORMATION =
+struct
+  structure Types = UnifiedBalancerTypes
+  structure U = UnifiedSolverExp
+  structure Exp = U
+  structure Fresh = Types.Fresh
+  structure ExpMap = Fresh.ExpMap
+  
+  type state = Types.exp VKMap.map
+  val initial = VKMap.empty
+
+  <<function [[visitExps]] for unsigned narrows>>
+  <<function [[addBalances]] for unsigned narrows>>
+end
+@
+\ifhtml \let\x\subsubsection \else \let\x\subsection \fi 
+\x{Balancing out forces}
+
+The toolkit treats certain variables as ``relocatable,'' which means
+they have to be ``forced'' before use.
+Because of poor design, the toolkit sometimes introduces force
+operations even when they are unnecessary.
+The simplest way to get rid of them seems to be to balance them out
+using these rules:
+\begin{eqnarray*}
+\mathbf{force}\, e &\mapsto&i\\
+r = i&\balances&i = r\\
+r &=& e\\
+\end{eqnarray*}
+<<function [[visitExps]] for forces>>=
+fun recordForces (e, stuff as (fresh, forces)) =
+  case e
+    of U.FORCE e' =>
+         let val (fresh, v) = Fresh.varFor(fresh, e')
+             val forces = StringMap.insert(forces, v, e)
+         in  (fresh, forces)
+         end
+     | _ => stuff
+fun visitExps (e, stuff) = U.foldExps recordForces stuff e
+@ 
+We can introduce a balance for each force.
+<<function [[addBalances]] for forces>>=
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>
+fun balanceForce (r, e, balstate as {fresh, balances, eqns, balmap}) =
+  let val (fresh, i) = Fresh.varFor(fresh, e)
+      val balance = { left  = [r <-- $i]
+		    , right = [i <-- $r]
+                    }
+      val _ = () <<debug: show new balance [[balance]]>>
+  in  {fresh=fresh, balances=balance :: balances, 
+       eqns = Types.addEqn (eqns, $r, Fresh.var2exp (fresh, r)),
+       balmap = ExpMap.insert(balmap, e, i)}
+  end
+<<function [[addBalances]] for forces>>=
+fun addBalances (forces, balstate) = StringMap.foldli balanceForce balstate forces
+@
+All that remains is to put the transformation into a structure with
+signature [[BALANCE_TRANSFORMATION]].
+This boilerplate provides integer elimination, fresh variables, and
+balancer types for unified expressions.
+<<balancers.sml>>=
+functor BXForceFun(structure Debug : BALANCER_DEBUGGING
+		       where type exp = UnifiedComplete.exp)
+ : BALANCE_TRANSFORMATION =
+struct
+  structure Types = UnifiedBalancerTypes
+  structure U = UnifiedSolverExp
+  structure Exp = U
+  structure Fresh = Types.Fresh
+  structure ExpMap = Fresh.ExpMap
+  
+  type state = Types.exp StringMap.map
+  val initial = StringMap.empty
+
+  <<function [[visitExps]] for forces>>
+  <<function [[addBalances]] for forces>>
+end
+@
+\subsection{Introducing balances while the solver runs}
+
+One problem with solving equations over the integers is figuring out
+what to do with equations like
+ $4\times v = e$, where $e$ is any computable expression.
+ We can't simply divide $e$ by 4, as we would if we were solving over the reals.
+ We do know, however, that 4 must divide $e$ without a remainder, 
+so we can introduce fresh variables $d$, $q$, and $m$, 
+rewrite $4 \times v \mapsto d$ to yield \[d=e,\]
+add the balance
+\[%\begin{array}{c}
+ q = d \div 4, 
+ m = d \mod 4
+\balances
+d = 4 \times q + m,
+ % \end{array}
+\]
+and add equations
+\[\begin{array}{rcl}
+v &=& q\\
+m &=& 0.
+  \end{array}
+\]
+Solving this new  system gives  $v = e \div 4$ with the
+constraint \mbox{$e \mod 4 = 0$}.
+@
+
+This code, which the solver runs if it can't otherwise make
+progress,  begins the process by looking for a non-input variable that
+is multiplied by a non-unit coefficient.
+There's no explicit check for a non-unit coefficient; we rely on the
+invariant that this code is only run when \emph{all} non-input
+variables have non-unit coefficients.
+<<solver functions that use [[inputs]]>>=
+ (* if there is a z in l with a variable not an input, split it out *)
+fun separateNoninput l =
+  let fun findNonInput (v, ?) = if isInput v then ? else SOME v
+      fun findit [] = NONE
+	| findit ((k, e) :: t) = 
+            case Exp.unVar e
+	      of NONE => findit t
+	       | SOME v => if isInput v then findit t else SOME (k, v)
+      fun split([], old) = NONE
+        | split(h :: t, old) =
+            case findit h
+	      of SOME (k, v) => SOME (k, v, h, old @ t)
+	       | NONE => split(t, h :: old)
+  in  split(l, [])
+  end
+@ There really ought to be an occurs check here, since the
+transformation is no good if [[v]] also occurs elsewhere in the
+expression.
+@
+We don't have to make a special case of this balancing problem.
+At this point, we have found a [[pending]] equation equivalent to
+ $z = k \times v$, where $k$~is a number, $v$~is a variable, and
+$z$~is an expression.
+We can replace the equation with the equations,
+$v = z \div k$ and $z \mod k = 0$, and we can simply call the balancer
+to eliminate the $\div$ and $\mod$.
+<<if a [[pending]] exp can be fixed with [[div]] or [[mod]], fix it, otherwise give up>>=
+(case separateNoninput pending
+   of NONE => (value, constraints, map zero2constraint pending)
+    | SOME (k, v, z, pending) =>
+         (* k is the coefficient of v in z, which is removed from pending *)       
+         let val k = ~k
+             val _ = <<debug: show product in pending>>
+             val z = Exp.add (Exp.sum z, Exp.sum [(k, Exp.var v)])
+                       (* now z = k * v, and v not free in z (we hope) *)
+                 (* missing occurs check!!! *)
+             val (k, z) = if k < 0 then (~k, Exp.sub(Exp.zero, z)) else (k, z)
+             val _ = k > 1 orelse Impossible.impossible "coefficient"
+             val (eqns, newbals, fresh) = 
+                   Balancer.balanceEqns ([Exp.equals(Exp.var v, Exp.div'(z, k)),
+                                          Exp.equals(Exp.mod'(z, k), Exp.zero)], fresh)
+	     val balinfo = foldl Balance.addBalance balinfo newbals
+	     <<debug: show new equations for division and modulus>>
+             val (newcons, newzs) = parseEqns eqns
+             val _ = null zeroes orelse Impossible.impossible "mystery zeroes"
+	     val ({value, constraints, pending, zeroes}, balinfo) =
+		completeBalances(
+                  StringSet.foldl maybeCompleteBalanceWithV 
+		  ({value=value, constraints=newcons @ constraints,
+		    pending=[], zeroes=pending @ newzs},
+		   balinfo)
+		  inputs)
+             val _ = null pending orelse Impossible.impossible "completion->pending"
+         in  solve(zeroes, pending, constraints, value, fresh, balinfo)
+         end)
+@ We use [[maybeCompleteBalanceWithV]] because an input might complete
+one of the new balances the moment it's created.
+The code is among the trickiest in the solver; we don't want to use
+[[newlyknown]], because even variables that are already known could
+complete a brand-new balance.
+Because these things came from an equation in [[pending]], there
+can't be any dependent variables among them, so it's sufficient to see
+if one of the inputs completes the balance.
+Therefore, for each [[v]] from the [[inputs]], 
+we make a direct call to [[maybeCompleteBalanceWithV]].
+On the other hand, we can't ignore [[newlyknown]] variables that might
+emerge from this process, so we \emph{then} make a call to
+[[completeBalances]] as usual.
+<<debug: show product in pending>>=
+debug (fn _ => map pp.te ["found ", Int.toString (~k), " * ", v,
+                                               " in pending"]) ()
+<<debug: show new equations for division and modulus>>=
+fun showEqn (c, l) = pp.nl :: conimage c :: l
+val _ = debug (fn _ => [pp.$ "Dynamic divmod equations are $t",
+                        pp.li (foldr showEqn [pp.ou] eqns)]) ()
+@ 
+\section{Discussion}
+
+Balancing extends the applicability of simple Gaussian
+elimination by providing a way to eliminate nonlinear operators from
+otherwise linear equations.
+The solver based on this method is part of an application generator
+that encodes and decodes machine
+instructions\cite{ramsey:jersey}.  
+The solver does not compute numerical solutions directly;
+instead, it computes symbolic solutions, which are used to generate
+C~or~Modula-3 code.
+The generated code does the arithmetic when the application
+is run.
+Separating the solving step from the computation of the results yields
+a very efficient application without an especially efficient solver.
+By applying the solver twice to a single system of equations,
+varying the set of variables chosen as inputs, the application
+generator guarantees consistent encoding and decoding.
+
+Using Standard~ML makes the solver reusable.
+The solver and the balancer can be used as is with any representation of
+expressions that matches the [[SOLVER_EXP]] signature.
+As written, the balancing transformations are specialized to a
+particular representation, but they, too, could be generalized by
+writing a the handful of functions needed to recognize the relevant
+nonlinear operators, plus a function to visit every sub-expression of
+an expression.
+
+
+You might not have to generate code in a high-level language if
+you could write equations directly in that language and have them solved.
+\citeN{vanwyk:arithmetic} presents a C$++$ library that exploits
+operator overloading to provide an elegant interface to a solver much
+like that of \citeN{derman:simple}.
+As is, this technique is not suitable for an application like encoding
+machine instructions, because we don't want to pay the overhead of
+running the solver and interpreting the answer every time an
+instruction is encoded.
+These overheads could be eliminated by introducing ``inputs'' as
+described in this paper, and by using run-time code generation to
+eliminate the interpretation of the answers.{\hfuzz=1pt\par}
+
+
+%\remark{comment on numerical stability?\\
+%include implementation counts?\\
+%more direct comparison with HEQS?}
+
+
+Equations have been used as specifications, both of abstract data
+types\cite{guttag:larch:book} and of more general
+computations{\let\hbox=\relax\cite{hoffman:programming}}.
+In these kinds of systems, the equations themselves define the meaning
+of the operators used.
+Tools that work with such systems work by term rewriting or other
+kinds of reduction, and they may assume a
+meaning of equations beyond simple equality, namely, that they define
+a preferred direction for rewriting (e.g., left to right).
+In some cases, additional restrictions may be needed to
+to guarantee that terms can be rewritten into a
+normal form (Church-Rosser property) or to enable efficient algorithms
+for rewriting.
+
+By contrast, the solver presented here cannot use equations to define
+the meanings of operators.  Instead, operators must be defined by
+supplying balancing rules, which include functions used to compute the
+results of the operators.
+There are two benefits: the solver can handle some operators that are
+difficult to define equationally, and the solver imposes no preferred
+direction on equations.
+Indeed, the development of the balancing algorithm 
+was motivated by a desire to solve systems of equations in more than one
+direction. 
+There is also a risk: if the balancing rules for a particular operator
+are implemented incorrectly, the solver produces wrong answers.
+
+The balancing method cannot handle every nonlinear operator.
+It requires that variables be divided into two sets, each determining
+the other, so it  cannot help when a majority of variables determine
+the remainder, as in the two-argument arc-tangent function where
+\[ \theta = \mathord{\mbox{atan2}}(x, y),\]
+in which, except for special cases, any two of $(\theta, x, y)$
+determine the third.
+In other, similar situations, the balance method may be of some help
+even though it does not exploit all available information.
+For example, it can convert between polar and rectangular
+coordinates by using the balance
+\[ x = r \cos \theta, y = r \sin \theta
+   \balances
+   r = \sqrt{x^2+y^2}, \theta = \mathord{\mbox{atan2}}(x, y).
+\]
+This ability can be helpful even though the balancer cannot
+recognize situations in which $x$~and~$\theta$ determine $y$~and~$r$.
+
+
+The balancing solver can be useful even when it does not eliminate all
+nonlinear operators from a system of equations.
+When nonlinear operators are applied only to inputs or to functions of
+inputs (i.e., to computable expressions), the solver can generate code
+to solve for unknown variables.
+This property has practical value in the machine-code toolkit, making
+it possible to encode machine instructions that discard parts of their
+inputs (e.g., by taking only the most significant 16~bits of an
+operand and ignoring the rest).
+The HEQS solver\cite{derman:simple} also has this property.
+
+Integer linear programming could be used to  solve equations
+containing the three sets of nonlinear operators used to illustrate
+this paper. 
+Division and modulus can be expressed with the system
+\begin{eqnarray*}
+  d &=& k \times q + r\\
+  0 &\le& r < k.
+\end{eqnarray*}
+Bit slicing can be expressed by augmenting the linear equation used in
+balancing with suitable range constraints.
+Finally, sign extension can be expressed in terms of bit slicing by
+writing \[\widen n k = \slice n [0:k-2] - 2^{k-1} \times \slice n [k-1:k-1].\]
+The balancing method is worthwhile because it is simple and because it
+can be applied to different sets of operators.
+
+
+
+\section{Details of the implementation}
+
+This section is not essential to understanding the operation of the
+solver; it should be read only by those interested in the details of
+the code.
+@
+\subsection{Elimination in integer sums}
+In an ordered linear combination  with integer coefficients, 
+finding a variable to eliminate is straightforward.
+A variable~[[v]]
+can be eliminated only if it has a unit coeffient ($\pm 1$).
+We have to have a kind of ``occurs check'' to make sure
+ [[v]] is not also free in some other atomic expression.
+<<integer elimination>>=
+fun candidate(olc, inputs) =
+  let fun freeInList v = List.exists (fn (_, e) => Exp.isFreeIn(v, e))
+      fun check((h as (k, e))::new, old) =
+	    (case Exp.unVar e
+	       of NONE => check(new, h::old)
+		| SOME v =>
+		    if (k = 1 orelse k = ~1) andalso not (StringSet.member(inputs, v)) 
+	            andalso not (freeInList v old orelse freeInList v new)
+		    then
+		      SOME v
+		    else
+		      check(new, h::old))
+	| check([], _)  = NONE
+  in  check(olc, [])
+  end
+@
+To eliminate, we take [[v]] and either add or subtract [[z]].
+The result is the value of [[v]] since [[z]] is zero, but
+[[v]] won't be free in [[z]].
+This amounts to stripping the [[v]] component, and negating if the
+coefficient of~[[v]] is positive.
+The function [[split]] returns the coefficient of [[v]], plus the list
+with [[v]] removed.
+<<integer elimination>>=
+fun eliminate(v, z) =
+  let infix 5 :::
+      fun x ::: (k, olc) = (k, x :: olc)
+      fun split ((k, e) :: t) = 
+            (case Exp.unVar e
+	       of NONE => (k, e) ::: split t
+	        | SOME v' => if v = v' then (k, t) else (k, e) ::: split t)
+        | split [] = (0, [])
+  in  case split z
+        of (~1, rest) => rest
+         | ( 1, rest) => map (fn (k:int, x) => (~k, x)) rest
+         |  _ => Impossible.impossible "eliminated coefficient"
+  end
+@
+To do the elimination, the sum has to be normalized to lowest terms.
+<<integer elimination>>=
+fun normalize [] = []
+  | normalize (sum as ((k, _)::t)) =
+      let <<definition of [[gcd]]>>
+          val g = foldr (fn ((k, _), g) => gcd(k, g)) k t
+      in  if g > 1 then map (fn (k, e) => (k div g, e)) sum else sum
+      end
+<<definition of [[gcd]]>>=
+fun gcd(m, n) = (* Knuth vol 1, p 4 *)
+  let fun g(m, 0) = m
+        | g(m, n) = g(n, m mod n)    (* invariant: m >= n >= 0 *)
+  in  if n < 0 then gcd(m, ~n) 
+      else if m < n then gcd(n, m)
+      else g(m, n)
+  end
+@
+Here's the relevant boilerplate:
+<<inteliminator.sml>>=
+functor IntEliminatorFun (structure Exp : SOLVER_EXP
+		          where type number = int) : ELIMINATOR = 
+struct
+  structure Exp = Exp
+  <<integer elimination>>
+end
+@
+(A floating-point solver would use a different strategy, e.g.,
+choosing to eliminate the variable with the largest coefficient.
+There would be no need for [[pending]], and
+the details of the elimination step would differ from those shown
+here, but the rest of the solver would be the same.)
+
+
+
+\subsection{Implementation of fresh variables}
+<<fresh.sml>>=
+functor FreshFun(structure Exp : SOLVER_EXP) : FRESH = struct
+  structure Exp = Exp
+  structure ExpMap = BinaryMapFn(struct open Exp type ord_key = exp end)
+  <<fresh variables>>
+end
+<<fresh variables>>=
+type state = { original : StringSet.set
+             , exp2var  : string ExpMap.map    (* variables standing for expressions *)
+             , var2exp  : Exp.exp StringMap.map  (* inverse of exp2var *)
+             }
+fun new vs = { original=vs, exp2var=ExpMap.empty, var2exp=StringMap.empty } : state
+fun inUse ({original, var2exp, ...} : state, v) = 
+  StringSet.member(original, v) orelse isSome (StringMap.find (var2exp, v))
+fun var2exp ({var2exp=t, ...}:state, v) =
+  valOf(StringMap.find (t, v)) handle Option => Impossible.impossible "var2exp"
+@ 
+<<fresh variables>>=
+fun baseName s =
+  let fun isDigit c = #"0" <= c andalso c <= #"9"
+      fun stripDigits (#"#" :: t) = implode (rev t)
+        | stripDigits (l as h::t) = if isDigit h then stripDigits t else s
+        | stripDigits _ = s
+  in  stripDigits (explode s)
+  end      
+<<fresh variables>>=
+fun freshVariable (state, name) =
+  let val base = baseName name
+      fun freshen n = 
+        let val name = String.concat [base, "#", Int.toString n]
+        in  if inUse (state, name) then freshen (n+1) else name
+        end
+  in  freshen 1
+  end
+@
+The procedure [[var_for]] produces a fresh variable to stand in for the
+expression [[e]].  Its special property is that 
+\hbox{[[var_for(e1) == var_for(e2)]]} whenever [[exps_eq(e1, e2)]].
+<<fresh variables>>=
+fun varFor (state as {var2exp, exp2var, original}, e) =
+  case ExpMap.find(exp2var, e)
+    of SOME v => (state, v)
+     | NONE =>
+         let val base = Exp.foldFreeVariables (fn (v, _) => v) "???" e
+	     val v = getOpt(Exp.unVar e, freshVariable(state, base))
+             val _ = if isSome(StringMap.find(var2exp, v)) then
+		       Impossible.impossible "fresh variable already in use"
+		     else ()
+             val var2exp = StringMap.insert(var2exp, v, e)
+             val exp2var = ExpMap.insert   (exp2var, e, v)
+         in  ({var2exp=var2exp, exp2var=exp2var, original=original}, v)
+	 end
+@
+\subsection{Other details}
+The source file for this report contains other functions deemed not
+interesting enough to show, including support for testing and
+debugging, and including the glue used to connect the solver to the
+MAL processor.
+
+{\small
+
+\bibliographystyle{nchicago}
+%\bibliographystyle{spe}
+\bibliography{web,ramsey,cs,ml}
+}
+
+\end{document}
+% TO WEAVE, DELETE FROM HERE TO THE END
+@
+<<structure [[UnifiedSolverExp]]>>=
+structure UnifiedSolverExp = struct 
+  open UnifiedComplete
+
+  type olc = (int * exp) list
+  val olc = list
+  val zero = const 0
+
+  type condition = exp
+  fun equals(e, e') = condition(e, Relop.EQ, e')
+  fun unEquation (CONDITION(e, Relop.EQ, e')) = SOME (e, e')
+    | unEquation _ = NONE
+  val cmap = fn x => x
+  fun cexps e = [e]
+end
+structure UnifiedSolverExp' : SOLVER_EXP = UnifiedSolverExp
+   (* make sure constraint is satisfied *)
+<<functor [[BalancerTypesFun]]>>=
+functor BalancerTypesFun(Fresh : FRESH) : BALANCER_TYPES = struct
+  structure Fresh = Fresh
+  type exp = Fresh.Exp.exp
+  type eqn = exp * exp
+  type balstate = 
+    { fresh : Fresh.state		(* keeper of fresh variables *)
+    , balances : exp Balance.balance list (* balances being accumulated *)
+    , eqns : eqn list			(* equations for balance variables *)
+    , balmap : string Fresh.ExpMap.map
+    }
+  structure Exp = Fresh.Exp
+  <<[[addEqn]], to add equations>>
+end
+@
+<<[[addEqn]], to add equations>>=
+fun addEqn (eqns, lhs, rhs) =
+  if Exp.compare(lhs, rhs) = EQUAL then
+    (* debug("Redundant balancing equation ", lhs, " = ", expimage(rhs))
+       progress("Balancing adds REDUNDANT equation ", lhs, " = ", expimage(rhs)) *)
+    eqns
+  else
+    (* debug("New balancing equation ", lhs, " = ", expimage(rhs))
+       progress("Balancing adds equation ", lhs, " = ", expimage(rhs)) *)
+    (lhs, rhs) :: eqns
+@ 
+<<balancers.sml>>=
+functor BalancerDebuggingFun(type exp
+			     type condition
+			     val image : exp -> PP.pretty
+			     val conimage : condition -> PP.pretty)
+  : BALANCER_DEBUGGING =
+struct
+  structure pp = PP.Short
+  fun debug f x = 
+    if !GlobalState.Debug.solver then
+      ErrorMsg.verboseWithBody ["*SOLVER* "] 
+      (pp.li [pp.i 4, pp.be, pp.cn, pp.li (f x), pp.ou, pp.en])
+    else
+      ()
+  type exp = exp
+  type condition = condition
+  val image = image
+  val conimage = conimage
+  fun balimage {left, right} =
+    let open Balance
+	infix 2 <--
+        fun bal tag (v <-- e) =
+              pp.li [pp.nl, pp.te tag, pp.te " ", pp.te v, pp.te " = ", image e]
+    in  pp.li [pp.i 2, pp.li (map (bal "<<<") left), pp.ou, pp.nl,
+               pp.te "-----------------", 
+               pp.i 2, pp.li (map (bal ">>>") right), pp.ou]
+    end
+  fun showNewBalance b = [pp.te "==> New balance ", balimage b]
+end
+@
+\section{Miscellaneous functions}
+@
+@
+\subsection{Debugging support}
+<<debug: bind [[originalEqns]] to [[eqns]]>>=
+val originalEqns = eqns
+<<debug: brain dump>>=
+debug (fn _ => [
+  pp.$ "Old equations:$t",
+  pp.li (map (fn (e, e') => pp.li [pp.nl, image e, pp.te " == ", image e'])
+	 originalEqns),
+  pp.$ "$b$nafter substituting (balmap not shown)$t",
+  pp.li (map (fn (e, e') => pp.li [pp.nl, image e, pp.te " == ", image e']) eqns),
+  pp.ou]) ()
+@ 
+Here's a bunch of debugging trash.
+<<balance-debug.sig>>=
+signature BALANCER_DEBUGGING = sig
+  type exp
+  type condition
+  val debug : ('a -> PP.pretty list) -> 'a -> unit
+  val image : exp -> PP.pretty
+  val conimage : condition -> PP.pretty
+  val balimage : exp Balance.balance -> PP.pretty 
+  val showNewBalance : exp Balance.balance -> PP.pretty list
+end
+<<give us debugging, [[pp]], [[$]], and [[<--]]>>=
+open Debug
+structure pp = PP.Short
+val $ = Exp.var
+infix 2 <--
+val op <-- = Balance.<--
+infix 0 andthen
+fun a andthen b = b
+@
+\section{Misc II}
+<<fail if [[v]] wasn't really eliminated from [[v'sVal]]>>=
+val _ = if Exp.isFreeIn(v, v'sVal) then
+          Impossible.impossible "elimination didn't eliminate"
+	else
+	  ()
+@
+<<overlap checking>>=
+fun checkOverlaps [] = ()
+  | checkOverlaps ((slice as {lo, width}) :: t) =
+      let val hi = lo + width
+          fun test [] = ()
+	    | test ((slice' as {lo=lo', width=width'}) :: t) =
+                if lo' >= hi then ()
+                else if lo' + width' > hi then <<overlap error>>
+		else test t
+      in  test t; checkOverlaps t
+      end
+<<overlap error>>=
+raise Error.Error ("Overlapping slices: ",
+  pp.li [pp.$ "$t${$c${${", image(Exp.slice(e, slice)), pp.$ "$} $b$cand $t$c${",
+                            image(Exp.slice(e, slice')), pp.$ "$}$}$}$b" ])
+@ 
+TESTING:
+<<solvertest.sml>>=
+structure SolverTest = struct
+  structure S = ULinked.Solver
+<<solvertest.sml>>=
+functor Syntax (Exp:EXP) = struct
+  structure E = Exp
+  infix 4 ==
+  infix 5 ++ --
+  infix 6 **
+  infix 7 @@
+  infix 8 //
+
+  val C = E.const
+  val V = E.var
+  
+  fun op == (e1, e2) = E.condition (e1, Relop.EQ, e2)
+  val op ++ = E.add
+  val op -- = E.sub
+  val op ** = E.mul
+
+  fun lo // hi = {lo=lo, width=hi-lo+1}
+  val op @@ = E.slice
+
+  val x = V "x"
+  val y = V "y"
+  val z = V "z"
+
+  val eqn1 = 2 ** x ++ 3 ** y == C 11
+  val eqn2 = x           -- y == C (~2)
+  val eqn3 = x      ++ 2 ** y == C 7
+
+  val eqns = [eqn1, eqn2, eqn3]
+
+  structure I = Image
+  structure pp = PP.Short
+  fun showtest inputs eqns =
+    let fun show header f items =
+          pp.li [pp.te header, pp.i 2,
+                 pp.li (map (fn x => pp.li [pp.nl, pp.i 4, f x, pp.ou]) items),
+                 pp.ou, pp.nl]
+        val {constraints, answers, unsolved} =
+          S.solve {inputs=StringSet.addList(StringSet.empty, inputs), eqns=eqns}
+        val ipts = foldl (fn (i, l) => " " :: i :: l) ["\n"] inputs
+    in  pp.li [show "Solver test of equations:" I.exp eqns,
+               (pp.li o map pp.te) ("Inputs are: " :: ipts),
+               show "Answers are:" 
+                    (fn (v, e) => pp.li [pp.te v, pp.te " = ", I.exp e]) 
+                    (StringMap.listItemsi answers),
+               show "Constraints are:" I.exp (S.Exp.Set.listItems constraints),
+	       show "Unsolved remnants are:" I.exp unsolved]
+    end
+
+  structure Widen = struct
+    val eqn1 = E.widen(x, 4) == C (~7)
+    val eqns = [eqn1]
+  end
+
+  structure PC = struct
+    val eqns = [V "target" == V "pc" ++ 4 ** E.widen(V "offset", 16)]
+  end
+  structure Div = struct
+    val eqns = [V "in" == 4 ** V "out"]
+  end
+  structure DivMod = struct
+    val eqns = [y == E.div'(x, 4), z == E.mod'(x, 4)]
+  end
+  structure Slice = struct
+    val pc = V "pc"
+    val target = V "target"
+    val L = V "L"
+    val eqns = [L @@ 28 // 31 == pc @@ 28 // 31, L @@ 2 // 27 == target,
+		L @@ 0 // 1 == C 0]
+  end
+end
+<<solvertest.sml>>=
+  structure Syn = Syntax(BoolSetFun(structure Exp = UnifiedComplete))
+  val {constraints, answers, unsolved} =
+         S.solve {inputs=StringSet.empty, eqns=Syn.eqns}
+  fun run _ =
+    ( ErrorMsg.verboseWithBody ["<=== Example from paper ===>\n"]
+                                   (Syn.showtest [] Syn.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== Simple widen ===>\n"]
+                                   (Syn.showtest [] Syn.Widen.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== Simple division ===>\n"]
+                                   (Syn.showtest ["in"] Syn.Div.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== Balancing div and mod ===>\n"]
+                                   (Syn.showtest ["y", "z"] Syn.DivMod.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== PC eqn ===>\n"]
+                                   (Syn.showtest ["pc", "target"] Syn.PC.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== Slice inputs ===>\n"]
+                                   (Syn.showtest ["pc", "L"] Syn.Slice.eqns)
+    ; ErrorMsg.verboseWithBody ["<=== Slice outputs ===>\n"]
+                                   (Syn.showtest ["pc", "target"] Syn.Slice.eqns)
+    )
+  val _ = run ()
+end
+@ 
+In case it's useful for anything, the trivial balancing
+transformation.
+<<balancers.sml>>=
+structure BXNull : BALANCE_TRANSFORMATION = struct
+  structure Types = UnifiedBalancerTypes
+  type state = unit
+  val initial = ()
+  fun visitExps (e, ?) = ?
+  fun addBalances (_, ?) = ?
+end  
+<<structure [[VKMap]]>>=
+structure VKKey = struct
+  type ord_key = string * int
+  fun compare ((s1, n1), (s2, n2)) =
+    case Int.compare (n1, n2)
+      of EQUAL => String.compare(s1, s2)
+       | difference => difference
+end
+
+structure VKMap = BinaryMapFn(VKKey)
+@ 
+I want the MAL solver to do a bit more than the generic
+kind---simplify constraints, and remove the trivial constraint.
+I ignore the distinction between expressions and conditions.
+<<mal-solve.sml>>=
+signature SOLVER_EXP_SET = sig
+  include SOLVER_EXP
+  structure Set : sig
+    include ORD_SET
+    val delTrue : set -> set   (* remove true' from the set, if present *)
+  end where type Key.ord_key = exp
+end
+<<mal-solve.sml>>=
+signature MAL_SOLVER = sig
+  structure Exp : SOLVER_EXP_SET
+  val solve : 
+    { inputs : StringSet.set
+    , eqns   : Exp.exp list
+    } -> { constraints : Exp.Set.set           (* function of inputs only *)
+         , answers     : Exp.exp StringMap.map (* functions of inputs only *)
+         , unsolved    : Exp.exp list          (* leftovers *)
+         }
+end
+<<mal-solve.sml>>=
+functor MalSolverFun(structure Solver : SOLVER
+		     val simplify : Solver.Exp.exp -> Solver.Exp.exp
+		     structure Exp : EXP_SET 
+                     sharing type Solver.Exp.exp = Solver.Exp.condition = Exp.exp)
+  (*: MAL_SOLVER*) =
+struct
+  structure Exp = struct
+    structure Set = Exp.Set
+    open Solver.Exp
+  end
+  fun solve spec =
+    let val {constraints, answers, unsolved} = Solver.solve spec
+        val constraints =
+             Exp.Set.delTrue (Exp.Set.addList(Exp.Set.empty, map simplify constraints))
+    in  {constraints=constraints,
+         answers=StringMap.map simplify answers,
+         unsolved=unsolved}
+    end
+end
+@ 
+<<pp-solve.sml>>=
+signature NOISY_SOLVER = sig
+  include MAL_SOLVER
+  val solverDisplay : 
+       { inputs : StringSet.set
+       , eqns   : Exp.exp list
+       } * 
+       { constraints : Exp.Set.set           (* function of inputs only *)
+       , answers     : Exp.exp StringMap.map (* functions of inputs only *)
+       , unsolved    : Exp.exp list          (* leftovers *)
+       } -> PP.pretty
+end
+
+functor NoisySolverFun(structure Solver : MAL_SOLVER
+                       val ppconsumer : PP.pretty -> unit
+		       val image : Solver.Exp.exp -> PP.pretty) : NOISY_SOLVER = 
+struct
+  structure pp = PP.Short
+  structure Exp = Solver.Exp
+
+  fun show header f items =
+          pp.li [pp.te header, pp.i 2,
+                 pp.li (map (fn x => pp.li [pp.nl, pp.i 4, f x, pp.ou]) items),
+                 pp.ou, pp.nl]
+
+  fun solverDisplay ({inputs, eqns}, {constraints, answers, unsolved}) =
+    pp.li [show "Equations:" image eqns,
+	   (pp.li o map pp.te) 
+             ("Inputs: " :: StringSet.foldl (fn (i,l) => " " :: i :: l) ["\n"] inputs),
+	   show "Answers:" 
+	     (fn (v, e) => pp.li [pp.te v, pp.te " = ", image e]) 
+	     (StringMap.listItemsi answers),
+	   show "Constraints:" image (Solver.Exp.Set.listItems constraints),
+	   show "Unsolved remnants:" image unsolved]
+  
+  fun solve (spec as { inputs, eqns }) =
+    let val result = Solver.solve {inputs=inputs, eqns=eqns}
+    in  if not (null eqns) then ppconsumer (solverDisplay (spec, result)) else ()
+        ; result
+    end
+end
+@ 
+<<solve-util.sml>>=
+structure StringKey : ORD_KEY = struct 
+  type ord_key = string
+  val compare = String.compare
+end
+structure StringMap = BinaryMapFn(StringKey)
+structure StringSet = BinarySetFn(StringKey)
+@
+<<debug: show inputs>>=
+val _ = debug show_inputs inputs
+<<debug: show solving step with a zero>>=
+val _ = debug (fn _ => map pp.te [ 
+            "==== STEP ==== (", Int.toString(length zeroes + 1), " zeroes, ",
+	    Int.toString(length pending), " pending, ",
+	    Int.toString(length constraints), " constraints)"]) ()
+val _ = debug (show_zero "new equation ") z
+<<debug: announce lack of dependendent variable>>=
+debug (show_zero "no new dependent variable in ") z
+<<debug: general debugging support>>=
+infix 0 andthen
+fun a andthen b = b
+<<debug: announce new constraint>>=
+debug (show_zero "new constraint ") z 
+<<debug: show solving step with no zeroes>>=
+     (debug (fn _ => map pp.te [ 
+            "==== STEP ==== (no zeroes, ",
+	    Int.toString(length pending), " pending, ",
+	    Int.toString(length constraints), " constraints)"]) ()
+@ 
+<<debug: announce new dependendent variable [[v]] in [[z]]>>=
+debug (show_exp "new dependent variable ") (Exp.var v)
+<<debug: show value of [[v'sVal]]>>=
+debug (show_exp "its value is ") v'sVal
+<<debug: announce [[v]] as newly known>>=
+debug (fn _ => [pp.te v, pp.te " is newly known"]) ()
+@
+@
+<<solve-impossible.sml>>=
+structure Impossible = struct
+  exception Impossible of string
+  fun impossible msg =
+      let open TextIO
+          fun shout s = (output (stdErr, s); flushOut stdErr) 
+      in  app shout  ["Error: this can't happen --- ",msg,"\n"];
+	  raise (Impossible msg)
+      end
+end
+<<solve.cm>>=
+group is
+  solve.sig@solve.nw
+  solve.sml@solve.nw
+  eliminator.sig@solve.nw
+  inteliminator.sml@solve.nw
+  balance.sml@solve.nw
+  balance.sig@solve.nw
+  balancer.sml@solve.nw
+  fresh.sig@solve.nw
+  fresh.sml@solve.nw
+  solve-util.sml@solve.nw
+  solve-impossible.sml@solve.nw
+
+  smlnj-lib.cm
+@
+\ifhtml
+\section{Index of identifiers}
+\nowebindex
+\section{Index of code chunks}
+\nowebchunks
+\fi

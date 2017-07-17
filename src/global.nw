@@ -1,0 +1,40 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: global.nw,v 1.9 1998/12/02 00:34:10 nr Exp $
+% l2h ignore change {
+<<global.sml>>=
+structure GlobalState = struct
+  val pcUnitBits = ref 8	 (* number of bits in one increment of pc *)
+  val fieldinfo = ref FieldInfo.emptyInfo
+
+  val unboundOpcodeIdentWarning = ref false
+     (* this warning is a bit harsh on existing specs *)
+
+  structure Debug = struct
+    val solver = ref false (* show solver debugging output *)
+    val allHeuristics = ref false (* show all heuristics *)
+    structure Files = struct
+      val splitting  = ref NONE : TextIO.outstream option ref
+      val heuristics = ref NONE : TextIO.outstream option ref
+    end
+  end
+
+  structure Match = struct
+    val fuse = ref true   (* fuse disjuncts and fields *)
+    datatype field_strategy (* which field to test next in the decision tree *)
+      = BEST         (* try to find the best field overall *)
+      | LR_TOKENS    (* read tokens left to right, look for best field in token *)
+      | LR_HI_LO     (* read tokens left to right, take most significant field first *)
+    val strategy = ref LR_TOKENS
+  end
+
+  val lowerPatternNames = ref false (* make all pattern names lower case 
+				       (in matching statements) *)
+
+  structure CG = struct (* things affecting code generation *)
+    val emitUnitBits = ref 8       (* multiply by 2nd arg of emit to get bits *)
+    val wordsize = ref 32  (* size of word on host (not target!) machine *)
+    val simplifyEmits = ref false (* let simplifier run on emission code *)
+  end
+  fun reset () = ( fieldinfo := FieldInfo.emptyInfo )
+     (* totally bogus *)
+end

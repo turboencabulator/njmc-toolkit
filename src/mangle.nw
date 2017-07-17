@@ -1,0 +1,62 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: mangle.nw,v 1.4 1998/11/11 21:59:19 nr Exp $
+\chapter{Name mangling}
+
+The name mangler maps internal names to unique identifiers in a
+target programming language.
+It uses four tactics:
+\begin{itemize}
+\item
+Replace illegal characters with legal characters, so each name becomes
+a legal identifier.
+Uses function [[map]].
+\item 
+[[preprocess]] the identifier in some unspecified way.
+Currently this step is used to remove initial underscores in
+ML~identifiers. 
+\item
+Avoid reserved words from the list [[reserved]].
+\item
+Keep internal state to 
+make sure no two names mangle to the same identifier.
+To avoid a collision, it repeatedly transforms names using [[avoid]].
+\end{itemize}
+<<mangle.sig>>=
+signature MANGLER = sig
+  type mangler = string -> string
+  val mangler : 
+  { map : char -> string
+  , preprocess : string -> string
+  , reserved : string list
+  , avoid : string -> string
+  } -> mangler
+  val mapOutBadChars : {bad : char -> bool, good : string} -> char -> string
+end
+@ 
+The implementation uses a [[StringMap.map]] to map previously used
+names to their mangled forms, and it uses a [[StringSet.set]] to keep
+track of which identifiers are forbidden (either because they are
+reserved or because they are in use.
+<<mangle.sml>>=
+structure Mangler : MANGLER = struct
+  type mangler = string -> string
+  fun mapOutBadChars {bad, good} c = if bad c then good else String.str c
+
+  fun mangler { map=charmap, reserved, avoid, preprocess } =
+    let fun add (item, set) = StringSet.add(set, item)
+	val state = ref { map = StringMap.empty : string StringMap.map
+			, inuse = foldl add StringSet.empty reserved }
+	fun newMangle s =
+	  let val s' = preprocess(String.translate charmap s)
+	      val {map, inuse} = !state
+	      fun good s = if StringSet.member(inuse, s) then good (avoid s) else s
+	      val s' = good s'
+	      val _ = state := { map = StringMap.insert(map, s, s'),
+				 inuse = StringSet.add(inuse, s') }
+	  in  s'
+	  end
+    in  fn s => case StringMap.find(#map (!state), s)
+		  of NONE => newMangle s
+		   | SOME s' => s'
+    end
+end

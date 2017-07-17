@@ -1,0 +1,623 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: tree.nw,v 1.16 1998/11/28 01:15:42 nr Exp $
+% l2h ignore change {
+\chapter{Generating decision trees}
+
+The crux of the problem is to transform a {\em matching statement} into a
+{\em decision tree}.  
+I generate a {\em decision tree} to do the job.
+Each internal node of the decision tree tests a field of a word.
+It then chooses an edge (child) based on what range constraints can be
+satisfied by the value of that field, and it continues testing fields
+until it reaches a leaf, at which time it executes the code associated
+with that leaf.
+
+The goal of tree generation is not to generate just any tree, but the
+tree with the fewest nodes.  This problem is NP-complete, so I apply
+a few heuristics.  The results, at least for the machine descriptions
+I use, seem to be as good as what I would come up with by hand.
+@
+@
+\section{Structure of tree nodes}
+@
+Each node of the decision tree is associated with a particular matching
+statement.
+Internal nodes have children, and a [[field]] and [[offset]] that say
+which field of which word
+we decided to test on.  The edges that point to the children record
+the interval of values for the particular child.
+Leaf nodes have a [[name]] that records the name of the pattern known
+to match at that leaf node.
+If no name is asked for in the matching statement, the [[name]] is omitted.
+<<tree node types>>=
+datatype 'code node
+  = NODE of { field : Field.absolute_field
+            , children : 'code edge list
+	      (* , ms : match *)
+	    } 
+  | LEAF of { arms : 'code Match.arm list 
+            , name : string option
+	    }
+and 'code edge = EDGE of {node : 'code node, range : Field.range }
+    (* node pointed to and range of field values for this edge *)
+@ 
+To create a decision tree, I begin with a node containing the full,
+original matching statement.  I then use a ``work queue'' approach to check
+each node and see if it needs to be split.
+If no pattern matches the node, or if the first pattern always matches
+(with a unique name), no further splitting needs to be done, and I
+assign a name to the leaf.\footnote{If the name isn't used, I assign
+the name [["-unused-"]], because that will make it easier to combine
+nodes in the dagging phase.}
+Otherwise, I split the node.
+<<functions>>=
+fun needsSplitting [] = false
+  | needsSplitting (arms as M.ARM (pat, { conditions, ... }) :: _) =
+      if not (alwaysSatisfied conditions) then
+        hasConstraint arms
+      else
+        let val P.PAT(pname, ds) = pat
+            fun disname (P.DIS(SOME dname, _, _)) = SOME dname
+              | disname (P.DIS(NONE, _, _))       = pname
+            val name = case ds of d::_ => disname d | [] => pname
+            fun check(d::ds) =
+                  if disname d <> name then
+                    true (* needs splitting if names or answers are different *)
+                  else if AlwaysMatches.dis d then
+                    false (* always matches, needn't split *)
+                  else
+                    check ds
+              | check [] = true (* pattern doesn't always match -> split *)
+        in  check ds
+        end
+<<always matching functions>>=
+fun alwaysSatisfied conds =
+  let fun forall p s = not (Exp.Set.exists (not o p) s)
+  in  forall tautology conds
+  end
+structure AlwaysMatches = struct
+  fun dis (P.DIS (_, conds, ([], _, _))) = alwaysSatisfied conds
+    | dis _ = false
+  fun pat (P.PAT (_, ds)) = List.exists dis ds
+  fun arm (M.ARM (pattern, {conditions, ...})) =
+        pat pattern andalso alwaysSatisfied conditions 
+end
+<<always matching functions>>=
+fun neverSatisfied conds = Exp.Set.exists falsehood conds
+@
+[[tree]] converts a matching statement into a decision tree. 
+<<functions>>=
+<<heuristics>>
+val heuristics = 
+  [("leafarms", leafarms), ("childarms", childarms), ("nomatch", nomatch), 
+   ("childdisjuncts", childdisjuncts), ("branchfactor", branchfactor)]
+fun mkTree regionOf (ms as M.MATCH { arms=rootArms, sourcemap, ... }) = 
+  let val warning = ErrorMsg.warning sourcemap
+      <<tree functions>>
+      fun mkTree () = tree (0, rootArms)
+      and tree (depth, arms) =
+            if needsSplitting arms then
+	      split (depth, arms)
+	    else
+	      noSplit arms
+      and noSplit arms =
+	let val _ = sdebug (fn _ => [pp.te "Not splitting ", Img.arms arms])
+	    val armcount = length arms
+	    val arms = trimImpossibleArms arms (* trim_impossible_arms(n.cs) *)
+	    val name = if null arms then NONE else getNodename arms
+	    (*  n.name := case *n.cs.arms of {
+                        0 : &null # was "-NOMATCH-", caused bogus arrays
+                        default: get_nodename(n)
+                      }
+           *)
+	    val lowercase = String.translate (String.str o Char.toLower)
+	    val name = if !GlobalState.lowerPatternNames then Option.map lowercase name
+		       else name
+	    val _ = () (* if armcount > *n.cs.arms then
+			write(\sdebug, "Trimmed node is ",
+			commaseparate(maplist(expimage, n.cs.arms), "\n")) *)
+	in  LEAF { arms = arms, name = name }
+	end
+      <<splitting>>  
+  in  mkTree()
+  end
+@ 
+We want to assign each leaf node a name, which is derived 
+from the names of the pattern arms that the node matches.
+If all pattern arms in the node have the same name $N$ or
+are the null string, i.e., they do not specify a name, 
+then the node's name is simply $N$.  
+This case always holds when the node matches exactly one arm; 
+one arm and a default (wildcard) arm; or multiple arms that
+all match the same constructor (possibly applied to different arguments).
+If the names of the pattern arms in the node are not the same, 
+then the node's name is ambiguous, because no single
+name exists for all possible matches. 
+An ambiguous node name will cause an error in [[genarm]], 
+if any of the node's pattern arms attempts to bind a [[ [name] ]].
+<<tree functions>>=
+fun getNodename arms =
+  let fun checkname([], nodename) = nodename
+	| checkname (arm :: rest, nodename) =
+            case armName arm
+	      of NONE => checkname(rest, nodename)
+	       | SOME armname =>
+		   let val _ = () (* write(\sdebug, "[", image(arm.name),"] = ", 
+					   image(armname), " for ",
+					   expimage(arm.pattern)) *)
+		   in  case nodename
+			 of NONE => checkname(rest, SOME armname)
+			  | SOME nodename =>
+			       if nodename = armname then
+				 checkname(rest, SOME armname)
+			       else
+				 checkname(rest, <<ambiguous name warning>>)
+		   end
+      and armName (M.ARM (P.PAT(patname, ds), {name, ...})) =
+	 case name
+	   of NONE => NONE (* if name not asked for, it doesn't matter *)
+	    | SOME _ =>
+                (case ds
+		   of P.DIS(dname, _, _) :: _ =>
+                        if isSome dname then dname else patname
+		    | [] => patname)
+  in  checkname (arms, NONE)
+  end
+<<ambiguous name warning>>=
+let val M.ARM (_, {code, ...}) = arm
+in  warning (regionOf code,
+	     ["ambiguous name for matching arm", 
+	      "\nAre you trying to decode a synthetic instruction?\n"]);
+    NONE
+end
+@
+Splitting a node involves choosing a field, finding out which intervals
+of values of that field are interesting, and creating a child node for
+each such interval of values.  The patterns in the matching statement of the
+child node reflect the knowledge of the value interval of the tested
+field.
+
+I make the decision by splitting the node on {\em each} field
+mentioned in the matching statement.  I then compute some heuristic
+functions of the children from each splitting and use the
+best-scoring field.
+
+Some debugging information may be written to [[hdebug]] or [[sdebug]].
+<<splitting>>=
+and split (depth, arms) =
+  let val afields = mentions arms
+      <<field limiting>>
+      val afields = limitFields (!GlobalState.Match.strategy) afields
+      val _ = null afields andalso impossible "internal node with no fields"
+      <<function [[splitAt]]>>
+      val candidates = foldl (fn (f, fmap) => AFMap.insert(fmap, f, splitAt f))
+	                     AFMap.empty afields
+      val _ = <<if debugging, split all and report>>
+      (* *afields > 1 & write(\hdebug, "Choosing one of ", patimage(afields)) *)
+      fun narrow(afields, []) = afields
+	| narrow(afields, h::heuristics) =
+	    if length afields = 1 then afields
+	    else narrow(findMaxima(h, candidates, afields), heuristics)
+      val afields = narrow(afields, heuristics)
+      val _ = if length afields > 1 then
+	        () (* announce tie *)
+	      else
+		()
+      val afield = hd afields handle List.Empty => impossible "no fields"
+      val _ = sdebug (fn _ => [pp.te "Selected ", Img.field afield,
+			       pp.te " to split node at depth ", Img.int depth])
+      val kids = valOf(AFMap.find(candidates, afield))
+      fun splitKid(range, arms) = EDGE {range=range, node=tree (depth+1, arms)}
+  in  NODE {field=afield, children = map splitKid kids}
+  end
+  handle Option => impossible "no fields"
+@ 
+This prefiltering step can speed up match compilation by limiting the
+number of fields considered.  The trade off is that it may be harder
+to find a best field.
+<<field limiting>>=
+local
+  fun firstToken (f, offset) l =
+    let fun min (offset, good, []) = good
+          | min (offset, good, (f, k) :: t) = 
+              case Int.compare (offset, k)
+                of LESS => min(offset, good, t)
+                 | EQUAL => min(offset, (f, k) :: good, t)
+                 | GREATER => min(k, [(f, k)], t)
+    in  min (offset, [(f, offset)], l)
+    end
+  fun firstHighest (f, k) [] = [(f, k)]
+    | firstHighest (f : Field.field, k) ((f', k') :: t) =
+        if k' < k orelse (k' = k andalso #hi (#range f') > #hi (#range f)) then
+          firstHighest (f', k') t
+        else
+          firstHighest (f, k) t
+in
+  fun limitFields _ [] = []
+    | limitFields (GlobalState.Match.BEST) l = l
+    | limitFields (GlobalState.Match.LR_TOKENS) (h::t) = firstToken   h t
+    | limitFields (GlobalState.Match.LR_HI_LO)  (h::t) = firstHighest h t
+end
+<<announce tie>>=
+write(\hdebug, "tie among fields", patimage(afields), " near ",
+      image(n.cs.arms[1].original.file), ", line ",
+      n.cs.arms[1].original.line)
+@
+<<if debugging, split all and report>>=
+if !GlobalState.Debug.allHeuristics andalso not (null afields) then
+  ( hdebug (fn _ => [pp.te "========== Splitting =========="])
+  ; app (fn h => ignore(findMaxima(h, candidates, afields))) heuristics
+  ; hdebug (fn _ => [pp.te "===============================\n"])
+  )
+else ()
+@
+To split a node, I look at each interval of values that might be
+interesting.  I apply that interval to the matching statement, and if there
+can be any match, I create and add a new child node.
+[[f]] is an absolute field.
+<<function [[splitAt]]>>=
+<<function [[applyConstraint]]>>
+fun splitAt f =
+  let fun foldPat f (M.ARM (pattern, _), z) = f(pattern, z)
+      val cuts = IntSet.addList(IntSet.empty, [0, Word.toInt (Field.fmax (#1 f))])
+      val cuts = foldl (foldPat (addIntervals f)) cuts arms
+      val _ = <<if debugging, write about splitting this node>>
+      fun addEdge(lo::hi::rest, edges') =
+	    addEdge(hi::rest, ({lo=lo, hi=hi}, applyConstraint(f, lo, hi)) :: edges')
+	| addEdge(_, edges') = rev edges'	
+  in  addEdge(IntSet.listItems cuts, [])
+      before sdebug (fn _ => [pp.te "Done splitting.", pp.nl])
+  end
+@
+<<if debugging, write about splitting this node>>=
+sdebug (fn _ => [pp.$ "Splitting $t${$c${", Img.arms arms, pp.$ "$}$b $c$}at depth ",
+		 pp.te (Int.toString depth), pp.te " on ", Img.field f])
+@
+What is the new matching statement that results from applying 
+$\mathtt{lo \le f < hi}$ to [[cs]]?
+For each arm, I match the pattern against the interval.
+If it succeeds, I create a new arm for the new matching statement,
+containing the reduced pattern.
+[[f]] is an absolute field.
+<<function [[applyConstraint]]>>=
+<<function [[pmatch]]>>
+fun applyConstraint(f, lo, hi) =
+  let val _ = sdebug(fn _ => [pp.te "    Applying ", Img.constraint (f,{lo=lo,hi=hi})])
+      fun addArm(M.ARM (pattern, restarm), arms) =
+	    case pmatch(pattern, f, lo, hi)
+	      of SOME p => M.ARM (p, restarm) :: arms (* this explains arg of M.ARM *)
+	       | NONE => arms
+      fun trimResult [] = []
+	| trimResult (arms as (first::_)) =
+	    if AlwaysMatches.arm first then
+	      [first]
+	      before () (* write(\sdebug, "Trimming results of apply to ",
+                              expimage(result.arms[1])) *)
+	    else
+	      arms
+  in  trimResult (foldr addArm [] arms)
+  end	    
+@ N.B. how the structure of the argument to [[M.ARM]] makes the
+computation of a new arm cheap---we only have to allocate a new
+pair, not a huge tuple.
+@
+[[pmatch]] both tests to see whether $\mathtt{lo \le f < hi}$ and, if so, returns
+the new~[[p]].
+[[f]] is an absolute field.
+<<function [[pmatch]]>>=
+fun pmatch(P.PAT (pname, ds), f, lo, hi) =
+  let fun foldDis (P.DIS(dname, conds, (constraints, labels, patlen)), ds) =
+        case trimConstraints constraints
+	  of NONE => ds (* not satisfied *)
+	   | SOME cs => P.DIS(dname, conds, (cs, labels, patlen)) :: ds
+      and trimConstraints cs = trimCs(cs, [])
+      and trimCs((head as (f', {lo=lo', hi=hi'}))::tail, newcs) =
+            if f <> f' then trimCs(tail, head::newcs)
+	    else if lo' <= lo andalso hi <= hi' then trimCs(tail, newcs)
+	    else NONE before (<<check bounds>>)
+        | trimCs([], newcs) = SOME newcs
+      val ds = foldr foldDis [] ds
+      val _ = <<if debugging, write about results of [[pmatch]]>>
+  in  if null ds then NONE else SOME (P.PAT (pname, ds))
+  end
+<<check bounds>>=
+( hi' <= lo orelse hi <= lo' orelse impossible "bad interval"
+; ()
+)
+@
+<<if debugging, write about results of [[pmatch]]>>=
+if null ds then ()
+else 
+  sdebug (fn _ => [pp.te "        ===> ", Img.pat (P.PAT (pname, ds)),
+		   pp.$ "$8$4$c $b$bmatches"])
+@
+\section{Tree-minimization heuristics}
+First, the boilerplate that takes a heuristic [[h]], candidate
+splittings, and a set of fields, and returns the set of fields with
+the largest score on [[h]].
+<<heuristics>>=
+fun findMaxima(heuristic as (hname, hfun), candidates, afields) =
+  let fun test([], max, bestFields) = bestFields
+        | test(f::rest, max, bestFields) =
+            let val score = hfun(valOf(AFMap.find(candidates, f)), f)
+		val _ = hdebug (fn _ => [pp.te "Field ", Img.field f, pp.te " scores ",
+				         Img.int score, pp.te " on ", pp.te hname])
+		val max' = getOpt(max, score-1) (* dirty trick *)
+	    in  if score > max' then
+		  test(rest, SOME score, [f])
+		else if score = max' then
+		  test(rest, max, f::bestFields)
+		else
+		  test(rest, max, bestFields)
+            end
+      val answer = test(afields, NONE, []) 
+  in  answer before
+      hdebug (fn _ => [pp.te hname, pp.te " chose ", Img.list Img.field answer])
+  end
+@
+Here's a big pile of heuristics.
+I'm not sure I've ever needed more than the first two, but they're
+amusing and easy enough to write.
+<<heuristics>>=
+(*
+# leafarms: prefer candidate with most arms that appear at leaf
+#           nodes.  Each original arm counted only once.
+#	    Not matching is also counted as an arm.
+*)
+
+fun leafarms(children, f) =
+  let fun leafCount ((range, arms)::t, n) =
+            leafCount(t, if needsSplitting arms then n else n+1)
+	| leafCount ([], n) = n
+      fun noMatch ((range, [])::t) = 1
+        | noMatch (_::t) = noMatch t
+        | noMatch [] = 0
+  in  leafCount (children, 0) + noMatch children
+  end
+<<*>>=
+procedure leafarms(children, f) 
+    arms := set()
+    every n := (!children).node & *n.cs.arms > 0 do
+       if not needs_splitting(n) then 
+           insert(arms, n.cs.arms[1].original)
+    return *arms + if *(!children).node.cs.arms = 0 then 1 else 0
+end
+<<heuristics>>=
+(* childarms: prefer the candidate with the fewest arms in children *)
+fun childarms(children, f) =
+  let fun armCount ((range, arms) :: t, n) = armCount(t, n - length arms)
+        | armCount ([], n) = n
+  in  armCount(children, 0)
+  end
+<<*>>=
+# childarms: prefer the candidate with the fewest arms in children
+
+procedure childarms(children, f)
+    sum := 0
+    every sum -:= *(!children).node.cs.arms
+    return sum
+end
+<<heuristics>>=
+(* nomatch: if tied on leafarms and childarms, take candidate
+ *          with real leaf in preference to nomatch leaf
+ *)
+
+fun nomatch (children, f) =
+  if List.exists (fn (_, []) => true | _ => false) children then ~1 else 0
+<<*>>=
+# nomatch: if tied on leafarms and childarms, take candidate
+#          with real leaf in preference to nomatch leaf
+
+procedure nomatch(children, f)
+    return if *(!children).node.cs.arms = 0 then -1 else 0
+end
+<<heuristics>>=
+(* childdisjuncts: prefer the candidate with the fewest disjuncts in children *)
+fun childdisjuncts(children, f) =
+  let fun arm (M.ARM (P.PAT (_, ds), _) :: t, n) = arm(t, n - length ds)
+        | arm ([], n) = n
+      and count((_, arms)::t, n) = count(t, arm(arms, n))
+	| count ([], n) = n
+  in  count(children, 0)
+  end
+<<*>>=
+# childdisjuncts: prefer the candidate with the fewest disjuncts in children
+
+procedure childdisjuncts(children, f)
+    sum := 0
+    every sum -:= *(!(!children).node.cs.arms).pattern.disjuncts
+    return sum
+end
+<<heuristics>>=
+(* branchfactor:  prefer the candidate with the fewest children *)
+fun branchfactor(children, f) = ~ (length children)
+@
+\section{Utility functions}
+If an absolute field [[f]] is  to be used to split patterns, 
+[[addInterval]] adds to a set of values defining the intervals that
+need to be considered. 
+<<aux functions>>=
+fun addIntervals f (P.PAT (_, ds), cuts) =
+  let fun dis(P.DIS(_, _, (constraints, _, _)), cuts) = foldl con cuts constraints
+      and con((f', {lo, hi}), cuts) =
+	    if f' = f then IntSet.add(IntSet.add(cuts, lo), hi) else cuts
+  in  foldl dis cuts ds
+  end
+@
+[[mentions]] produces the set containing all
+absolute fields mentioned in a matching statement.
+Mentions in field bindings {\em don't} count; this information is for
+building decision trees only.%
+\footnote{The original design had no field bindings and omitting them seems to be
+the best migration path.}
+<<aux functions>>=
+fun mentions arms =
+  let fun arm(M.ARM (P.PAT (_, ds), _), mentioned) = foldl dis mentioned ds
+      and dis(P.DIS (name, conds, (constraints, _, _)), mentioned) =
+           foldl (fn ((f, e), m) => AFSet.add(m, f)) mentioned constraints
+  in  AFSet.listItems(foldl arm AFSet.empty arms)
+  end
+@ Sometimes, to know if we should try to split a node, we need to know
+if it has a constraint at all.
+It should be true that \mbox{[[hasConstraint l = not (null (mentions l))]]}.
+<<aux functions>>=
+fun hasConstraint arms =
+  let fun arm(M.ARM (P.PAT (_, ds), _)) = List.exists dis ds
+      and dis(P.DIS (name, conds, (constraints as h::t, _, _))) = true
+        | dis _ = false
+  in  List.exists arm arms
+  end
+@
+<<aux functions>>=
+fun trimImpossibleArms [] = []
+  | trimImpossibleArms ((a as M.ARM (_, {conditions, ...})) :: rest) = 
+      if alwaysSatisfied conditions then [a]
+      else if neverSatisfied conditions then trimImpossibleArms rest
+                       (* was [] in old implementation ?! *)
+      else a :: trimImpossibleArms rest
+@
+\section{Tree checking}
+Once the tree is generated, it's useful to check it for redundant arms
+and for arms that never match.  These checks will help users catch
+mistakes in their specifications.  Note that I must check the
+``original'' arms; that's why they're there.
+<<functions>>=
+fun warnTree(M.MATCH {arms, region, sourcemap, ...}, node) =
+  let val originals = ArmSet.addList(ArmSet.empty, arms)
+      val unmatched = deleteMatching(node, originals)
+      val _ = ArmSet.app (showUnmatched node) unmatched
+  in  if hasNoMatch node then
+        ErrorMsg.warning sourcemap
+	  (region, ["Matching statement doesn't cover all cases"])
+      else ()
+  end
+@ 
+This set doesn't distinguish two different arms if they both derive
+from the same original arm.
+<<aux functions>>=
+structure ArmKey = struct
+  type 'a poly_ord_key = 'a M.arm
+  fun project(M.ARM (_, {original={uid=n,...}, ...})) = n
+  type ord_key = int
+  val compare = Int.compare
+end
+structure ArmSet = PolySetFun(ArmKey)
+@
+<<aux functions>>=
+fun deleteMatching (n, originals) =
+  if ArmSet.isEmpty originals then originals
+  else case n
+         of NODE { children, ... } =>
+	      foldl (fn (EDGE {node,...}, orig) => deleteMatching (node, orig))
+	            originals children
+	  | LEAF { arms, ... } =>
+	      ArmSet.difference(originals, ArmSet.addList(ArmSet.empty, arms))
+<<aux functions>>=
+fun hasNoMatch (NODE {children, ...}) =
+      List.exists (fn EDGE {node, ...} => hasNoMatch node) children
+  | hasNoMatch (LEAF {arms, ...}) = null arms
+@  
+If an arm never matches, I push its
+pattern through the tree and find out combinations of arms do match
+that pattern.\change{33}
+<<aux functions>>=
+fun showUnmatched node (M.ARM (P.PAT(_, ds), {patRegion, original={smap,...}, ...})) =
+  let fun coveringArms (LEAF {arms, ...}) (disjunct, tail) =
+            foldr coveringArm tail arms
+	| coveringArms (NODE {children, field}) (disjunct, tail) =
+	    let <<constraint invention and checking>>
+		val crange = findOrInventConstraint(field, disjunct)
+		fun coverChild (EDGE {range, node}, tail) =
+		  if intervalsIntersect (crange, range) then 
+		    coveringArms node (disjunct, tail)
+		  else
+		    tail
+	    in  foldl coverChild tail children
+	    end
+      and coveringArm (arm, tail) = ArmSet.add(tail, arm)
+      fun coverMsg (M.ARM (_, {patRegion, ...}), tail) =
+	  "\n\t" :: SourceMap.locationString smap patRegion :: tail
+  in  ErrorMsg.warning smap (patRegion, "No word matches pattern here" ::
+         (if null ds then []
+	  else "\n    Covered by patterns at" ::
+	       ArmSet.foldr coverMsg [] (foldr (coveringArms node) ArmSet.empty ds)))
+  end
+<<constraint invention and checking>>=     
+fun intervalsIntersect ({lo=lo1:int, hi=hi1:int}, {lo=lo2, hi=hi2}) =
+  not (hi1 <= lo2 orelse hi2 <= lo1)
+fun findOrInventConstraint(f, P.DIS(name, conds, (constraints, _, _))) =
+  case List.find (fn (f', r) => f = f') constraints
+    of SOME (f, range) => range
+     | NONE => {lo=0, hi=Word.toInt (Field.afmax f)}
+@ 
+<<tree.sml>>=
+functor TreeFun (structure Match : MATCH
+		 val tautology : Match.Patterns.Exp.exp -> bool
+		 val falsehood : Match.Patterns.Exp.exp -> bool
+		 val expimage : Match.Patterns.Exp.exp -> PP.pretty
+		) : TREE = struct
+  structure Match = Match
+  structure M = Match
+  structure P = M.Patterns
+  structure A = M.Patterns.Absolute
+  structure Exp = A.Exp
+  structure AFSet = AbsoluteFieldSet
+  structure AFMap = AbsoluteFieldMap
+  type 'a match = 'a M.match
+  <<tree node types>>
+  val impossible = ErrorMsg.impossible
+  <<always matching functions>>
+  <<debugging>>
+  <<aux functions>>
+  <<functions>>
+end
+<<tree.sig>>=
+signature TREE = sig
+  structure Match : MATCH
+  <<tree node types>>
+  val mkTree   : ('a -> SourceMap.region) -> 'a Match.match -> 'a node
+  val warnTree : 'a Match.match * 'a node -> unit
+    (* issue warnings suitable for non-matching arms and incomplete statements *)
+end
+@ 
+Ignoring conditions!    Bad dog!
+<<debugging>>=
+structure pp = PP.Short
+structure Img = struct
+  fun merge rator =
+    let fun m [] = [pp.te "??empty-list??"]
+	  | m [x] = [x]
+	  | m (h::t) = h :: pp.te " " :: pp.te rator :: pp.te " " :: pp.on :: m t
+    in  pp.li o m
+    end
+  fun int n = pp.te (Int.toString n)
+  fun field (f : Field.field, n) = 
+    pp.te (String.concat ["{", #name f, " at ", Int.toString n, "}"])
+  fun constraint (f, {lo, hi}) = 
+    if lo + 1 = hi then pp.li [field f, pp.te " == ", int lo]
+    else pp.li [int lo, pp.te " <= ", field f, pp.te " < ", int hi]
+  fun disjunct (P.DIS (name, conds, ([], _, _))) = pp.te "<ELSE>"
+    | disjunct (P.DIS (name, conds, (ccs, _, _))) = 
+         pp.li [pp.$ "${$t", merge "&" (map constraint ccs), pp.$ "$b$}"]
+  fun pat (P.PAT(pname, ds)) = 
+    case pname of SOME n => pp.te n
+                | NONE => pp.li [pp.$ "${", merge "|" (map disjunct ds), pp.$ "$}"]
+  fun arm (M.ARM (p, _)) = pat p
+  fun arms [] = pp.te "<NO MATCH>"
+    | arms l = pp.li [pp.$ "${$t", merge "|" (map arm l), pp.$ "$b$}"]
+  fun list img xs = 
+    let fun l [] = [pp.te "]"]
+          | l [x] = [img x, pp.te "]"]
+          | l (h::t) = img h :: pp.te ", " :: pp.on :: l t
+    in  pp.li (pp.te "[" :: l xs)
+    end
+end
+fun debug file f = 
+  case !file
+    of NONE => ()
+     | SOME file => ignore (PPDynamic.set
+                              (PPDynamic.standardEmitLine file, fn _ => 0, 78)
+                              (PPNormal.normalize (pp.li (f()))))
+val sdebug = debug GlobalState.Debug.Files.splitting
+val hdebug = debug GlobalState.Debug.Files.heuristics
+

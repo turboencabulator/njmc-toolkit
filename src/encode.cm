@@ -1,0 +1,12 @@
+; $Id: encode.cm,v 1.4 1999/09/06 16:00:23 nr Exp $
+; module encoding
+group is
+  sledspec.cm
+  code.cm
+  error.cm
+  simplify.cm
+  fieldexps.cm
+
+  encode.nw
+  encinter.nw
+  instance.nw

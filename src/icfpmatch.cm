@@ -1,0 +1,8 @@
+group is
+  error.cm
+  match.cm
+  runmodules.cm
+  /home/cellar/nr/etc/icfp/interp/io.cm
+  emit.sml@/home/cellar/nr/etc/icfp/interp/emit.nw
+
+  icfpmatch.nw

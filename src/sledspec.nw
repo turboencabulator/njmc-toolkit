@@ -1,0 +1,292 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: sledspec.nw,v 1.7 1998/11/11 21:59:24 nr Exp $
+
+% l2h let htmlcontents tableofcontents
+\htmlcontents
+
+\section{An elaborated SLED specification}
+% l2h ignore change {
+% l2h ignore bug {
+% l2h macro module 2 <a href="#$1.html">#2</a>
+
+It's a good idea to understand \module{pattern}{patterns} and
+\module{constructor}{constructors} before reading this code.
+
+\subsection{Things that identifiers denote}
+
+A major part of an elaborated specification is the symbol table, which
+maps identifiers to \emph{denotable} values.
+Here is a list of
+all the things identifiers can denote (in the main symbol table).
+I got this list by carefully considering the old implementation and
+the definitions of \module{ast}{abstract syntax trees}.
+<<denotable>>=
+datatype denotable
+  = TOKEN of Patterns.token_class
+  | FIELD of Field.field
+  | PATTERN of Patterns.Pure.pattern
+  | CONSTYPE of Constructor.constype
+  | OPERAND of Constructor.operand
+  | TMP of Patterns.Exp.exp * Patterns.field option
+        (* temporary introduced by equations or opcode--has field iff name
+	   shared with field (used for projection to pattern) *)
+  | PATLABEL of string     (* pattern label *)
+@ To avoid having to carry mutable state around, we keep track here of
+whether operands are relocatable.  We might reconsider if the mutable
+state seems unavoidable.
+<<denotable.sig>>=
+signature DENOTABLE = sig
+  structure Constructor : SLED_CONSTRUCTOR
+  structure Patterns : PATTERNS
+  sharing Patterns = Constructor.Patterns 
+  <<denotable>>
+  val denotableImage : denotable -> string
+  val error : string * denotable * string option -> 'a  (* expected, found, name *)
+  <<projection function types>>
+end
+@ 
+There may be contexts in which we expect an identifier to denote a
+particular thing. 
+We can insist on it with these projection functions, which all raise
+[[Error.Error]] if the projection fails.
+The rules for projecting integers are different in encoding and
+matching contexts.
+<<projection function types>>=
+val projectToken    : denotable -> Patterns.token_class
+val projectField    : denotable -> Patterns.field
+val projectConstype : denotable -> Constructor.constype
+val projectPattern  : denotable -> Patterns.Labelled.pattern
+val projectIntE     : denotable -> Patterns.Exp.exp
+val projectIntM     : denotable -> Patterns.Exp.exp
+@
+It's necessary to include images in the implementation of
+[[DENOTABLE]], because we need images to give suitable error messages
+in case a projection fails.
+The overall structure of the module is as follows.
+<<denotable.sml>>=
+functor DenotableFun (structure Constructor : SLED_CONSTRUCTOR
+		      val patstring     : Constructor.Patterns.Pure.pattern -> string
+		      val expstring     : Constructor.Patterns.Exp.exp -> string
+		      val operandstring : Constructor.operand -> string
+		     ) : DENOTABLE =
+struct
+  structure Constructor = Constructor
+  structure Patterns = Constructor.Patterns
+  structure Exp = Patterns.Exp
+  <<denotable>>
+  structure C = Constructor
+  <<image functions>>
+  fun error(expected, d, name) =
+    Error.errorl ["Expected ", expected, " found ", denotableImage d, " ",
+                  case name of SOME n => n | NONE => ""]
+  <<projection functions>>
+end
+@ 
+There's only one way to get a field, token, or constructor type, and
+that's to have the thing itself.
+Anything else is an error.
+<<projection functions>>=
+fun projectField (FIELD f) = f
+  | projectField d = error("field", d, NONE)
+fun projectToken (TOKEN f) = f
+  | projectToken d = error("token", d, NONE)
+fun projectConstype (CONSTYPE f) = f
+  | projectConstype d = error("constype", d, NONE)
+@ 
+More interesting things happen when we want an integer or a pattern,
+since there are a variety of abbreviations permitted.
+The most crucial thing here is our treatment of operands.
+
+@ 
+In any context, a temporary [[TMP]] or an operand of a suitable type
+stands for an integer.
+<<projection functions>>=
+fun projectIntE (d as OPERAND (name, ty, {relocatable, ...})) =
+    <<integer expression representing [[relocatable]] operand of [[name]] and [[ty]]>>
+  | projectIntE (TMP (n, _)) = n
+  | projectIntE (PATLABEL v) = Exp.var v
+  | projectIntE d = error("integer expression", d, NONE)
+@  Somehow, somewhere, pattern labels are made to stand for integers.
+I've forgotten where the code is.
+@
+You might think you could project a field into an integer, and in a
+matching context you could, but not in an encoding context.
+(If a field name is really valid in an encoding context, it is because
+that field appears on the operand list or in equations, and locally
+it will therefore be [[OPERAND]] or [[TMP]], never [[FIELD]].)
+Essentially what this means is that somebody used an identifier, as a
+binding instance, that happens to be the name of a field, but it
+doesn't matter, because it's going to become a binding instance
+variable anyway.
+It's possible that even constructor types should be permitted here,
+but I think I'll draw the line at that.
+<<projection functions>>=
+fun projectIntM (FIELD {name, ...}) = Exp.var name
+  | projectIntM (TOKEN {name, ...}) = Exp.var name
+  | projectIntM ? = projectIntE ?
+@ 
+The tricky stuff is in finding out exactly how to map operands to integers.
+\begin{itemize}
+\item
+Relocatable operands have to be forced to integers
+\item
+Operands of known width are narrowed.
+If these guys turn out to be unchecked or guaranteed, we'll substitute
+in a slice for the unchecked versions, and [[isUnsigned]] for the
+guaranteed versions, and the simplifier will remove the narrow.%
+\footnote{\bfseries BIG DANGER!  This scheme is incompatible with our
+treatment of relocatable operands below; the [[force]] doesn't commute
+with the inserted narrow.}
+Note that guaranteed signed inputs still have to be sliced to remove
+the high bits.
+\item
+Operands of unknown width are used as is.
+\end{itemize}
+<<integer expression representing [[relocatable]] operand of [[name]] and [[ty]]>>=
+let val (narrowop, width) =
+          case ty of C.INTEGER {signed, width=n} =>
+                        (if signed then Exp.narrows else Exp.narrowu, n)
+                   | C.INSTANCE _ => error("integer expression", d, NONE)
+    val parameter = Exp.var name
+    val base = if relocatable then Exp.force parameter else parameter
+in  case width
+      of SOME w => narrowop(base, w)
+       | NONE => base
+end
+@ 
+Projection is also complicated when we want a pattern, because
+an operand of field or constructor type can stand for a pattern.
+Even a temporary can stand for a pattern, provided the temporary is
+derived from some field.
+<<projection functions>>=
+local
+  structure P = Patterns
+in
+  fun proj (PATTERN p) = P.injectPure p
+    | proj (d as OPERAND (name, ty, {field=SOME f, ...})) =
+        P.Labelled.constraint(f, Relop.EQ, projectIntE d) (* projIE can't fail *)
+    | proj (d as OPERAND(name, Constructor.INSTANCE constype, {field=NONE,...}))=
+        P.injectLatent (Constructor.constypePattern (Exp.var name, constype))
+    | proj (d as OPERAND (name, _, _)) = error("pattern", d, SOME name)
+    | proj (TMP(e, SOME f)) = P.Labelled.constraint(f, Relop.EQ, e)
+    | proj (CONSTYPE _) = Error.error "a constructor type is not a pattern, \
+                                 \but it could be--mail toolkit@cs.princeton.edu"
+    | proj d = error("pattern", d, NONE)
+  val projectPattern = proj
+end
+@ We might one day desire an extension in which a constructor type
+that is \emph{not} an operand stands for the disjunction describing all
+possible values that could be produced by constructors of that type.
+@
+\subsubsection{Images}
+<<image functions>>=
+fun denotableImage (TOKEN {name,...}) = "Token class " ^ name
+  | denotableImage (FIELD {name,...}) = "Field " ^ name
+  | denotableImage (PATTERN (p as Patterns.PAT (name, _))) =
+        concat [case name of SOME n => "Pattern " ^ n | NONE => "Unnamed pattern",
+		" = ", patstring p]
+  | denotableImage (CONSTYPE c) = 
+      (case Constructor.typeName c
+	 of SOME s => "Constructor type " ^ s
+	  | NONE => "The unnamed constructor type")
+  | denotableImage (OPERAND opr) = concat ["Constructor operand ", operandstring opr]
+  | denotableImage (TMP (e, f)) = 
+        concat ["Temporary value ", expstring e, 
+		case f of SOME f => " (is field " ^ #name f ^ ")" | NONE => ""]
+  | denotableImage (PATLABEL v) = "pattern label " ^ v
+
+@
+\subsection{What's in an elaborated specification?}
+@ 
+The rest of this file gives the type of an elaborated specification,
+which is called [[espec]].
+I also provide an ``empty'' specification, which is not quite empty,
+since it contains a binding for [[epsilon]]. 
+The empty specification includes mutable state, to wit, the family of
+constructors used in the specification.
+<<sledspec.sig>>=
+signature SLED_SPEC = sig
+  structure Denotable   : DENOTABLE
+  structure Constructor : SLED_CONSTRUCTOR sharing Constructor = Denotable.Constructor
+  structure Patterns    : PATTERNS         sharing Patterns    = Denotable.Patterns
+  <<type [[espec]] and friends>>
+  val emptySpec : unit -> espec  (* creates a new family of constructors *)
+end
+<<sledspec.sml>>=
+functor SledSpecFun(Denotable : DENOTABLE) : SLED_SPEC = struct
+  structure Denotable = Denotable
+  structure Constructor = Denotable.Constructor
+  structure Patterns = Denotable.Patterns
+  <<type [[espec]] and friends>>
+  <<definition of the empty specification>>
+end 
+@ 
+A symbol table maps identifiers to the things they denote, or to
+[[Error.ERROR]] if something went wrong while elaborating their declarations.
+<<type [[espec]] and friends>>=
+type symtab = Denotable.denotable Error.error StringMap.map
+@ 
+Internally, bit~0 is always the least significant bit.
+I therefore represent the current bit numbering as a function that
+takes a word size and a bit range and converts to the internal form.
+<<type [[espec]] and friends>>=
+type bit_numbering = 
+  { make_0_lsb : int * Patterns.range -> Patterns.range  
+                                                (* convert to internal numbering *)
+  , used : bool                                 (* did we use the numbering? *)    
+  , set : bool                                  (* did we set the numbering? *)
+  }
+@ The flags let me ensure that we don't use multiple inconsistent bit
+numberings in a specification.
+@
+This stuff I don't think I'm really using yet.
+<<type [[espec]] and friends>>=
+type vars = 
+  { relocatable : StringSet.set         (* identifiers designated relocatable *)
+  }
+@
+Here's the whole specification.
+Note that constructors live in a separate name space, and we also keep
+a list of all valid constructors.
+<<type [[espec]] and friends>>=
+type espec = 
+  { symtab : symtab                             (* toplevel symbol table *)
+  , token_classes : (Patterns.token_class * Patterns.field list) list
+                                                (* token classes with members *)
+  , constructors : Constructor.constructor Error.error StringMap.map
+           (* (table mapping names to constructors) *)
+  , bitNumbering : bit_numbering
+  , fieldInfo : FieldInfo.info
+  , vars : vars
+  , family : Constructor.family              
+  , ignored:StringSet.set                          (* parts not yet implemented *)
+  }
+@ Note the [[family]] contains a list of all constructors ever defined, even those
+that were later removed from the map.  Clients that use the list
+are therefore obligated to look it up by name in the table
+before using a constructor found in the list.
+
+Similar checking is required before using the members of a constructor type.
+The easy way to do this
+is to use the [[kept_constructors]] function, which returns a list of
+constructors that are retained and that satisfy predicate~[[p]].
+<<functions>>=
+fun keptConstructors ({constructors, family, ...}:espec) p =
+  Error.unimp "keptConstructors"
+@ 
+<<definition of the empty specification>>=
+val defaultVars = 
+  { relocatable = StringSet.empty
+  }
+fun emptySpec () : espec = 
+  { symtab = StringMap.insert(StringMap.empty, "epsilon",
+			      Error.OK (Denotable.PATTERN (Patterns.Pure.epsilon)))
+  , token_classes = []
+  , constructors = StringMap.empty
+  , bitNumbering = { make_0_lsb = fn (w, rg) => rg, used = false, set = false }
+  , fieldInfo = FieldInfo.emptyInfo
+  , vars = defaultVars
+  , family = Constructor.newFamily ()
+  , ignored = StringSet.empty
+  }
+@ 

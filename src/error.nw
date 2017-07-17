@@ -1,0 +1,118 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: error.nw,v 1.7 1998/11/11 21:59:15 nr Exp $
+\section{Propagating errors}
+The idea is that we use type [['a error]] to propagate possibly
+erroneous [['a]]'s without cascading error messages.
+[[error]] is really like [[option]], but it comes with a different set
+of expectations.
+<<error.sig>>=
+signature ERROR = sig
+  datatype 'a error = ERROR | OK of 'a
+  exception Error of string * ErrorMsg.error_body
+
+  (* combinators *)
+  val emap : ('a -> 'b) -> 'a error -> 'b error
+  val epair : 'a error * 'b error -> ('a * 'b) error
+  val strip : 'a error error -> 'a error
+  val errorList : 'a error list -> 'a list error
+  val errorEnv : (('a -> 'b) -> 'c -> 'd) -> ('a -> 'b error) -> 'c -> 'd error
+  val errorEnvOption : 
+        (('a -> 'b option) -> 'c -> 'd) -> ('a -> 'b error option) -> 'c -> 'd error
+
+  (* functions that raise Error *)
+  val unimp : string -> 'a
+  val errorl : string list -> 'a
+  val error : string -> 'a
+
+  (* apply functions within handler for Error *)
+  type error_context = ErrorMsg.error_context
+  val catch : error_context -> SourceMap.region -> ('a -> 'b error) -> 'a -> 'b error
+  val catch' : 'a -> error_context -> SourceMap.region -> ('b -> 'a) -> 'b -> 'a
+
+  (* print messages *)
+  val errMsg : 
+        error_context -> (string * ErrorMsg.error_body) * SourceMap.region -> unit
+    
+end
+<<error.sml>>=
+structure Error : ERROR = struct
+  datatype 'a error = ERROR | OK of 'a
+  exception Error of string * ErrorMsg.error_body
+  type error_context = ErrorMsg.error_context
+  <<toplevel>>
+end
+@ 
+We manipulate these things in stylized ways.
+[[errorList]] takes [['a error list]] into [['a list error]].
+If any value is bad, the list is bad, and we do no further computing
+with it.
+<<toplevel>>=
+fun errorList l =
+  let fun u ([], stripped) = OK (rev stripped)
+        | u (OK h::t, stripped) = u(t, h::stripped)
+	| u (ERROR::_, _) = ERROR
+  in  u(l, [])
+  end
+@ 
+[[epair]] does the same for pairs.
+<<toplevel>>=
+fun epair(OK x, OK y) = OK (x, y)
+  | epair _ = ERROR
+@ 
+We use [[emap]] to propagate errors, by analogy with [[List.map]].
+We should call it [[map]], but that makes [[open Error]] too much of a
+nuisance.
+[[f]] either  returns a good value or raises [[Error]].
+<<toplevel>>=
+fun emap f = fn OK x => OK (f x) | ERROR => ERROR
+@ 
+In case we wind up with [['a error error]], we can strip off the
+second [[error]].  [[strip o map]] is useful.
+<<toplevel>>=
+fun strip ERROR = ERROR 
+  | strip (OK x) = x
+@ 
+Now we can do something a little more tricky.  Suppose we have a
+function on a clean environment, and we want to pass it an environment
+that can return [['a error]].  Here's what we do:
+<<toplevel>>=
+fun errorEnv f env x =
+  let exception Lookup
+      fun env' n = case env n of OK x => x | ERROR => raise Lookup
+  in  OK (f env' x) handle Lookup => ERROR
+  end
+val errorEnv : (('a -> 'b) -> 'c -> 'd) -> ('a -> 'b error) -> 'c -> 'd error
+ = errorEnv
+fun errorEnvOption f env x =
+  let exception Lookup
+      fun env' n = case env n 
+		     of SOME (OK x) => SOME x
+		      | SOME ERROR => raise Lookup
+		      | NONE => NONE
+  in  OK (f env' x) handle Lookup => ERROR
+  end
+val errorEnvOption = errorEnvOption
+  : (('a -> 'b option) -> 'c -> 'd) -> ('a -> 'b error option) -> 'c -> 'd error
+@ 
+[[errMsg]] takes the value carried by [[Error]] and prints a message.
+<<toplevel>>=
+fun errMsg context ((msg, body),rgn) =
+  ErrorMsg.error context rgn ErrorMsg.ERROR msg body
+@ 
+[[catch']] catches the [[Error]] exception and turns it into a
+default value, usually [[ERROR]].
+<<toplevel>>=
+fun catch' default context rgn f x =
+  f x handle Error x => (errMsg context (x, rgn); default)
+fun catch c = catch' ERROR c  (* watch out for value restriction *)
+val catch' : 'b -> ErrorMsg.error_context -> SourceMap.region ->
+		('a -> 'b) -> 'a -> 'b = catch'
+val catch : ErrorMsg.error_context -> SourceMap.region ->
+		('a -> 'b error) -> 'a -> 'b error = catch
+@ 
+<<toplevel>>=
+fun error msg = raise Error (msg, ErrorMsg.nullErrorBody)
+fun unimp msg = error (msg ^ " not implemented")
+fun errorl l = error (concat l)
+@ 
+

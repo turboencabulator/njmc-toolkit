@@ -1,0 +1,948 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: emit-c.nw,v 1.43 2000/02/28 23:45:26 nr Exp $
+% l2h ignore change {
+\chapter{Emitting C code}
+
+\section{Specifications of results; controlling code generation}	
+Here's my picture of the moment of what a code generator does.
+This information is all likely to move to a more general place later,
+since it applies to any code generator, not just to C~code.
+<<emit-c.sig>>=
+signature CODE_GENERATOR = sig
+  structure Code : CODE  
+  val printers : { hex : bool , pcUnit : int } ->
+		      { exp : Code.Exp.exp -> PP.pretty
+		      , stmt : Code.statement -> PP.pretty
+		      , defn : Code.top_defn -> PP.pretty
+                      } *
+   (* and the important ones *)
+		      { interface : Code.interface -> PP.pretty
+		      , implementation : Code.implementation -> PP.pretty
+		      , implementation' : (PP.pretty -> unit) 
+		                               -> Code.implementation -> unit
+                      , match : Code.match_file -> PP.pretty
+		      }
+  val matchImports : Code.interface_spec list
+end
+@
+The [[C_CONTROL]] signature provides a way of controlling the C code
+generator.
+<<emit-c.sig>>=
+signature C_CONTROL = sig
+  structure Code : CODE
+  val mangle : string -> string (* rewrite names to avoid reserved words, bad chars *)
+  val superSimp : Code.Exp.exp -> Code.Exp.exp  (* super simplify *)
+  val maxDecimal : int (* largest int for decimal notation *)
+  val wordsize : int (* size of word on target machine *)
+  val tagName : string -> string
+        (* convert union members to enum tags -- does NOT mangle *)
+
+  (* these functions rewrite high-level abstractions to lower-level abstractions *)
+  val emit : { pcUnit : int , tokens : Code.token list } -> Code.statement  
+  val fail : string * Code.Exp.exp list -> Code.statement 
+  val methodCall : Code.Exp.exp * string * Code.Exp.exp list -> Code.statement
+end
+@
+Here's old Icon code that I don't properly understand right at the
+moment.
+The original documentation said:
+\begin{quote}\em
+For the closure call, we assume that the closure is stored in local
+variable [[_c]]. 
+\end{quote}
+<<closure call to [[emitter]]>>=
+o := if e.offset > 0 then " + " || e.offset else ""
+s := "emitter$t(_c->loc.dest_block, $o_c->loc.dest_lc" || o || ", $o" || 
+     exp(e.x, Cprec[","]) || ", $o" || e.n || ")"
+Cbracket("$c" || s, "app", precedence) || ";$b"
+@ 		    
+\section{Implementation}
+The overall functor sets up the name space the way I want it.
+<<emit-c.sml>>=
+functor EmitCFun(
+  structure Control : C_CONTROL where type Code.Exp.exp = UnifiedExp.exp
+  structure Exp : EXP where type exp = UnifiedExp.exp
+  val alwaysSatisfied : Control.Code.Exp.exp -> bool (* is it a tautology? *)
+  val instanceType : Control.Code.Constructor.constype -> Control.Code.ty
+		        (* how are instances represented? *)
+  structure Unparser : UNPARSE_PP where type Unparser.Atom.Precedence.precedence = int
+  val verbose : string list -> unit
+) : CODE_GENERATOR = 
+struct
+  structure Code = Control.Code
+  structure Prec = PrecedenceFun()
+  structure Unparser = Unparser.Unparser
+  structure U = UnifiedExp
+  <<functions>>
+end
+@ 
+Here's the overall structure of the implementation.
+It has some more abbreviations and then provides the printers.
+It's probably pointless to use [[local]] here, but I have anyway.
+
+The [[hex]] flag, which is passed in, determines the rendering of
+integer literals.
+If true constants are in hex; otherwise they're in decimal (unless
+they exceed [[Control.maxDecimal]]).
+<<functions>>=
+local
+  structure pp = PP.Short
+  type ppexp = Unparser.ast
+  val textatom = Unparser.ATOM o pp.te
+  val mangle = Control.mangle
+  <<local declarations>>
+  <<unparsing utilities>>
+  structure E = Exp
+  open Control.Code
+  structure Exp = E
+in
+  val matchImports = [Code.SIGN_EXTENSION,
+                      Code.NAMED_INTERFACE 
+                        { name="assert", signature' = "<irrelevant in C code>" }]
+  fun printers {hex, pcUnit} =
+    let val consname = #name o Constructor.info o Constructor.fromId 
+	<<emission>>
+        fun inner armsNumbered =
+	  let fun exp' e = let (*val exppp = exp
+        		       val expatom = Unparser.ATOM o exp
+                               val exp = exp' *)
+                               <<declare function [[exp]]>>
+                           in  exp e
+                           end
+              and exp  e = (pp.li o Unparser.unparse o exp') e : PP.pretty
+              and stmt s = case s of <<stmt>> 
+              and stmts ss = <<sequence of statements [[ss]]>>
+              and stmtInSeq s = <<[[s]] in a sequence of statements>>
+              and top_defn ({exported}, (name, d)) = 
+                 let fun class d = if exported then d else pp.li [pp.te "static ", d]
+                     val name = mangle name
+                     <<defn>>
+                 in  defn d
+                 end
+              and defn d = top_defn ({exported=true}, d) (* bizarre, but works *)
+          in  {exp=exp, stmt=stmt, top_defn=top_defn, defn=defn}
+	  end
+<<functions>>=
+        fun noArm i = pp.te ("!!bogus!! --- asked for arm " ^ Int.toString i)
+	val {exp, stmt, top_defn, defn} = inner noArm
+        fun match { header, matchers, sourcemap } = 
+              (verbose ["Converting matching statements to C"]; <<match>>)
+	fun impl {name, parameters, imports, exports, body} =
+            (verbose ["Converting implementation to C"]; <<implementation>>)
+        fun impl' ppconsumer {name, parameters, imports, exports, body} =
+            (verbose ["Converting implementation to C"]; <<implementation'>>)
+        fun interface { name, parameters, imports, exports } = 
+            (verbose ["Converting interface to C"]; <<interface>>)
+    in  ( {exp = exp, stmt = stmt, defn = top_defn}
+        , {match = match,
+           interface = interface, implementation = impl, implementation' = impl'}
+        )
+    end
+end
+@ The many slightly different variants of [[exp]] are an
+embarrassment.
+I'm not sure how I wound up with so many---there are just a lot of
+representations of expressions: elements, ordered linear combinations
+of elements, olc's with [[Exp.EXP]] applied to them, and finally
+[[Unparser.exp]]. 
+\emph{We're fixing some of this with the new expressions.}
+@
+
+\subsection{Interface- and implementation-level code}
+
+\subsubsection{Building an implementation}
+C has no support for parameterized modules, so I turn parameters into
+ordinary imports.
+<<implementation>>=
+let val imports = parameters @ imports
+    val impl = map top_defn body
+    val impl = foldr (fn (i, tail) => importIntoImp i :: tail) impl imports
+in  pp.li (case name of NONE => impl
+                      | SOME n => pp.te (/**/ ("implementation of " ^ n)) :: impl)
+end
+@ 
+A more ambitious version here might abort by rewinding the file.
+Maybe it should just raise an exception.
+<<implementation'>>=
+let val imports = parameters @ imports
+    fun import i = (case i of <<import into implementation>>)
+    val _ = case name of NONE => ()
+                       | SOME n => ppconsumer (pp.te (/**/ ("implementation of " ^ n)))
+    val _ = app (ppconsumer o import) imports
+    val _ = app (ppconsumer o top_defn) body
+in  ()
+end
+@ 
+These imports are pretty off.
+Who's to say they won't change?
+<<local declarations>>=
+fun importIntoImp i = pp.li [case i of <<import into implementation>>, pp.nl]
+<<import into implementation>>=
+  Code.MC_LIBRARY => pp.te "#include <mclib.h>"
+| Code.STANDARD_IO => pp.te "#include <stdio.h>"
+| Code.ASM_OUTPUT => pp.te "/* <mclib.h> subsumes asmprintf and friends */"
+| Code.SIGN_EXTENSION => pp.te  
+     "#define sign_extend(N,SIZE) \
+     \(((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) @>> (sizeof(unsigned)*8-(SIZE)))"
+| Code.FAIL_LIBRARY	=> pp.te "/* <mclib.h> subsumes error handling */"
+| Code.NAMED_INTERFACE {name, signature'} => pp.te ("#include <" ^ name ^ ".h>")
+| Code.INSTRUCTION_SIZE => pp.te "/* depends on instruction size */"
+| Code.RELOCATABLE_ADDRESSES => pp.te "/* <mclib.h> subsumes relocatable addresses */"
+@ 
+\subsubsection{Building an interface}
+The real question is what to do with exports.
+<<export>>=
+fun export (name, exported) =
+  let fun e(EXPORTED_TYPE NONE) =
+             pp.te ("typedef struct " ^ mangle name ^ " *" ^ mangle name ^ ";")
+        | e(EXPORTED_TYPE (SOME ty)) =
+	     defn (name, TYPEDEF ty)
+	| e(EXPORTED_CONSTANT (c, _))  =
+             pp.te (String.concat ["#define ", mangle name, "(", PP.flatten(exp c), ")"])
+	| e(EXPORTED_VARIABLE ty) =
+             pp.li [pp.te "extern ", defn (name, VAR(SOME ty, NONE))]
+	| e(EXPORTED_FUNCTION f)  =       
+	     pp.li [ pp.te "extern ",
+		     typeDecl(Type.FUNCTION f, SOME ("${$c"^mangle name)), pp.$ "$};"]
+        | e(EXPORTED_EXCEPTION _) = Impossible.unimp "exceptions in C"
+  in  pp.li [ e exported, pp.nl ]
+  end
+<<interface>>=
+let val imports = parameters @ imports
+    fun import i = pp.li [case i of <<import into interface>>, pp.nl]
+    <<export>>
+    val intf = map export exports
+    val intf = foldr (fn (i, tail) => import i :: tail) intf imports
+in  pp.li (case name
+             of NONE => intf
+              | SOME n => pp.te (/**/ ("interface " ^ n)) :: pp.nl :: pp.nl :: intf)
+end
+<<import into interface>>=
+  MC_LIBRARY => pp.te "/* #include <mclib.h> before this file */"
+| STANDARD_IO => pp.te "/* #include <stdio.h> before this file */"
+| ASM_OUTPUT => pp.te "/* <mclib.h> subsumes asmprintf and friends */"
+| SIGN_EXTENSION =>
+    pp.te "/* importing sign extension to an interface makes no sense */"
+| FAIL_LIBRARY	=> pp.te "/* <mclib.h> subsumes error handling */"
+| NAMED_INTERFACE {name, signature'} =>
+    pp.te ("/* #include <" ^ name ^ ".h> before this file */")
+| INSTRUCTION_SIZE => pp.te "/* depends on instruction size */"
+| RELOCATABLE_ADDRESSES => pp.te "/* #include <mclib.h> before this file */"
+@ 
+<<match>>=
+let
+(*************** now done via imports
+    fun genFileHeader tail =
+     pp.te "#include <assert.h>\n" ::
+     pp.te "#define sign_extend(N,SIZE) " :: (* no newline after #define *)
+     pp.te  "(((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) @>> (sizeof(unsigned)*8-(SIZE)))" :: tail
+****************)
+    fun addMatch ((matchingStmt, trailer), tail) = 
+       stmt matchingStmt :: rawCode (sourcemap, trailer) :: tail
+
+(**********************
+    val econtext = (sourcemap, ErrorMsg.defaultConsumer()) 
+    val fail = stmt (Code.FAIL("toolkit error in code generation", []))
+    val addMatch = (fn (m as {region,...}, arg2 as (lcount, t)) =>
+		    ErrorXXX.catch' (lcount, fail::t) econtext region addMatch (m, arg2))
+****************)
+in  pp.li (map importIntoImp matchImports @
+           rawCode (sourcemap, header) :: foldr addMatch [] matchers)
+end
+<<old match>>=
+let fun addMatch ({decider, arms, trailer, region}, tail) = 
+      let fun arm a = stmt (COMMENTED_STMT (a, "inlining arm (for now)"))
+	  val arms = IntMap.map arm arms
+	  fun armNumbered i =
+             case IntMap.find(arms, i)
+	       of SOME a => a
+		| NONE => Impossible.impossible "asked for inlined arm"
+      in  #stmt (inner armNumbered) decider :: rawCode (sourcemap, trailer) :: tail
+      end 
+    val econtext = (sourcemap, ErrorMsg.defaultConsumer())
+    val fail = stmt (Code.FAIL("toolkit error in code generation", []))
+    val addMatch = (fn (m as {region,...}, t) =>
+		    ErrorXXX.catch' (fail::t) econtext region addMatch (m, t))
+in  pp.li (rawCode (sourcemap, header) :: foldr addMatch [] matchers)
+end
+@ 
+\subsection{Expressions}
+
+We use the general unparsing mechanism for expressions.
+
+\subsubsection {Setup for  unparsing expressions}
+Here's the general unparsing mechanism---we use operator names and
+look up the precedence and fixities.
+By default, infix operators have spaces, prefix don't.
+<<unparsing utilities>>=
+<<[[Cprec]] and [[Cassoc]]>>
+local
+  fun space $ = pp.te (" " ^ $ ^ " ")
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+in
+  fun binary' namer $ (l, r) = 
+    let val prec = Cprec $
+        val fixity = Cassoc prec
+        val _ = case fixity of Assoc.INFIX _ => () | _ => Impossible.impossible "fixity"
+	val $ = (namer $, prec, fixity)
+    in  Unparser.BINARY(l, $, r)
+    end
+  fun binary $ = binary' space $
+  fun binopt $ = binary' opt $
+  fun prefix  $ e = Unparser.UNARY((pp.te $, Cprec "!", Assoc.PREFIX ), e)
+  fun postfix $ e = Unparser.UNARY((pp.te $, Cprec "!", Assoc.POSTFIX), e)
+  (* Note! adding a comment either must not change precedence,
+     or comment precedence must be high! *)
+  fun ecomment (e, comment) = 
+    Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+			   pp.te (/**/ comment), pp.ou, pp.en], 
+		    Cprec "comment",
+		    Assoc.POSTFIX),
+		   e)
+end
+@ Note the flagrant cheat on the unary precedence, exploiting the fact
+that all C unary operators have the same precedence.
+
+In the old system, commented expressions automatically assumed the
+precedence of their parents, but since I don't do things top-down any
+more, I've chosen instead to give them high precedence.  This choice
+may force some unnecessary parentheses around commented expressions.
+The alternative is to put parentheses around the whole thing,
+including the comment.
+@
+Now we can simulate all those yummy C-like operators!
+<<[[Cprec]] and [[Cassoc]]>>=
+local
+  val N = Assoc.INFIX Assoc.NONASSOC
+  val L = Assoc.INFIX Assoc.LEFT
+  val R = Assoc.INFIX Assoc.RIGHT
+  val E = Assoc.PREFIX
+  val O = Assoc.POSTFIX
+in
+  val ops = [(N, ["low", "lo"]),
+             (O, [";"]),
+             (L, [","]),
+             (R, ["=", "+=", "-=", "*=", "/=", "%=",
+                            "&=", "^=", "|=", ">>=", "<<="]),
+             (R, [":?"]),
+             (L, ["||"]), 
+             (L, ["&&"]), 
+             (L, ["|"]), 
+             (L, ["^"]),
+             (L, ["&"]), 
+             (L, ["==", "!="]),
+             (L, ["<=", "<", ">=", ">"]),
+             (L, [">>", "<<"]),
+             (L, ["+", "-"]),
+             (L, ["%", "/", "*"]),
+             (E, ["!", "~", "++", "--", "cast", "sizeof"]),
+             (L, [".", "->", "app", "call", "subscript"]),
+	     (L, ["comment"]),  (* forces commented things into parentheses *)
+	     (L, ["parens"]),
+             (N, ["high", "hi"])
+             ]
+end
+val {prec=Cprec, assoc=Cassoc} = Prec.funs ops
+val infix' = StringSet.addList(StringSet.empty,
+             ["=", "+=", "-=", "*=", "/=", "%=", "&=", "^=", "|=", ">>=", "<<=",
+              "||", "&&", "|", "^", "&", "==", "!=", "<=", "<", ">=", ">",
+              ">>", "<<", "+", "-", "%", "/", "*"])
+<<parenthesization>>
+@ 
+Some of these functions are likely to come in handy; we can use them
+in ML~code to create C expressions.
+Note the difference between [[binary]] and [[binopt]]; that
+difference determines the placement of optional line breaks.
+<<unparsing utilities>>=
+val comma  = binary' (fn _ => pp.$ ", $o") ","
+val /=/  = binary' (fn _ => pp.$ " = $t$o$b") "="  (* bogus, but could be worse *)
+val /||/ = binopt "||"
+val /&&/ = binopt "&&"
+val /|/  = binopt "|"
+val /&/  = binary "&"
+val /==/ = binary "=="
+val /!=/ = binary "!="
+val /</  = binary "<"
+val />/  = binary ">"
+val /<=/ = binary "<="
+val />=/ = binary ">="
+val /<</ = binary "<<"
+val />>/ = binary ">>"
+val /+/  = binopt "+"
+val /-/  = binopt "-"
+val /*/  = binary "*"
+val ///  = binary "/"
+val /%/  = binary "%"
+val /!/  = prefix "!"
+fun dot (e, tag) = Unparser.UNARY((pp.te ("." ^ tag), Cprec ".", Assoc.POSTFIX), e)
+val /~/  = prefix "~"
+val /->/ = binary "->"
+fun relop Relop.EQ = /==/
+  | relop Relop.NE = /!=/
+  | relop Relop.LE = /<=/
+  | relop Relop.LT = /</
+  | relop Relop.GE = />=/
+  | relop Relop.GT = />/
+@ 
+ML doesn't offer nearly enough levels of precedence to handle
+C~operators.
+Ideally I'd like to declare all the levels of C operators at a
+precedence lower than that of any ML infix operator.
+Since I have only ten levels total, however, I've instead decided
+never to mix ML and C operators in the same expression, and I've
+avoided infixing a couple of levels I hope I can do without.
+<<unparsing utilities>>=
+infixr 0 /=/
+infix  1 /||/
+(*infix  1.5 /&&/*)
+infix  2 /|/
+infix  3 /&/
+infix  4 /==/ /!=/
+infix  5 /</ /<=/ />/ />=/
+infix  6 />>/ /<</
+infix  7 /-/ /+/
+infix  8 /*/ /// /%/
+infix  9 dot
+@ 
+\subsubsection{Expressions and their operators}
+<<[[exp]] auxiliaries>>=
+fun ppcon' n = pp.te (
+  if hex orelse n > Control.maxDecimal then
+    "0x" ^ Word.fmt StringCvt.HEX (Word.fromInt n)
+  else if n < 0 then
+    "-" ^ Int.toString (~n)
+  else
+    Int.toString n)
+val ppcon = Unparser.ATOM o ppcon'
+@
+We begin with the basics of arithmetic.
+The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
+<<declare function [[exp]]>>=
+<<[[exp]] auxiliaries>>
+fun exp(U.VAR s) = textatom (mangle s)
+  | exp(U.ADD (U.MUL(~1, e1), e2)) = exp (U.SUB(e2, e1))
+  | exp(U.ADD (e1, e2)) = exp e1 /+/ exp e2
+  | exp(U.SUB (e1, e2)) = exp e1 /-/ exp e2
+  | exp(U.MUL (1, e)) = exp e
+  | exp(U.MUL (n, e)) = ppcon n /*/ exp e
+  | exp(U.CONST n) = ppcon n
+<<declare function [[exp]]>>=
+  | exp(U.PC_KNOWN) = textatom "cur_pc_known()"
+  | exp(U.TRUE) = textatom "1"
+  | exp(U.FALSE) = textatom "0"
+  | exp(U.STRING(S)) = textatom ("\"" ^ String.toCString S ^ "\"")
+  | exp(U.MISSING_STRING) = textatom "(char *)0"
+  | exp(U.CHAR c) = textatom ("'" ^ String.toCString (str c) ^ "'")
+@ 
+Note the former treatment of the program counter, which we don't
+duplicate here:
+\begin{quote}
+\footnotesize
+\let\nowebsize\footnotesize
+This code fixes bug~5 by using [[ENCODE_pc]] instead of [[cur_pc]] when
+an emitted token other than the first requires the program counter.
+It's needed because [[cur_pc()]] changes as a side effect of [[emit]], 
+but ``the program counter'' always refers to the location of
+the {\em first} token emitted.\change{8}
+<<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>=
+if *e.x > 1 & emitterstyle == "direct" & expwalk(e.x[2:0], equals_pc) then {
+  s ||:= "unsigned ENCODE_pc = cur_pc(); $c"
+  save_pc_override := pc_override
+  pc_override := "ENCODE_pc"
+}
+<<restore [[pc_override]]>>=
+pc_override := save_pc_override
+<<local declarations for [[exp]]>>=
+local save_pc_override
+<<cases for [[exp]]>>=
+"Epc" : \pc_override | "cur_pc()"
+@ \end{quote}
+<<declare function [[exp]]>>=
+  | exp(U.PC) = textatom "cur_pc() /* wrong for multi tokens */"
+  | exp(U.NARROWs(e, N)) = 
+     (exp o Control.superSimp o Exp.slice) (e, {lo=0, width=N})
+  | exp(U.NARROWu(e, N)) = exp e (* checked, so it's the identity *)
+<<[[exp]] auxiliaries>>=
+fun ult (e, N) = prefix "(unsigned)" e /</ tworaised N
+<<declare function [[exp]]>>=
+  | exp(U.FITSu(e, N)) = ult(exp e, N)
+  | exp(U.FITSs(e, N)) = ult(exp e /+/ tworaised (N-1), N)
+
+  | exp(U.ASSERT_NARROWs(e, N)) = exp e
+  | exp(U.ASSERT_NARROWu(e, N)) = exp e
+<<declare function [[exp]]>>=
+  | exp(U.SLICE(e, {lo = lo, width = width})) =
+     (exp o Control.superSimp) (Exp.shift(e, ~lo)) /&/ mask width
+  | exp(U.WIDEN(e, N)) = exp(call "sign_extend" [e, Exp.const N])
+  | exp(U.SHIFT(e, 0)) = exp e /<</ textatom "0 /* shift 0??? */"
+  | exp(U.SHIFT(e, N)) = 
+      if N < 0 then exp e />>/ ppcon (~N) else exp e /<</ ppcon N
+  | exp(U.AFIELD _) = impossible "absolute field not converted"
+  | exp(U.DIV(e, N)) = exp e /// ppcon N  (* old code cast e to (int) *)
+  | exp(U.MOD(e, N)) = exp e /%/ ppcon N
+  | exp(U.NOT(e)) = /!/ (exp e)
+<<[[exp]] auxiliaries>>=
+fun call f args = Exp.call (Exp.var f :: args)
+<<declare function [[exp]]>>=
+  | exp(U.FORCE(e)) = exp (call "location" [e])
+  | exp(U.KNOWN(e)) = exp (call "location_known" [e])
+<<old icon code>>=
+"Eforce" | "Eforceable"  : {
+                    (if type(e.x) == "Eclosure_loc" then "pc_" else "") || 
+                    "location" ||
+                    (if type(e) == "Eforceable" then "_known" else "") ||
+                    "$t${(" || exp(e.x) || ")$}$b"
+             }
+<<[[exp]] auxiliaries>>=
+val impossible = Impossible.impossible
+<<declare function [[exp]]>>=
+  | exp(U.SELECT(e, membername)) = exp e dot mangle membername
+        (* ok for structs; makes no sense for (safe) unions :-( *)
+  | exp(U.CAN_SELECT(e, membername)) = Impossible.unimp "CAN_SELECT"
+  | exp(U.UNION(e, {name = name, ty = ty})) = impossible "C disc union values"
+  | exp(U.UNSAFE_UNION(e, {name = name, ty = ty})) = impossible "C union w/o temp"
+  | exp(U.SUTMP(tmp, U.UNSAFE_UNION (e, {name, ty}))) =
+	parenthesize (comma(exp tmp dot mangle name /=/ exp e, exp tmp))
+  | exp(U.SUTMP(tmp, U.RECORD (exps, {fields, ty}))) =
+	parenthesize 
+	  (ListPair.foldl (fn (name, e, result) =>
+			      comma(exp tmp dot mangle name /=/ exp e, result))
+	   (exp tmp) (fields, exps))
+  | exp(U.SUTMP _) = impossible "struct/union temporary without struct or union"
+<<declare function [[exp]]>>=
+  | exp(U.CONDITION (l, rel, r)) = relop rel (exp l, exp r)
+  | exp(U.INSTANCE_INPUT(e, {cons = cons, operand = operand})) =
+        exp e dot "u" dot consname cons dot operand
+  | exp(U.INSTANCE_TAGGED(e, {cons = cons, uid = uid})) = 
+	exp e dot "tag" /==/ exp (Exp.var (Control.tagName (consname cons)))
+<<declare function [[exp]]>>=
+  | exp(U.NOSIMP(e)) = exp e
+  | exp(U.ORB []) = ppcon 0
+  | exp(U.ORB(exps)) = Util.joinl op /|/ (map exp exps)
+  | exp(U.INRANGE(e, {lo, hi})) =
+      if lo + 1 = hi then exp e /==/ ppcon lo
+      else /&&/ (ppcon lo /<=/ exp e, exp e /</ ppcon hi)
+  | exp(U.ANDALSO []) = ppcon 1
+  | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
+       (* it's possible exps should be sorted to avoid gratuitous differences *)
+  | exp(U.ORELSE []) = ppcon 0
+  | exp(U.ORELSE(exps)) = Util.joinl op /||/ (map exp exps)
+       (* it's possible exps should be sorted to avoid gratuitous differences *)
+<<declare function [[exp]]>>=
+  | exp(U.RECORD _) = impossible "C struct w/o tmp"
+  | exp(U.INSTANCE(exps, cons)) = Impossible.unimp "C instances"
+  | exp(U.BINDING_INSTANCE _) = Impossible.impossible "emitting binding instance"
+  | exp(U.FAIL s) = 
+     exp(U.CALL [U.VAR "assert", U.CALL [U.VAR "", U.STRING s, U.CONST 0]])
+  | exp(U.COMMENTED (e, comment)) = ecomment (exp e, comment)
+  | exp(U.ARRAY _) = textatom "this can't happen --- array literal outside of top-level decl"
+(*  | exp(U.ARRAY _) = Impossible.impossible "array literal outside of top-level decl" *)
+  | exp(U.ARRAY_SUB(a, n)) = 
+      let open Unparser Assoc
+	  val index = pp.li (unparse (exp n))
+          val subscript = pp.li [pp.$ "[${", index, pp.$ "$}]"]
+      in  BINARY(exp a, (pp.te "", Cprec "subscript", INFIX LEFT), ATOM subscript)
+      end
+  | exp(U.CALL []) = Impossible.impossible "call"
+@ 
+The call is a bit tricky because of the indentation.
+For functions of up to [[limit]] characters, we indent the limit of
+the function.  For longer functions, we indent 2 and require a break
+after the open parenthesis.
+<<declare function [[exp]]>>=
+  | exp(U.CALL [f as U.VAR $, l, r]) = 
+      if StringSet.member(infix', $) then
+        binopt $ (exp l, exp r)
+      else
+        expcall f [l, r]
+  | exp(U.CALL (f::args)) = expcall f args
+@ 
+In a call, if an argument is broken, I require a line break before it.
+<<[[exp]] auxiliaries>>=
+fun expcall f args =
+      let open Unparser Assoc
+	  val f = exp' f
+          val limit = 12 (* max willing indent *)
+          <<bind [[fwidth]] to the number of characters [[f]] will use>>
+	  val args = if null args then textatom ""
+		     else NARY((pp.$ ", $}$o${$c", Cprec ",", INFIX NONASSOC), map exp' args)
+	  val args = pp.li (unparse args)
+	  fun call args = BINARY(f, (pp.te "", Cprec "call", INFIX LEFT),
+				 ATOM (pp.li args))
+          val indent = if fwidth < limit then fwidth+1 else 2
+      in  
+          call [pp.$ "(${${", pp.i indent, pp.cn, args, pp.ou, pp.$ "$}$})"]
+      end
+<<bind [[fwidth]] to the number of characters [[f]] will use>>=
+val fwidth = (size o PP.flatten o pp.li o Unparser.unparse) 
+               (Unparser.UNARY((pp.te "", Cprec "call", Assoc.POSTFIX), f))
+<<declare function [[exp]]>>=
+  | exp(U.RAW (code, sourcemap, ty)) = Unparser.ATOM (rawCode (sourcemap, code))
+@ 
+\subsection{Utility functions used for expressions}
+Parenthesization is a bit odd, because we have to fool the unparser
+into using it.
+We can do it by slapping a very high-precedence invisible operator in
+front of the expression.
+<<parenthesization>>=
+fun parenthesize e = Unparser.UNARY((pp.te "", Cprec "parens", Assoc.PREFIX), e)
+@ 
+String stuff\ldots
+<<local declarations>>=
+<<repl>>
+fun pow (x, n) =
+  let fun p(y, i) = if i = n then y else p(x*y, i+1)
+  in  p(1, 0)
+  end
+fun tworaised bits = 
+  textatom ("0x" ^ Int.toString (pow(2, bits mod 4)) ^ repl(#"0", bits div 4))
+fun mask bits =
+  textatom ("0x" ^ 
+  	 let val hi = pow(2, bits mod 4) - 1
+         in  if hi = 0 then "" else Int.toString hi
+         end ^
+  	 repl(#"f", bits div 4))
+<<local declarations>>=
+val ??? = pp.te "something wasn't implemented"
+@ 
+\subsection{Types}
+Here's how to convert an internal type to a C~type.
+<<local declarations>>=
+local
+  open Type
+  structure C = CCode
+  fun ctype(INTEGER {signed, width}) : C.ctype =
+        let val base = if signed then C.INT else C.UNSIGNED
+            fun rangeString (lo, hi) = String.concat
+              ["[", Int.toString lo, "..", Int.toString (hi -1), "]"]
+            fun comment w = (if signed then rangeString(~(pow(2,w-1)), pow(2,w-1))
+                             else rangeString (0, pow(2,w)))
+                            handle Overflow => "ML range overflow"
+        in  case width
+              of NONE => base
+               | SOME w =>
+                   if w = Control.wordsize then base
+                   else if w < Control.wordsize then C.COMMENTED(base, comment w)
+                   else Impossible.impossible "int/unsigned won't hold a target word"
+        end               
+<<local declarations>>=
+    | ctype (BOOLEAN) = C.INT
+    | ctype (STRING) = C.POINTER C.CHAR
+    | ctype (CHAR) =  C.CHAR
+    | ctype (RELOCATABLE (INTEGER {signed=false,...})) = C.NAMED "RAddr"
+    | ctype (RELOCATABLE (INTEGER {signed=true, ...})) = C.NAMED "RAddr_signed"
+    | ctype (RELOCATABLE t) =
+	Impossible.unimp ("relocatable version of " ^ C.typestring (ctype t, ""))
+    | ctype (RECORD fields) =
+        let fun Cfield (s, INTEGER {signed, width=SOME w}) = 
+                  (mangle s, ctype (INTEGER {signed=signed, width=NONE}), SOME w)
+              | Cfield (s, ty) = (mangle s, ctype ty, NONE)
+            val fields = if null fields then
+                           [("I_am_an_empty_struct", C.CHAR, NONE)]
+                         else
+                           map Cfield fields
+        in  C.STRUCT {tag=NONE, fields=SOME fields}
+        end
+<<local declarations>>=
+    | ctype (ARRAY (elem, len)) = C.ARRAY(len, ctype elem)
+    | ctype (OBJECT _) = Impossible.unimp "object type in C"
+    | ctype (UNION members) =
+        let fun isUnit (_, Type.UNIT) = true
+              | isUnit _ = false
+        in  if List.all isUnit members then
+              C.ENUM {tag=NONE,
+                      members=SOME (map (fn(n,_) =>
+                                            (mangle (Control.tagName n), NONE))
+                                        members)}
+            else 
+               Impossible.impossible "asked for discriminated union in C; \
+                                   \must have left out a rewriting step"
+        end
+<<local declarations>>=
+    | ctype (UNSAFE_UNION members) =
+        C.UNION {tag=NONE,
+                 members=SOME(map (fn(s,ty)=> (mangle s, ctype ty)) members)}
+    | ctype (FUNCTION {parms, varargs, return}) =
+        C.FUNCTION {args=map (fn (n,t) => (SOME (mangle n), ctype t)) parms,
+                    varargs=varargs, return=ctype return}
+    | ctype (VAR {interface, name=n}) = C.NAMED (mangle n)
+    | ctype (INSTANCE constype) =
+	ctype (instanceType (Code.Constructor.typeFromId constype))
+    | ctype (ANY_POINTER) = C.POINTER C.VOID
+    | ctype (RECURSIVE _) = Impossible.unimp "recursive types"
+    | ctype (UNIT) = C.VOID
+in
+  fun typeDecl (ty, name) = pp.$ (C.typestring(ctype ty, getOpt(name, "")))
+end
+@ 
+Sometimes we have to try to infer a type from the value of an
+expression.
+What's here is left over from the old Icon code.
+It's a sad and sorry way to infer anything, but we recognize the
+result of [[WIDEN]] as an integer type, and anything else as an
+unsigned.
+The right thing to do here would be to call the type checker.
+<<local declarations>>=
+fun inferType (U.WIDEN(_, n)) = Type.INTEGER {signed=true, width=SOME n}
+  | inferType (U.STRING _) = Type.STRING
+  | inferType (U.ARRAY []) = Impossible.impossible "empty array"
+  | inferType (U.ARRAY (elems as h::t)) = Type.ARRAY(inferType h, SOME (length elems))
+  | inferType _ = Type.INTEGER {signed=false, width=NONE}
+@ 
+\subsection{Definitions}
+This is actually remarkably easy; we just put together machinery
+defined elsewhere.
+<<defn>>=
+fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
+  | defn(VAR (NONE, SOME e)) = defn(VAR(SOME (inferType e), SOME e))
+  | defn(VAR (SOME ty, NONE)) = class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.en ])
+  | defn(VAR (SOME (ty as Type.ARRAY (elem, _)), SOME (U.ARRAY elems))) =
+      let fun addElem (e, tail) = exp e :: pp.te ", " :: pp.on :: tail
+      in  class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = {", pp.i 2, pp.cn, 
+		        pp.be, pp.li (foldr addElem [] elems), pp.en,
+			pp.ou, pp.cn, pp.te "}", pp.en ])
+      end
+  | defn(VAR (SOME ty, SOME e)) =
+      class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = ", pp.i 2, pp.cn, 
+		    exp e, pp.ou, pp.en ])
+  | defn(CONST(e, ty)) = class (pp.li [pp.te "const ", defn(VAR(ty, SOME e))])
+  | defn(TYPEDEF ty) = pp.li [pp.te "typedef ", typeDecl(ty, SOME name), pp.te ";"]
+  | defn(FUNCTION (f as {parms, varargs, return}, body as BLOCK _)) = 
+      class (pp.li [ typeDecl(Type.FUNCTION f, SOME ("${" ^ name)),
+		     pp.$ " $c$}", stmt body, pp.nl ])
+  | defn(FUNCTION (f, body)) = defn(FUNCTION (f, BLOCK([], [body])))
+  | defn(EXCEPTION _) = Impossible.unimp "how to use exceptions in C"
+@
+\subsection{Statements}
+<<stmt>>=
+  STATEMENT' (smap, rgn, s) => numberLines(smap, rgn, stmt s)
+@
+To do block comments right, I need to change a pp to remove comment
+markers.  The best we to do this would be to make it possible to
+insert a fresh [[emitLine]] in context.  This will have to await a
+better prettyprinter.
+<<stmt>>=
+| BLOCK_COMMENT s =>
+    let val wid = 68
+        val delim = PP.TEXT ("/**" ^ repl(#"*", wid) ^ "**/")
+    in  pp.li [delim, pp.$ "$n/* $6${", s, pp.$ " */$b$}$n", delim]
+    end
+<<old stmt from when block comments were strings>>=
+  BLOCK_COMMENT s =>
+    let val wid = 68
+        val delim = PP.TEXT ("/**" ^ repl(#"*", wid) ^ "**/")
+        fun padline l = /**/(left(safeComment l, wid, #" "))
+        fun addline (l, tail) = PP.TEXT (padline l) :: PP.NEWLINE :: tail
+        fun isNewline #"\n" = true | isNewline _ = false
+    in  pp.li (delim :: foldr addline [delim] (String.fields isNewline s))
+    end
+<<stmt>>=
+| COMMENTED_STMT (s, comment) =>
+    pp.li [ stmt s, pp.be, pp.i 6, pp.te " ", pp.cn,
+	    pp.te (/**/ comment), pp.ou, pp.en ]
+<<stmt>>=
+| RESYNCH_STMT (file, line) =>
+     pp.li [ pp.nl, pp.te ("#line " ^ Int.toString line ^ " \"" ^ file ^ "\""), pp.nl ]
+<<stmt>>=
+| EMIT tokens => stmt (doEmit tokens)
+<<emission>>=
+fun doEmit tokens = Control.emit {pcUnit = pcUnit, tokens = tokens}
+<<stmt>>=
+| BLOCK (defns, ss) =>
+    pp.li [ pp.$ "{ ${$t$c",
+	    (pp.li o map (fn d => pp.li [defn d, pp.$ ";$n"])) defns,
+            stmts ss, pp.$ "$b$c}$}" ]
+<<sequence of statements [[ss]]>>=
+(pp.li o map (fn s => pp.li [stmtInSeq s, pp.cn])) ss
+@ If a statement is in a sequence of statements, and if it is a block or
+an emission (which might turn into a block), we can omit redundant braces.
+<<[[s]] in a sequence of statements>>=
+(case s 
+  of BLOCK ([], ss) => stmts ss
+   | EMIT tokens => stmtInSeq (doEmit tokens)
+   | s => stmt s)
+@ 
+I assume the if statement has been simplified, so there are no arms beyond
+any [[else]] arm.
+Therefore,  this code only works if unreachable arms have been dropped.
+We put an [[else]] before \emph{every} [[if]] and strip off the first
+one with [[tl]].
+There's a couple of hacks to avoid redundant braces if the arm is a
+block or an emission.
+<<stmt>>=
+| IF arms =>
+    let fun test guard = pp.li [ pp.$ "if $t${(", exp guard, pp.$ ")$}$b "]
+	fun shortTest guard = 
+          if alwaysSatisfied guard then pp.te "" else test guard
+        fun blockArm s = pp.li [stmt s, pp.te " ", pp.te "/*opt-block*/"]
+	fun arm (s as BLOCK ([], [RAW _])) = blockArm s
+	  | arm (BLOCK ([], [s])) = pp.li [arm s, pp.te "/*opt-block+*/"]
+	  | arm (s as BLOCK _) = blockArm s 
+          | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
+	fun addArm ((guard, body), arms) = 
+           let val test = if length arms < 4 then shortTest else test
+	   in  pp.cn :: pp.te "else " :: test guard :: arm body :: arms
+	   end
+	val units = (tl o tl) (foldr addArm [pp.en] arms)
+	            handle Empty => Impossible.impossible "list"
+    in  pp.li (pp.be :: units) 
+    end
+<<stmt>>=
+| TAGCASE (instance, ty, arms) => 
+    let fun addArm ((cons, arm), s) = 
+              pp.$ "$ccase " :: pp.te (#name (Constructor.info cons)) ::
+	      pp.$ "_TAG: $t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
+    in  pp.li (
+          pp.te "switch(" :: exp instance :: pp.$ ".tag) {$t${" ::
+                                                   (* should create exp for tag...*)
+	  foldr addArm [pp.$ "$cdefault: assert(0);$}$b$c} /* ",
+			PP.textMap safeComment (exp instance), pp.te "*/"] arms)
+    end
+<<stmt>>=
+| INTCASE (value, arms) => 
+    let fun r(lo, hi, cases) = 
+          if hi < lo then cases 
+	  else r(lo, hi-1, pp.$ "case " :: pp.int hi :: pp.$ ": $o" :: cases)
+	fun addRange ({lo, hi}, cases) = r(lo, hi-1, cases)
+	fun addArm ((ranges, arm), s) = 
+	  let val body = pp.$ "$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
+          in  pp.cn :: RangeSet.foldr addRange body ranges
+	  end
+    in  pp.li (
+          pp.te "switch(" :: exp value :: pp.$ ") {$t${" ::
+	  foldr addArm [pp.$ "$cdefault: assert(0);$}$b$c} /* ",
+			PP.textMap safeComment (exp value), pp.te "*/"] arms)
+    end
+<<stmt>>=
+| SKIP => pp.te "{ /* do nothing */ }"
+| FAIL (fmt, vals) => stmt (Control.fail (fmt, vals))
+| ALLOC_CLOSURE _ => Impossible.unimp "closure allocation"
+(* "Sclosure" : exp(\e.creation) | impossible("creating closure") *)
+| RETURN e => pp.li [ pp.te "return ", pp.i 2, pp.be, pp.on, exp e, pp.te "; ",
+		      pp.ou, pp.en ]
+| ASGN (dst, src) =>
+    pp.li [pp.li (Unparser.unparse (exp' dst /=/ exp' src)), pp.te "; "]
+| EVAL e => pp.li [ exp e, pp.te "; " ]
+| METHOD_CALL (obj, method, args) => stmt (Control.methodCall (obj, method, args))
+| RAISE (e, args) => Impossible.unimp "raising exceptions in C"
+| RAW raw => raw
+| ARM i => armsNumbered i
+@ 
+<<stmt>>=
+| MATCH {defns, decider, arms} =>
+    let fun blockStart tail = pp.$ "{ ${$t$c" :: tail
+        <<definition of [[exportMatchDefn]]>>
+        fun defn d = top_defn ({exported = exportMatchDefn d}, d)
+        fun addDefns tail = foldr (fn (d,t) => defn d :: pp.$ ";$n" :: t) tail defns
+        fun blockEnd tail = pp.$ "$b$c}$}" :: tail
+        val uniquePrefix = getPrefix()
+        fun labelNumbered n = "MATCH_label_" ^ uniquePrefix ^ Int.toString n
+        val finished = "MATCH_finished_" ^ uniquePrefix
+        val finish = pp.li [ pp.te "goto ", pp.te finished, pp.te "; ", pp.cn]
+        fun nextLabel (uid, _, (lcount, lmap)) =
+          (lcount + 1, IntMap.insert(lmap, uid, labelNumbered lcount))
+        val (_, labelmap) = IntMap.foldli nextLabel (0, IntMap.empty) arms
+        fun label i = valOf(IntMap.find(labelmap, i))
+                      handle Option => Impossible.impossible "missing label"
+        fun mkLabel l = pp.li [pp.te l, pp.te ": (void)0; /*placeholder for label*/"]
+        fun addArmBody(uid, a, tail) =
+          mkLabel (label uid) :: pp.$ "$t ${$c" :: stmt a :: pp.$ " $c"
+          :: finish :: pp.$ "$}$b$n" :: tail
+        fun armNumbered i = pp.te ("goto " ^ label i ^ "; ")
+        val afterArms = mkLabel finished :: pp.nl :: blockEnd []
+    in  (pp.li o blockStart o addDefns)
+        (#stmt (inner armNumbered) decider :: finish :: pp.nl ::
+         IntMap.foldri addArmBody afterArms arms)
+    end
+@ %
+What a cheat we have here.
+We make definitions [[static]] (non-exported) if and only if they are
+definitions of arrays.  Otherwise, they should be automatic.
+I'm ashamed of this code.
+<<definition of [[exportMatchDefn]]>>=
+fun exportMatchDefn (_, Code.VAR (SOME t, _)) = exportedDefnType t
+  | exportMatchDefn _ = true
+and exportedDefnType (Type.ARRAY _) = false (* arrays must be static *)
+  | exportedDefnType _ = true               (* all else is fair game *)
+@
+Prefix for matchers is global state.
+That way labels have unique names, which is necessary if they wind up
+in the same function.
+<<local declarations>>=
+local
+  val n = ref 0
+in
+  fun getPrefix() = Util.alphacode (!n) before n := !n + 1
+end
+@ 
+This should move to left, but we can't (yet)
+<<local declarations>>=
+fun resynch {fileName, line, column} =
+  pp.te (String.concat ["#line ", Int.toString line, " \"", fileName, "\""])
+fun numberLines (smap, region as (0, 0), lines) = lines
+  | numberLines (smap, region as (first, last), lines) =
+      pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines, PP.synch]
+fun rawCode (smap, (lines,region)) = numberLines(smap, region, pp.li (map pp.te lines))
+@ 
+\subsection{Utilities}
+[[Cimage]] attempts to write a C string literal that maps back into
+the desired string.
+<<local declarations>>=
+fun Cimage s =
+  let val slashes = explode "\n\t\\\""
+      fun slashed c = List.exists (fn x => c = x) slashes
+      fun \ c l = #"\\" :: c :: l
+      fun char (c, l) = if slashed c then \ c l else c :: l
+  in  implode (#"\"" :: foldr char [#"\""] (explode s))
+  end
+@
+[[repl]] is like the Icon [[repl]].
+<<repl>>=
+fun repl' (x, n) =
+  let fun f(l, i) = if i = n then l else f(x::l, i+1)
+  in  f([], 0)
+  end
+val repl = implode o repl'
+@ [[left]] pads but never truncates.
+<<repl>>=
+fun left(s, i, c) = 
+  if size s >= i then s
+  else s ^ repl(c, i - size s)
+@
+These functions make it possible to create C commments
+<<repl>>=
+fun safeComment s = (* make s safe in a comment *)
+  let fun cvt(r, #"/" :: #"*" :: s) = cvt(#"-" :: #"-" :: r, s)
+	| cvt(r, #"*" :: #"/" :: s) = cvt(#"-" :: #"-" :: r, s)
+        | cvt(r, c::s) = cvt(c::r, s)
+        | cvt(r, []) = implode (rev r)
+  in  cvt([], explode s)
+  end
+fun /**/ s = "/* " ^ safeComment s ^ " */"
+@
+\section{Old Icon stuff}
+@ 
+Used to declare functions according to the proper style of
+indirection.
+<<*>>=
+procedure c_function_declaration(pp, returntype, name, args, indirect)
+  emit_template(pp, if \indirectname then "indirect-proto.t" else "direct-proto.t",
+                    "return", returntype, "name", name, "args", args)
+  return
+end
+<<direct-proto.t>>=
+extern %return %name(%args);
+<<indirect-proto.t>>=
+%return (*%name)(%args);
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Unimplemented expressions}
+Have to be careful emitting no tokens.\change{35}
+<<cases for [[exp]]>>=
+"Eclosure_loc"  : "_c->loc"
+"Eclosure_addr" : "_c->v.a" || e.n
+"Eclosure_val"  : "_c->v.u" || e.n
+<<*>>=
+global pc_override
+@
+

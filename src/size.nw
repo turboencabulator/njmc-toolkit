@@ -1,0 +1,127 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: size.nw,v 1.6 1998/11/11 21:59:23 nr Exp $
+% l2h ignore bug {
+% l2h ignore change {
+
+\chapter{Computing sizes of instructions}
+
+@
+\section{Creating an size-checking implementation}
+
+<<size.sig>>=
+signature SIZE_GENERATOR = sig
+  structure Code : CODE
+
+  <<[[size_spec]] (for saying what and how to encode)>>
+  val sizeImplementation : size_spec -> Code.implementation 
+end
+<<[[size_spec]] (for saying what and how to encode)>>=
+type size_spec = 
+       { constructorFamily : Code.Constructor.family
+       , instanceInterface : string    (* interface defining instruction type *)
+       , rangeName : string   (* to give size range of instruction *)
+       , exactName : string   (* to give exact size of instruction *)
+       , mname : string (* machine name? *)
+       }
+<<size.sml>>=
+functor SizeInterfaceFun(
+  structure Encoder : ENCODER
+  structure Simplify : SIMPLIFIER
+  sharing Encoder.Code = Simplify.Code
+  val anonymousTypeName : string (* name for instruction type *)
+) : SIZE_GENERATOR = struct
+  structure Code = Encoder.Code
+  structure Constructor = Code.Constructor
+  structure C = Constructor
+  structure PS = C.Patterns
+  structure Exp = Code.Exp
+  <<[[size_spec]] (for saying what and how to encode)>>
+  <<utilities>>
+  <<functions>>
+end
+@ 
+[[repInt]] is copied from the encoding-interface stuff.
+I am a bad dog!
+<<functions>>=
+fun repIntName n = StringUtil.allCaps n^"_INSTRUCTION_REP"
+fun repInt n = Code.NAMED_INTERFACE {name="I", signature'=repIntName n}
+
+fun sizeImplementation ({instanceInterface, rangeName, exactName, mname,
+			     constructorFamily, ...} : size_spec) =
+  let val _ = ErrorMsg.verbose ["Computing size implementation"]
+      val exports = [Code.INSTRUCTION_SIZE]
+      val parameters = [Code.RELOCATABLE_ADDRESSES, repInt mname]
+
+      (* writing tag definitions should be unnecessary *)
+      val intType = Type.INTEGER {signed=true, width=NONE}
+      val rangeType = Type.RECORD [("max", intType), ("min", intType)]
+      val instance = "inst"
+      val itype = C.unnamedConstype constructorFamily
+      val instTy = Type.VAR {interface=SOME "I", name=anonymousTypeName^"Instance"}
+      val inst = ("instruction", Code.TYPEDEF instTy)
+      val ipat = PS.dropLatents (C.constypePattern (Exp.var instance, C.typeid itype))
+      <<definition of [[patRange]]>>
+      val rangeFun =
+	(rangeName, Code.FUNCTION
+	              ({parms=[("inst", Type.VAR {interface=SOME "I", name=anonymousTypeName})],
+			return=intType, varargs=false},
+		       Simplify.Super.code(Encoder.caseFrom patRange ipat)))
+      <<definition of [[patSize]] and [[exactFun]]>>
+  in  {name=SOME (StringUtil.mixedCaps (mname^"size")),
+       imports=[], exports=exports, body= map Code.exported [inst, rangeFun, exactFun],
+       parameters=parameters}
+       : Code.implementation 
+  end
+@ 
+Compute the size range of a pattern.
+<<utilities>>=
+fun adjust {size=n, name} =
+  if n mod !GlobalState.CG.emitUnitBits = 0 then
+    n div !GlobalState.CG.emitUnitBits
+  else
+    Error.errorl ["size of token class ", name, " is not multiple of emit unit size"]
+fun dlength (PS.DIS(_, _, PS.SEQ(_, ss, _))) = foldl addSeq 0 ss
+and addSeq ((class, _, _), n) = n + adjust class
+<<definition of [[patRange]]>>=
+local
+  fun disjunct (d, {min, max}) =
+    let val n = dlength d in {min = Int.min(min, n), max = Int.max(max, n)} end
+in
+  fun patRange (PS.PAT(_, [])) = Code.FAIL ("impossible encoding (no disjuncts) ---\
+                                            \perhaps a bad address mode?", [])
+    | patRange (PS.PAT(_, h::t)) =
+        let val n = dlength h
+            val {min, max} = foldl disjunct {min=n, max=n} t 
+        in  Code.RETURN (Exp.record ([Exp.const min, Exp.const max],
+                                     {fields=["min","max"], ty=rangeType}))
+        end
+end
+@ 
+Now let's suppose I can evaluate conditions.
+<<definition of [[patSize]] and [[exactFun]]>>=
+local
+  fun disjunctSize l = foldl addMap 0 l
+  and addMap ((class, _), n) = n + adjust class
+  fun emitDisjunct l = Code.RETURN (Exp.const (disjunctSize l))
+in
+  fun patSize warning p = emitDisjunct p
+end
+@ 
+I plan to pass a [[force]] procedure to give values of relocatable addresses.
+<<definition of [[patSize]] and [[exactFun]]>>=
+val addrTy = Type.INTEGER {signed=false, width=SOME (!GlobalState.CG.wordsize)}
+val forceFun = {parms=[("addr", Type.RELOCATABLE addrTy)], varargs=false,
+                return=addrTy}
+val exactFunArgs = [ ("inst", instTy)
+                   , ("force", Type.FUNCTION forceFun)
+                   , ("cur_pc", Type.RELOCATABLE addrTy)
+                   ]
+fun closure ? = Code.FAIL ("Asked for size with relocatable address unknown", [])
+val body = Encoder.instructionEmitterBody' patSize closure itype {argname="inst"}
+val exactFun =
+  (exactName, Code.FUNCTION
+                 ({parms=exactFunArgs, return=intType, varargs=false},
+                  Simplify.Super.code body))
+
+
+

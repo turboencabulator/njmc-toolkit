@@ -1,0 +1,2677 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+% $Id: unparse.nw,v 1.14 1999/11/23 16:25:58 nr Exp $
+\let\nocover1
+\documentclass[twoside]{article}
+\usepackage{alltt,array,tabularx,epic,latexsym}
+
+\usepackage{spe2e}
+
+\def\sysdetails{}
+
+\usepackage{noweb}
+
+% l2h substitution div div
+% l2h substitution mod mod
+
+\usepackage{pstricks,pst-node,pst-tree,pst-char}
+
+\overfullrule=10pt
+
+\noweboptions{shortxref}
+\def\nwdocspar{\vskip0pt plus1.5in\penalty-200\vskip0pt plus -1.5in}
+%\def\nwdocspar{\par\penalty-1000}
+\def\nwendcode{\endtrivlist\endgroup} % ditches filbreak
+%\def\nwendcode{\endtrivlist\endgroup\vskip\nwextraglue} % page tuning
+
+\let\ostartdef=\nwstartdeflinemarkup
+\let\oenddef=\nwenddeflinemarkup
+
+\newtoks\tyboxes
+\newif\ifboxespending
+\boxespendingfalse
+
+\newcommand\dpsmash[1]{% kill descenders to make trees look better
+  \relax\setbox0\hbox{#1}\dp0=0pt\box0\relax}
+
+
+\makeatletter 
+\newcommand\nwnospecials{\@makeother\'\@makeother\_\obeyspaces}
+\makeatother
+
+\newcommand\addbox{%
+  \begingroup\nwnospecials\doaddbox
+}
+\newcommand\doaddbox[1]{%
+  \global\boxespendingtrue
+  \global\tyboxes=\expandafter{\the\tyboxes#1\\}%
+  \endgroup
+  \ignorespaces
+}
+
+\setlength\fboxsep{1pt}
+
+\newdimen\deeperboxspace
+\newcommand\deeperbox[1]{\deeperboxspace=#1\relax\advance\deeperboxspace by 5.5pt}
+\deeperboxspace=0pt
+
+\def\nwstartdeflinemarkup{\ostartdef
+  \ifboxespending
+    {\small
+     \penalty500\hskip -1em\mbox{}\nobreak\hfill\nobreak
+     \nwnospecials\nobreak
+     \smash{\fbox{\begin{tabular}[t]{@{\,}l@{\,}}\the\tyboxes\end{tabular}}}}%
+     \nobreak\vrule width0pt height10.5pt depth\deeperboxspace
+  \fi
+  \global\boxespendingfalse
+  \global\tyboxes={}%
+}
+\def\nwenddeflinemarkup{\nobreak\hskip \nwdefspace\nobreak}
+
+\def\nwlbrace{\char123}
+\def\nwrbrace{\char125}
+
+\newcommand{\fig}[1]{Figure~\ref{fig:#1}}
+
+\newcommand\sfilbreak[1]{\vskip 0pt plus#1\penalty-200\vskip 0pt plus -#1}
+
+\setcounter{secnumdepth}{1}
+
+\let\orghbox=\hbox
+\newcommand\nohbox{\let\hbox=\orghbox\relax}
+
+
+\providecommand\citeN[1]{\nocite{#1}Reference~\csname b@#1\endcsname}
+\providecommand\citeNpair[2]{\nocite{#1}\nocite{#2}%
+  References \csname b@#1\endcsname~and~\csname b@#2\endcsname}
+\newcommand\refno[1]{\nocite{#1}\csname b@#1\endcsname}
+
+\title{Unparsing Expressions \penalty-200 With Prefix and Postfix Operators}
+%\author{Norman Ramsey}
+\affiliation{Department of Computer Science, University of Virginia,
+Charlottesville, VA 22903}
+
+\author{Norman Ramsey \\ \affilsize\itshape\centering
+Department of Computer Science, University of Virginia,
+Charlottesville, VA 22903}
+
+
+\titlehead{\uppercase{Unparsing with prefix and postfix operators}}
+\authorhead{Norman Ramsey}
+\received{29 August 1997}
+\revised{27 March 1998}
+\spe{0}{0}{MONTH}{98}{1}{30}
+
+\def\remark#1{\marginpar{\raggedright\hbadness=10000
+        \def\baselinestretch{0.8}\scriptsize
+        \it #1\par}}
+
+\makeatletter
+\newcommand\missing[2][Stuff]
+  {\@latex@warning{#1 is missing}%
+   \marginpar{\small\itshape\raggedright #1 is missing here.}%
+   \textsl{#2}}
+\makeatother
+
+% all this goo is for writing grammars.  first symbols
+\newcommand{\lit}{\begingroup\catcode`\_=12\relax\dolit}
+\newcommand{\dolit}[1]{\texttt{\textup{#1}}\endgroup}
+\newcommand{\term}[1]{\textsl{#1}}
+\newcommand{\nt}[1]{\textit{#1}}
+\newcommand\litbar{\texttt{|}}
+% now the metasymbols
+\newcommand{\produces}{\mbox{$\Rightarrow$}}
+\newcommand{\gdelim}{\big}
+\newcommand{\vbar}{\mbox{$\gdelim|$}}
+\newcommand{\makevbar}{}
+{\catcode`\|=\active \gdef\makevbar{\begingroup\catcode`\|=\active \let|=\vbar}}
+\newcommand{\sequence}{\makevbar\dosequence}
+\newcommand{\optional}{\makevbar\dooptional}
+\newcommand{\alternate}{\makevbar\doalternate}
+\newcommand{\dosequence}[1]{\mbox{$\gdelim\{$}#1\mbox{$\gdelim\}$}\endgroup}
+\newcommand{\dooptional}[1]{\mbox{$\gdelim[$}#1\mbox{$\gdelim]$}\endgroup}
+\newcommand{\doalternate}[1]{\mbox{$\gdelim($}#1\mbox{$\gdelim)$}\endgroup}
+% \specindex is used to index stuff in the specification -- I'll have
+% to read up on makeindex to get the font to come out right.
+\newcommand{\indexlit}{\begingroup\catcode`\_=12\relax\doindexlit}
+\newcommand{\doindexlit}[1]{\index{#1@\protect\lit{#1}}\endgroup}
+\newcommand{\indexedlit}{\begingroup\catcode`\_=12\relax\doindexedlit}
+\newcommand{\doindexedlit}[1]{\index{#1@\protect\lit{#1}}\dolit{#1}}
+\newcommand{\indexnt}[1]{\index{#1@\protect\nt{#1}}}
+\newcommand{\indexednt}[1]{\nt{#1}\indexnt{#1}}
+%
+\newcommand{\libindex}[1]{\index{#1@\protect\lit{#1}}}
+%
+\newcommand\commentstart{\relax}  % was \#~
+\newcommand{\comment}[1]{\commentstart #1}
+\newcommand{\lbr}{}
+\newcommand{\rbr}{}
+\chardef\lbr`\{
+\chardef\rbr`\}
+
+% Now for productions in the grammar: In the production environment, |
+% is active.
+
+\newcommand\productionvbar{\mbox{$|$}}
+\newcommand\productionor{\\&\productionvbar&}
+\newcommand\makeproductionvbar{}
+{\catcode`\|=\active 
+ \gdef\makeproductionvbar{\catcode`\|=\active \let|=\productionor}}
+
+\newenvironment{production}[1]
+  {\list{}{\leftmargin=\parindent}
+   \makeproductionvbar
+%   \renewcommand\arraystretch{1.10}
+   \item[]\begin{tabular}{l
+                   @{\hspace{0.5\tabcolsep}}c@{\hspace{0.5\tabcolsep}}
+                   l
+                   >{\commentstart}l}%
+   \indexednt{#1}&\produces&}
+  {\\\end{tabular}\endlist}
+
+% insert \productionglue between two consecutive production
+% environments
+
+\newcommand\productionglue{\vskip -1.1\baselineskip\relax}
+\renewcommand\productionglue{\kern -1.1\baselineskip\relax}
+
+
+\renewcommand\prec{\mathop{\mathrm{precedence}}}
+\newcommand\assoc{\mathop{\mathrm{associativity}}}
+\newcommand\implies{\mathrel{\Rightarrow}}
+\newcommand\impliedby{\mathrel{\Leftarrow}}
+
+
+\newcommand\dotlt{\mathrel{<\!\!\cdot}}
+\newcommand\dotgt{\mathrel{\cdot\!\!>}}
+
+\newtheorem{defn}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{prop}{Proposition}
+\newenvironment{proof}{\begin{trivlist}\item[]\textbf{Proof} \ignorespaces}
+   {\hskip2em plus1filll\hbox{$\Diamond$}\end{trivlist}}
+
+\def\[#1\]{$\mathtt{#1}$}
+\def\D\[#1\]{$$\mathtt{#1}$$}
+
+% l2h macro [ 0 <i><tt>
+% l2h macro ] 0 </i></tt>
+% l2h ignore D
+
+% N.B. {\LaTeX} subverts the resetting of \hangindent by \par.
+
+\newenvironment{proofstep}
+  {\begin{trivlist}\item[]\leftskip=2em\global\hangindent=0pt % the big hammer
+   $\displaystyle\begin{array}{l}}
+  {			      \end{array}$\end{trivlist}}
+\newenvironment{proofstep*}
+  {\begin{trivlist}\item[]\leftskip=2em\global\hangindent=0pt % the big hammer
+   \begin{tabular}{l@{\,}l}}
+  {\end{tabular}\end{trivlist}}
+
+\newcommand\proofhang{}
+\def\proofhang#1({%
+  \setbox0=\hbox{#1(}%
+  \noindent
+  \hangindent=\wd0
+  \hangafter=1
+  \box0
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+\ifx\stretchme\undefined\else\def\baselinestretch{1.5}\fi
+
+\begin{abstract}
+Unparsing is the problem of transforming an internal representation of
+a program into an external,  concrete syntax.
+In conjunction with prettyprinting, it is useful for
+generating readable programs from internal representations.
+If the target language uses prefix and postfix operators, 
+the problem is nontrivial.
+This paper shows how to unparse expressions using a simple, bottom-up
+tree walk, which keeps track of the least tightly binding operator not
+enclosed by parentheses.
+During the tree walk, this operator is compared with the operator of
+the parent expression, and parentheses are inserted based on the
+precedence, associativity, and {fixity} (infix, prefix, or
+postfix) of the two operators.
+The paper is a literate program.
+ It includes code for the
+unparser and for its inverse parser, both of which can handle
+operators of dynamically chosen precedence and associativity.
+Supporting such operators is useful for languages like~ML, in which
+programmers may 
+assign precedence and associativity to their own functions.
+\end{abstract}
+
+\section*{Key Words}
+\keywords{Unparsing\quad Parsing\quad Prettyprinting\quad Literate Programming\quad Standard~ML}
+
+
+\section{Introduction}
+
+% Symbolic-computing systems that manipulate algebraic expressions may
+% need to present such expressions in a readable form.
+Automatic generation of computer programs from high-level
+specifications is a well-known technique, which has been used to
+create
+scanners, parsers, code generators, tree rewriters, packet filters,
+dialogue handlers,
+machine-code recognizers, and other tools.
+To make it easier to debug an application generator, and to help
+convince 
+prospective users that the generated code can be trusted, 
+the generated code should be as idiomatic and readable as possible.
+It is therefore desirable, and sometimes essential, that the generated
+code use
+infix, prefix, and postfix operators, and that expressions be presented
+without unnecessary parentheses.
+Another helpful technique is to use a prettyprinter to automate
+indentation and line breaking.\cite{oppen:prettyprinting,hughes:pretty-printing}
+This paper presents a method of automatically parenthesizing
+expressions that use prefix, postfix, and implicit operators; the
+method is compatible with automatic prettyprinting.
+The paper also shows how to parse expressions that use such operators.
+The parsing algorithm can be used even if operator precedences are not
+known at compile time, so it can be used with 
+arbitrarily many user-defined precedences.
+
+
+%%  For example, the New Jersey Machine-Code Toolkit is an application
+%%  generator that writes code to help encode and decode machine
+%%  instructions \cite{ramsey:jersey}.
+%%  The generated code may be written in C or in Modula-3.
+
+%% \emph{What about compiling to C???}
+
+This paper is a ``literate program,''\cite{knuth:literate} which means
+that a single
+source file is used to prepare both manuscript and code.
+Including code provides a formal, precise, testable statement of the
+unparsing algorithm.
+The code is written in the purely functional subset of
+Standard~ML.\cite{milner:definition} 
+ ML is a good choice for several reasons.
+Referential transparency makes the subset easy to reason about, so we
+can show the correctness of simple unparsing algorithms.
+ It is possible to express some properties of the data as type
+properties, which are checked by the compiler.
+Finally, SML's parameterized modules make the code reusable
+in several different contexts---the code that appears in the paper is
+the code used in both the SLED and the $\lambda$-RTL
+compilers,\cite{ramsey:specifying,ramsey:embedded} for example.  
+The paper explains many ML constructs as they are used, but
+readers not familiar with ML may still wish to consult 
+References~\nocite{ullman:elements}\nocite{paulson:ml}\nocite{felleisen:mler}\refno{ullman:elements}--\refno{felleisen:mler}
+for an introduction.
+
+
+
+The paper presents algorithms for two versions of the unparsing problem.
+In the first version, all operators are binary infix operators;
+this version of the unparsing problem is well understood, and it is simple
+enough to make a proof of correctness tractable.
+The invariants and insights from this proof lead to an
+algorithm for a 
+more general version, which handles prefix and postfix operators, as
+well as non-associative infix operators of arbitrary arity.
+The algorithm can also handle some ``mixfix'' operators, like the array-indexing
+operator~$\cdot[\cdot]$.
+The algorithm is the main contribution of this paper.
+It is presented as executable code, which uses
+parameterized modules to make it
+independent of the representation of the unparsed form.
+
+
+
+
+\section{Parsing and unparsing}
+
+Parsers and unparsers translate between concrete and abstract syntax.
+\iffalse
+It is essential to avoid ambiguities when translating from an internal
+form to a concrete syntax.
+When emitting declarations and statements, there is little problem
+with ambiguity; the only common pitfall is the
+\textbf{if}-\textbf{then}-\textbf{else} ambiguity present in C and
+some other languages \cite[page number?]{aho:compilers}, and there
+it is sufficient to make sure that every
+\textbf{if} statement has an \textbf{else} branch.
+Expressions are another story.
+\fi
+The concrete syntax used to
+represent expressions is usually ambiguous;
+ambiguities are resolved using  operator precedence and parentheses.
+Internal representations are unambiguous but not suitable as
+concrete syntax.
+For example, expressions are often represented as simple trees, in which an
+expression is either an ``atom'' (constant or variable) or an operator
+applied to a list of expressions.
+%
+We can describe such trees by the following grammar,
+written in extended BNF,\cite{wirth:ebnf} in which
+nonterminals appear in \nt{italic} and terminals in \term{slant}
+fonts:
+\begin{production}{expression}
+\term{atom} | \term{operator} \sequence{\nt{expression}}
+\end{production}
+LISP and related languages use a nearly identical concrete syntax,
+simply by requiring parentheses around each application.
+The designers of other languages have preferred other concrete syntax,
+using
+%%  
+%%  A na\"\ive translation of internal forms to concrete syntax can be
+%%  incorrect, because the internal representations tend to be too simple.
+%%  
+%%  ; for example, a tree representing the product of $x+y$ and
+%%  $z$ can't simply be represented as $x+y\times z$.
+%%  
+infix binary
+operators, prefix and postfix unary operators, and possibly ``mixfix''
+operators, as described by the following grammar:
+\begin{production}{expression}
+\term{atom}
+| \nt{expression} \term{infix-operator} \nt{expression}
+| \term{prefix-operator} \nt{expression}
+| \nt{expression} \term{postfix-operator}
+| \nt{expression} \sequence{\term{nary-operator} \nt{expression}}
+| \nt{other form of expression\ldots}
+\end{production}
+Even if the internal form distinguishes these kinds of operators, this
+grammar is unsuitable for parsing, because it is ambiguous.
+Grammars intended for parsing use various levels of precedence and associativity
+to resolve ambiguities.
+Once precedence and associativity have been determined, they can be
+encoded by introducing new nonterminals for each level
+of precedence.
+Users of shift-reduce parsers can specify precedence and associativity
+directly, then have the parser use them to resolve shift-reduce
+conflicts. 
+
+The parsing problem is to translate from concrete syntax to internal
+representation. 
+The unparsing problem is to take an internal representation 
+and to produce a concrete syntax that, when parsed,
+reproduces the original internal representation.
+That is, an unparser is correct only if it is a right inverse of its
+parser. 
+For example, if our internal representation is a tree representing the
+product of $x+y$ with~$z$, we cannot simply walk the tree and emit
+the concrete representation $x+y\times z$; we must emit $(x+y)\times
+z$ instead.
+
+As stated, the unparsing problem does not have a unique solution;
+ in general, there are many possible concrete syntaxes that,
+when parsed, reproduce the original internal representation.\label{corr:inverse+}
+For example, we could choose a concrete syntax that parenthesizes
+every expression, as in $(((x)+(y))\times (z))$.
+The LISP rule  parenthesizes every application, as in
+$((x+y)\times z)$.
+ Rules like these use too many parentheses.
+Code with extra parentheses is unidiomatic and unreadable, like
+this C~code, which has been emitted using something like the LISP rule:
+{\hfuzz=28pt
+\begin{verbatim}
+  if ((((Mem.u).Index8).index) != 4) 
+    if (!((unsigned(((Mem.u).Index8).d)) < 0x100)) 
+      fail((("((Mem.u).Index8).d = 0x%x won't fit in 8 unsigned bits"), 
+             (((Mem.u).Index8).d)));  
+    else 
+      { 
+        emit((((7 | (15 @<< 4)) | (1 @<< 3)), 1)); 
+        emit((((4 | (3 @<< 3)) | (1 @<< 6)), 1)); 
+        emit((((((((Mem.u).Index8).ss) @<< 6) | 
+               ((((Mem.u).Index8).index) @<< 3)) | 
+               (((Mem.u).Index8).base)), 1)); 
+        emit((((((Mem.u).Index8).d) & 0xff), 1)); 
+        
+      }  
+  else 
+    fail(("Conditions not satisfied for constructor CALL.Epod"));  
+\end{verbatim}
+The unparser in this paper is not merely a parser's right inverse; it
+also produces results without extra parentheses:
+\begin{verbatim}
+  if (Mem.u.Index8.index != 4) 
+    if (!((unsigned)Mem.u.Index8.d < 0x100)) 
+      fail("Mem.u.Index8.d = 0x%x won't fit in 8 unsigned bits", 
+           Mem.u.Index8.d);  
+    else 
+      { 
+        emit(7 | 15 @<< 4 | 1 @<< 3, 1); 
+        emit(4 | 3 @<< 3 | 1 @<< 6, 1); 
+        emit(Mem.u.Index8.ss @<< 6 | Mem.u.Index8.index @<< 3 | 
+             Mem.u.Index8.base, 1); 
+        emit(Mem.u.Index8.d & 0xff, 1); 
+      }  
+  else 
+    fail("Conditions not satisfied for constructor CALL.Epod");  
+\end{verbatim}
+\par}
+
+The unparsing method uses information about precedence,
+associativity, 
+and ``fixity'' of operators to transform an internal form into
+a concrete syntax.
+The method works from the bottom up and from the
+inside out.
+In each expression, it finds the operator, and it considers the
+subexpressions and their positions, left or right, relative to the
+operator.
+It decides whether to parenthesize subexpressions by comparing
+precedence and associativity of the current operator with the
+precedences and associativities of the most loosely binding operators
+in the subexpressions. 
+Operators that are ``covered'' by parentheses do not participate in
+the comparison.
+Here are four example trees:\\
+\centerline{%
+\psset{linewidth=0.4pt}%
+\setlength\tabcolsep{1.5em}%
+\begin{tabular}{cccc}
+\pstree[nodesep=2pt,levelsep=15pt]
+{\TR{$\times$}}
+  {\pstree{\TR{$+$}}{\TR{$x$}\TR{$y$}}
+   \TR{$z$}}
+&
+\pstree[nodesep=2pt,levelsep=15pt]
+{\TR{$+$}}
+  {\pstree{\TR{$\times$}}{\TR{$x$}\TR{$y$}}
+   \pstree{\TR{$+$}}{\TR{$z$}\TR{$w$}}}
+&
+\pstree[nodesep=2pt,levelsep=15pt]
+{\TR{\dpsmash{postfix [[++]]}}}
+  {\pstree{\TR{[[*]]}}{\TR{[[p]]}}}
+&
+\pstree[nodesep=2pt,levelsep=15pt]
+{\TR{\dpsmash{prefix [[++]]}}}
+  {\pstree{\TR{[[*]]}}{\TR{[[p]]}}}\\
+\noalign{\medskip}
+(a)&(b)&(c)&(d)\label{corr:trees}
+\end{tabular}}\\[0.5ex]
+In tree (a), discussed above, the unparser renders the left
+subtree as $x+y$, without parentheses, because the subexpressions
+$x$~and~$y$ contain no operators.
+At the root, because operator~$\times$ has higher precedence than
+operator~$+$,  the unparser parenthesizes the left subexpression, and
+the final result is $(x+y)\times z$.
+In tree~(b), $+$~has lower precedence than~$\times$, so it is not
+necessary to parenthesize the left subtree.
+Because $+$~is left-associative, however, it is necessary to
+parenthesize the right subtree, because it is a right child of a
+parent with the same precedence and left associativity.
+The final result is therefore $x \times y + (z + w)$.
+Trees (c)~and~(d) show prefix and postfix operators as used in~C.
+In tree~(c), [[++]]~and~[[*]] have opposite ``fixity'' (one is postfix
+and one is prefix), and because [[++]]~has higher precedence
+than~[[*]], it is necessary to parenthesize the subexpression,
+resulting in [[(*p)++]].
+In tree~(d), [[++]]~and~[[*]] have the same fixity, so precedence is
+irrelevant, and the expression is unparsed as~[[++*p]].
+
+Although the full unparsing method handles prefix, postfix, and infix operators,
+it is easier to understand  if we begin with the simpler
+case in which all operators are 
+binary infix operators.
+
+
+
+
+
+\section{Parsing and unparsing with infix operators}
+
+\subsection{Abstract and concrete syntax for infix operators}
+
+Type [[rator]] represents a binary infix operator, which  has a text
+representation, a precedence, and an 
+associativity: 
+<<infix>>=
+type precedence = int
+datatype associativity = LEFT | RIGHT | NONASSOC
+type rator = string * precedence * associativity
+@ This ML code uses simple integers ([[int]]) to represent precedence,
+an enumeration to represent associativity, and a triple to represent
+an operator.
+(In the context of an ML type definition, a~[[*]] does not represent
+multiplication; it connects elements of a tuple.)
+The more general unparser, presented below, shows how to use an
+arbitrary type, not just [[string]], as an operator's concrete
+representation.
+
+Precedence and associativity determine how infix expressions are
+parsed into trees, or equivalently, how they are parenthesized.
+For example, 
+if operator~$\otimes$ has higher precedence than operator~$\oplus$,
+then
+\mbox{$x \oplus y \otimes z = x \oplus (y \otimes z)$} and
+\mbox{$x \otimes y \oplus z = (x \otimes y) \oplus z$}.
+When two operators have the same precedence, associativity is used to
+disambiguate. 
+If $\oplus$~is left-associative, 
+\mbox{$x \oplus y \oplus z = (x \oplus y) \oplus z$}; if it is
+right-associative, 
+\mbox{$x \oplus y \oplus z = x \oplus (y \oplus z)$}.
+{\hfuzz=2pt
+Some languages have \emph{non-associative} operators; 
+if  $\oplus$~is non-associative, 
+then $$(x \oplus y) \oplus z \ne x \oplus y \oplus z \ne x \oplus
+(y \oplus z),$$ and \mbox{$x \oplus y \oplus z$} may be illegal.
+The comma that separates parameters in a C~function call is an
+example of a non-associative operator.
+\par}
+
+Many  expressions are obtained by applying operators to other
+expressions, but there must always be indivisible constituents of
+expressions.
+We call such  constituents \emph{atoms}.
+They appear at the leaves of abstract syntax trees and as the
+non-operator tokens in concrete syntax.
+In most languages the atoms include identifiers,
+integer and real literals, string literals, and so on.
+In our initial, simple model, 
+an expression is either an atom or an infix operator applied to two expressions:
+<<infix>>=
+datatype ast = ATOM of string
+             | APP  of ast * rator * ast
+@ Type [[ast]] represents an expression's abstract syntax tree.
+This ML [[datatype]] definition is something like a production in a context-free
+grammar; it gives two alternative ways of constructing an [[ast]].
+These alternatives are always given names ([[ATOM]] and
+[[APP]]), which are called \emph{constructors}.
+An ML datatype may contain any number of constructors, and there may
+be data associated with each one.
+Here, for an atom, we care only about the atom's string
+representation.
+For an application, we want the operator and the [[ast]]s representing
+the two operands.
+Because [[ast]] is used in its own definition, it is a recursive type,
+and values of type [[ast]] are trees.
+@
+Type type [[ast]] represents the input to the unparser; we also need a
+type to represent the unparser's output.
+For simplicity, we treat this output as a sequence of lexemes, where a
+lexeme represents an atom, an operator, or a parenthesis.
+Moreover, we undertake to emit only sequences in which atoms and
+operators alternate, or in which parenthesized sequences take the
+place of atoms.
+Let us call such a sequence an [[image]] and use a representation that
+forces it to satisfy the following grammar:
+\begin{production}{image}\nt{lexical-atom} \sequence{\term{operator} \nt{lexical-atom}}\end{production}
+\begin{production}{lexical-atom}\term{atom} \vbar\ \lit( \nt{image} \lit)
+\end{production} 
+@
+In the corresponding ML, the sequence in braces becomes
+the type [[image']]:
+<<infix>>=
+datatype  image  = IMAGE of lexical_atom * image'
+and       image' = EOI (* end of image *)
+                 | INFIX of rator * lexical_atom * image'
+and lexical_atom = LEX_ATOM of string
+                 | PARENS of image
+@ [[EOI]] represents the end of the image, and [[PARENS]] represents
+an image in parentheses.
+This representation enforces the invariants that expressions and
+operators alternate, 
+and that the first and last elements of an image are expressions. 
+@
+\subsection{Parsing infix expressions}
+
+
+To be correct, an unparser must produce a sequence that parses back
+into the original abstract syntax tree.
+We develop an unparsing algorithm by thinking about parsing.
+To understand how to minimize parentheses, we need to consider where
+parentheses are needed to get the correct parse.
+Suppose we have an abstract syntax tree that has been obtained by
+parsing an image without 
+any parentheses.
+Then wherever the syntax tree has an [[APP]] node whose parent is also
+an [[APP]] node, there are two cases: the child may be the left child
+or the right child of its parent:
+\begin{center}\tt
+\setlength{\unitlength}{0.05in}%
+\begin{picture}(14,15)(47,-29)
+\put(55,-15){\makebox(0,0)[b]{outer}}
+\put(50,-28){\makebox(0,0)[b]{inner}}
+\drawline(54,-16)(50,-26)
+\dashline{1}(56,-16)(60,-26)
+\end{picture}%
+\qquad\qquad
+\begin{picture}(14,15)(47,-29)
+\put(55,-15){\makebox(0,0)[b]{outer}}
+\put(60,-28){\makebox(0,0)[b]{inner}}
+\dashline{1}(54,-16)(50,-26)
+\drawline(56,-16)(60,-26)
+\end{picture}%
+\end{center}
+Because this tree was obtained by parsing parenthesis-free syntax,
+either the inner operator has higher precedence than the outer, or
+they have the same precedence and associativity and the associativity
+is to the left (right) if the inner is a left (right) child of the
+outer.
+We formalize this condition using the predicate
+\mbox{[[noparens(inner, outer, ]]\emph{side}[[)]]}, where \emph{side}
+is [[LEFT]] or [[RIGHT]] and
+ [[noparens]] is defined
+as follows: 
+\addbox{noparens : rator * rator * associativity -> bool}
+\deeperbox{2pt}
+<<infix>>=
+fun noparens (inner as (_, pi, ai), outer as (_, po, ao), side) =
+           pi > po
+    orelse pi = po andalso ai = ao andalso ao = side
+(*unboxval*)
+@ where [[pi]], [[ai]], [[po]], and [[ao]] stand for precedence or
+associativity of inner or outer operators.
+
+This ML code defines a function [[noparens]].
+Its name and type are given in the box at the beginning of the chunk.
+Type assertions in boxes are inserted into the code and checked by the
+compiler.
+The type of [[noparens]] shows that it is a Boolean function
+of three arguments (two operators and an
+associativity).
+The structure of the definition is
+% \begin{quote}
+\mbox{[[fun]] \term{name} \nt{binding} [[=]] \nt{body}}.
+% \end{quote}
+The \nt{binding} associates names to the arguments; these names are
+used in the body.  
+\mbox{[[inner as (_, pi, ai)]]} is a nested binding; it binds [[pi]]
+to the precedence of~[[inner]] and [[ai]] to the associativity
+of~[[inner]].
+The underscore~[[_]] is a ``wildcard,'' which indicates that the
+text representation of [[inner]] is to be ignored and not bound to any
+name.
+The process of using the \nt{binding} to associate names with the
+arguments and parts of the arguments is called \emph{ML pattern matching}.
+@
+
+
+Readers familiar with the treatment of operator-precedence
+parsing in Section~4.6 of \citeN{aho:compilers} may recognize that
+\begin{eqnarray*}
+\mathtt{noparens}(i, o, \mathtt{LEFT}) &\equiv& i  \dotgt o\\
+\mathtt{noparens}(i, o, \mathtt{RIGHT}) &\equiv& o  \dotlt i
+\end{eqnarray*}
+We use [[noparens]] during unparsing to decide when parentheses are
+needed and during parsing to decide whether to shift or reduce.
+@
+
+\newcommand\rator{\oplus}
+\newcommand\rators{\rator_s}
+\newcommand\ratori{\rator_i}
+\renewcommand\rators{\rator_{\mathtt{stack}}}
+\renewcommand\ratori{\rator_{\mathtt{ipts}}}
+\newcommand\ratorim{{\rator_{\mathtt{im}}}}
+\newcommand\op{\oplus}
+
+To prove correctness of the unparser, I introduce a simple LR~parser.
+The unparser is correct if \mbox{[[parse (unparse e) = e]]}
+ for any syntax tree [[e]].
+In other words, if we begin with an abstract syntax tree~[[e]],
+unparse it, and then parse the resulting lexemes, we get back the
+original abstract syntax tree.
+@
+In the  parser's stack, expressions and operators
+alternate.  Unless the stack is empty, there is an operator on the
+top, which is written to the right.
+<<infix>>=
+datatype stack = BOT
+               | PUSH of stack * ast * rator
+@ This recursive datatype is isomorphic to a list of (operator, ast)
+pairs, but it is helpful to define a special type because the
+constructors [[BOT]] and 
+[[PUSH]] distinguish parser stacks from other kinds of lists. 
+@
+The parser itself can be simplified by a bit of trickery.
+Instead of treating ``bottom of stack'' or ``end of input'' as special
+cases, treat them as occurrences of a sentinel operator,
+[[minrator]]. 
+[[minrator]] has precedence [[minprec]], which
+must be lower than the precedence of any real
+operator.
+Using this trick, we define functions that return the operator on
+the top of the stack and the operator about to be scanned in the input.
+\addbox{srator : stack  -> rator}
+\addbox{irator : image' -> rator}
+\deeperbox{2pt}
+<<infix>>= 
+val minrator : rator =
+ ("<minimum-precedence sentinel>", minprec, NONASSOC)
+fun srator (PUSH  (_, _, $)) = $
+  | srator BOT               = minrator
+fun irator (INFIX ($, _, _)) = $
+  | irator EOI               = minrator
+(*unboxval*)
+@ Given a stack [[stack]] and an input sequence of tokens [[ipts]], we
+may 
+\iffalse % bad line break
+write $\rators$~for \mbox{[[srator stack]]} and 
+ $\ratori$~for \mbox{[[irator ipts]]}.
+\else
+abbreviate \mbox{[[srator stack]]} as~$\rators$ and 
+abbreviate \mbox{[[irator ipts]]} as~$\ratori$.
+\fi
+@
+These function definitions show a new ML construct---we define
+functions on [[datatype]]s by pattern-matching against the
+datatype constructors.
+We provide a \nt{binding} and a \nt{body} for each
+constructor.
+This ability to use pattern matching to do case analysis is one of the
+advantages of using~ML, especially because the compiler ensures that
+all cases are covered.
+
+This code also illustrates an unusual syntactic feature of ML: we can use
+strings of symbols, as well as strings of letters, to make identifiers.
+In this paper, by convention,  the identifier~[[$]]  stands for an
+arbitrary operator.
+
+
+
+
+
+@
+
+We now have enough machinery to write a shift-reduce LR~parser,
+which continues parsing until its stack 
+and input are empty.  
+The parser's state includes a stack with an
+operator~$\rators$ on top, a current expression~[[e]], and the input, which
+begins with the operator~$\ratori$.
+This state is represented by three parameters to the function [[parse']].
+Parsing is complete when the stack is empty ([[BOT]]) and the input is
+empty ([[EOI]]).
+\addbox{parse' : stack * ast * image' -> ast}
+\addbox{parse  : image -> ast}
+\addbox{parseAtom : lexical_atom -> ast}
+<<infix>>=
+exception Associativity
+local
+  exception Impossible
+  fun parse' (BOT, e, EOI) = e
+    | parse' (stack, e, ipts) =
+        <<shift or reduce, depending on relative precedence of $\rators$ and $\ratori$>>
+  and parse (IMAGE(a, tail)) = parse'(BOT, parseAtom a, tail)
+  and parseAtom (LEX_ATOM a) = ATOM a
+    | parseAtom (PARENS im) = parse im
+  (*unboxval*)
+in
+  val parse = parse
+end
+@ The ML code uses two new constructs, and it shows a new way to use
+pattern matching.
+The declaration \mbox{[[local]] \nt{private-declarations} [[in]]
+\nt{public-declarations} [[end]]} hides information.
+Private declarations are invisible outside the [[local]]
+construct; only public declarations escape.
+The connective [[and]] is used with [[fun]] to define a nest of mutually
+recursive functions.
+The first match in the definition of [[parse']] handles the case when
+both the stack and the input are empty.
+The next match handles all other cases; this works because a variable
+in a \nt{binding} matches any datatype constructor.
+@ 
+The interesting part of the parser is deciding whether to shift or
+reduce.
+Shifting pushes [[e]]~and~$\ratori$ onto the stack.
+Reducing pops $\rators$ and the expression
+below it, creating a new
+[[APP]] node with operator $\rators$.
+Shifting $\ratori$ guarantees that $\ratori$ will be reduced before
+$\rators$, and therefore that $\ratori$~will eventually be a right
+descendant of $\rators$. 
+Reducing guarantees that $\rators$ will eventually be a left
+descendant of $\ratori$.  
+The parser uses [[noparens]] to choose whichever alternative is
+correct without parentheses. 
+The choice is deterministic because the conditions for shifting and
+reducing are mutually 
+exclusive; the proof of correctness relies on that fact.
+<<shift or reduce, depending on relative precedence of $\rators$ and $\ratori$>>=
+if noparens(irator ipts, srator stack, RIGHT) then (* shift *)
+  case ipts 
+    of INFIX ($, a, ipts') =>
+         parse'(PUSH(stack, e, $), parseAtom a, ipts')
+     | EOI => raise Impossible (* EOI has lowest precedence *)
+else if noparens(srator stack, irator ipts, LEFT) then (* reduce *)
+  case stack 
+    of PUSH (stack', e', $) => parse'(stack', APP(e', $, e), ipts)
+     | BOT => raise Impossible (* BOT has lowest precedence *)
+else 
+  raise Associativity
+    (* saw a + b + c, for some nonassociative + *)
+@ Pattern
+matching can be used in [[case]] statements as well as in function definitions.
+Here it is used to extract the first two inputs or the expression and
+operator on top of the stack. 
+Because [[srator]] and [[irator]] return [[minrator]] for [[BOT]] and
+[[EOI]], the parser shifts when the stack is empty and
+reduces when there are no more inputs.
+Therefore,
+the lines that raise \mbox{[[Impossible]]} are never
+executed; they are included only to keep the compiler from complaining
+about cases that are not covered.
+@
+The parser uses two different kinds of recursion.
+The direct recursive calls from [[parse']] to itself are all tail
+calls; such calls are ML programmers' way of writing loops.
+In an imperative language, [[parse']] would be written with a loop,
+and it would modify three variables: the stack, the current
+expression, and the inputs.   When the stack and
+inputs were empty, it would exit the loop by returning the current
+expression.
+An imperative version of
+[[parse']] would keep the indirect recursive call through
+[[parseAtom]] and [[parse]].
+@
+\subsection{Unparsing infix expressions}
+
+Before getting into the details of unparsing, we define functions that
+make images from atoms and put parentheses around images.
+\addbox{image        : string -> image}
+\addbox{parenthesize : image  -> image}
+\deeperbox{2pt}
+<<infix>>=
+
+fun image        a  = IMAGE (LEX_ATOM a, EOI)
+fun parenthesize im = IMAGE (PARENS im,  EOI)
+(*unboxval*)
+@ [[infixImage]] combines two images by putting an infix operator
+between them.  It uses [[append]] as an auxiliary function.
+\addbox{append     : image' * image' -> image'}
+\addbox{infixImage : image * rator * image -> image}
+\deeperbox{2pt}
+<<infix>>=
+local 
+  fun append (EOI, image') = image'
+    | append (INFIX($, a, tail), image') = 
+        INFIX($, a, append(tail, image'))
+in
+  fun infixImage (IMAGE(a, tail), $, IMAGE(a', tail')) =
+        IMAGE(a, append(tail, INFIX($, a', tail')))
+(*unboxval*)
+end
+@ 
+To unparse an expression, we produce a \emph{fragment} containing
+not only
+the image of the expression, but also the lowest-precedence operator
+used in the expression.
+That operator tells us enough to decide whether
+to parenthesize that expression when it is used. 
+<<infix>>= 
+type fragment = rator * image
+@ 
+The \emph{top-level operators} of an image are the
+operators that appear outside of parentheses.
+If an image has top-level operators, then the top-level operators
+of least precedence must all have the same associativity, which must
+be [[LEFT]] or [[RIGHT]].
+Otherwise, one of those operators would have to be in parentheses,
+which contradicts the assumption that they are top-level operators.
+@
+The function [[bracket(frag, side, rator)]]  parenthesizes a fragment [[frag]]
+that is to appear next to an operator [[rator]] on the side labelled [[side]]:
+\addbox{bracket : fragment * associativity * rator -> image}
+<<infix>>=
+fun bracket((inner, image), side, outer) =
+  if noparens(inner, outer, side) then image else parenthesize image
+@ Given the ability to bracket fragments, unparsing is straightforward.
+We create another sentinel operator [[maxrator]], having precedence [[maxprec]],
+which must be higher than the precedence of any true operator, so we
+can use it in fragments made from atoms.
+\addbox{unparse' : ast -> rator * image}
+\addbox{unparse  : ast -> image}
+%%% type fragment = rator * image
+\deeperbox{2pt}
+<<infix>>=
+local
+  val maxrator = ("<max-precedence sentinel>", maxprec, NONASSOC)
+  fun unparse' (ATOM a) = (maxrator, image a)
+    | unparse' (APP(l, $, r)) =
+        let val l' = bracket (unparse' l, LEFT,  $)
+            val r' = bracket (unparse' r, RIGHT, $)
+        in  ($, infixImage(l', $, r'))
+        end
+in
+  fun unparse e =
+    let val ($, im) = unparse' e
+    in  im
+    end
+  (*unboxval*)
+end
+@ Using [[bracket]] maintains the precedence and associativity
+invariants of the fragments.
+[[unparse]] first computes a fragment, then discards the operator,
+leaving only the image.
+@
+\subsection{Proof of correctness}
+
+\def\dollar{\mbox{[[$]]}}%
+
+Proving the simple unparser correct helps clarify how the parser and
+unparser work together. 
+The result giving the most insight is Proposition~\ref{prop:nonassoc},
+which gives 
+the properties of the top-level operators produced during unparsing.
+Most of the proof is omitted from the body of the paper; it appears
+instead in Appendix~\ref{app:proof}.
+
+\newcommand{\parser}[3]{\[parse'(#1, #2, #3)\]}
+
+\long\def\proofstext{
+\setcounter{prop}{0}
+\setcounter{defn}{0}
+\setcounter{lemma}{0}
+
+\ifshortproof
+\else
+Proofs are written in a goal-directed, calculational
+style.
+A goal-directed proof begins with a conclusion to be proved, then 
+reasons backwards towards premises.
+ The backwards arrow~$\impliedby$ is pronounced
+``is implied by.''
+\fi
+
+
+\begin{prop}
+[[parse (unparse e)]] $=$ [[e]].
+\end{prop}
+\ifshortproof
+ This proposition follows from
+Proposition~\ref{e-induction}.
+\else
+\begin{proof}
+Rewrite [[parse (unparse e)]] into an
+expression  more easily proved equal to~[[e]].
+\begin{proofstep*}
+[[parse (unparse e)]]
+\end{proofstep*}
+$=$
+(by choosing suitable [[a]] and [[tail]] for the result of
+[[unparse e]])
+\begin{proofstep*}
+[[parse (IMAGE (a, tail))]]
+\end{proofstep*}
+$=$ 
+(by the definition of [[parse]])
+\begin{proofstep*}
+[[parse' (BOT, parseAtom a, tail)]]
+\end{proofstep*}
+$=$ 
+(by the definition of [[append]])
+\begin{proofstep*}
+[[parse' (BOT, parseAtom a, append(tail, EOI))]]
+\end{proofstep*}
+$=$ 
+(by Proposition~\ref{e-induction})
+\begin{proofstep*}
+[[parse'(BOT, e, EOI)]]
+\end{proofstep*}
+$=$ 
+(by definition of [[parse']])
+\begin{proofstep*}
+[[e]]
+\end{proofstep*}
+\end{proof}
+\fi
+
+
+\begin{prop}[Correctness of unparsing in context]
+\ifshortproof\label{e-induction}\fi
+If [[e]] is any expression,  and if\/ [[a]]~and\/~[[tail]] are chosen such
+that \mbox{[[unparse e = IMAGE(a, tail)]]}, 
+and if [[s]] is a parser stack 
+and [[i]]~an input sequence of type [[image']] such that
+for all top-level operators $\op'$ in [[tail]], 
+\D\[noparens(\op', srator~s, RIGHT) \textrm{~and~} noparens(\op', irator~i, LEFT),\]
+then [[parse' (s, parseAtom a, append(tail, i)) = parse' (s, e, i)]].
+\end{prop}
+\ifshortproof
+In other words, even when [[e]]~is a fragment of a
+larger expression, we can parse the concrete syntax 
+[[(a, tail)]] after having
+parsed a prefix (stack~[[s]]) and before parsing
+ a suffix (inputs~[[i]]), and in this context we
+ recover the original expression~[[e]], leaving stack~[[s]] and
+inputs~[[i]]  to be processed.
+The conditions involving [[noparens]] say that the
+top-level operators in \mbox{[[unparse e]]} bind at least as tightly
+as~$\rators$, which is on top of the stack, and at least as tightly as~$\ratori$, which
+follows~[[e]];
+furthermore, when the binding powers are the same, the associativity
+forces the parser to shift or reduce as appropriate.
+\fi
+
+\ifshortproof
+\begin{defn}[Binds as tightly as]
+\label{bind-defn}
+An operator $\rator$ \emph{binds as tightly as} another operator
+[[rator]] if and only if
+  $$\begin{array}{c@{\,}l}
+    &\prec\rator > \prec{[[rator]]}\\
+   \lor&\prec\rator = \prec{[[rator]]} \land \assoc\rator = \assoc{[[rator]]}.
+    \end{array}$$
+\end{defn}
+This relation is like [[noparens]], except it ignores
+the relative positions of 
+operators of the same precedence and associativity.
+This weakening of [[noparens]] yields a reflexive, transitive, binary
+relation, which is in fact a slight variation on ``has precedence at
+least as great.'' 
+\else
+\stepcounter{defn}
+\fi
+
+
+\ifshortproof
+
+\newcommand\parseAtom[1]{parseAtom~##1}
+
+The proof of Proposition~\ref{e-induction} is by structural induction on~[[e]].
+The base case is straightforward.
+To get the idea of the proof of the induction step, we use textual
+juxtaposition to write expressions, inputs, and parser stacks.
+ If~\[e = l \op r\],
+we can write \[unparse~e=a_l t_l \op a_r t_r\], where \[a\]'s are
+atoms and \[t\]'s (tails) are sequences of atoms and operators.
+Writing
+\parser{s}{\parseAtom a_l}{ t_l \op a_r t_r i}
+for the state of the parser, we prove Proposition~\ref{e-induction} by
+showing
+\begin{proofstep*}
+\parser{s}{\parseAtom a_l}{ t_l \op a_r t_r i}
+\end{proofstep*}
+$=$ (by the induction hypothesis applied to \[l\])
+\begin{proofstep*}
+\parser{s}{l}{\op a_r t_r i}
+\end{proofstep*}
+$=$ (by hypothesis, \[noparens(\op, srator~s, RIGHT)\], and the parser shifts)
+\begin{proofstep*}
+\parser{s l \op}{\parseAtom a_r}{t_r i}
+\end{proofstep*}
+$=$ (by the induction hypothesis applied to \[r\])
+\begin{proofstep*}
+\parser{s l \op}{r}{i}
+\end{proofstep*}
+$=$ (by hypothesis, \[noparens(\op, irator~i, LEFT)\], and the parser reduces)
+\begin{proofstep*}
+\parser{s}{l \op r}{i} $=$ \parser{s}{e}{i}
+\end{proofstep*}
+The details  involve showing that the preconditions hold
+and it is safe to apply the induction hypothesis.
+We need facts about the
+results returned by [[unparse]] and [[unparse']], as stated in the
+next two propositions.
+\else
+
+
+\begin{proof}
+ By structural induction on~[[e]].
+If [[e]] is an atom,  write [[e = ATOM x]], and 
+\begin{proofstep*}
+[[parse' (s, parseAtom a, append(tail, i))]]
+\end{proofstep*}
+$=$
+(because by assumption [[unparse e = IMAGE (LEX_ATOM x, EOI)]])
+\begin{proofstep*}
+[[parse' (s, parseAtom (LEX_ATOM x), append(EOI, i))]]
+\end{proofstep*}
+$=$
+(by definitions of [[parseAtom]] and [[append]])
+\begin{proofstep*}
+[[parse' (s, ATOM x, i)]]
+\end{proofstep*}
+$=$
+(by assumption)
+\begin{proofstep*}
+[[parse' (s, e, i)]]
+\end{proofstep*}
+
+
+
+
+For the induction step, \[e\] must have the form
+\[e = APP(l, \op, r)\], and we can choose \[l'\]~and~\[r'\] as in
+\[unparse'\], so
+ \[unparse~e = infixImage(l', \op, r')\].
+Because both \[l'\] and \[r'\] have type [[image]], we can
+write \[l' = IMAGE(a_l, t_l)\] and  \[r' = IMAGE(a_r, t_r)\].
+By using juxtaposition to abbreviate appending, we 
+write
+\[unparse~e = a_l t_l \op a_r t_r\].%
+\footnote{This shorthand abbreviates % the mouthful 
+\[unparse~e = IMAGE(a_l, append(t_l, INFIX(\op, a_r, t_r)))\].}
+We therefore consider
+\begin{proofstep*}
+\[parse'(s, [[parseAtom]]~a_l, t_l \op a_r t_r i)\]
+\end{proofstep*}
+$=$ 
+(by applying the induction hypothesis to~\[l'\], as justified below)
+\begin{proofstep*}
+\[parse'(s, l, \op a_r t_r i)\]
+\end{proofstep*}
+\proofhang $=$ 
+(by definition of [[parse']], the parser shifts, because by
+hypothesis, $\op$~is a top-level operator from \mbox{[[unparse e]]}
+and therefore 
+\[noparens(\op, srator~s, RIGHT)\])
+\begin{proofstep*}
+\[parse'(s l \op, [[parseAtom]]~a_r, t_r i)\]
+\end{proofstep*}
+$=$ 
+(by applying the induction hypothesis to~\[r'\], as justified below)
+\begin{proofstep*}
+\[parse'(s l \op, r, i)\]
+\end{proofstep*}
+\proofhang $=$ 
+(by definition of [[parse']], the parser reduces, because by
+hypothesis, $\op$~is a top-level operator from \mbox{[[unparse e]]}
+and therefore
+\[noparens(\op, irator~i, LEFT)\])
+\begin{proofstep*}
+\[parse'(s, APP(l, \op, r), i)\]
+\end{proofstep*}
+$=$ 
+(by assumption)
+\begin{proofstep*}
+\[parse'(s, e, i)\]
+\end{proofstep*}
+
+
+It remains to justify applying the induction hypothesis to
+\[l'\]~and~\[r'\].
+By definition of [[unparse]] and [[bracket]], either 
+\D\[l' = unparse~l \textrm{\qquad or\qquad}l' = parenthesize(unparse~l).\]
+In the latter case, \[l' = IMAGE(PARENS(unparse~l), EOI)\], so by the
+definitions of \[a_l\]~and~\[t_l\], we have
+\[a_l = PARENS(unparse~l)\] and \[t_l = EOI\], and
+\begin{proofstep*}
+\[parse'(s, [[parseAtom]]~a_l, t_l \op a_r t_r i)\]
+\end{proofstep*}
+$=$ (by assumption and by definition of [[parseAtom]])
+\begin{proofstep*}
+\[parse'(s, parse(unparse~l), \op a_r t_r i)\]
+\end{proofstep*}
+\proofhang
+$=$ (by the induction hypothesis applied to~\[l\], with empty stack and inputs)
+\begin{proofstep*}
+\[parse'(s, l, \op a_r t_r i)\]
+\end{proofstep*}
+which is the step made above.
+
+The case where \[l' = unparse~l\] is the interesting case.
+\begin{proofstep*}
+\[parse'(s, [[parseAtom]]~a_l, t_l \op a_r t_r i)\]
+\end{proofstep*}
+\proofhang $=$ (For all top-level operators~$\op'$ in~\[t_l\],
+ \[noparens(\op', \op, LEFT)\], and we apply the induction hypothesis
+ with the inputs \[\op r' ~ i\], concluding that)
+\begin{proofstep*}
+\[parse'(s, [[parseAtom]]~a_l, t_l \op a_r t_r i)\]
+\end{proofstep*}
+\noindent
+We must show \[noparens(\op', \op, LEFT)\] for any top-level $\op'$
+from~\[t_l\]. 
+If~$\op$ is non- or right-associative, then by 
+Proposition~\ref{prop:nonassoc}, $\prec \op' > \prec \op$, and 
+\[noparens(\op', \op, LEFT)\] follows.
+If~$\op$ is left-associative, then
+\begin{proofstep*}
+\[noparens(\op', \op, LEFT)\]
+\end{proofstep*}
+$\impliedby$ (by definition of [[noparens]] and left-associativity of~$\op$)
+\begin{proofstep*}
+$\op'$ binds as tightly as $\op$
+\end{proofstep*}
+$\impliedby$ (transitivity)
+\begin{proofstep*}
+$\mbox{$\op'$ binds as tightly as $\op_l$} \land
+ \mbox{$\op_l$ binds as tightly as $\op$}$
+\end{proofstep*}
+Where \[unparse'~ l = (\op_l, a_l t_l)\] and the two clauses follow by
+applying Proposition~\ref{unparse-covered} to \[l\]~and~\[e\].
+\end{proof}
+\fi
+
+\begin{prop}
+\ifshortproof\label{prop:nonassoc}\fi
+If an expression \[e = APP(l,  \op,  r)\], then we can choose \[l'\] and
+\[r'\] as in \[unparse'\], so that
+\[unparse~e = l' \op r'\].
+\begin{enumerate}
+\item
+If $\op$ is non-associative, then every top-level operator in \[l'\] and \[r'\] has a
+ precedence  greater than that of $\op$.
+\item
+If $\op$ is left-associative, then every top-level operator in \[r'\] has a
+ precedence  greater than that of $\op$.
+\item
+If $\op$ is right-associative, then every top-level operator in \[l'\] has a
+ precedence  greater than that of $\op$.
+\end{enumerate}
+\end{prop}
+
+\ifshortproof
+\else
+
+\newcommand\preland{\llap{$\land$~}\ignorespaces}
+
+\begin{proof}
+First, do case
+analysis on \[l' = bracket(unparse'~l, LEFT, \op)\].
+If \[l'\]~is parenthesized, then (3) and half of~(1) hold vacuously
+because \[l'\]~has no top-level operators.
+Otherwise, we can assume that \[unparse'~l = (\op_l, l')\], and
+\begin{proofstep*}
+For all top-level operators \[\op'\] in \[l'\], $\prec{\op'}>\prec\op$
+\end{proofstep*}
+$\impliedby$ (introducing \[\op_l\])
+\begin{proofstep*}
+For all top-level operators \[\op'\] in \[l'\], \rlap{$\prec{\op'}\ge\prec{\op_l}$}\\
+\preland
+\[\prec{\op_l} > \prec\op\]
+\end{proofstep*}
+$\impliedby$ (definitions of ``covered'' and ``binds as tightly as'')
+\begin{proofstep*}
+Fragment \[(\op_l, l')\] is covered
+%%% \\$\land$&
+$\land$
+\[\prec{\op_l} > \prec\op\]
+\end{proofstep*}
+$\impliedby$ (definition of [[noparens]])
+\begin{proofstep*}
+Fragment \[(\op_l, l')\] is covered
+\\\preland
+\[noparens((\op_l, l'), \op, LEFT) \land \assoc\op \ne LEFT\]
+\end{proofstep*}
+$\impliedby$ (definition of [[bracket]])
+\begin{proofstep*}
+Fragment \[(\op_l, l')\] is covered
+\\\preland
+\[bracket((\op_l, l'), \op, LEFT)\] is not parenthesized
+$ \land$  \rlap{\[ \assoc\op \ne LEFT\]}
+\end{proofstep*}
+$=$ (by assumption)
+\begin{proofstep*}
+[[unparse l]] is covered
+\\\preland
+\[l'\] is not parenthesized
+$ \land$  \[ \assoc\op \ne LEFT\]
+\end{proofstep*}
+$\impliedby$ (Proposition~\ref{unparse-covered}, assumption)
+\begin{proofstep*}
+\[ \assoc\op \ne LEFT\]
+\end{proofstep*}
+Which proves (3) and half of~(1).  A similar argument proves (2)~and the
+other half of~(1).
+\end{proof}
+\fi
+
+
+\begin{prop}\ifshortproof\label{unparse-covered}\fi
+For any expression [[e]], [[unparse' e]] is properly covered%
+\ifshortproof , as defined below\fi.
+\end{prop}
+
+\ifshortproof
+\begin{defn}[Covered, properly covered]
+\label{defn:covered}
+A fragment [[frag = (rator, im)]] is \emph{covered} if and only
+if every top-level operator in [[im]] binds as tightly as [[rator]].
+A covered fragment is \emph{properly covered} if and only if
+ [[rator = maxrator]] or there is at least
+one top-level operator in [[im]].
+\end{defn}
+The intuition behind a covered fragment [[(rator, im)]] is that
+low-precedence operators in [[im]], which do not bind as tightly
+as~[[rator]], are safely ``covered'' with parentheses.
+Proper coverage avoids pathology for fragments that don't have any
+top-level operators.
+\fi
+
+\ifshortproof
+Proposition~\ref{prop:nonassoc} is proved by case analysis on the
+result returned by~[[bracket]].
+Proposition~\ref{unparse-covered} is proved by structural induction on
+the expression unparsed.
+The proof uses this lemma:
+\fi
+
+\ifshortproof
+\else
+%
+\begin{proof}
+ By structural induction.
+The base case is trivial.
+
+For the induction step, we must prove
+\begin{proofstep*}
+[[unparse' e]] is properly covered
+\end{proofstep*}
+\proofhang
+$=$ (letting \[e = l \op r\]
+  and \[unparse~e = l' \op r'\] as above)
+\begin{proofstep*}
+\[(\op, l' \op r')\]  is properly covered
+\end{proofstep*}
+$\impliedby$
+($\op$ is a top-level operator of \[l' \op r'\])
+\begin{proofstep*}
+\[(\op, l' \op r')\]  is covered
+\end{proofstep*}
+$=$ (definition of ``covered'')
+\begin{proofstep*}
+\[\mbox{For all top-level operators } \op' \mbox{~in~} l' \op r', 
+     \op' \mbox{~binds as tightly as~} \op
+\]
+\end{proofstep*}
+$=$ (distributing)
+\begin{proofstep*}
+\[\mbox{For all top-level operators } \op' \mbox{~in~} l',
+     \op' \mbox{~binds as tightly as~} \op
+\]\\
+\preland \[\op \mbox{~binds as tightly as~} \op\]\\
+\preland
+\[\mbox{For all top-level operators } \op' \mbox{~in~} r',
+     \op' \mbox{~binds as tightly as~} \op
+\]
+\end{proofstep*}
+$=$ (reflexivity of ``binds as tightly as,'' definition of
+``covered'')
+\begin{proofstep*}
+\[(\op, l')\] is covered $\land$ \[(\op, r')\] is covered
+\end{proofstep*}
+$=$ (body of [[unparse']])
+\begin{proofstep*}
+\[(\op, bracket(unparse'~l, LEFT, \op))\] is covered
+\\ \preland
+\[(\op, bracket(unparse'~r, RIGHT, \op))\] is covered
+\end{proofstep*}
+$\impliedby$ (bracketing lemma)
+\begin{proofstep*}
+\[unparse'~l\] properly covered and \[unparse'~r\] properly covered
+\end{proofstep*}
+which is the induction hypothesis.
+\end{proof}
+%
+\fi
+
+%%%%%
+
+
+
+%%%
+
+{\hfuzz=3.8pt
+
+\begin{lemma}[Bracketing lemma]
+\ifshortproof\label{bracket-lemma}\fi
+If fragment [[f]] is properly covered, then for any operator [[rator]] and
+associativity~[[a]], [[bf = (rator, bracket(f, a, rator))]] is covered.
+\end{lemma}
+\ifshortproof
+The lemma is proved by case analysis on whether [[bracket]]
+parenthesizes its 
+fragment.
+The proof uses transitivity of ``binds as tightly as.''
+\else
+\begin{proof}
+ By case analysis on the result of~[[bracket]].
+If the result is parenthesized, then [[bf]] is trivially covered,
+because it contains no top-level operators.
+
+Otherwise, let us write [[f = ($, im)]].
+Our goal is to show that
+\begin{proofstep}
+\mbox{[[bf = (rator, bracket(($, im), a, rator)]] is covered.}
+\end{proofstep}
+$\impliedby$ (by the assumption that the result of [[bracket]] is
+[[im]])
+\begin{proofstep}
+\mbox{[[(rator, im)]] is covered}
+\end{proofstep}
+$\equiv$ (by Definition~\ref{defn:covered})
+\newcommand\forallrator{\mbox{For all top-level operators $\rator$ in [[im]]}}%
+\newcommand\allrator{\multicolumn{2}{l}{\forallrator}}%
+\begin{proofstep}
+\forallrator, \rator \,\mbox{binds as tightly as [[rator]]}
+\end{proofstep}
+$\impliedby$ (by transitivity of ``binds as tightly as'')
+\begin{proofstep}
+\forallrator, \phantom{\land} \rator \mbox{ binds as tightly as [[$]]}\\
+           \phantom{\forallrator, } \land \mbox{ [[$]] binds as tightly as [[rator]]}\\
+\end{proofstep}
+$\impliedby$ (pulling second clause out of $\forall$ and strengthening it)
+\begin{proofstep}
+    (\forallrator,\rator \mbox{ binds as tightly as [[$]]})\\
+  \preland  \mbox{[[$]] binds as tightly as [[rator]]} \land
+  \assoc\dollar = \mbox{[[a]]}
+\end{proofstep}
+$\equiv$ (by definitions of ``covered'' and [[noparens]])
+\begin{proofstep}
+\mbox{[[($, im)]] is covered}\\
+  \preland  \mbox{[[noparens($, rator, a)]]}
+\end{proofstep}
+$\impliedby$ (by definition of ``properly covered'' and of [[bracket]])
+\begin{proofstep}
+\mbox{[[($, im)]] is properly covered}\\
+  \preland  \mbox{[[bracket(($, im), ]]$\assoc\dollar$[[, rator)]] 
+is not parenthesized}
+\end{proofstep} 
+both of which are true by assumption.
+\end{proof}
+\fi
+
+} % end of \hfuzz
+
+} %%%%%%%%%%%%%% end of \proofstext
+
+
+
+
+
+\newif\ifshortproof
+\shortprooftrue
+\proofstext
+
+
+The proof is not as simple as it would have been if  [[parse]] and
+[[unparse]]
+had been designed in tandem with a proof,
+but [[parse]] and
+[[unparse]] were designed to have simple implementations, not a simple proof.
+One reason the proof is complex is that
+the functions are not full inverses; because parsing leaves no record
+of redundant parentheses, \[unparse(parse~e)\ne e\].
+Moreover, although the functions are partial inverses, the
+computations are not inverses.
+The parser is an LR~parser, working left to right with an
+explicit stack.
+The unparser works not left to right but bottom-up, with
+an implicit stack created by recursive calls.
+
+An alternative approach to  unparsing might begin
+with a parser and attempt to derive an unparser using
+the program-transformation techniques known as
+\emph{program inversion}.\cite{gries:science,chen:inversion,von-wright:inversion}\label{corr:inversion}
+If successful, this attempt would produce an unparser that would be correct
+by construction, but it would look substantially different from the
+one presented here.
+Program-inversion rules have been developed for simple programming
+calculi, not real programming languages, so the unparser would have to
+be translated into a programming language in order to be executed.
+The unparsers in this paper are executable directly, and they are
+designed to be easy to understand, even if that design makes the proof
+of correctness harder to understand.
+
+
+
+\section{Adding prefix and postfix operators}
+
+
+ Simple
+infix expressions are inadequate for many real programming languages,
+including C and ML.
+% Java?
+In this section, we add unary
+ prefix and postfix
+operators, 
+as well as infix operators of arbitrary arity.
+Moreover, we use the Standard ML modules system to generalize our idea
+of what an image is, so we can produce output for a prettyprinter, not
+just text.
+
+
+
+\emph{Fixity}  distinguishes prefix and postfix operators from infix
+operators.
+Only infix operators have associativity.
+<<assoc.sml>>=
+structure Assoc = struct
+  datatype associativity = LEFT | RIGHT | NONASSOC
+  datatype fixity = PREFIX | POSTFIX | INFIX of associativity
+end
+@ From these definitions,
+ the possible values of type [[fixity]] are [[PREFIX]],
+[[POSTFIX]], \mbox{[[INFIX LEFT]]}, \mbox{[[INFIX RIGHT]]}, and \mbox{[[INFIX NONASSOC]]}.
+
+
+
+Having  prefix and postfix operators means that precedence alone no
+longer determines 
+the correct parse, because the order of two prefix or of two postfix
+operators overrides precedence.
+For example, if [[++]] and [[*]] are prefix operators and [[p]]
+is an atom, then no matter what the precedences of [[++]]
+and [[*]], 
+[[++*p]] and [[*++p]] are both
+correct and unambiguous, equivalent to [[++(*p)]] and
+[[*(++p)]], respectively.
+
+Infix operators of arbitrary arity broaden our
+view of non-associative operators.
+For example, in both ML and C, the following three expressions are all
+legal, but all
+different:
+\begin{quote}
+$[[f((a, b), c)]] \ne [[f(a, b, c)]] \ne [[f(a, (b, c))]]$
+\end{quote}
+ The comma operator is an
+$n$-ary, infix, non-associative operator.
+@ 
+Operators now have a concrete representation, a precedence, and a fixity.
+<<general types>>=
+type precedence = Atom.Precedence.precedence
+type rator = Atom.atom * precedence * Assoc.fixity
+@ In expressions, 
+operators may be unary, binary, or $n$-ary.
+<<type of expressions>>=
+datatype ast = ATOM   of Atom.atom
+             | UNARY  of rator * ast
+             | BINARY of ast * rator * ast
+             | NARY   of rator * ast list
+@ List types are built in to ML.
+Type [['a list]] means ``a list of values of type~[['a]],'' for any
+type~[['a]].
+It is convenient to treat \texttt{NARY($\oplus$, [e])} as
+equivalent to \texttt{e} for any~$\oplus$; [[[e]]] is the singleton
+list containing~[[e]].
+@ 
+In this new implementation,  atomic components of
+expressions are no longer limited to strings, but may be any values of
+any type.
+That type is given the name 
+[[Atom.atom]], but it is not otherwise specified.
+The user of the unparser can pick any convenient type, e.g.,
+prettyprinter directives.
+The structure [[Atom]] is a
+parameter to the unparser module.
+It must
+provide the following types and values:
+<<properties of structure [[Atom]]>>=
+type atom (* representation of operator or atomic expression *)
+val parenthesize : atom list -> atom
+@ The unparser uses [[Atom.parenthesize]] to parenthesize a list of atoms.
+@
+The chunk [[<<properties of structure [[Atom]]>>]] exploits a feature
+of the Standard~ML modules system; in a \emph{signature}, we can name
+types and values without giving their definitions.
+The unparser module is parameterized by a module called [[Atom]], and
+it works with \emph{any} [[Atom]] that provides a type~[[atom]], a
+function [[parenthesize]], and the other values listed in
+[[<<properties of structure [[Atom]]>>]]. 
+This parameterization makes the unparser general and easy to reuse.
+@
+To make this general capability as useful as possible,
+we make it possible to have the unparser add ``decorations'' to
+list of atoms.
+We do so by adding another kind of expression.
+<<type of expressions>>=
+             | DECORATE of (Atom.atom list -> Atom.atom) * ast
+@ The [[DECORATE]] constructor attaches a ``decoration function'' to an expression.
+% , which has the type \mbox{[[Atom.atom list -> Atom.atom]]},
+The decoration function must transform a list of atoms into a single
+atom in a way that is indetectible by the parser.
+For example, a decoration function might add values of type
+[[Atom.atom]] that indicate 
+changes in indentation, color, or font of
+the unparsed text.
+These values would appear to the parser as white space.
+@ 
+Finally,  the user of the unparser must supply minimum and
+maximum precedences, which are used to define the sentinels [[minrator]]
+and [[maxrator]].
+<<properties of structure [[Atom]]>>=
+structure Precedence : sig
+  type precedence
+  val min : precedence (* precedence below that of any operator *)
+  val max : precedence (* precedence above that of any operator *)
+  val compare : precedence * precedence -> order
+end
+val bogus : atom (* bogus atom used to make sentinel operators *)
+@ In many applications, [[minprec]] and [[maxprec]] can be computed
+automatically.  
+@
+The datatype [[ast]] and the structure [[Atom]] form the external
+interfaces to the unparser.
+In the implementation, images are more general---operators and atomic
+terms no longer alternate, but they are 
+still properly parenthesized:
+\begin{production}{image}
+\sequence{\term{operator} |\ \nt{lexical-atom} |\ \nt{decorated-image}}
+\end{production}
+\productionglue
+\begin{production}{lexical-atom}
+   \term{atom} \vbar\ \lit( \nt{image} \lit)\end{production} 
+The corresponding ML types are:
+% these types really shouldn't be exported, but this may be temporary
+% (to compare parsers)
+<<general types>>=
+datatype  image  = IMAGE     of lexeme list
+and       lexeme = RATOR     of rator
+                 | EXP       of lexical_atom
+                 | DECORATED of (Atom.atom list -> Atom.atom) * image
+and lexical_atom = LEX_ATOM  of Atom.atom
+                 | PARENS    of image
+@ where [[lexeme]] corresponds to 
+\alternate{\term{operator} |\ \nt{lexical-atom} |\ \nt{decorated-image}}.
+@
+Type [[image]] is internal;
+the unparser returns a list of atoms.
+It uses [[flatten]] to convert an [[image]] into such a list.
+It uses [[Atom.parenthesize]]  for parenthesization.
+\addbox{image        : image  -> Atom.atom list}
+\addbox{lexeme       : lexeme -> Atom.atom}
+\addbox{lexical_atom : lexical_atom -> Atom.atom}
+\addbox{flatten      : image  -> Atom.atom list}
+<<general>>=
+
+
+local
+  fun image (IMAGE l) = map lexeme l
+  and lexeme (RATOR (atom, _, _)) = atom
+    | lexeme (EXP a) = lexical_atom a
+    | lexeme (DECORATED (f, im)) = f (image im)
+  and lexical_atom (LEX_ATOM atom) = atom
+    | lexical_atom (PARENS im) = Atom.parenthesize (image im)
+in
+  val flatten = image
+  (*unboxval*)
+end
+@ Each local function computes an atom or list of atoms that
+corresponds to a value of one type.\label{corr:flatten}
+By programming convention, the name of each function is the name of
+the type it operates on.
+Because [[local]] hides these functions,  [[flatten]] is the only name visible
+outside this code chunk.
+@
+ 
+\subsection{Parenthesizing general expressions}
+
+As in the simpler case,  development of an unparser begins
+with the invariants that apply to 
+ an abstract syntax tree produced by parsing an image without
+ parentheses.
+ There are now three cases to consider: an operator may be the left child
+of a binary infix operator, the right child of a binary infix
+operator, or the only child of a unary prefix or postfix operator.
+\begin{center}\tt
+\setlength{\unitlength}{0.05in}%
+\begin{picture}(14,19)(47,-32)
+\put(55,-15){\makebox(0,0)[b]{$\op$}}
+\put(50,-30){\makebox(0,0)[b]{\[\op_l\]}}
+\drawline(54,-16)(50,-26)
+\dashline{1}(56,-16)(60,-26)
+\put(55,-34){\makebox(0,0)[b]{\small\textrm{(a)}}}
+\end{picture}%
+\qquad\qquad
+\begin{picture}(14,19)(47,-32)
+\put(55,-15){\makebox(0,0)[b]{$\op$}}
+\put(61,-30){\makebox(0,0)[b]{\[\op_r\]}} 
+\put(55,-34){\makebox(0,0)[b]{\small\textrm{(b)}}}
+\dashline{1}(54,-16)(50,-26)
+\drawline(56,-16)(60,-26)
+\end{picture}%
+\qquad\qquad
+\begin{picture}(14,19)(47,-32)
+\put(55,-15){\makebox(0,0)[b]{$\op$}}
+\put(55,-30){\makebox(0,0)[b]{\rlap{$\op'$}\phantom{$\op$}}} % was (55,-30)
+\drawline(55,-16)(55,-26)
+\put(55,-34){\makebox(0,0)[b]{\small\textrm{(c)}}}
+\end{picture}%
+\end{center}
+As before, the rules for parenthesization are encapsulated in a
+[[noparens]] function.
+Because
+ these trees are obtained by parsing parenthesis-free syntax, 
+in case~(a), \[noparens(\op_l, \op, LEFT)\];
+in case~(b), \[noparens(\op_r, \op, RIGHT)\]; and
+in case~(c), \[noparens(\op', \op, NONASSOC)\].
+\addbox{noparens : rator * rator * Assoc.associativity -> bool}
+\deeperbox{2pt}
+<<general>>=
+fun noparens(inner as (_, pi, fi), outer as (_, po, fo), side) =
+  case Atom.Precedence.compare (pi, po)
+    of GREATER => true                      (* (a), (b), or (c) *)
+     | pdiff =>
+         case (fi, side)
+           of (POSTFIX,     LEFT)  => true               (* (a) *)
+            | (PREFIX,      RIGHT) => true               (* (b) *)
+            | (INFIX LEFT,  LEFT)  => 
+                 pdiff = EQUAL andalso fo = INFIX LEFT   (* (a) *)
+            | (INFIX RIGHT, RIGHT) => 
+                 pdiff = EQUAL andalso fo = INFIX RIGHT  (* (b) *)
+            | (_,           NONASSOC) => fi = fo         (* (c) *)
+            | _ => false
+(*unboxval*)
+@ These rules can be understood as follows:
+\begin{itemize}
+\item 
+If the inner operator has higher precedence, parentheses are not
+needed.
+\item
+If a postfix operator appears to the left of an infix operator~(a), it
+always applies to the preceding expression, and parentheses are not
+needed.
+Similarly when a prefix operator appears to the right of an infix
+operator~(b).
+\item
+In case~(a), if $\op_l$ has lower precedence than~$\op$, then
+parentheses are needed, but if the two have the same precedence, then
+parentheses can be avoided, \emph{provided} both are left-associative.
+A similar argument applies to case~(b) when both operators are
+right-associative.
+\item
+Finally, in case~(c), if the precedence of $\op'$ is not greater than
+the precedence of~$\op$, then parentheses can be avoided if and only
+if both operators have the same fixity, i.e., both are prefix
+operators or both are postfix operators.
+This is the case in the example of [[++*p]] used to
+introduce this section.
+\end{itemize}
+These rules for parenthesization, as embodied in the [[noparens]]
+predicate, are the key to understanding both parsing and unparsing algorithms.
+The [[noparens]] function is used in an unparser, which appears
+below,  and in a parser, which appears in Appendix~\ref{parser}.
+@
+
+As before, the unparser needs auxiliary functions to manipulate images.
+Because an image is now simply a list of lexemes, 
+these functions are a bit simpler.
+\addbox{image        : Atom.atom -> image}
+\addbox{parenthesize : image -> image}
+\addbox{infixImage   : image * rator * image -> image}
+\addbox{prefixImage  :         rator * image -> image}
+\addbox{postfixImage : image * rator         -> image}
+<<general>>=
+
+
+
+
+fun image a            = IMAGE [EXP (LEX_ATOM a)]
+fun parenthesize image = IMAGE [EXP (PARENS image)]
+fun infixImage  (IMAGE l, $, IMAGE r) = IMAGE (l @ RATOR $ :: r)
+fun prefixImage (         $, IMAGE r) = IMAGE (    RATOR $ :: r)
+fun postfixImage(IMAGE l, $         ) = IMAGE (l @ RATOR $ :: [])
+(*unboxval*)
+@ where [[@]], [[::]], and [[[]]] are list append, cons, and the empty
+list, which are all predefined in ML.
+@
+We use the same [[bracket]] to parenthesize sub-expressions.
+\addbox{bracket : fragment * Assoc.associativity * rator -> image}
+\deeperbox{2pt}
+<<general>>=
+type fragment = rator * image
+fun bracket((inner, image), side, outer) =
+  if noparens(inner, outer, side) then image else parenthesize image
+(*unboxval*)
+@ 
+The structure of the unparser is as before:
+\addbox{unparse : ast -> Atom.atom list}
+<<general>>=
+local
+  val maxrator = (Atom.bogus, Atom.Precedence.max, INFIX NONASSOC)
+  exception Impossible
+  <<function [[unparse']], to map an expression to a fragment>>
+in
+  fun unparse e = 
+    let val ($, im) = unparse' e
+    in  flatten im
+    end
+(*unboxval*)
+end
+@ 
+The unparsing function itself has new cases: the unary operator,
+the $n$-ary operator, and the decorated expression.
+The unary operator appears before or after its operand, depending on
+its fixity.
+\addbox{unparse' : ast -> fragment}
+<<function [[unparse']], to map an expression to a fragment>>=
+fun unparse' (ATOM a) = (maxrator, image a)
+  | unparse' (BINARY(l, $, r)) =
+      let val l' = bracket (unparse' l, LEFT,  $)
+          val r' = bracket (unparse' r, RIGHT, $)
+      in  ($, infixImage(l', $, r'))
+      end
+  | unparse' (UNARY($, e)) =
+      let val e' = bracket (unparse' e, NONASSOC, $)
+          val (_, _, fixity) = $
+      in  ($, case fixity of PREFIX  => prefixImage ($, e') 
+                           | POSTFIX => postfixImage(e', $)
+	                   | INFIX _ => raise Impossible)
+      end
+  | unparse' (NARY(_, []))    = raise Impossible
+  | unparse' (NARY($, [e]))   = unparse' e
+  | unparse' (NARY($, e::es)) = 
+      let val leftmost = bracket(unparse' e, LEFT, $)
+          fun addOne(r, leftPrefix) =
+	        infixImage(leftPrefix, $,
+			   bracket(unparse' r, RIGHT, $))
+      in  ($, foldl addOne leftmost es)
+      end
+  | unparse' (DECORATE (f, e)) =
+      let val ($, im) = unparse' e
+      in  ($, IMAGE [DECORATED (f, im)])
+      end
+(*unboxval*)
+@ The interesting case for the $n$-ary operator is covered by the
+pattern [[NARY($, e::es)]], 
+which represents the operator~[[$]] applied to more than one operand.
+The code inserts~[[$]] between the operands.
+The first operand,~[[e]], is used to make [[leftmost]], an initial
+``left prefix.'' 
+The [[addOne]] function extends the left prefix,  adding operator and
+operand on the right.
+The built-in [[foldl]] function walks the list~[[es]],  using
+[[addOne]] to extend the left prefix with 
+the remaining operands.
+Because both [[LEFT]] and [[RIGHT]] are used in the arguments to
+[[bracket]], operator must be non-associative for the operands to be
+parenthesized properly. 
+Of course, no other associativity makes sense, because a left- or
+right-associative operator can always be treated as an infix binary
+operator.
+The $n$-ary case is needed only for non-associative operators.
+@
+\section{Using the unparser}
+
+Before the unparser can be used, it has to be instantiated with a
+suitable [[Atom]] module.
+Once the user creates an [[Atom]] module, he or she combines it with
+the unparser's implementation  to create [[Unparser]], an instance of
+the unparser 
+that is specialized to that particular [[Atom]].\label{corr:Unparser}
+This instance provides the datatype [[ast]], with its
+contructors [[ATOM]], [[UNARY]], etc.
+It also provides an unparsing function.
+<<values exported by the unparser>>=
+val unparse : ast -> Atom.atom list
+@ 
+Once the unparser is instantiated, it can be used in a real tool, where
+unparsing is usually one of a series of transformations.
+In a typical application generator, a program being generated passes
+through several representations: 
+\begin{itemize}
+\item an application-specific internal representation,
+\item an unparsing tree of type [[Unparser.ast]],
+\item 
+a list of atoms of type [[Atom.atom list]], which typically
+includes prettyprinting directives as well as text, and
+\item 
+the final program, represented as nicely indented text in the target
+language.
+\end{itemize}
+This section discusses transformation from an internal representation
+into an unparsing tree, using examples from 
+the New Jersey Machine-Code Toolkit.\cite{ramsey:jersey}
+The first part of this paper discusses
+ transformation from an
+unparsing tree to a list of atoms.
+References \refno{oppen:prettyprinting}~and~\refno{hughes:pretty-printing}
+discuss  transformation of 
+prettyprinting directives to indented text. 
+
+
+%%   uses the
+%%  unparser to emit C~code.\remark{What is [[Unparser]], [[unparse]]?  Sig?}
+%%  Most of the expressions in the C~code come from solving equations
+%%  \cite{ramsey:solver}.
+%%  Internally, the toolkit represents expressions using a different
+%%  ML~constructor for each operator; this representation facilitates
+%%  algebraic simplification.
+%%  Emitting C~code therefore takes three steps: transforming the internal
+%%  representation of expressions to the simpler representation used by
+%%  the unparser, running the unparser to get input for a prettyprinter,
+%%  and finally running the prettyprinter to get C~source code.
+%%  The prettyprinter uses a model like that of \citeN{pugh:pretty}, but it
+%%  uses a dynamic-programming algorithm to convert to text.
+
+A preliminary step in creating unparsing trees is assigning precedence and
+associativity to the operators of the target language.
+This can be done easily and reliably by putting
+operators in a data structure that indicates precedence implicitly and
+fixity (which includes associativity) explicitly.
+A fragment of the structure used for~C is
+\begin{alltt}
+     \vdots
+  (L, [">>", "@<<"]),
+  (L, ["+", "-"]),
+  (L, ["%", "/", "*"]),
+     \vdots
+\end{alltt}
+where [[L]] is an abbreviation for [[Assoc.INFIX Assoc.LEFT]],
+``infix left'' being one of the five possible fixities.
+Precedence increases as we move down the structure.
+This data structure is transformed into functions [[Cprec]] and
+[[Cfixity]] that return the precedence and fixity of given
+operators.
+It is also used
+to compute the values of [[minprec]] and [[maxprec]], which are needed
+to create an unparser.
+
+%%  These functions are used in turn to define functions that create
+%%  values of type [[Unparser.ast]], e.g.,
+%%  \begin{alltt}\hfuzz=23pt
+%%  fun binary $ = 
+%%    let val optext = pptext (" " ^ $ ^ " ")
+%%    in  fn (l, r) => Unparser.BINARY(l, (optext, Cprec $, Cfixity $), r)
+%%    end
+%%  val />>/ = binary ">>"
+%%   \vdots
+%%  \end{alltt}
+%%  where [[pptext]] turns a string into input for the prettyprinter.
+
+
+
+Supplying [[minprec]] and [[maxprec]] to the unparser may seem
+awkward.\label{corr:minprec}
+One could supply instead a list of all operators to be used, letting
+the unparser compute [[minprec]] and [[maxprec]].
+This technique seems unnecessarily restrictive; it would limit the
+unparser not only to a single kind of atom, but also to a single set
+of operators.  
+As written, one unparser can be (and is) used to
+emit code in different target languages, using different operator
+sets.
+
+Another way to eliminate [[minprec]] and [[maxprec]] would be to use a
+different representation of 
+precedence inside the unparser, e.g., 
+to represent precedence by an ML datatype that included values
+$+\infty$ and $-\infty$ in addition to all the integers.
+In a production environment, eliminating [[minprec]] and [[maxprec]]
+from the  interface would justify a more complex
+implementation.
+For expository purposes, however, another user-defined
+datatype and special comparison functions would distract
+readers from the explanation of unparsing.
+
+
+%%  
+%%  
+%%  Functions like [[/>>/]] can be declared infix in~ML; by careful use of
+%%  such declarations, we can generate C~code by using ML~code that is
+%%  reminiscent of C~code.
+%%  For example, this code fragment transforms the toolkit's internal
+%%  representation of a range test into the [[Unparser.ast]]
+%%  representation of the ultimate C~code.
+%%  The internal form [[U.INRANGE(e, {lo, hi})]] represents the predicate 
+%%  \mbox{$\mathtt{lo} \le \mathtt{e} < \mathtt{hi}$}, in which
+%%  [[e]] is an arbitrary expression, and [[lo]] and [[hi]] are integers
+%%  known at transformation time.
+%%  \vskip 0pt plus15pt\penalty-20\vskip0pt plus -15pt
+%%  <parts of transformation to C>>=
+%%  fun exp(U.INRANGE(e, {lo, hi})) =
+%%  	  if lo + 1 = hi then exp e /==/ ppcon lo
+%%  	  else ppcon lo /<=/ exp e /&&/ exp e /</ ppcon hi
+%%  @ where [[ppcon]] converts an integer to a fragment of prettyprinter input,
+%%  which is of the proper type [[Atom.atom]].\remark{builds ast}
+
+The fixities of operators can be surprising.
+For example, the C operators [[.]]~and~[[->]], which are used to
+select members from structures and unions, are superficially binary
+infix operators, but their right-hand ``arguments'' are not
+expressions but identifiers, and semantically they are unary
+operators.
+The Toolkit in fact treats them as unary postfix operators, choosing
+their representations dynamically according to what member is being
+selected.
+For example, to create an unparsing tree corresponding to the
+selection of member [[tag]] from structure~[[e]], it uses the function
+\addbox{dot : Unparser.ast * string -> Unparser.ast}
+<<tree-creation functions>>=
+fun dot (e, tag) = 
+  Unparser.UNARY((pptext ("." ^ tag), Cprec ".", Assoc.POSTFIX), e)
+@ Here the ML~[[^]] operator is string concatenation.
+The
+[[pptext]] function takes a string and converts it to an
+[[Atom.atom]], making it intelligible to the prettyprinter.
+@
+
+Handling mixfix operators may involve unparsing some trees during the
+construction of other trees.
+For example, to translate an  array-indexing expression into~C, 
+one must put the subscript in
+square brackets.
+The subscript is  unparsed independently and turned into an atom by
+applying [[pplist]].
+It is then wrapped in square brackets, and
+the indexing operation itself is represented by the empty string, but
+with proper precedence and associativity, which, for
+example, enable the unparser to produce either [[*p[n]]] or
+[[(*p)[n]]] as required.
+A similar trick is used to unparse function calls after applying an
+$n$-ary comma operator to the arguments.
+\addbox{subscript : Unparser.ast * Unparser.ast -> Unparser.ast}
+<<tree-creation functions>>=
+fun subscript(array, index) =
+      let val index = pplist (Unparser.unparse index)
+          val index = pplist [pptext "[", index, pptext "]"]
+      in  Unparser.BINARY ( array
+	                  , (pptext "", Cprec "subscript", L)
+			  , Unparser.ATOM index
+	                  )
+      end
+(*unboxval*)
+@ [[pplist]] concatenates atoms;
+it is also used to define [[Atom.parenthesize]]:
+\begin{verbatim}
+fun parenthesize l = pplist [pptext "(", pplist l, pptext ")"]
+\end{verbatim}
+
+
+\section{Use and availability}
+
+The unparser described in this paper is used in two application
+generators.\cite{ramsey:embedded,ramsey:jersey}
+Because the paper is a literate program, the code used in the
+generators is extracted directly from the source text of the paper,
+and it is available from the
+author's Web site, \verb+http://www.cs.virginia.edu/~nr+.
+Practitioners who can't use this code directly can build unparsers
+by implementing the [[noparens]] predicate and writing [[unparse]] as
+a bottom-up tree walk.
+Appendix~\ref{parser} of this paper presents the inverse of the
+general unparser, i.e., a parser that handles
+prefix and postfix as well as infix operators, all of dynamically
+chosen precedence and associativity.
+This parser, which is used in one of the application generators, is
+also available online. 
+Appendix~\ref{app:proof} presents the full proof of correctness of the
+simple unparser.
+
+
+\acknowledgements
+
+This work was supported in part by NSF grant ASC-9612756 and
+by the US Department of Defense under contract MDA904-97-C-0247 and DARPA
+order number E381.
+The views expressed are my own and should not be taken to
+be those of the DoD.
+
+I thank Referee~A for demanding improvements in presentation.
+
+
+
+
+\appendix
+
+
+\def\nwdocspar{\vskip0pt plus3in\penalty-800\vskip0pt plus -3in}
+
+
+\section{A parser for general expressions}
+
+\label{parser}
+
+The parser shown here is the inverse of the unparser in the body of
+the paper.
+It handles prefix, postfix, and infix operators.
+It also supports concrete syntax in which concatenation of two
+expressions signifies the application of a ``juxtaposition''
+operator to the two expressions.
+Like other binary operators, juxtaposition has
+precedence and associativity.
+For example, in Standard ML, juxtaposition denotes function
+application, it associates to the left, and it has a precedence higher
+than that of any explicit infix operator.\cite{milner:definition}
+In awk, juxtaposition denotes string concatenation, and it has a
+precedence higher than the comparison operators but lower than the
+arithmetic operators.\cite{aho:awk}
+
+The parser handles juxtaposition by inserting an implicit
+``juxtaposition operator'' whenever two expressions are juxtaposed in
+the input. 
+(The unparser handles juxtaposition by using a binary infix
+operator whose representation is white space.)
+The user supplies a specification of this operator as part of the
+structure [[Atom]].
+The specification includes an associativity, not a fixity, because
+juxtaposition is infix by definition.
+<<properties of structure [[Atom]]>>=
+val juxtapositionSpec : atom * Precedence.precedence * Assoc.associativity
+@ Internally, the parser converts this specification into an infix
+operator.
+<<general parser>>=
+local
+  val (rep, prec, assoc) = Atom.juxtapositionSpec
+in 
+  val juxtarator = (rep, prec, Assoc.INFIX assoc)
+end
+@
+The parser's main data structure is a stack of operators and
+expressions satisfying these 
+invariants: 
+\begin{enumerate}
+\item
+No postfix operator appears on the stack.
+\item
+If a binary operator is on the stack, its left argument is below it.
+\item
+An expression on the stack is preceded by a list of prefix operators,
+then either an infix operator or the bottom of the stack.
+\end{enumerate}
+These invariants are only partially enforced by the type system.
+All operators have the same type, so
+[[prefixop]] and [[infixop]] are only hints.
+<<general parser>>=
+type infixop   = rator
+type prefixop  = rator
+datatype stack = BOT
+               | BIN of stack * prefixop list * ast * infixop
+type stack_top = (prefixop list * ast)
+@ The sentinel operator [[minrator]]  appears on the
+bottom of the stack:
+\addbox{srator : stack -> rator}
+<<general parser>>= 
+val minrator = (Atom.bogus, Atom.Precedence.min, INFIX NONASSOC)
+fun srator  (BIN (_, _, _, $)) = $
+  | srator  BOT = minrator
+(*unboxval*)
+@ 
+The parser's input looks something like this:
+{\hfuzz=35pt
+\begin{production}{image}
+\sequence{\term{prefix}}\nt{lexical-atom}\sequence{\term{postfix}}
+\sequence{\optional{\term{infix}}
+          \sequence{\term{prefix}}\nt{lexical-atom}\sequence{\term{postfix}}}
+\end{production}
+\par}
+
+In parsing, 
+we assume that we can distinguish prefix, postfix, and infix
+operators.
+If juxtaposition is forbidden, these restrictions can be relaxed
+somewhat; it is then sufficient to be able to distinguish postfix from
+infix operators.
+The adjustments needed are left as an exercise.
+[[isPrefix]]  identifies prefix operators.
+\addbox{isPrefix : rator -> bool}
+<<general parser>>=
+fun isPrefix (_, _, f) = f = PREFIX 
+(*unboxval*)
+@ 
+The parser uses two functions, [[parsePrefix]] and [[parsePostfix]], 
+depending on whether it is scanning before or
+after an atomic input.
+The overall structure of the parser is
+\addbox{parse : image -> ast}
+<<general parser>>=
+exception ParseError of string * rator list
+local
+  exception Impossible
+  <<general parsing functions>>
+in
+  val parse = parse
+  (*unboxval*)
+end  
+@ There are many cases.
+[[parsePrefix]] maintains a list of prefix operators, which is saves
+until it reaches an atomic
+input.
+It is not safe to reduce the prefix operators, because the atomic
+input might be followed by a postfix operator of higher precedence.
+{\hfuzz=4pt
+If [[parsePrefix]] encounters a non-prefix operator or end of file,
+the input is not correct.
+When [[parsePrefix]] encounters an atomic input, it passes the input and
+the saved prefixes to [[parsePostfix]]. 
+\addbox{parsePrefix : stack * prefixop list * lexeme list -> ast}
+<<general parsing functions>>=
+fun parsePrefix(stack, prefixes, RATOR $ :: ipts') =
+      if isPrefix $ then 
+	parsePrefix(stack, $ :: prefixes, ipts')
+      else
+        raise ParseError("%s is not a prefix operator", [$])
+  | parsePrefix(_, _, []) =
+      raise ParseError ("premature end of expression", [])
+  | parsePrefix(stack, prefixes, EXP a :: ipts') = 
+      parsePostfix(stack, (parseAtom a, prefixes), ipts')
+  | parsePrefix(stack, prefixes, DECORATED (_, IMAGE l) :: ipts') =
+      parsePrefix(stack, prefixes, l @ ipts')
+@ If it encounters decorated lexemes, [[parsePrefix]] ignores the decoration.
+\par
+}
+@
+In addition to the stack and the input, [[parsePostfix]] maintains a
+current expression~[[e]], and a list [[prefixes]] containing unreduced
+prefix
+operators that immediately precede~[[e]].
+The idea is that operators arriving in the input must be
+tested either against the nearest unreduced prefix operator, or
+if there are no unreduced prefix operators, against the operator on
+the top of the stack.
+In the first case, the nearest unreduced prefix operator is
+called~[[$]], and it may be compared with an operator [[irator]] from
+the input.
+If~[[$]] has higher precedence, it is reduced, by using [[UNARY]] to
+apply it to the current expression~[[e]], and it becomes the new
+expression.
+Otherwise, the parser's behavior depends on the fixity of [[irator]];
+it may reduce [[irator]], shift it, or insert [[juxtarator]].
+\addbox{parsePostfix : stack * (ast * prefixop list) * lexeme list -> ast}
+<<general parsing functions>>=
+and parsePostfix(stack, (e, $ :: prefixes), 
+                 ipts as RATOR (irator as (_, _, ifixity)) :: ipts') =
+      if noparens($, irator, NONASSOC) then (* reduce prefix $ *)
+	parsePostfix(stack, (UNARY($, e), prefixes), ipts)
+      else if noparens(irator, $, NONASSOC) then
+	(* irator has higher precedence *)
+        case ifixity 
+          of POSTFIX => (* reduce postfix rator *)
+  	       parsePostfix(stack,
+			    (UNARY(irator, e), $ :: prefixes),
+			    ipts')
+           | INFIX _ => (* shift, look for prefixes *)
+	       parsePrefix(BIN(stack, $ :: prefixes, e, irator),
+			   [], ipts')
+           | PREFIX  => <<insert [[juxtarator]]>>
+      else
+	raise ParseError 
+	    ("can't parse (%s e %s); " ^
+	     "operators have equal precedence", [$, irator])
+@ If [[parsePostfix]] encounters an atom in the input, it inserts
+[[juxtarator]] no matter what the state of unreduced prefixes, since
+consuming atoms is the purview of [[parsePrefix]].
+<<general parsing functions>>=
+  | parsePostfix(stack, (e, prefixes), ipts as EXP _ :: _) =
+      <<insert [[juxtarator]]>>
+@ The insertion itself is straightforward.
+<<insert [[juxtarator]]>>=
+parsePostfix(stack, (e, prefixes), RATOR juxtarator :: ipts)
+@ 
+% would prefer no paragraph, but bad page break
+The other major case for [[parsePostfix]] occurs when there are no
+more unreduced prefix operators.
+In that case, comparison must be made with [[srator stack]], the
+operator on top of the stack.
+<<general parsing functions>>=
+  | parsePostfix(stack, (e, prefixes as []), 
+                 ipts as RATOR (irator as (_, _, ifixity)) :: ipts'
+		) =
+      if noparens(srator stack, irator, LEFT) then
+	(* reduce infix on stack *)
+        case stack
+          of BIN (stack', prefixes, e', $) =>
+	       parsePostfix(stack', (BINARY(e', $, e), prefixes),
+			    ipts)
+           | BOT => raise Impossible (*  BOT has lowest prec *)
+      else if noparens(irator, srator stack, RIGHT) then 
+        case ifixity 
+          of POSTFIX => (* reduce postfix rator *)
+  	       parsePostfix(stack, (UNARY(irator, e), []), ipts')
+           | INFIX _ => (* shift, look for prefixes *)
+	       parsePrefix(BIN(stack, [], e, irator), [], ipts')
+           | PREFIX  => <<insert [[juxtarator]]>>
+      else
+         raise ParseError ("%s is non-associative", [irator])
+@ 
+As above, decorations are ignored.
+<<general parsing functions>>=
+  | parsePostfix (stack, (e, prefixes),
+		  DECORATED (_, IMAGE l) :: ipts') =
+      parsePostfix(stack, (e, prefixes), l @ ipts')
+@ 
+When the input is exhausted, the parser reduces first the prefixes, then the stack,
+until it reaches the result.
+<<general parsing functions>>=
+  | parsePostfix(stack, (e, $ :: prefixes), []) =
+      (* reduce prefix $ *)
+      parsePostfix(stack, (UNARY($, e), prefixes), [])  
+  | parsePostfix(BIN (stack', prefixes, e', $), (e, []), []) =
+      (* reduce stack *)
+      parsePostfix(stack', (BINARY(e', $, e), prefixes), [])
+  | parsePostfix(BOT, (e, []), []) = e
+@ 
+We complete the parser with functions that parse an entire input, or an
+input in parentheses.
+\addbox{parse : image -> ast}
+\addbox{parseAtom : lexical_atom -> ast}
+\deeperbox{2pt}
+<<general parsing functions>>=
+
+and parse(IMAGE(l)) = parsePrefix(BOT, [], l)
+and parseAtom (LEX_ATOM a) = ATOM a
+  | parseAtom (PARENS im)  = parse im
+(*unboxval*)
+@ 
+
+\section{Proofs of correctness}
+
+\label{app:proof}
+
+\shortprooffalse
+
+\proofstext
+
+
+\bibliographystyle{spe}
+    %\vskip 0pt plus 1in\penalty-600\vskip 0pt plus-1in
+\bibliography{cs,ml,ramsey,web}
+
+
+\ifx\nocover\undefined
+
+\cleardoublepage
+\thispagestyle{realempty}
+
+\centerline{\large\textbf{Unparsing Expressions --- Details of Corrections}}
+\bigskip
+
+\newcommand\corr[1]{page~\pageref{corr:#1}}
+\newcommand\Corr[1]{Page~\pageref{corr:#1}}
+
+\newcommand\shrinkit{\itemsep=0.2\itemsep \parsep=0.2\parsep}
+\renewcommand\shrinkit{\relax}
+
+\noindent
+Referee~A:
+\begin{enumerate}
+\shrinkit
+\item
+More examples appear early, especially on \corr{trees}.
+\item
+The relationship with program inversion is discussed on
+\corr{inversion}.
+\item
+The proofs have been rewritten in a top-down, goal-directed,
+calculational style. 
+Because proofs written in this style are substantially longer than the
+original
+proofs, I have moved them to an
+appendix.  The main body of the paper sketches the proofs.
+\item
+Code has been clarified, and the types of all functions are now
+given explicitly.  These types are checked by the compiler.
+\item
+On \corr{inverse+}, the specification of unparsing has been completed as
+requested.
+\item
+I have added examples to section~2 as requested.
+\item
+To reduce confusion, I have delayed the introduction of the
+existential type [[atom]] to section~4, where it is properly
+explained.
+\item
+The propositions and proofs have been completely rewritten in the
+style requested by the referee.
+The Boolean formula in [[noparens]] is now consistent with
+Definition~\ref{bind-defn} and with Lemma~\ref{bracket-lemma}.
+\item
+On \corr{inversion}, the paper now explains why the proofs are not
+shorter and more elegant.  It also relates the work to program inversion.
+\item
+Section~4 is revised along the lines requested, except
+that mention of [[juxtarator]] is moved to the appendix on parsing,
+because [[juxtarator]] is not needed for unparsing.
+\item
+\Corr{minprec} explains why I have supplied [[minprec]] and
+[[maxprec]] explicitly.
+\item
+\Corr{flatten} explains the mystery of the two [[image]]s.
+\item
+In the definition of [[unparse']], I have not eliminated
+[[infixImage]]; instead, for consistency, I have added functions
+[[prefixImage]] and 
+[[postfixImage]].
+These are not useless extra declarations; they abstract away from the
+representation of images, and they make the code easier to read for
+those who are not familiar with~ML.
+\item
+The error handling in [[unparse']] is now consistent.
+\item
+The abbreviation [[L = Assoc.INFIX Assoc.LEFT]] is better explained.
+\item
+The structure [[Unparser]] is introduced and explained on
+\corr{Unparser}.
+\item
+I have reduced the confusing transformations in Section~5.
+\global\edef\lastcorrection{\arabic{enumi}}
+\end{enumerate}
+Referee~B:
+\begin{enumerate}
+\shrinkit
+\setcounter{enumi}{\lastcorrection}
+\item
+Each new ML construct is now explained immediately after its
+introduction.
+I have also added some brief discussion of how  crucial parts would
+be different in an imperative implementation.
+\end{enumerate}
+
+\fi
+
+
+\end{document}
+<<common prefix>>=
+val minprec = ~1
+val maxprec = 101
+@ 
+<<infix.sml>>=
+structure InfixUnparse = struct
+<<common prefix>>
+<<infix>>
+
+infix 7 **
+infix 6 ++
+infix 4 ==
+infixr 3 ::==
+val mul  = ("*",  7, LEFT)
+val add  = ("+",  6, LEFT)
+val eq   = ("=",  4, NONASSOC)
+val gets = (":=", 3, RIGHT)
+
+fun apply $ (l, r) = APP (l, $, r)
+
+val op **   = apply mul
+val op ++   = apply add
+val op ==   = apply eq
+val op ::== = apply gets
+fun imstring (IMAGE(a, tail)) = astring a ^ imstring' tail
+and imstring' EOI = ""
+  | imstring' (INFIX ((t, _, _), a, tail)) = " " ^ t ^ " " ^ astring a ^ imstring' tail
+and astring (LEX_ATOM a) = a
+  | astring (PARENS im) = "(" ^ imstring im ^ ")"
+
+val x = ATOM "x"
+val y = ATOM "y"
+val z = ATOM "z"
+fun E (n:int) = ATOM (Int.toString n)
+
+val junk = imstring (unparse (z ::== y ::== x ++ y ** z ++ E 2 == E 99 == x))
+val junk' = imstring (unparse (z ::== y ::== (x ++ y) ** (z ++ E 2) == E 99 == x))
+val left = imstring (unparse ( (x ++ y) ++ z ))
+val right = imstring (unparse ( x ++ (y ++ z )))
+val left' = imstring (unparse ( (x ::== y) ::== z ))
+val right' = imstring (unparse ( x ::== (y ::== z )))
+val left'' = imstring (unparse ( (x == y) == z ))
+val right'' = imstring (unparse ( x == (y == z )))
+end
+@ 
+<<unparse.sig>>=
+signature UNPARSEABLE_ATOM = sig
+  <<properties of structure [[Atom]]>>
+end
+
+signature UNPARSEABLE_PRECEDENCE =  sig
+  type precedence
+  val min : precedence (* precedence below that of any operator *)
+  val max : precedence (* precedence above that of any operator *)
+  val compare : precedence * precedence -> order
+end
+
+signature UNPARSER = sig
+  structure Atom : UNPARSEABLE_ATOM
+  <<general types>>
+  <<type of expressions>>
+  <<values exported by the unparser>>
+end
+@ 
+<<unparse.sml>>=
+functor UnparserFun(Atom: UNPARSEABLE_ATOM) = struct
+  structure Atom = Atom
+  open Assoc
+  <<general types>>
+  <<type of expressions>>
+  <<general>>
+  <<general parser>>
+end
+@ 
+I really bend over backwards, including paying a run-time cost, to use
+this very concrete parser with more abstract streams.
+<<exp-stream.sig>>=
+signature EXP_STREAM = sig
+  type operator
+  val juxtarator : operator
+  val fixity : operator -> Assoc.fixity
+  structure Precedence : UNPARSEABLE_PRECEDENCE
+  val precedence : operator -> Precedence.precedence
+  type exp
+  val unary  : operator * exp -> exp
+  val binary : exp * operator * exp -> exp
+  val nary   : operator * exp list -> exp
+  datatype token = RATOR of operator | EXP of exp
+end
+<<parse.sml>>=
+functor ParserFun(structure ExpStream : EXP_STREAM) = struct
+  structure ES = ExpStream
+  exception Impossible
+  structure A = struct (* used for types, never for unparsing *)
+    datatype atom = RATOR of ES.operator
+                  | EXP of ES.exp
+    fun parenthesize l = raise Impossible
+    structure Precedence = ExpStream.Precedence
+    val bogus = RATOR (ES.juxtarator)
+    val juxAtom = bogus
+    val juxPrec = ES.precedence ES.juxtarator
+    val juxAssoc = case ES.fixity ES.juxtarator
+              	     of Assoc.INFIX a => a
+                      | _ => raise Impossible
+    val juxtapositionSpec = (juxAtom, juxPrec, juxAssoc)
+  end
+  structure U = UnparserFun(A)
+  structure P = struct
+    open U
+    open Assoc
+    <<general parser>>
+  end
+
+  exception ParseError of string * ES.operator list
+
+  fun maptoken (ES.RATOR $) =
+        P.RATOR (A.RATOR $, ES.precedence $, ES.fixity $)
+    | maptoken (ES.EXP e) = P.EXP (P.LEX_ATOM (A.EXP e))
+  fun unrator (A.RATOR $, _, _) = $
+    | unrator _ = raise ParseError ("This can't happen --- operator is an exp", [])
+  fun unwrap (P.ATOM (A.EXP e)) = e
+    | unwrap (P.ATOM _) =
+        raise ParseError ("This can't happen --- exp is an operator", [])
+    | unwrap (P.UNARY  ($, e))      = ES.unary (unrator $, unwrap e)
+    | unwrap (P.BINARY (e1, $, e2)) = ES.binary(unwrap e1, unrator $, unwrap e2)
+    | unwrap (P.NARY   ($, l))      = ES.nary  (unrator$, map unwrap l)
+    | unwrap (P.DECORATE (_, e))    = unwrap e
+  fun parse l =
+    (unwrap o P.parse o P.IMAGE o map maptoken) l 
+       handle P.ParseError (s, l) => raise ParseError (s, map unrator l)
+end
+<<unparse-test.sml>>=
+structure TextAtom = struct
+  type atom = string
+  fun parenthesize l = String.concat ("(" :: l) ^ ")"
+  structure Precedence = struct
+    type precedence = int
+    val min = ~1
+    val max = 101
+    val compare = Int.compare
+  end
+  val bogus = "bogus sentinel operator"
+  (* juxtaposition is an implicit call *)
+  val juxAtom = " "
+  val juxPrec = Precedence.max - 1
+  val juxAssoc = Assoc.LEFT
+  val juxtapositionSpec = (juxAtom, juxPrec, juxAssoc)
+end
+
+structure UnparseTest = struct
+  structure U = UnparserFun(TextAtom)
+  local
+    structure Unparser = U
+    fun pptext t = t
+    val pplist = String.concat
+    val L = Assoc.INFIX Assoc.LEFT
+    fun Cprec (x : string) = 99
+  in
+    <<tree-creation functions>> 
+  end
+  open U 
+  open Atom
+  
+  infix 7 **
+  infix 6 ++
+  infix 4 ==
+  infixr 3 ::==
+  val mul  = ("*",  7, INFIX LEFT)
+  val add  = ("+",  6, INFIX LEFT)
+  val eq   = ("=",  4, INFIX NONASSOC)
+  val gets = (":=", 3, INFIX RIGHT)
+  val ince = ("++", 9, PREFIX)
+  val inco = ("++", 9, POSTFIX)
+  val dece = ("--", 9, PREFIX)
+  val deco = ("--", 9, POSTFIX)
+  val star = ("*",  8, PREFIX)
+  val tuple = ("*", 1, INFIX NONASSOC)
+
+  fun binary $ (l, r) = BINARY (l, $, r)
+  fun unary $ e = UNARY($, e)
+  fun nary $ es = NARY($, es)
+  
+  val op **   = binary mul
+  val op ++   = binary add
+  val op ==   = binary eq
+  val op ::== = binary gets
+  val dece = unary dece
+  val deco = unary deco
+  val star = unary star
+  val /*/ = nary tuple
+  
+  val imstring = String.concat
+
+  val x = ATOM "x"
+  val y = ATOM "y"
+  val z = ATOM "z"
+  fun E n = ATOM (Int.toString n)
+  
+  val junk = imstring (unparse (z ::== y ::== x ++ y ** z ++ E 2 == E 99 == x))
+  val junk' = imstring (unparse (z ::== y ::== (x ++ y) ** (z ++ E 2) == E 99 == x))
+  val left = imstring (unparse ( (x ++ y) ++ z ))
+  val right = imstring (unparse ( x ++ (y ++ z )))
+  val left' = imstring (unparse ( (x ::== y) ::== z ))
+  val right' = imstring (unparse ( x ::== (y ::== z )))
+  val left'' = imstring (unparse ( (x == y) == z ))
+  val right'' = imstring (unparse ( x == (y == z )))
+  
+  val pp = imstring (unparse (E 2 ++ star (deco x)))
+  val pp' = imstring (unparse (E 2 ++ deco (star x)))
+
+  val tuplel = imstring (unparse (/*/ [/*/ [x, y], z]))
+  val tupler = imstring (unparse (/*/ [x, /*/ [y, z]]))
+  val tuplen = imstring (unparse (/*/ [x, y, z]))
+end
+@ 
+\section{Index}
+\subsection{Chunks}
+\nowebchunks
+\subsection{Identifiers}
+\nowebindex
+@
+
+
+
+
