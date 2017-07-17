@@ -1,0 +1,707 @@
+<!-- this file was generated automatically by noweave --- better not edit it-->
+<h2><a name="conten00">Contents</a></h2>
+<p>
+<tableofcontents>
+<ul compact>
+<li><a href="#conten00">Contents</a>
+<li><a href="#mipsin00">MIPS instruction-set specification</a>
+<ul compact>
+<ul compact>
+<li><a href="#tokens00">Tokens and fields</a>
+</ul>
+<li><a href="#themip00">The MIPS CPU</a>
+<ul compact>
+<li><a href="#opcode00">Opcodes</a>
+<li><a href="#groupi00">Grouping instructions</a>
+<li><a href="#constr00">Constructors for simple instructions</a>
+<li><a href="#branch00">Branches and relocatable addresses</a>
+<li><a href="#synthe00">Synthetic instructions and conditional assembly</a>
+</ul>
+<li><a href="#NWDR">The floating-point coprocessor</a>
+<li><a href="#applic00">Application-specific specifications for the <tt>mld</tt> linker</a>
+<li><a href="#NWDh">Specifications to support validation</a>
+</ul>
+</ul>
+</tableofcontents>
+<p>
+<h2><a name="mipsin00">MIPS instruction-set specification</a></h2>
+This section is a complete specification of the MIPS instruction set.
+The MIPS is a good machine to start with
+because it has a small, regular instruction set.
+Its specification
+requires only the toolkit's basic features, and the regularity of the
+instruction set lends itself to factoring, making the specification
+small. 
+As in the MIPS manual&nbsp;<b>[cite&nbsp;<a href="#NWcite-kane:mips">kane:mips</a>]</b>, the specification is divided into
+two parts: one describing the instructions of the main CPU, the other
+describing those of the floating-point coprocessor.
+<p>
+<h4><a name="tokens00">Tokens and fields</a></h4>
+<p>
+The MIPS is a RISC machine; all instructions occupy exactly one 
+32-bit token.  
+Although the instructions of the floating-point coprocessor are listed
+separately in the manual, they use some of the same fields as the
+instructions of the main CPU.
+This property makes it possible to define all the fields in a single 
+token class.
+We use <tt>noweb</tt> to distribute the field specifications, putting 
+most in the CPU section and the rest in the coprocessor section.
+<p>
+<code>fields</code> specifications give only the positions of fields.
+<code><a name="NWD1">fieldinfo</a></code> specifications give more information;
+for example, we use special names to refer to the values of
+fields that denote registers.
+<code>fieldinfo</code> specifications are never required.
+<p>
+The core MIPS specification 
+describes the fields first, then patterns and
+constructors.
+We tell <tt>noweb</tt> to put it in a file called <tt>mips-core.spec</tt>.
+<p><pre><a name="NWmip7-mipE-1" href="#NWD1"><dfn>&lt;mips-core.spec&gt;=</dfn></a>
+fields of instruction (32) <a name="NWmip7-mipE-1-u1" href="#NWD2"><i>&lt;field specifications&gt;</i></a>
+<a name="NWmip7-mipE-1-u2" href="#NWD4"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>
+<a name="NWmip7-mipE-1-u3" href="#NWD5"><i>&lt;pattern and constructor specifications&gt;</i></a>
+</pre><p>
+<h3><a name="themip00">The MIPS CPU</a></h3>
+<p>
+A field is specified by giving a range of bit positions. 
+<a name="NWD2">Some of the MIPS fields are listed on page&nbsp;A-3 of the MIPS</a>
+architecture manual; others, like <code>breakcode</code>, apply to only 
+a couple of instructions.
+The MIPS manual sometimes uses more than one name for the same field, for
+example, <code>offset</code> and <code>base</code> are used instead  of <code>immed</code> and <code>rs</code> to
+describe load and store instructions.
+The numbers in the specification
+are the starting and ending bit positions,
+where 0 is the least and 31 the most significant bit.
+<p><pre><a name="NWmip7-fieK-1" href="#NWD2"><dfn>&lt;field specifications&gt;=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[D<a href="#NWDR">-&gt;</a>]</b>
+word 0:31 op 26:31 rs 21:25 rt 16:20 immed 0:15 offset 0:15 base 21:25 
+target 0:25 rd 11:15 shamt 6:10 funct 0:5 cond 16:20 breakcode 6:25
+</pre><p>
+<a name="NWD3">Special names are associated with the integer registers.</a>
+These names can be used in constructor applications, as shown 
+in the definitions of synthetic instructions in
+Section&nbsp;<a href="#sec:synth">[-&gt;]</a>.
+These names can also be used to generate symbolic disassemblers, and
+``encoding'' procedures that emit assembly language.
+On the MIPS, we use names of the form <i><tt>r</tt>n</i>, except for the
+stack pointer (<code>sp</code>).
+<p><pre><a name="NWmip7-prob-1" href="#NWD3"><dfn>&lt;properties of integer-register fields&gt;=</dfn></a> <b>(<a href="#NWD4">U-&gt;</a>)</b>
+names [ r0  r1  r2  r3  r4  r5  r6  r7  r8  r9  r10 r11 r12 r13 r14 r15
+        r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 sp  r30 r31 ]
+</pre><p><a name="NWD4">These names are just one of the properties that could be associated</a>
+with the integer registers, which are <code>rs</code>, <code>rd</code>, <code>rt</code>, and <code>base</code>.
+<p><pre><a name="NWmip7-**fS-1" href="#NWD4"><dfn>&lt;<code>fieldinfo</code> specifications&gt;=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[D<a href="#NWmip7-**fS-2">-&gt;</a>]</b>
+fieldinfo [ rs rt rd base ] is [ <a name="NWmip7-**fS-1-u1" href="#NWD3"><i>&lt;properties of integer-register fields&gt;</i></a> ]
+</pre><p>
+<h4><a name="opcode00">Opcodes</a></h4>
+An opcode is a pattern that constrains the values of 
+one or more fields.
+Defining opcodes individually would be tedious, and the result would
+be hard to compare with the architecture manual, which uses
+opcode tables.
+The <code>patterns</code> declaration binds a table of names when
+a <em>generating expression</em> appears on the right-hand side, letting
+<a name="NWD5">us write declarations that resemble the tables in the MIPS manual.</a>
+<p>
+The numeric codes for the MIPS opcodes are described in three
+tables on page&nbsp;A-87 of the MIPS architecture manual.
+These tables are reproduced in Figure&nbsp;<a href="#figure:mips-tables">[-&gt;]</a>.
+Normal opcodes are six bits, and they appear in the <code>op</code> field of the
+instruction.
+This statement names patterns for each of the opcodes in the table at
+the top of Figure&nbsp;<a href="#figure:mips-tables">[-&gt;]</a>.
+<p><pre><a name="NWmip7-patc-1" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[D<a href="#NWD7">-&gt;</a>]</b>
+patterns
+ [ special bcond   j       jal     beq     bne     blez    bgtz
+   addi    addiu   slti    sltiu   andi    ori     xori    lui
+   cop0    cop1    cop2    cop3    _       _       _       _
+   _       _       _       _       _       _       _       _
+   lb      lh      lwl     lw      lbu     lhu     lwr     _
+   sb      sh      swl     sw      _       _       swr     _
+   lwc0    lwc1    lwc2    lwc3    _       _       _       _
+   swc0    swc1    swc2    swc3    _       _       _       _ ] 
+ is op = {0 to 63}
+</pre><p>This statement creates names for patterns constraining the <code>op</code>
+field.
+The expression ``<code>op = {0 to 63}</code>'' generates a list of 64&nbsp;patterns,
+ranging from ``<code>op = 0</code>'' to ``<code>op = 63</code>''.
+Each pattern is associated with the corresponding name in the list to
+the left-hand side of <code>is</code>.
+For example, an instruction matches the pattern <code>beq</code> if its <code>op</code> field
+is&nbsp;4.
+Patterns associated with the name ``<code>_</code>'' are discarded.
+<p>
+<hr>
+
+ --- ------
+ --- to 5em# --- |#<br> ---  --- 28..26 --- <b>Opcode ---  ---  --- <br>31..29 --- 
+ --- 0 ---  --- 1 ---  --- 2 ---  --- 3 --- 
+ --- 4 ---  --- 5 ---  --- 6 ---  --- 7 --- <br>
+ ---  --- 2..0 --- <b>SPECIAL ---  ---  --- <br>5..3 --- 
+ --- 0 ---  --- 1 ---  --- 2 ---  --- 3 --- 
+ --- 4 ---  --- 5 ---  --- 6 ---  --- 7 --- <br>
+ <a name="NWD6">---  --- 18..16 --- </a><b>BCOND ---  ---  --- <br>20..19 --- 
+ --- 0 ---  --- 1 ---  --- 2 ---  --- 3 --- 
+ --- 4 ---  --- 5 ---  --- 6 ---  --- 7 --- <br> ---  --- <br> ---  --- <br> ---  --- <br> ---  ---  ---  --- <br>
+
+<b>Opcode tables from MIPS architecture manual.</b>
+<a name="figure:mips-tables"><b>[*]</b></a>
+<hr>
+<p>
+
+
+<!--\fillup{1.8in}-->
+<a name="NWD7">Two opcodes, </a><code>special</code> and <code>bcond</code>, are used for several instructions.
+These instructions are decoded by checking the bit-pattern in the
+<code>funct</code> and <code>cond</code> fields of the instructions, respectively.
+The following statement names patterns for each of the <code>special</code> opcodes in the table 
+in the center of Figure&nbsp;<a href="#figure:mips-tables">[&lt;-]</a>:
+<p><pre><a name="NWmip7-patc-2" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+patterns
+ [ sll     _       srl     sra     sllv    _       srlv    srav
+   jr      jalr    _       _       syscall break   _       _
+   mfhi    mthi    mflo    mtlo    _       _       _       _
+   mult    multu   div     divu    _       _       _       _
+   add     addu    sub     subu    and     or      xor     nor
+   _       _       slt     sltu    _       _       _       _ ] 
+ is  special &amp; funct = {0 to 47}
+</pre><p>
+<a name="NWD8">The </a><code>bcond</code> table at the bottom of Figure&nbsp;<a href="#figure:mips-tables">[&lt;-]</a>
+is sparse.
+Instead of writing a table with many empty entries,
+we use another form of generating expression on the right-hand side;
+the list of integers in square brackets
+generates each integer in turn.
+<p><pre><a name="NWmip7-patc-3" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+patterns
+ [ bltz bgez bltzal bgezal ] is bcond &amp; cond = [ 0 1 16 17 ]
+</pre><p><a name="NWD9">These statements create new patterns by adding further constraints to</a>
+the existing patterns <code>special</code> and <code>bcond</code>.
+<p>
+A slightly different way to look at this style of specification is
+that ``<code>special</code>'' and ``<code>bcond</code>'' are the names of tables, not
+opcodes.  As we'll see, that view is a better one for the SPARC.
+<p>
+
+
+
+<h4><a name="groupi00">Grouping instructions</a></h4>
+<a name="NWDA">The rest of the patterns organize instructions into groups, much</a>
+as is done in Chapter&nbsp;3 of the MIPS manual.
+Most instructions are grouped by assembly-language syntax.
+Immediate-mode instructions are grouped
+into signed and unsigned variants (<code>immedS</code> and <code>immedU</code>), 
+depending on whether the immediate operand
+is  sign-extended.
+The toolkit uses disjunction to define patterns
+that match any of a group of related instructions.
+<p><pre><a name="NWmip7-patc-4" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+patterns
+  load    is lb | lbu | lh | lhu | lw | lwl | lwr | sb | sh | sw | swl | swr 
+  immedS  is addi | addiu | slti | sltiu
+  immedU  is andi | ori | xori 
+  arith3  is add | addu | sub | subu | slt | sltu | and | or | xor | nor 
+  shift   is sll | srl | sra
+  vshift  is sllv | srlv | srav 
+  arith2  is mult | multu | div | divu
+  mfhilo  is mfhi | mflo 
+  mthilo  is mthi | mtlo
+  jump    is j  | jal
+  jumpr   is jr | jalr
+  branch1 is blez | bgtz | bltz | bgez | bltzal | bgezal
+  branch2 is beq | bne
+  copls   is lwc0 | lwc1 | lwc2 | lwc3 | swc0 | swc1 | swc2 | swc3
+</pre><p>
+<h4><a name="constr00">Constructors for simple instructions</a></h4>
+The patterns that group instructions
+can now be used to define constructors.
+A constructor specification contains an opcode, operands, possibly a set of equations, 
+and an output pattern.
+The operands correspond to the procedure's arguments, and when the procedure is called,
+it emits the sequence of tokens defined by the output pattern.
+The toolkit generates an encoding procedure for each constructor.
+When the constructor name on the left-hand side is the name of a pattern,
+each disjunct of the pattern is used to generate a constructor.
+For example, the first declaration below generates a constructor 
+for each disjunct bound to the pattern <code>load</code>, i.e.,
+<code>lb</code>, <code>lbu</code>, <code>lh</code>, etc.
+<p>
+Most output patterns for the MIPS constructors are conjunctions of
+the opcode and all the operands. 
+For example, the load instructions could be described by
+<blockquote>
+<code>load rt, offset!(base) is load &amp; rt &amp; offset &amp; base</code>.
+</blockquote> 
+Because this idiom is so common, not only on the MIPS but on other
+machines as well, the toolkit provides a special abbreviation for it:
+if the output pattern is omitted, the conjunction is inferred.
+<a name="NWDB">We can use this trick to specify almost all of the integer</a>
+instructions; only the one- and two-operand branches (<code>branch1</code> and
+<code>branch2</code>) and the jumps need to be treated specially.
+Given the groupings we defined above, we specify 56&nbsp;instructions in
+just 15&nbsp;lines:
+ <b>[</b>This is the one place in specifications where newlines can be
+significant, preventing the opcode of a following pattern be taken as an
+operand of the current pattern.  The reference manual explains the
+lexical details.<b>]</b> 
+<p><pre><a name="NWmip7-patc-5" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+constructors
+  load   rt, offset!(base)
+  immedS rt, rs, offset!
+  immedU rt, rs, offset
+  lui    rt, offset
+  arith3 rd, rs, rt
+  shift  rd, rt, shamt
+  vshift rd, rt, rs
+  arith2 rs, rt
+  mfhilo rd
+  mthilo rs
+  syscall
+  break  breakcode
+  copls  ft, offset!(base)
+  jr     rs
+  jalr   rd, rs
+</pre><p><a name="NWDC">Operands with a trailing </a><code>!</code> (e.g., <code>offset!</code>) are treated as
+signed parameters in encoding procedures; the toolkit implicitly
+narrows their values to produce unsigned fields.
+<p>
+These constructor specifications include
+the assembly-language syntax associated with the instructions being
+<a name="NWDD">specified.</a>
+For example, most operands are separated by commas, but the syntax
+<code>offset(base)</code> is used to suggest the address computation in the
+load and store instructions. 
+Using assembly syntax in the constructor
+specification makes the specification look more like the architecture
+manual. 
+We use the assembly syntax to produce symbolic disassemblers and
+``encoding'' procedures that emit assembly language.
+<p>
+
+<h4><a name="branch00">Branches and relocatable addresses</a></h4>
+<p>
+<a name="NWDE">Because it's a RISC machine, the MIPS can't use target addresses</a>
+directly as field values in branch instructions; a 32-bit address
+wouldn't leave room for an opcode, or anything else.
+Instead, the branches are relative to the program counter; the field
+corresponding to the target address records the difference between that
+address and the PC.
+We use equations to specify the relationships between the operands and
+fields.
+<p><pre><a name="NWmip7-patc-6" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+<a name="NWmip7-patc-6-u1" href="#NWDH"><i>&lt;placeholder definition&gt;</i></a>
+relocatable reloc
+constructors
+  branch1 rs, reloc
+     { reloc = L + 4 * offset! } is branch1 &amp; rs &amp; offset; L: epsilon
+  branch2 rs, rt, reloc
+     { reloc = L + 4 * offset! } is branch2 &amp; rs &amp; rt &amp; offset; L: epsilon
+</pre><p><a name="NWDF">The branch equations capture the semantics of the MIPS branch instructions;</a>
+the offset is sign-extended, shifted left 2 bits, and added to the
+address of the delay slot, i.e., <code>L</code>. 
+<p>
+Constructor operands designated <code>relocatable</code>
+are <em>relocatable addresses</em>, like the branch targets named
+<code>reloc</code> above.
+Pattern labels, like <code>L</code> above, are also relocatable addresses.
+<a name="NWDG">When a constructor that uses relocatable addresses is applied, it</a>
+checks to see if those addresses are known (i.e., they have
+been assigned absolute adresses). 
+If so, it treats them as ordinary integers and emits the 
+instruction. 
+Otherwise, it emits <em>placeholder</em> tokens and creates
+a relocation closure. 
+The placeholders will be overwritten later, when the address becomes
+known and the application applies the closure.
+<p>
+<a name="NWDH">We have to specify a placeholder pattern for tokens of each class.</a>
+On the MIPS, we have only one class, so we need one placeholder.
+We've picked a <code>break</code> instruction with code&nbsp;99, so that we'll get a trap
+if by some mischance the placeholder sneaks into a real program and we
+try to execute it.
+<p><pre><a name="NWmip7-plaM-1" href="#NWDH"><dfn>&lt;placeholder definition&gt;=</dfn></a> <b>(<a href="#NWDE">&lt;-U</a>)</b>
+placeholder for instruction is break(99)
+</pre><p><a name="NWDI">The syntax ``</a><code>break(99)</code>'' isn't a special thing we use for
+placeholders;  it's just the pattern we get by applying the <code>break</code> constructor
+to the value 99.
+<p>
+
+The PC-relative branches can't jump anywhere in the MIPS address
+<a name="NWDJ">space, only within </a><i>2^16</i> words of the PC.
+The MIPS provides a <code>jump</code> instruction that lets a program jump to
+any word in the same quarter of the address space as the PC.
+It's best specified using a lot of bit operations; the toolkit
+provides a notation for taking <em>bit slices</em> of values.
+For example, <code>reloc@[28:31]</code> denotes the four most significant bits
+of the 32-bit, relocatable address <code>reloc</code>.
+The description of <code>j</code> on page&nbsp;A-31 in the MIPS manual corresponds
+to the equations below.
+<p><pre><a name="NWmip7-patc-7" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDE">&lt;-</a>D<a href="#NWDT">-&gt;</a>]</b>
+constructors
+  jump reloc { reloc@[28:31] = L@[28:31], 
+               reloc@[2:27]  = target, 
+               reloc@[0:1]   = 0 } 
+         is L: jump &amp; target
+</pre><p><a name="NWDK">The high bits of the target address must match the current address, the middle</a>
+bits give the <code>target</code> field, and the low bits must be zero.
+<p>
+<h4><a name="synthe00">Synthetic instructions and conditional assembly</a></h4>
+<a name="sec:synth"><b>[*]</b></a>
+<a name="NWDL">We have completed our description of the MIPS integer instructions,</a>
+but MIPS 
+applications often use ``synthetic'' instructions, 
+i.e., instructions that are in the assembly
+language but not in the hardware instruction set.
+We specify constructors for synthetic instructions by defining them in
+terms of existing constructors.
+We put synthetic instructions in a separate specification, 
+because not all applications need synthetics.
+<p><pre><a name="NWmip7-mipF-1" href="#NWDL"><dfn>&lt;mips-synth.spec&gt;=</dfn></a> <b>[D<a href="#NWDN">-&gt;</a>]</b>
+constructors
+  nop           is  sll (r0, r0, 0)
+  mov rd, rs    is  addu(rd, rs, r0)
+  b reloc       is  beq (r0, r0, reloc)
+</pre><p><a name="NWDM">The earlier </a><code>fieldinfo</code> specification permits us to use
+names, not numbers, to refer to register values.
+<p>
+<a name="NWDN">There is a large collection of synthetic branch instructions; they</a>
+combine comparisons and branches.  The result of comparisons is left
+in register&nbsp;1, which MIPS conventions reserve for the assembler.
+<p><pre><a name="NWmip7-mipF-2" href="#NWDL"><dfn>&lt;mips-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+constructors
+  bge  rs, rt, reloc  is  slt (r1, rs, rt);  beq(r1, r0, reloc)
+  bgeu rs, rt, reloc  is  sltu(r1, rs, rt);  beq(r1, r0, reloc)
+  blt  rs, rt, reloc  is  slt (r1, rs, rt);  bne(r1, r0, reloc)
+  bltu rs, rt, reloc  is  sltu(r1, rs, rt);  bne(r1, r0, reloc)
+  bleu rs, rt, reloc  is  sltu(r1, rt, rs);  beq(r1, r0, reloc)
+  ble  rs, rt, reloc  is  slt (r1, rt, rs);  beq(r1, r0, reloc)
+  bgt  rs, rt, reloc  is  slt (r1, rt, rs);  bne(r1, r0, reloc)
+  bgtu rs, rt, reloc  is  sltu(r1, rt, rs);  bne(r1, r0, reloc)
+</pre><p>
+<a name="NWDO">A full multiplication requires fetching the result from a special register.</a>
+<p><pre><a name="NWmip7-mipF-3" href="#NWDL"><dfn>&lt;mips-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+constructors
+  mul rd, rs, rt  is  multu(rs, rt); mflo(rd)
+</pre><p>
+Sometimes the best expansion for a synthetic 
+instruction depends on the values of operands.
+We can choose one of several expansions by putting alternatives
+on the right-hand side of a constructor specification,
+each with its own set of equations.
+Each application of the constructor uses the first alternative for
+which the equations can be solved.
+For example, the <code>li</code> (load immeditate) synthetic instruction has
+<a name="NWDP">three ways to load a signed value </a><code>imm</code> into register <code>rt</code>.
+When <code>imm</code> fits in 16 bits, use an immediate mode <code>addiu</code> instruction
+where the second operand is register 0, which is always 0.
+When the low-order 16 bits of <code>imm</code> are zero, 
+use <code>lui</code> to assign the high-order bits to <code>rt</code>;
+<code>lui</code> automatically zero's the low-order bits.
+In the general case, cut <code>imm</code> into slices and use two instructions:
+<code>lui</code> to assign the high-order bits and <code>addiu</code> to add in the low-order
+bits.
+<p><pre><a name="NWmip7-mipF-4" href="#NWDL"><dfn>&lt;mips-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWDZ">-&gt;</a>]</b>
+constructors
+  li rt, imm  
+    when { imm@[16:31]! = imm@[15]! } is addiu(rt, r0, imm@[0:15]!)
+    when { imm@[0:15] = 0 }           is lui  (rt, imm@[16:31])
+    otherwise is lui(rt, imm@[16:31] + imm@[15]); addiu(rt, rt, imm@[0:15]!)
+</pre><p><a name="NWDQ">For the third branch, the toolkit generates an unnecessary test to</a>
+see that <code>imm@[16:31] + imm@[15]</code> doesn't overflow 16&nbsp;bits.
+The test isn't needed, because the only way it can happen is when
+everything in sight is ones, and in that case we take the first
+branch.
+I'd love to have a symbolic-algebra system smart enough to figure this out.
+<p>
+<h3><a name="NWDR">The floating-point coprocessor</a></h3>
+<p>
+Pages B-5 through B-7 of the MIPS manual introduce a few more field names for the
+convenience of specifying the floating-point instructions.
+The integer-register fields <code>rd</code>, <code>rs</code>, and <code>rt</code> could be re-used to refer
+to fields of floating-point instructions, but we introduce new fields
+<code>fd</code>, <code>fs</code>, and <code>ft</code> in order to have different names for the registers.
+<p><pre><a name="NWmip7-fieK-2" href="#NWD2"><dfn>&lt;field specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWDU">-&gt;</a>]</b>
+ft 16:20 fs 11:15 fd 6:10 format 21:24 bit25 25:25
+</pre><pre><a name="NWmip7-**fS-2" href="#NWD4"><dfn>&lt;<code>fieldinfo</code> specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+fieldinfo [ fs ft fd ] is [ <a name="NWmip7-**fS-2-u1" href="#NWmip7-proi-1"><i>&lt;properties of floating-point-register fields&gt;</i></a>]
+</pre><pre><a name="NWmip7-proi-1" href="#NWmip7-proi-1"><dfn>&lt;properties of floating-point-register fields&gt;=</dfn></a> <b>(<a href="#NWmip7-**fS-2">&lt;-U</a>)</b>
+names [ f0  f1  f2  f3  f4  f5  f6  f7  f8  f9  f10 f11 f12 f13 f14 f15
+        f16 f17 f18 f19 f20 f21 f22 f23 f24 f25 f26 f27 f28 f29 f30 f31 ]
+</pre><p>
+<a name="NWDS">The </a><code>format</code> field has only three legitimate values: 0, 1, and 4.
+The <code>sparse</code> field attribute associates the names 
+<code>s</code>, <code>d</code>, and <code>w</code> (signifying single, double, and word,
+respectively) with these values.
+<p><pre><a name="NWmip7-**fS-3" href="#NWD4"><dfn>&lt;<code>fieldinfo</code> specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWmip7-**fS-2">&lt;-</a>D]</b>
+fieldinfo format is [ sparse [ s = 0, d = 1, w = 4 ] ]
+</pre><p>
+<a name="NWDT">The instruction codes for Coprocessor 1 (floating point)</a>
+are given on page B-28 of the MIPS manual.
+We use names like ``<code>add.</code>'' instead of ``<code>add.fmt</code>'' because 
+they make it possible to form the full name of the instruction by
+concatenating the name of the opcode pattern and the name of the format,
+e.g., <code>add.s</code>, <code>add.d</code>, etc.
+They also distinguish the floating-point opcodes from analogous
+integer opcodes.
+<p><pre><a name="NWmip7-patc-8" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWmip7-patc-9">-&gt;</a>]</b>
+patterns
+ [ add.    sub.    mul.    div.    _       abs.    mov.    neg.   
+   _       _       _       _       _       _       _       _
+   _       _       _       _       _       _       _       _
+   _       _       _       _       _       _       _       _
+   cvt.s   cvt.d   _       _       cvt.w   _       _       _
+   _       _       _       _       _       _       _       _
+   c.f     c.un    c.eq    c.ueq   c.olt   c.ult   c.ole   c.ule
+   c.sf    c.ngle  c.seq   c.ngl   c.lt    c.nge   c.le    c.ngt ] 
+ is cop1 &amp; funct = {0 to 63} &amp; bit25 = 1
+</pre><p>
+
+<a name="NWDU">Specifying the branch and move instructions is more complicated, </a>
+because the relevant codes span several entries in the table,
+and the pattern language is designed to bind one pattern to one entry.
+We introduce two new fields to simplify the specification.
+<p><pre><a name="NWmip7-fieK-3" href="#NWD2"><dfn>&lt;field specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDR">&lt;-</a>D]</b>
+cop1code 22:25 copbcode 16:16
+</pre><pre><a name="NWmip7-patc-9" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDT">&lt;-</a>D<a href="#NWDW">-&gt;</a>]</b>
+patterns
+  [ mfc1 cfc1 mtc1 ctc1 ] is cop1 &amp; cop1code = {0 to 3} &amp; funct = 0
+  bc1x is cop1 &amp; (cop1code = 4 | cop1code = 6)
+  bc1f is bc1x &amp; copbcode = 0
+  bc1t is bc1x &amp; copbcode = 1
+</pre><p>
+The pattern <code>bc1x</code> is under-constrained.
+<a name="NWDV">The architecture manual indicates that the </a><code>cop1code</code> field
+for the <code>bc1f</code> and <code>bc1t</code> instructions can have the value
+4 or 6.
+When generating encoding code for the <code>bc1f</code> and <code>bc1t</code>
+constructors, the toolkit warns that their output patterns
+are under-constrained and chooses the <code>cop1code = 4</code>, as described in the
+first disjunct for <code>bc1x</code>.
+Toolkit-generated decoding code recognizes either variant.
+<p>
+
+
+<a name="NWDW">Like the integer opcodes, </a>
+the floating-point opcodes are grouped by assembly-language syntax.
+<p>
+<pre><a name="NWmip7-patc-A" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWmip7-patc-9">&lt;-</a>D<a href="#NWDX">-&gt;</a>]</b>
+patterns
+  arith3. is add. | div. | mul. | sub.
+  arith2. is abs. | mov. | neg. 
+  movec1  is mfc1 | mtc1 | cfc1 | ctc1
+  c.cond  is c.f  | c.un   | c.eq  | c.ueq | c.olt | c.ult | c.ole | c.ule |
+             c.sf | c.ngle | c.seq | c.ngl | c.lt  | c.nge | c.le  | c.ngt  
+  lsc1    is lwc1 | swc1
+  convert is cvt.s | cvt.d | cvt.w
+
+</pre><p>
+The following constructor specifications introduce the compound-opcode 
+concatenation operator (<code>^</code>).
+Each floating-point opcode has three variants, according to whether the value of the 
+<code>format</code> field is <code>s</code>, <code>d</code>, or <code>w</code>.
+We form the constructors by concatenating opcode names with <code>format</code>.
+One constructor is created for each member of the cross product of the patterns named,
+(e.g., <code>add.s</code>, <code>add.d</code>, <code>add.w</code>, <code>div.s</code>, <code>div.d</code>, etc).
+Constructor names can also include string literals delimited
+by double quotes, e.g. <code>convert^&quot;.&quot;^format</code>.
+As with the integer instructions, most output patterns are implicit.
+<p>
+<a name="NWDX">The floating-point arithmetic, conditional, and type-conversion</a>
+instructions all require floating-point operands that are even-odd
+register pairs.  The equations for <code>arith3.^format</code>, etc., below
+specify that the register operands are all even values. 
+These equations have been commented out because we believe people
+won't want to pay the overheads of checking when generating encoding procedures,
+but we want them when we validate the spec, so I have arranged
+for the command <code>sed 's/# {/{/'</code> to uncomment them.
+<p><pre><a name="NWmip7-patc-B" href="#NWD5"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">U-&gt;</a>)</b> <b>[<a href="#NWDW">&lt;-</a>D]</b>
+constructors
+  arith3.^format fd, fs, ft # { fd = 2 * _, fs = 2 * _, ft = 2 * _ }
+  arith2.^format fd, fs     # { fd = 2 * _, fs = 2 * _ }
+  movec1         rt, fs     
+  c.cond^&quot;.&quot;^format  fs, ft # { fs = 2 * _, ft = 2 * _ }
+  convert^&quot;.&quot;^format fd, fs # { fd = 2 * _, fs = 2 * _ }
+  &quot;bc1f&quot; reloc { reloc = L + 4 * offset! } is bc1f &amp; offset; L: epsilon
+  &quot;bc1t&quot; reloc { reloc = L + 4 * offset! } is bc1t &amp; offset; L: epsilon
+</pre><p><a name="NWDY">We have to quote </a><code>bc1f</code> and <code>bc1t</code> instead of using them
+directly as opcodes, because these patterns have multiple
+disjuncts.  The constructor-specification process ``explodes''
+opcodes, so it would pick just one disjunct, and we would be unable to
+recognize the other when decoding an application of the constructor.
+<p>
+<a name="NWDZ">There are several synthetic instructions that operate</a>
+on pairs of floating point registers.
+<code>l.d</code> and <code>s.d</code> load and store double words, respectively. 
+<code>mtc.d</code> and <code>mfc.d</code> move pairs of words in registers
+to and from the floating point co-processor.
+<p><pre><a name="NWmip7-mipF-5" href="#NWDL"><dfn>&lt;mips-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDP">&lt;-</a>D]</b>
+constructors
+  l.d ft,offset!(base) # { ft = 2 * _ } 
+      is  lwc1(ft, offset!, base); lwc1(ft+1, offset!+4, base)
+  s.d ft,offset!(base) # { ft = 2 * _ } 
+      is  swc1(ft, offset!, base); swc1(ft+1, offset!+4, base)
+  mtc1.d rt, fs  # { rt = 2 * _, fs = 2 * _ } 
+      is  mtc1(rt, fs); mtc1(rt+1, fs+1)
+  mfc1.d rt, fs  # { rt = 2 * _, fs = 2 * _ } 
+      is  mfc1(rt, fs); mfc1(rt+1, fs+1)
+</pre><p><a name="NWDa">Because </a><code>offset</code> is a field, it is unsigned, and so we must use
+<code>offset!</code> to get the signed offset that <code>lwc1</code> and similar
+constructors expect.
+<p>
+
+<p><pre><a name="NWmip7-mipF.2-1" href="#NWDa"><dfn>&lt;mips-trunc.spec&gt;=</dfn></a>
+constructors
+  trunc.w.d fs, ft, rt is 
+    cfc1(rt, f31); 
+    cfc1(rt, f31);   nop(); 
+    ori(r1, rt, 3);
+    xori(r1, r1, 2); 
+    ctc1(r1, f31); 
+    srlv(r0, r0, r0);
+    cvt.w.d(fs, ft); nop();
+    ctc1(rt, f31);   nop(); 
+    mfc1(rt, fs);    nop()
+</pre><p>
+
+<h3><a name="applic00">Application-specific specifications for the <tt>mld</tt> linker</a></h3>
+<p>
+An application writer has the option of extending a machine's specification
+to include application-specific information.
+<a name="NWDb">These extensions can simplify implementation of the application or</a>
+can be used by the toolkit to generate more efficient
+encoding code.
+<tt>mld</tt> is a retargetable, optimizing linker that generates code for
+the MIPS or the SPARC.
+<tt>mld</tt> uses the toolkit to emit executable binary directly, instead
+of going through the assembler.
+This means it needs substitutes for the synthetic <code>div</code>, <code>divu</code>, <code>rem</code>,
+and <code>remu</code> instructions provided by the MIPS assembler.
+<p>
+<a name="NWDc">The MIPS hardware does no checking for divide by zero or divisions</a>
+that overflow; these checks have to be done in software.
+A <code>break 7</code> instruction is used to indicate one of these errors; so
+<tt>mld</tt> has to generate code that does these tests.
+The first test just checks to see if the divisor is zero, branching
+around the break instruction if it isn't.
+If, for some reason, we can tell at compile time that the
+divisor is zero, we just emit a break, because that's what the MIPS
+assembler does.
+<p><pre><a name="NWmip7-mldD-1" href="#NWDc"><dfn>&lt;mld-mips.spec&gt;=</dfn></a> <b>[D<a href="#NWDd">-&gt;</a>]</b>
+constructors
+  break7ifzero rt
+    when { rt = 0 } is break(7)
+    otherwise       is bne(rt, r0, L); nop(); break(7); L: epsilon
+</pre><p>
+<a name="NWDd">The other test, for overflow, is more complicated.</a>
+On a two's-complement machine,
+integer division can overflow if it is signed, if the divisor is <i>-1</i>,
+and if the dividend is the most negative integer---there aren't enough
+bits to represent the result.
+<p><pre><a name="NWmip7-mldD-2" href="#NWDc"><dfn>&lt;mld-mips.spec&gt;+=</dfn></a> <b>[<a href="#NWDc">&lt;-</a>D<a href="#NWDe">-&gt;</a>]</b>
+constructors
+  break7ifoverflow rs, rt is
+        addiu(r1, r0, -1);
+        bne(rt, r1, L);   
+        lui(r1, 0x8000);  
+        bne(rs, r1, L);   
+        nop();            
+        break(7);
+    L : epsilon
+</pre><p>
+<a name="NWDe">Given these two tests, we can define safe versions of signed and</a>
+unsigned division and remainder.
+<p><pre><a name="NWmip7-mldD-3" href="#NWDc"><dfn>&lt;mld-mips.spec&gt;+=</dfn></a> <b>[<a href="#NWDd">&lt;-</a>D<a href="#NWDg">-&gt;</a>]</b>
+constructors
+  tested_divu rd, rs, rt
+    is divu(rs, rt); nop(); break7ifzero(rt); mflo(rd); nop()
+  tested_div rd, rs, rt
+    is div(rs, rt);  nop(); break7ifzero(rt); break7ifoverflow(rs, rt); mflo(rd); nop()
+  tested_remu rd, rs, rt
+    is divu(rs, rt); nop(); break7ifzero(rt); mfhi(rd); nop()
+  tested_rem rd, rs, rt
+    is div(rs, rt);  nop(); break7ifzero(rt); break7ifoverflow(rs, rt); mfhi(rd); nop()
+</pre><p>
+
+Applications can also play games to trade safety for efficiency.
+Toolkit-generated encoding procedures
+prevent the application from putting a value in a field that is too
+small for it, so for example they won't let an application put 255 in
+<a name="NWDf">a 5-bit field. </a>
+If an application writer wants to promise that the values of a field
+will always fit, it can call the field ``unchecked,'' and the toolkit
+will omit the check, but it will still mask out the high bits.
+If the application can guarantee the high bits are zero, it can call a
+field ``guaranteed,'' and the toolkit won't even do the masking.
+Many applications, including <tt>mld</tt>, include register allocators
+that always assign proper values to the
+fields denoting registers:
+<p><pre><a name="NWmip7-mipE.2-1" href="#NWDf"><dfn>&lt;mips-regs.spec&gt;=</dfn></a>
+fieldinfo [ rs rt rd base fs ft fd ] is [ guaranteed ]
+</pre><p>
+
+
+<code>mld</code> emits relocatable addresses into the data segments.
+<a name="NWDg">There is an argument for putting an address-emitting procedure into the</a>
+toolkit library, but then that procedure would have to deal with all
+the details of generating a closure and so on when the value of the
+address wasn't yet known.
+Since the toolkit's generator already takes care of those details, it
+is much easier simply to specify a constructor that emits an address.
+We create a new token so we can distinguish a 32-bit data token
+from a 32-bit instruction token, and
+we choose a placeholder that is known to be an illegal address.
+<p><pre><a name="NWmip7-mldD-4" href="#NWDc"><dfn>&lt;mld-mips.spec&gt;+=</dfn></a> <b>[<a href="#NWDe">&lt;-</a>D]</b>
+fields of addrtoken (32) addr32 0:31
+placeholder for addrtoken is addr32 = 7
+constructors
+  emit_raddr reloc is addr32 = reloc
+</pre><p>
+<h3><a name="NWDh">Specifications to support validation</a></h3>
+<p>
+We have validated this specification against the DEC-Ultrix MIPS
+assembler.
+To do that, we had to alter a little bit of syntax, and we had to
+discard some constructors that this assembler didn't know about.
+<p><pre><a name="NWmip7-mipF.3-1" href="#NWDh"><dfn>&lt;mips-names.spec&gt;=</dfn></a>
+assembly opcode
+  jr                is j
+  jalr              is jal
+  mov               is move
+  {sll,srl,sra}v    is $1
+  tested_{*}        is $1
+assembly operand
+  [ rs rt rd base ] is &quot;$%d&quot;
+  [ fs ft fd ]      is &quot;$%s&quot;
+</pre><p>
+<a name="NWDi">The machine instructions not recognized by the MIPS assembler</a>
+are discarded.
+<p><pre><a name="NWmip7-mipF.4-1" href="#NWDi"><dfn>&lt;mips-check.spec&gt;=</dfn></a>
+discard 
+  break lwc0 swc0 arith3.^&quot;w&quot; arith2.^&quot;w&quot; c.cond^&quot;.&quot;^&quot;w&quot; cvt.s.s
+  cvt.w.w cvt.d.d swc2 lwc2 swc3 lwc3 
+</pre><p>
+<a name="NWDj">On the MIPS, the checker's assembly output must include the</a>
+<code>noreorder</code> directive. 
+<p><pre><a name="NWmip7-mipE.3-1" href="#NWDj"><dfn>&lt;mips-checker.s&gt;=</dfn></a>
+.set noreorder
+</pre>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;field specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWDR">D3</a>, <a href="#NWDU">D4</a>
+<li><a href="#NWD4"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD4">D2</a>, <a href="#NWmip7-**fS-2">D3</a>, <a href="#NWDS">D4</a>
+<li><a href="#NWDj"><i>&lt;mips-checker.s&gt;</i></a>: <a href="#NWDj">D1</a>
+<li><a href="#NWDi"><i>&lt;mips-check.spec&gt;</i></a>: <a href="#NWDi">D1</a>
+<li><a href="#NWD1"><i>&lt;mips-core.spec&gt;</i></a>: <a href="#NWD1">D1</a>
+<li><a href="#NWDh"><i>&lt;mips-names.spec&gt;</i></a>: <a href="#NWDh">D1</a>
+<li><a href="#NWDf"><i>&lt;mips-regs.spec&gt;</i></a>: <a href="#NWDf">D1</a>
+<li><a href="#NWDL"><i>&lt;mips-synth.spec&gt;</i></a>: <a href="#NWDL">D1</a>, <a href="#NWDN">D2</a>, <a href="#NWDO">D3</a>, <a href="#NWDP">D4</a>, <a href="#NWDZ">D5</a>
+<li><a href="#NWDa"><i>&lt;mips-trunc.spec&gt;</i></a>: <a href="#NWDa">D1</a>
+<li><a href="#NWDc"><i>&lt;mld-mips.spec&gt;</i></a>: <a href="#NWDc">D1</a>, <a href="#NWDd">D2</a>, <a href="#NWDe">D3</a>, <a href="#NWDg">D4</a>
+<li><a href="#NWD5"><i>&lt;pattern and constructor specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWD7">D3</a>, <a href="#NWD8">D4</a>, <a href="#NWDA">D5</a>, <a href="#NWDB">D6</a>, <a href="#NWDE">D7</a>, <a href="#NWDJ">D8</a>, <a href="#NWDT">D9</a>, <a href="#NWmip7-patc-9">D10</a>, <a href="#NWDW">D11</a>, <a href="#NWDX">D12</a>
+<li><a href="#NWDH"><i>&lt;placeholder definition&gt;</i></a>: <a href="#NWDE">U1</a>, <a href="#NWDH">D2</a>
+<li><a href="#NWmip7-proi-1"><i>&lt;properties of floating-point-register fields&gt;</i></a>: <a href="#NWmip7-**fS-2">U1</a>, <a href="#NWmip7-proi-1">D2</a>
+<li><a href="#NWD3"><i>&lt;properties of integer-register fields&gt;</i></a>: <a href="#NWD3">D1</a>, <a href="#NWD4">U2</a>
+</ul>
+

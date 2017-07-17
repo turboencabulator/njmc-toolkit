@@ -1,0 +1,308 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+% l2h ignore change {
+\chapter{Generator for expression rewrite rules}
+Record types are [[special]] if handled by hand-written code.
+[[expargs]] holds the names of arguments (fields) known to be 
+expressions, and which therefore need to be simplified recursively.
+<<*>>=
+global records, rules, special, expargs, simp_name
+link commafy
+procedure main(args)
+  every special | expargs := set()
+  every records | rules := table()
+  simp_name := "simfun"
+  if args[1] == "-s" then simp_name := args[2]
+  lex()
+  P_Spec()
+  every r := !records & not(member(special, r.name)) do {
+    if not always_matches(r, !rules[r.name]) then
+      put(rules[r.name], Rule(App(r.name, ignoredargs(r.args)), "e"))  # default rule
+    emit_tests(r)
+  }
+  return
+end
+@
+<<*>>=
+procedure always_matches(r, rule)
+  local lhs
+  lhs := rule.lhs
+  l := []; every !lhs.args do put(l, "dummy")
+  return r.name == lhs.fun & *matching_conditions(lhs, l) = 0
+end
+@
+To test a possibility, we first simplify expression arguments, then
+check each rule in turn.
+If we ever get to a rule that always matches, we win.
+If we every run out of rules, we lose.
+<<*>>=
+procedure emit_tests(r)
+  local sargs, sa, before_if
+  iwrite(0, image(r.name), " : {")	# case label
+  <<emit simplifying assignments, making [[sargs]] name simplified [[r.args]]>>
+  if member(expargs, !r.args) then
+    {<<emit assignment making [[e]] its simplified version>>}
+  before_if := ""
+  while x := get(rules[r.name]) do {
+    c := matching_conditions(x.lhs, sargs)
+    if *c = 0 then
+      {<<emit last case and return>>}
+    else 
+      {<<emit this case>>}
+    before_if := "} else "
+  }
+  stop("This can't happen -- ran out of rules before finding one that always matched")
+end
+<<emit assignment making [[e]] its simplified version>>=
+<<make [[c]] a list of conditions required to re-use [[e]]>>
+if *c > 0 then {
+  write("  if not (", commaseparate(c), ") then")
+  write("    e := ", r.name, "(", commaseparate(sargs), ")")
+}
+<<make [[c]] a list of conditions required to re-use [[e]]>>=
+c := []
+every i := 1 to *r.args & member(expargs, r.args[i]) do
+  put(c, sargs[i] || " === e." || r.args[i])
+@
+<<emit this case>>=
+iwrite(2, before_if, "if (", commaseparate(c), ") then {")
+write_binding_assignments(x.lhs, sargs, 4)
+every o := !x.code & *o > 0 do 
+  iwrite(4, o)
+<<emit last case and return>>=
+iwrite(2, before_if, "{")
+write_binding_assignments(x.lhs, sargs, 4)
+every o := !x.code & *o > 0 do 
+  iwrite(4, o)
+iwrite(2, "}")
+iwrite(0, "}")
+write(&errout, "Warning: ", 0 < *rules[r.name], " extra rules for ", r.name)
+return
+<<emit simplifying assignments, making [[sargs]] name simplified [[r.args]]>>=
+sargs := []
+every a := !r.args do
+  if member(expargs, a) then {
+    sa := "_a" || *sargs
+    iwrite(2, sa, " := ", simp_name, "(e.", a, ")")
+    put(sargs, sa)
+  } else
+    put(sargs, "e." || a)
+@
+We discover binding assignments by a tree walk.
+<<*>>=
+procedure write_binding_assignments(lhs, sargs, indent)
+  type(lhs) == "App" | stop("Left-hand side of rule must be an application")
+  every i := 1 to *sargs do
+    bind_arg(lhs.args[i], sargs[i], indent)
+  return
+end
+<<*>>=
+procedure bind_arg(lhs, e, indent)
+  local sargs
+  l := []
+  while type(lhs) == "Binding" do {
+    put(l, lhs.id)
+    lhs := lhs.exp
+  }
+  if *l > 0 then {put(l, e); iwrite(indent, commaseparate(l, " := "))}
+  case type(lhs) of {
+    "App" : {
+      r := records[lhs.fun]
+      *r.args = *lhs.args | stop("This can't happen -- args")
+      sargs := []; every put(sargs, e || "." || !r.args)
+      write_binding_assignments(lhs, sargs, indent)
+    }
+    "string" : if lhs ~== "_" then iwrite(indent, lhs, " := ", e)
+    "integer" : &null
+    default : stop("impossible lhs")
+  }
+  return
+end
+@
+A similar walk suffices to recover matching conditions.
+<<*>>=
+procedure matching_conditions(lhs, sargs, conds)
+  /conds := []
+  type(lhs) == "App" | stop("Left-hand side of rule must be an application")
+  every i := 1 to *sargs do
+    add_conditions(lhs.args[i], sargs[i], conds)
+  return conds
+end
+<<*>>=
+procedure add_conditions(lhs, e, conds)
+  local sargs
+  static intlets, uppernum
+  initial { intlets := 'IJKLMN'; uppernum := &ucase ++ &digits }
+  while type(lhs) == "Binding" do
+    lhs := lhs.exp
+  case type(lhs) of {
+    "App" : {
+      put(conds, "type(" || e || ") == " || image(lhs.fun))
+      r := records[lhs.fun]
+      sargs := []; every put(sargs, e || "." || !r.args)
+      matching_conditions(lhs, sargs, conds)
+    }
+    "string" : 
+      if lhs ? (any(intlets), tab(many(uppernum)), pos(0)) then
+        put(conds, "type(" || e || ") == " || image("integer"))
+    "integer" : put(conds, e || " === " || lhs)
+    default : stop("impossible lhs")
+  }
+  return
+end
+@
+<<*>>=
+procedure newrule(lhs, code)
+  type(lhs) == "App" | error("must be an application on lhs")
+  every put(rules[lhs.fun], Rule(App(lhs.fun, insert_comments(lhs.args)), code))
+  return
+end  
+@ 
+We automatically insert [[Gcommented]] into nested applications, so that
+[[Gcommented]] never prevents anything from matching.
+<<*>>=
+procedure insert_comments(e, i)
+  case type(e) of {
+    "list" : {
+       /i := 1
+       if i <= *e then 
+         every l := insert_comments(e, i+1) & x := insert_comments(e[i]) do {
+	   push(l, x); suspend copy(l); pop(l)
+	 }
+       else suspend []
+     }
+     "Binding" : suspend Binding(e.id, insert_comments(e.exp))
+     "App" : {
+        suspend App(e.fun, insert_comments(e.args))
+        suspend App("Gcommented", [App(e.fun, insert_comments(e.args)), "_"])
+      }
+     "string" | "integer" : suspend e
+     default : impossible("bad type in insert_comments: ", image(e))
+  }
+end    
+@
+We make ignored arguments in the default rule.
+<<*>>=
+procedure ignoredargs(args)
+  l := []
+  every i := 1 to *args do put(l, "_")
+  return l
+end
+@
+\subsection{Grammar}
+An expression is an integer, an identifier (string), a binding, or an application.
+<<*>>=
+record App(fun, args)
+record Binding(id, exp)
+@
+Each record type has a list of arguments.
+A rule has a matching expression on the left and code on the right.
+<<*>>=
+record Record(name, args)
+record Rule(lhs, code)
+<<productions>>=
+Spec : {Directive} "%%" {Rule};
+Directive: Record
+         | "special"
+               ( "hoist"    {Ident} "."
+               | "simplify" {Ident} "." /* every insert(special, !ii2) */
+               )
+         | "expargs" {Ident} "." /* every insert(expargs, !ii2) */
+         ;
+Rule: Exp {CODE} /* newrule(ii1, ii2) */;
+Exp : Ident
+         (   "as" Exp      /* Binding(&null, ii2) */
+
+         |   "(" Args ")"  /* App(&null, ii2) */
+         |                 /* &null */
+         )  /* <<attach identifier [[ii1]] to remainder [[ii2]]>> */
+    | INT
+    ;
+Args: [ Exp {"," Exp} /* push(ii2, ii1) */] /* \ii1 | [] */;
+
+Record: "record" Ident "(" [Ident {"," Ident} /* push(ii2, ii1) */] ")"
+        /* records[ii2] := Record(ii2, \ii4 | []); rules[ii2] := [] */
+      ;
+Ident : IDENT | "_";
+<<attach identifier [[ii1]] to remainder [[ii2]]>>=
+case type(ii2) of {
+  "Binding" : {ii2.id  := ii1;	 	ii2		}
+  "App"     : {ii2.fun := ii1;	        checkapp(ii2)   }
+  "null"    : {                         ii1             }
+  default : stop("impossible goo")
+}
+<<*>>=
+procedure checkapp(a)
+  if /records[a.fun] then
+     error("Record type ", a.fun, " not known")
+  else if *records[a.fun].args ~= *a.args then
+     error(a.fun, " takes ", *records[a.fun].args, " arguments")
+  else
+     return a
+end
+<<grammar>>=
+%term INT
+%term IDENT
+%term CODE
+%%
+<<productions>>
+@
+\subsection{Lexical analysis}
+[[token]] describes the category of the token, and [[tval]] is its value.
+[[token == tval]] except for integers and identifiers.
+[[file]] and [[line]] describe the source file and line number from which 
+the token came.
+<<*>>=
+global token, tval, file, line
+@
+There are three special tokens.
+<<*>>=
+global EOF, IDENT, INT, CODE
+<<initialize [[tokens]]>>=
+CODE    := " code  "
+EOF    := " end of file "
+IDENT  := " identifier "
+INT    := " integer "
+<<*>>=
+procedure scantokens(eol)
+  static alphanum, hexdigits, multichar
+  initial { 
+    alphanum   := &letters ++ &digits ++ '_'
+    hexdigits  := &digits ++ 'abcdefABCDEF'
+    multichar  := set(["->", "%%"])
+    <<initialize [[tokens]]>>
+  }
+  if pos(1) & tab(many(' \t')) then {
+    tval := tab(0)
+    return token := CODE
+  } else if {white(); not pos(0)} then {
+    thispos := &pos
+    if ="#" then tab(0) & fail 
+    else if tval := integer(((="0x" & "16r") || tab(many(hexdigits))) | 
+                              ((="-" | "") || tab(many(&digits)))) then {
+      token := INT
+    } else if tval := (any(&letters), tab(many(alphanum))) then {
+      token := reserved(tval) | IDENT
+    } else if tval := ="->" then {
+      white()
+      tval := tab(0)
+      token := CODE
+    } else if tval := =!multichar then {
+      token := tval
+    } else {
+      token := tval := move(1)
+    }
+    return token
+  }
+end
+<<*>>=
+procedure white()
+  suspend tab(many(' \t'))
+end
+<<*>>=
+procedure iwrite(indent, L[])
+  return write!(push(L,left("", indent)))
+end
+
+procedure iwrites(indent, L[])
+  return writes!(push(L,left("", indent)))
+end

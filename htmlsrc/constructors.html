@@ -1,0 +1,2541 @@
+<html><head><title> constructors.nw</title></head><body><!-- -*- mode: Noweb; noweb-code-mode: icon-mode -*--->
+
+<h1><a name="NWD1">Constructors</a></h1>
+
+<h2>Creating and checking constructors</h2>
+<p>
+<h3>Basic types</h3>
+Most of the elements of a constructor are straight out of
+the concrete syntax. 
+Operands may be <code>literal</code> or <code>input</code>.
+<code>type</code> is a <code><a href="#NWD2">constype</a></code>.
+<code>rho</code> is a bit odd; it contains the initial bindings used to evaluate the
+patterns in the branches, including any bindings introduced as part of exploding 
+the constructor's opcode.
+The constructor's <code>tag</code> is used to identify instances of that constructor.
+<a name="NWD2">Tags are unique only within constructor types.</a>
+<p>
+To each branch we add the solution to its equations.
+<p>
+The constructor type keeps track of its members, the number of tags used, and
+the line on which the type itself was used (to enforce definition before use).
+The <code>members</code> field is initially a set.
+When the type is first used, it must be complete, so the <code>members</code> are
+turned into a list (in alphabetical order by constructor name).
+<pre><a name="NWconF-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD5">-&gt;</a>]</b>
+record <a href="#NWD2">constructor</a>(name, opcode, operands, type, branches, rho, tag)
+record <a href="#NWD2">branch</a>(eqns, soln, pat)
+record <a href="#NWD2">constype</a>(name, members, used, ntags)
+</pre><blockquote>Defines <a href="#NWI-branch"><code>branch</code></a>, <a href="#NWI-constructor"><code>constructor</code></a>, <a href="#NWI-constype"><code>constype</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD3">The solution (</a><code>soln</code>) in a branch has appropriate expressions substituted 
+for the free variables representing the inputs.
+
+
+<h3><a name="NWD4">Interpreting and checking constructor specifications</a></h3>
+<p>
+
+The parser calls
+<code><a href="#NWD5">note_constructor</a></code> when it sees a constructor specification.
+<a name="NWD5">One specification may create many constructors;</a>
+<code><a href="#NWD5">note_constructor</a></code> calls <code><a href="#NWD9">explode</a></code> to generate them all.
+Its effects are:
+<ul>
+<li>add the constructor to the members of its type
+<li>make sure the type hasn't been used an an argument to another
+constructor (thus avoiding possible recursion)
+<li>add the constructor to the <code>constructors</code> name space
+</ul> 
+<pre><a name="NWconF-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">note_constructor</a>(opcode, operands, type, branches)
+    local cons, template
+
+    <a name="NWconF-*-2-u1" href="#NWconF-to*y-1"><i>&lt;to avoid circularity, make sure <code>type</code> has never been used&gt;</i></a>
+    template := <a href="#NWD6">constemplate</a>(type, opcode, operands, branches)
+    every cons := <a href="#NWD9">explode</a>(opcode, template, globals) do {
+        if /constructors[cons.name] := cons then {
+            verbose(&quot;New <a href="#NWD2">constructor</a> &quot;, cons.name)
+            put(conslist, cons)
+            insert(type.members, cons)
+            <a name="NWconF-*-2-u2" href="#NWconF-if*y-1"><i>&lt;if first time thru, check for unused definitions in <code>cons</code>&gt;</i></a>
+        } else if *<a href="#NWDH">crhs</a>(constructors[cons.name]).disjuncts = 0 then {
+            verbose(&quot;Replacing vacuous <a href="#NWD2">constructor</a> &quot;, cons.name)
+            constructors[cons.name] := cons
+            put(conslist, cons)
+            insert(type.members, cons)
+            <a name="NWconF-*-2-u3" href="#NWconF-if*y-1"><i>&lt;if first time thru, check for unused definitions in <code>cons</code>&gt;</i></a>
+        } else if *<a href="#NWDH">crhs</a>(cons).disjuncts = 0 then {
+            verbose(&quot;Ignoring extra, vacuous <a href="#NWD2">constructor</a> &quot;, cons.name)
+        } else {
+            warning(&quot;Ignoring duplicate definition of <a href="#NWD2">constructor</a> &quot;, cons.name)
+#           PPxwrite(PPnew(&amp;errout), 
+#               &quot;Keeping $t$o&quot;, ppexpimage(<a href="#NWDH">crhs</a>(constructors[cons.name])), &quot;$b$n&quot;,
+#               &quot;Discarding $t$o&quot;, ppexpimage(<a href="#NWDH">crhs</a>(cons)), &quot;$b&quot;)
+        }
+    }
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-note_constructor"><code>note_constructor</code></a> (links are to index).<p>
+</blockquote><p>
+A constructor specification defines one or more constructors.
+(Multiple constructors are specified by enumerating disjuncts of patterns 
+<a name="NWD6">that appear in the opcode, or by enumerating values of fields that appear in the opcode.)</a>
+<code><a href="#NWD6">constemplate</a></code> returns a template that is filled in differently for
+each constructor (by <code><a href="#NWD9">explode</a></code>).
+<code><a href="#NWD7">instantiate_template</a></code> is called by <code><a href="#NWD9">explode</a></code> to create a complete
+<code>Stype</code> from a template and environment <code>rho</code>.
+Differences between a template and a full-fledged constructor:
+<ul>
+<li>A template has no name,  initial environment, or tag
+</ul> 
+<pre><a name="NWconF-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD6">constemplate</a>(type, opcode, operands, branches)
+  local inputs, inputs_labs
+  <a name="NWconF-*-3-u1" href="#NWconF-mak15-1"><i>&lt;make <code>inputs</code> the set of input names, barfing if duplicates exist&gt;</i></a>
+  B := []
+  every b := !branches do { # b === [eqns, pat]
+    <a name="NWconF-*-3-u2" href="#NWD8"><i>&lt;make <code>inputs_labs</code> <code>inputs</code> plus labels defined in <code>b[2]</code>, barfing on duplicates&gt;</i></a>
+    put(B, <a href="#NWD2">branch</a>(b[1], <a href="#NWconF-*-I">inject_soln</a>(solve(balance_eqns(b[1]), inputs_labs)), 
+                  \b[2] | <a href="#NWDB">implicit_pattern</a>(opcode, operands)))
+  }
+  return <a href="#NWD2">constructor</a>(&amp;null, &amp;null, operands, type, B, &amp;null, &amp;null)
+end
+</pre><blockquote>Defines <a href="#NWI-constemplate"><code>constemplate</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWD7" href="#NWD7">instantiate_template</a></code> instantiates the templates by assigning name, environment,
+and branch tags.  Both the list of branches and the branches themselves
+have to be copied.
+<pre><a name="NWconF-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+procedure <a href="#NWD7">instantiate_template</a>(op, t, rho)
+  /t.type.ntags := 0
+  t.type.ntags +:= 1
+  <a name="NWconF-*-4-u1" href="#NWconF-cher-1"><i>&lt;check that <code>t.type.ntags</code> doesn't overflow tag bits&gt;</i></a>
+  return <a href="#NWD2">constructor</a>(<a href="#NWDC">iname</a>(op), op, t.operands, t.type, t.branches, rho, t.type.ntags)
+end
+</pre><blockquote>Defines <a href="#NWI-instantiate_template"><code>instantiate_template</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-mak15-1" href="#NWconF-mak15-1"><dfn>&lt;make <code>inputs</code> the set of input names, barfing if duplicates exist&gt;=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b>
+inputs := set()
+every i := <a href="#NWDD">inputs_of_operands</a>(operands) do
+  if member(inputs, i.name) then
+    error(&quot;Input named &quot;, i.name, &quot; is used twice in one <a href="#NWD2">constructor</a>&quot;)
+  else
+    insert(inputs, i.name)
+</pre><p>
+<a name="NWD8">Note that duplicate labels are OK, because they could appear in</a>
+different disjuncts.  We have to sort that stuff out later.
+(Also note that implicit patterns never define labels.)
+<pre><a name="NWconF-mak1O-1" href="#NWD8"><dfn>&lt;make <code>inputs_labs</code> <code>inputs</code> plus labels defined in <code>b[2]</code>, barfing on duplicates&gt;=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b>
+if \b[2] then {
+  inputs_labs := copy(inputs)
+  every labname := pattern_label_names(b[2]) do
+    if member(inputs, labname) then
+      error(&quot;label name &quot;, labname, &quot;: conflicts with <a href="#NWD2">constructor</a> input name&quot;)
+    else
+      insert(inputs_labs, labname)
+} else {
+  inputs_labs := inputs
+}
+</pre><p>
+<code><a name="NWD9" href="#NWD9">explode</a></code> generates all those constructors denoted by a single
+constructor specification
+by enumerating disjuncts and field values for disjuncts and fields
+that appear in the constructor's opcode.
+Those disjuncts and fields are bound in the initial environment for the constructor.
+<pre><a name="NWconF-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+procedure <a href="#NWD9">explode</a>(opcode, template, rho, frame)
+    /frame := table()
+    l := copy(opcode)
+    if type(p := l[i := 1 to *l]) == &quot;pattern&quot; then {
+        every l[i] := !p.disjuncts do {
+            add_to_frame(p.name, pattern([l[i]], \l[i].name | p.name), frame)
+            suspend <a href="#NWD9">explode</a>(l, template, rho, frame)
+            delete(frame, p.name)
+        }
+    } else if type(f := l[i := 1 to *l]) == &quot;field&quot; then {
+        t := fieldname_table(f); <a name="NWconF-*-5-u1" href="#NWconF-insL-1"><i>&lt;insist on <code>*\t > 0</code>&gt;</i></a>
+        every x := t[l[i] := key(t)] do {
+            add_to_frame(f.name, inject(conspat(f, &quot;=&quot;, x), x, &amp;null), frame)
+            suspend <a href="#NWD9">explode</a>(l, template, rho, frame)
+            delete(frame, f.name)
+        }
+    } else
+        suspend <a href="#NWD7">instantiate_template</a>(l, template, extendscope(rho, copy(frame)))
+end
+</pre><blockquote>Defines <a href="#NWI-explode"><code>explode</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-insL-1" href="#NWconF-insL-1"><dfn>&lt;insist on <code>*\t > 0</code>&gt;=</dfn></a> <b>(<a href="#NWD9">U-&gt;</a> <a href="#NWDA">U-&gt;</a>)</b>
+*\t &gt; 0 | error(&quot;Can't use field `&quot;, f.name, &quot;' in opcode without supplying field names&quot;)
+</pre><p>
+For constructor applications, we explode the applied constructor's
+name, first using the constructor's ``local'' environment(s) then 
+the global environment to determine the meaning of the applied
+constructor's name. 
+For example, in the definition of the constructors generated by
+<code>P^Y</code>, the pattern <code>P</code> is bound to <code>A</code> in the environment
+created for the constructor <code>A^Y</code> <em>or</em> 
+is bound to <code>B</code> in <code>B^Y</code>'s environment.
+In the definition of the constructor <code>R</code>, however,
+<code>P</code> is not bound in <code>R</code>'s environment, therefore its meaning in
+the global enviroment is used, i.e., <code>(A | B)(s)</code> which is <code>A(s) | B(s)</code>.
+<pre>
+<a name="NWDA">patterns     P is A | B</a>
+constructors 
+  P r is r
+  P^Y s is P(s) &amp; Y
+  R s is P(s)
+</pre>
+<p>
+<code><a href="#NWDA">explode_names</a></code> uses a pattern's name if it is bound in <code>rho</code>, 
+otherwise it explodes its disjunct's names.
+<pre><a name="NWconF-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+procedure <a href="#NWDA">explode_names</a>(opcode, rho)
+    l := copy(opcode)
+    if type(p := l[i := 1 to *l]) == &quot;pattern&quot; then {
+        if l[i] := \lookup(p.name, \rho) then 
+            suspend <a href="#NWDA">explode_names</a>(l)
+        else every l[i] := !p.disjuncts do {
+            suspend <a href="#NWDA">explode_names</a>(l)
+        }
+    } else if type(f := l[i := 1 to *l]) == &quot;field&quot; then {
+        t := fieldname_table(f); <a name="NWconF-*-6-u1" href="#NWconF-insL-1"><i>&lt;insist on <code>*\t > 0</code>&gt;</i></a>
+        every x := t[l[i] := key(t)] do
+            suspend <a href="#NWDA">explode_names</a>(l)
+    } else
+        suspend <a href="#NWDC">iname</a>(l)
+end
+</pre><blockquote>Defines <a href="#NWI-explode_names"><code>explode_names</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDB">An implicit pattern conjoins all the pattern and field names appearing in the opcode </a>
+and operands.
+<pre><a name="NWconF-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDB">implicit_pattern</a>(opcode, operands)
+  l := []
+  every op := !opcode do 
+    case type(op) of {
+      &quot;pattern&quot; : put(l, Pident(\op.name)) | impossible(&quot;unnamed opcode pattern&quot;)
+      &quot;field&quot;   : put(l, Pident(op.name))
+    }
+  every ipt := <a href="#NWDD">inputs_of_operands</a>(operands) do
+    if type(ipt.meaning) == (&quot;field&quot;|&quot;integer&quot;|&quot;<a href="#NWD2">constype</a>&quot;) then
+      put(l, Pident(ipt.name))
+  *l &gt; 0 | 
+    error(&quot;Cannot use implicit pattern with no patterns or fields on lhs (&quot;,
+          expimage(opcode), &quot;)&quot;)
+  return Pand(l)
+end
+</pre><blockquote>Defines <a href="#NWI-implicit_pattern"><code>implicit_pattern</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDC">These auxiliary functions help choose names for constructors.</a>
+<pre><a name="NWconF-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWconF-*-9">-&gt;</a>]</b>
+procedure <a href="#NWDC">iname</a>(opcode)
+  local name
+  name := &quot;&quot;
+  every name ||:= <a href="#NWDC">opcode_component_name</a>(!opcode)
+  if \lowercons then name := map(name)
+  return <a href="#NWconF-*-9">mapoutbadchars</a>(name)
+end
+
+procedure <a href="#NWDC">opcode_component_name</a>(op)
+  return case type(op) of {
+           &quot;string&quot;   : op
+           &quot;disjunct&quot; : {
+             if *\op.name = 0 then impossible(&quot;disjunct with empty name&quot;)
+             \op.name | &quot;???unnamed disjunct???&quot;
+             }
+           default : impossible(&quot;opcode component&quot;, image(op))
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-iname"><code>iname</code></a>, <a href="#NWI-opcode_component_name"><code>opcode_component_name</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-9">mapoutbadchars</a>(name)
+  static nonalnum, underscores
+  initial {
+    nonalnum := string(&amp;ascii -- &amp;letters -- &amp;digits -- '_')
+    underscores := repl(&quot;_&quot;, *nonalnum)
+  }
+  return map(name, nonalnum, underscores)
+end
+</pre><blockquote>Defines <a href="#NWI-mapoutbadchars"><code>mapoutbadchars</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-to*y-1" href="#NWconF-to*y-1"><dfn>&lt;to avoid circularity, make sure <code>type</code> has never been used&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+if \type.used then
+  error(&quot;You can't create new constructors of type &quot;, type.name,
+        &quot;!\n\tThat name has already been used (on line&quot;, type.used, &quot;)&quot;)
+</pre><pre><a name="NWconF-if*y-1" href="#NWconF-if*y-1"><dfn>&lt;if first time thru, check for unused definitions in <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+if /checked then {
+  checked := 1
+  <a name="NWconF-if*y-1-u1" href="#NWconF-chee-1"><i>&lt;check for unused definitions in <code>cons</code>&gt;</i></a>
+}
+</pre><pre><a name="NWconF-chee-1" href="#NWconF-chee-1"><dfn>&lt;check for unused definitions in <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWconF-if*y-1">&lt;-U</a>)</b>
+every i := 1 to *cons.branches &amp; b := cons.branches[i] do {
+  u := copy(b.soln.used)
+  every insert(u, pattern_free_variables(b.pat))
+  d := copy(b.soln.defined)
+  every insert(d, key(cons.rho[1 to *cons.rho - 1]) | <a href="#NWDD">inputs_of</a>(cons).name)
+  every x := !(d--u--fresh_variables) do
+    warning(
+      if \cons.rho[1 to *cons.rho-1][x] then &quot;opcode part&quot;
+      else if member(b.soln.defined, x) then &quot;equation result&quot;
+      else &quot;operand&quot;,
+      &quot; &quot;, image(x), &quot; not used in <a href="#NWD2">constructor</a> &quot;, cons.name,
+           if (*cons.branches = 1) then &quot;.&quot;
+           else &quot; in &quot; || <a href="#NWconF-*-G">ordinal</a>(i) || &quot; <a href="#NWD2">branch</a>.&quot;)
+}
+</pre><p>
+<pre><a name="NWconF-cher-1" href="#NWconF-cher-1"><dfn>&lt;check that <code>t.type.ntags</code> doesn't overflow tag bits&gt;=</dfn></a> <b>(<a href="#NWD7">U-&gt;</a>)</b>
+if t.type.ntags &gt;= 2^11 then
+  impossible(&quot;Too many type tags --- change mclib.nw (struct instance), constructors.nw&quot;)
+</pre><p>
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%-->
+
+
+<h2><a name="NWDD">Utility functions</a></h2>
+<p>
+<h3>Input generation</h3>
+<p>
+<code><a href="#NWDD">inputs_of</a>(cons, t)</code> generates the inputs with meanings of type <code>t</code>,
+or all inputs if <code>t</code> is omitted.
+<pre><a name="NWconF-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-9">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+procedure <a href="#NWDD">inputs_of</a>(cons, t)
+  suspend <a href="#NWDD">inputs_of_operands</a>(cons.operands, t)
+end
+procedure <a href="#NWDD">inputs_of_operands</a>(ops, t)
+  type(ops) == &quot;list&quot; | impossible(&quot;<a href="#NWDD">inputs_of</a>&quot;)
+  suspend if \t then (type(i := !ops) == &quot;input&quot;, type(i.meaning) == t, i)
+          else       (type(i := !ops) == &quot;input&quot;,                       i)
+end
+</pre><blockquote>Defines <a href="#NWI-inputs_of"><code>inputs_of</code></a>, <a href="#NWI-inputs_of_operands"><code>inputs_of_operands</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDE" href="#NWDE">input_named</a>(cons, n)</code> returns the input named <code>n</code> if there is one.
+<pre><a name="NWconF-*-B" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+procedure <a href="#NWDE">input_named</a>(cons, n)
+  return if i := <a href="#NWDD">inputs_of</a>(cons) &amp; i.name == n then i
+end
+</pre><blockquote>Defines <a href="#NWI-input_named"><code>input_named</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDF">Checking constructor types</a></h3>
+The two <code>enforce</code> functions distinguish between typed and untyped constructors
+by comparing their argument (a constructor type) to the anonymous type.
+<pre><a name="NWconF-*-C" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDE">&lt;-</a>D<a href="#NWconF-*-D">-&gt;</a>]</b>
+procedure <a href="#NWDF">enforce_instance</a>(ct)
+  return instructionctype ~=== ct | impossible(&quot;instance of untyped <a href="#NWD2">constructor</a>&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-enforce_instance"><code>enforce_instance</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-D" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-D">enforce_closure</a>(ct)
+  return instructionctype  === ct | impossible(&quot;closure of typed <a href="#NWD2">constructor</a>&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-enforce_closure"><code>enforce_closure</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDG">Miscellany</a></h3>
+<code><a href="#NWDG">cons_named</a></code> produces the constructor named <code>s</code> and issues an 
+error if no such constructor exists.  <code><a href="#NWDG">is_constructor</a></code> tests if 
+<code>s</code> is a constructor and prints an optional message if it is not.
+<pre><a name="NWconF-*-E" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-D">&lt;-</a>D<a href="#NWconF-*-F">-&gt;</a>]</b>
+procedure <a href="#NWDG">cons_named</a>(s) 
+  return <a href="#NWDG">is_constructor</a>(s, error)
+end
+procedure <a href="#NWDG">is_constructor</a>(s, p)
+  return \constructors[s | <a href="#NWDC">iname</a>([s])] | (\p)(image(s), &quot; is not a <a href="#NWD2">constructor</a> name&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-cons_named"><code>cons_named</code></a>, <a href="#NWI-is_constructor"><code>is_constructor</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-F" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWconF-*-G">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-F">discard_cons_named</a>(s)
+  if member(constructors, s &lt;- (s | <a href="#NWDC">iname</a>([s]))) then
+    delete(constructors, s)
+  else
+    warning(&quot;There is no <a href="#NWD2">constructor</a> named &quot;, s)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-discard_cons_named"><code>discard_cons_named</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-G" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-F">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-G">ordinal</a>(n)
+  return case n of {
+    1 : &quot;1st&quot;
+    2 : &quot;2nd&quot;
+    3 : &quot;3rd&quot;
+    default : n || &quot;th&quot;
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-ordinal"><code>ordinal</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Applying constructors</h2>
+<p>
+<h3>Right-hand-side patterns</h3>
+For every constructor, I compute a right-hand side, which is a pattern with
+<a name="NWDH">free variables for the constructor's inputs.</a>
+I then can apply the constructor by substituting for the inputs.
+<p>
+<code>chrs</code> computes the stuff.
+Every input makes a contribution to the environment.
+I don't try to make constructor inputs visible as labels.
+This is perhaps inconsistent with the treatment of free constructor
+types in matching statements, but I need to hear an argument in favor
+before I'll be convinced to work out a proper semantics.
+<pre><a name="NWconF-*-H" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-G">&lt;-</a>D<a href="#NWconF-*-I">-&gt;</a>]</b>
+procedure <a href="#NWDH">crhs</a>(cons)
+  local rho, labrho
+  static cache
+  initial cache := table()
+  if /cache[cons] then {<a name="NWconF-*-H-u1" href="#NWconF-comc-1"><i>&lt;compute and cache pattern for <code>cons</code>&gt;</i></a>
+PPxwrite(PPnew(\mdebug), &quot;<a href="#NWDH">crhs</a> for &quot;, cons.name, &quot; is &quot;, ppexpimage(cache[cons]))
+}
+  return cache[cons]
+end
+</pre><blockquote>Defines <a href="#NWI-crhs"><code>crhs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-comc-1" href="#NWconF-comc-1"><dfn>&lt;compute and cache pattern for <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWDH">&lt;-U</a>)</b>
+rho := newscope(cons.rho)
+every ipt := <a href="#NWDD">inputs_of</a>(cons) do
+  case type(ipt.meaning) of { 
+    &quot;<a href="#NWD2">constype</a>&quot; : 
+        add_to_rho(ipt.name, inject(<a href="#NWDJ">consinput_pattern</a>(ipt), &amp;null, ipt), rho)
+    &quot;field&quot; | &quot;integer&quot; : 
+        add_to_rho(ipt.name, inject(<a href="#NWDM">fieldinput_pattern</a>(ipt), ipt.name, &amp;null), rho)
+    &quot;string&quot;| &quot;null&quot; :
+        add_to_rho(ipt.name, inject(&amp;null, ipt.name, &amp;null), rho)
+    default    : impossible(&quot;input type&quot;)
+  }
+p := &amp;null
+every b := !cons.branches do {
+  <a name="NWconF-comc-1-u1" href="#NWDI"><i>&lt;convert branch <code>b</code> to a pattern <code>q</code>&gt;</i></a>
+  p := orp(\p, q) | q
+}
+cache[cons] := subst(eliminate_contradictions(p), &quot;nonexistent variable&quot;, 0)
+                 # can't afford to simplify -- makes it too hard to solve eqns
+                # subst eliminates bad tag conditions
+</pre><p>
+OK, the treatment of labels is a dreadful hack.
+The problem is that with the pattern in syntactic form, we don't know
+which disjuncts labels actually belong to.
+The depressing solution is to make multiple passes:
+<ol>
+<li><a name="NWDI">Build an environment mapping label names to themselves (make sure</a>
+there are no conflicts with inputs).
+<li>Convert the pattern to normal form, which will propagate the
+free-variable names into the field bindings.
+<li>Make a separate pass over each disjunct, converting the label names to
+suitable expressions of type <code>Epatlabel</code>.
+That last pass is done by <code>bind_and_remove_patlabel_names</code>---it
+also nulls out the <code>patlabel</code> stuff.
+</ol>
+<pre><a name="NWconF-cond-1" href="#NWDI"><dfn>&lt;convert branch <code>b</code> to a pattern <code>q</code>&gt;=</dfn></a> <b>(<a href="#NWconF-comc-1">&lt;-U</a>)</b>
+push(rho, b.soln.answers) # answers already injected by <a href="#NWconF-*-I">inject_soln</a>
+t := table()
+every n := pattern_label_names(b.pat) do 
+  t[n] := n
+push(rho, t)
+q := freshen_disjuncts(pnf(b.pat, rho))
+pop(rho)
+pop(rho)
+every bind_condition(q, !b.soln.constraints)
+q := bind_and_remove_patlabel_names(q)
+</pre><p>
+<pre><a name="NWconF-*-I" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-I">inject_soln</a>(soln)
+  every k := key(soln.answers) do
+    if type(symtab[k]) == &quot;field&quot; then 
+      soln.answers[k] := 
+        inject(constraints2pattern(fieldbinding(symtab[k], soln.answers[k])), 
+               soln.answers[k],
+               &amp;null)
+  return soln
+end
+</pre><blockquote>Defines <a href="#NWI-inject_soln"><code>inject_soln</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDJ">Making an instance means instantiating the precomputed one.</a>
+<pre><a name="NWconF-*-J" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-I">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+procedure <a href="#NWDJ">consinput_pattern</a>(ipt)
+  type(ipt.meaning) == &quot;<a href="#NWD2">constype</a>&quot; | impossible(&quot;non-<a href="#NWD2">constructor</a> input&quot;)
+  return subst(<a href="#NWDK">constype_pattern</a>(ipt.meaning), ipt.meaning.name, ipt.name)
+end
+</pre><blockquote>Defines <a href="#NWI-consinput_pattern"><code>consinput_pattern</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDK">We get the precomputed instance by using the right-hand sides of all</a>
+the constructors.
+<pre><a name="NWconF-*-K" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWDM">-&gt;</a>]</b>
+procedure <a href="#NWDK">constype_pattern</a>(<a href="#NWD2">constype</a>)
+  local cons, luid
+  static cache, uid
+  initial { cache := table(); uid := 0 }
+  if /cache[<a href="#NWD2">constype</a>] then {<a name="NWconF-*-K-u1" href="#NWDL"><i>&lt;compute and cache pattern for <code>constype</code>&gt;</i></a>}
+  return cache[<a href="#NWD2">constype</a>]
+end
+</pre><blockquote>Defines <a href="#NWI-constype_pattern"><code>constype_pattern</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDL">Static local variables, like </a><code>uid</code> are evil. <code><a href="#NWDK">constype_pattern</a></code> 
+is called recursively via <code><a href="#NWDH">crhs</a></code>.  
+Each instance of <code><a href="#NWD2">constype</a></code> is tagged
+with <code>uid</code>, but <code>uid</code> can be updated by the recursive call to
+<code><a href="#NWDH">crhs</a></code>!  So <code>luid</code> preserves its value across recursive calls.
+Yuckorama.  You wouldn't believe what tripped this bug --- Icon's
+generation of record values in alphabetical order. 
+<pre><a name="NWconF-comg-1" href="#NWDL"><dfn>&lt;compute and cache pattern for <code>constype</code>&gt;=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b>
+p := &amp;null
+uid +:= 1 # one uid per <a href="#NWD2">constype</a>??? will fail with multiple args of some <a href="#NWD2">constype</a>
+luid := uid
+every cons := kept_constructors(<a href="#NWD2">constype</a>) do {
+  t := table()   # substitution table to get inputs from instance
+  every ipt := <a href="#NWDD">inputs_of</a>(cons) do {
+    t[ipt.name] := Einstance_input(<a href="#NWD2">constype</a>.name, cons, ipt.name)
+    if type(ipt.meaning) == &quot;string&quot; then
+      t[ipt.name] := Eforce(t[ipt.name])  # ???? could this be right?
+  }
+  q := freshen_disjuncts(subst_tab(<a href="#NWDH">crhs</a>(cons), t, 1))
+  bind_condition(q, Einstance_tagged(<a href="#NWD2">constype</a>.name, cons, luid))
+  p := orp(\p, q) | q
+}
+p := seqpx(latent_label2pattern(<a href="#NWD2">constype</a>.name), p)
+        # label will be used for binding instances later on!
+cache[<a href="#NWD2">constype</a>] := p   # can't afford to simplify -- makes it too hard to solve eqns
+</pre><p>
+<a name="NWDM">The pattern corresponding to a field input is a field binding.</a>
+<pre><a name="NWconF-*-L" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+procedure <a href="#NWDM">fieldinput_pattern</a>(ipt)
+  type(symtab[ipt.name]) == &quot;field&quot; | impossible(&quot;input name is not field name&quot;)
+  type(ipt.meaning) == (&quot;field&quot;|&quot;integer&quot;) | impossible(&quot;non-field input&quot;)
+  return constraints2pattern(fieldbinding(symtab[ipt.name], ipt.name))
+end
+</pre><blockquote>Defines <a href="#NWI-fieldinput_pattern"><code>fieldinput_pattern</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDN">Applying the patterns</a></h3>
+<code><a href="#NWDN">apply_constructor</a></code> produces the pattern value
+and constraints for a constructor when applied to <code>args</code> in an output
+pattern in the context of an environment <code>rho</code>.
+We have to freshen pattern labels to maintain the nonduplication invariant.
+<pre><a name="NWconF-*-M" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDM">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+procedure <a href="#NWDN">apply_constructor</a>(cons, args, rho, free_env)
+  local inputs, c, l
+pushtrace(&quot;APPCONS&quot;)
+  inputs := []; every put(inputs, <a href="#NWDD">inputs_of</a>(cons))
+  <a name="NWconF-*-M-u1" href="#NWconF-insQ-1"><i>&lt;insist input lengths match&gt;</i></a>
+  t := <a href="#NWDP">argtable</a>(inputs, args, rho, free_env)
+  p := freshen_patlabels(subst_tab(<a href="#NWDH">crhs</a>(cons), t, 1)) # can't afford to simplify
+  every p.name | /(!p.disjuncts).name := cons.name
+        # overwrite pattern name always, but only default disjuncts
+PPxwrite(PPnew(\mdebug), &quot;applied &quot;, cons.name, &quot; to get &quot;,ppexpimage(p))
+poptrace()
+  return p
+end
+</pre><blockquote>Defines <a href="#NWI-apply_constructor"><code>apply_constructor</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a href="#NWDO">app_to_instance</a></code> is almost the same, but it produces an instance, not
+the pattern.
+You might wonder why we need it.  
+Well, <code><a href="#NWDH">crhs</a></code> produces a pattern in which constructor operands are
+expected to be <em>instances</em>, not patterns.
+That means that <code><a href="#NWDN">apply_constructor</a></code> expects its constructor-typed
+arguments to be instances, not patterns.
+<a name="NWDO">But </a><code><a href="#NWDN">apply_constructor</a></code> itself produces a pattern (which it must do,
+because that pattern is then used to produce an emitter or whatever).
+So then, what are we to do when the argument to a constructor is
+itself a constructor application?  We need a procedure that will apply
+a constructor and produce an instance, therefore <code><a href="#NWDO">app_to_instance</a></code>.
+Note that the call to <code>subst_tab</code> in <code><a href="#NWDN">apply_constructor</a></code> above
+actually eliminates the instances.  (That's a sneaky hack.)
+<p>
+I wish I knew whether freshening pattern variables was needed here, or how to do it.
+<pre><a name="NWconF-*-N" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+procedure <a href="#NWDO">app_to_instance</a>(cons, args, rho, free_env)
+  local inputs
+  inputs := []; every put(inputs, <a href="#NWDD">inputs_of</a>(cons))
+  <a name="NWconF-*-N-u1" href="#NWconF-insQ-1"><i>&lt;insist input lengths match&gt;</i></a>
+  return Einstance(cons, <a href="#NWDP">argtable</a>(inputs, args, rho, free_env))
+end
+</pre><blockquote>Defines <a href="#NWI-app_to_instance"><code>app_to_instance</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDP" href="#NWDP">argtable</a></code> builds a table mapping input names to expresssions.
+It does all of the type checking.
+<pre><a name="NWconF-*-O" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWconF-*-P">-&gt;</a>]</b>
+procedure <a href="#NWDP">argtable</a>(inputs, args, rho, free_env)
+  t := table()
+  every ipt := inputs[i := 1 to *args] do
+    t[ipt.name] := case type(ipt.meaning) of { 
+      &quot;<a href="#NWD2">constype</a>&quot; : <a name="NWconF-*-O-u1" href="#NWconF-maka-1"><i>&lt;make <code>args[i]</code> a constructor input&gt;</i></a>
+      &quot;integer&quot;  : <a name="NWconF-*-O-u2" href="#NWconF-makd-1"><i>&lt;make <code>args[i]</code> a signed integer input&gt;</i></a>
+      &quot;field&quot; | &quot;string&quot; | &quot;null&quot; :
+                   <a name="NWconF-*-O-u3" href="#NWDQ"><i>&lt;make <code>args[i]</code> an unsigned integer input&gt;</i></a>
+      default    : impossible(&quot;input type&quot;)
+    }
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-argtable"><code>argtable</code></a> (links are to index).<p>
+</blockquote><p>
+Field inputs (typically registers)
+may have special names associated with particular values.
+<code>fieldname_env_for_ipt(ipt)</code> returns an environment that is empty for non-field
+inputs, but that contains the special names for field inputs.
+We can afford to put it first because we check elsewhere that these special 
+names never collide with operand names or identifiers used in equations,
+<a name="NWDQ">and therefore they can't collide with names in </a><code>rho</code>.
+They have to go first because the decoding code blindly puts all free identifiers into 
+<code>rho</code>, even if they are one of these special names.
+Extended fields don't use the special names.
+
+If we look up a name and get a field, we treat it just as if it
+weren't defined, i.e., we can use it as a free variable. This change
+lets us use the name of a field as a binding instance in a matching
+statement.  God only knows what other consequences it may have.
+<pre><a name="NWconF-makg-1" href="#NWDQ"><dfn>&lt;make <code>args[i]</code> an unsigned integer input&gt;=</dfn></a> <b>(<a href="#NWDP">U-&gt;</a>)</b>
+super_simplify(gsubst(args[i], <a href="#NWconF-*-P">unsigned_arg_f</a>, rho, free_env, args, i, ipt))
+</pre><pre><a name="NWconF-*-P" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWconF-*-Q">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-P">unsigned_arg_f</a>(e, rho, free_env, args, i, ipt)
+  local fieldrho
+  return case type(e) of {
+    &quot;string&quot; : {
+       fieldrho := fieldname_env_for_ipt(ipt) ||| rho
+       (if is_defined(e, fieldrho) &amp; type(lookup(e, fieldrho)) ~== &quot;field&quot; then
+          project(lookup(e, fieldrho), &quot;integer&quot;) 
+        else 
+          new_binding_instance(e, e, &quot;integer&quot;, \free_env)
+       ) | <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot;integer or field&quot;)
+    }
+    &quot;literal&quot; : project(lookup(e.s, fieldname_env_for_ipt(ipt)), &quot;integer&quot;) |
+                                           <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot;integer or field&quot;)
+    &quot;Eapp&quot; : error(&quot;Constructor application not allowed; expected integer or field&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-unsigned_arg_f"><code>unsigned_arg_f</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-makd-1" href="#NWconF-makd-1"><dfn>&lt;make <code>args[i]</code> a signed integer input&gt;=</dfn></a> <b>(<a href="#NWDP">U-&gt;</a>)</b>
+Enarrows(super_simplify(gsubst(args[i], <a href="#NWconF-*-Q">signed_arg_f</a>, rho, free_env, args, i, ipt)), 
+         ipt.meaning)
+</pre><pre><a name="NWconF-*-Q" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-P">&lt;-</a>D<a href="#NWconF-*-R">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-Q">signed_arg_f</a>(e, rho, free_env, args, i, ipt)
+  return case type(e) of {
+    &quot;string&quot; : (if is_defined(e, rho) &amp; type(lookup(e, rho)) ~== &quot;field&quot; then
+                  project(lookup(e, rho), &quot;integer&quot;) 
+                else 
+                  new_binding_instance(e, e, &quot;integer&quot;, \free_env)
+               ) | <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot;integer or field&quot;)
+    &quot;literal&quot; : <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot;integer or field&quot;)
+    &quot;Eapp&quot; : error(&quot;Constructor application not allowed; expected integer or field&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-signed_arg_f"><code>signed_arg_f</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-maka-1" href="#NWconF-maka-1"><dfn>&lt;make <code>args[i]</code> a constructor input&gt;=</dfn></a> <b>(<a href="#NWDP">U-&gt;</a>)</b>
+case type(x := untable(args[i])) of {
+  &quot;Papp&quot; : impossible(&quot;Papp as <a href="#NWD2">constructor</a> arg&quot;)
+  &quot;Eapp&quot; :
+    if c := <a href="#NWDG">cons_named</a>(x.f) &amp; c.type === ipt.meaning then
+      <a href="#NWDO">app_to_instance</a>(c, x.args, rho, free_env)
+    else
+      <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot;<a href="#NWD2">constructor</a> of type &quot; || ipt.meaning.name || 
+                           &quot;; denotes &quot; || c.type.name || &quot;)&quot;)
+  &quot;string&quot; : 
+      (if is_defined(x, rho) then
+         if x := project(lookup(x, rho), &quot;consop&quot;) then
+           if type(x) == &quot;input&quot; then
+              if x.meaning === ipt.meaning then 
+                ipt.name  # stands for an instance, not a pattern
+              else
+                <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot; <a href="#NWD2">constructor</a> of type &quot; || ipt.meaning.name || 
+                                     &quot; (not &quot; || x.meaning.name || &quot;)&quot;)
+           else
+             impossible(&quot;consop projected into non-input&quot;)
+         else 
+           if lookup(x, rho) === ipt.meaning then
+             <a name="NWconF-maka-1-u1" href="#NWconF-pos15-1"><i>&lt;possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;</i></a>
+           else
+             &amp;fail
+       else
+         <a name="NWconF-maka-1-u2" href="#NWconF-pos15-1"><i>&lt;possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;</i></a>
+     ) | <a href="#NWconF-*-R">badarg</a>(args, i, ipt, &quot; <a href="#NWD2">constructor</a> of type &quot; || ipt.meaning.name)    
+  default : impossible(&quot;argument to <a href="#NWD2">constructor</a>&quot;)
+}
+</pre><p>
+<pre><a name="NWconF-pos15-1" href="#NWconF-pos15-1"><dfn>&lt;possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;=</dfn></a> <b>(<a href="#NWconF-maka-1">&lt;-U</a>)</b>
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    if (/free_env[x] := binding_instance(y, ipt.meaning)) |
+       (type(free_env[x]) == &quot;binding_instance&quot;, 
+        type(free_env[x].val) == &quot;Ebinding_instance&quot;, 
+        free_env[x].type === free_env[x].val.type === y.type)
+    then
+      &amp;null
+    else
+      error(&quot;Can't re-use &quot;, x, &quot;; already used as &quot;, type(free_env[x]), &quot;(&quot;, 
+            expimage(free_env[x]), &quot;)&quot;,
+            &quot;\n --- new value as &quot;, type(y), &quot;(&quot;, expimage(y), &quot;) no good&quot;))
+else
+  &amp;fail
+</pre><p><a name="NWDR">This was the old code.  I don't understand it, but it was causing</a>
+errors that I didn't want, so I changed it.
+<pre><a name="NWconF-old19-1" href="#NWDR"><dfn>&lt;old possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;=</dfn></a>
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    (/free_env[x] := binding_instance(y, ipt.meaning)) |
+     error(&quot;Can't re-use &quot;, x, &quot;; already used as &quot;, expimage(free_env[x])))
+else
+  &amp;fail
+</pre><pre><a name="NWconF-*-R" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-Q">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-R">badarg</a>(args, i, ipt, expected)
+  error(expimage(args[i]), &quot; [&quot;, image(args[i]), &quot;]&quot;,
+        &quot; (&quot;, <a href="#NWconF-*-G">ordinal</a>(i), &quot; arg &quot;, ipt.name, &quot;) &quot;,
+        &quot;does not denote &quot;, if any('aeiou', expected) then &quot;an &quot; else &quot;a &quot;, expected)
+end
+</pre><blockquote>Defines <a href="#NWI-badarg"><code>badarg</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-insQ-1" href="#NWconF-insQ-1"><dfn>&lt;insist input lengths match&gt;=</dfn></a> <b>(<a href="#NWDN">&lt;-U</a> <a href="#NWDO">&lt;-U</a>)</b>
+*inputs = *args | 
+   error(cons.name, &quot; expects &quot;, *inputs, &quot; arguments, but you gave &quot;, *args)
+</pre><p>
+<h3><a name="NWDS">Eliminating instances</a></h3>
+This code is applied to every pattern as the last step in conversion
+to normal form.
+We don't remember why it's the <em>last</em> step, or if it really has to
+be the last. 
+<pre><a name="NWconF-*-S" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-R">&lt;-</a>D<a href="#NWDZ">-&gt;</a>]</b>
+procedure <a href="#NWDS">eliminate_instances</a>(e)
+  return gsubst(e, <a href="#NWDZ">eliminate_instances_f</a>)
+end
+</pre><blockquote>Defines <a href="#NWI-eliminate_instances"><code>eliminate_instances</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a href="#NWDZ">eliminate_instances_f</a></code> simplifies a pattern by removing constructor instances.
+<a name="NWDT">For some forgotten reason,</a>
+<b>[</b>One might suspect the reason has something to do with the complicated
+logic of <code><a href="#NWDe">unwind_instance_inputs</a></code>, which doesn't look like it
+could be implemented with mere rewrite rules.<b>]</b> these transformations
+are not specified by rewrite rules in <code>exp.nw</code>.
+<p>
+The basic idea is that if we have an instance, we can simplify away
+some predicates on the instance and selection of elements of the
+instance. 
+<pre><a name="NWconF-whay-1" href="#NWDT"><dfn>&lt;what we might write if we were doing this with rewrite rules&gt;=</dfn></a> <b>[D<a href="#NWDU">-&gt;</a>]</b>
+Einstance_tagged(Einstance(c, a), c2, uid) -&gt; if c === c2 then 1 else 0
+Einstance_input(Einstance(c, a), c2, name) -&gt; if c === c2 then a[name] 
+                                              else Efail(expimage(e))
+Einstance_tagged(Ebinding_instance(_, _, _),_, _) -&gt; 1 # why? helps matching?
+</pre><p><a name="NWDU">The real kicker is dealing with names.  If we have a binding</a>
+instance of a constructor type, we have a name for it.  Now, if we
+want to select an element of that constructor type, we need a name for
+the element, too, since that element itself becomes a binding
+instance.
+The general idea is 
+<pre><a name="NWconF-whay-2" href="#NWDT"><dfn>&lt;what we might write if we were doing this with rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWDT">&lt;-</a>D<a href="#NWDW">-&gt;</a>]</b>
+Einstance_input(Ebinding_instance(name, _, _), c, fname) -&gt;
+   Ebinding_instance(name || &quot;.&quot; || c.name || &quot;.&quot; || fname)
+</pre><p><a name="NWDV">but the real truth is in </a><code><a href="#NWDe">unwind_instance_inputs</a></code>.
+
+<a name="NWDW">We also take this opportunity to make some decisions about latent</a>
+pattern labels.  Latent labels associated with binding instances of
+constructor types become real, but labels associated with literal
+instances (<code>Einstance</code>) are discarded.
+<pre><a name="NWconF-whay-3" href="#NWDT"><dfn>&lt;what we might write if we were doing this with rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWDU">&lt;-</a>D]</b>
+latent_patlabel(Einstance(_, _)) -&gt; vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -&gt; patlabel(nam, nam)
+</pre><p>
+
+<a name="NWDX">With rewrite rules, we would enjoy the great convenience that the</a>
+rewrite engine would simplify the elements of every expression before
+simplifying the expression itself, since it works bottom-up.
+Unfortunately, we're using <code>gsubst</code>, which works top-down, and the
+code is therefore more labored than one might like.
+
+<a name="NWDY">Even after all these soothing explanations, Mary may still be afraid</a>
+of this code.  
+She has good judgment.
+
+<a name="NWDZ">Mary's good judgement is borned out by bug number&nbsp;17.</a>
+In an effort to fix bug&nbsp;17, I'm splitting these things into two
+functions.
+The inner function, <code><a href="#NWDZ">do_eliminate_instances_f</a></code>, retains values of
+type <code><a href="#NWDd">binding_instance_var</a></code>.  The outer such function,
+<code><a href="#NWDZ">eliminate_instances_f</a></code>, rewrites those to strings.17
+<pre><a name="NWconF-*-T" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDS">&lt;-</a>D<a href="#NWDd">-&gt;</a>]</b>
+procedure <a href="#NWDZ">eliminate_instances_f</a>(e)
+  return <a href="#NWDd">eliminate_binding_instance_vars</a>(<a href="#NWDZ">do_eliminate_instances_f</a>(e))
+end
+
+procedure <a href="#NWDZ">do_eliminate_instances_f</a>(e)
+  local the_answer
+  static issued_warning
+  pushtrace(&quot;ELIMINATE&quot;)
+  the_answer := case type(e) of {
+    &quot;Einstance_input&quot; : <a href="#NWDe">unwind_instance_inputs</a>(e) 
+    &quot;Einstance_tagged&quot; : {
+        e.x := gsubst(e.x, <a href="#NWDZ">do_eliminate_instances_f</a>)  # simplify children bottom-up
+        case type(e.x) of {
+          &quot;Ebinding_instance&quot; : 1
+          &quot;<a href="#NWDd">binding_instance_var</a>&quot; : 1
+          &quot;Einstance&quot; : if e.cons === e.x.cons then 1 else 0 
+          default : e    # don't let gsubst continue; we did it already
+        }
+      }
+    &quot;latent_patlabel&quot; : {
+       e.instance := gsubst(e.instance, <a href="#NWDZ">do_eliminate_instances_f</a>) # simplify bottom-up
+       case type(e.instance) of { 
+         &quot;Ebinding_instance&quot; : patlabel(e.instance.name, e.instance.name)
+         &quot;string&quot;            : e  # no change
+         &quot;<a href="#NWDd">binding_instance_var</a>&quot; : e # as with string (but should it be patlabel?)
+         &quot;Einstance_input&quot;   : {<a name="NWconF-*-T-u1" href="#NWDa"><i>&lt;latent pattern label of an instance input&gt;</i></a>}
+         &quot;Einstance&quot;         : vanishing_latent_patlabel
+         &quot;Efail&quot;             : Efail(&quot;latent pattern label of &quot; || e.instance.msg)
+        default              : impossible(&quot;type of latent pattern label&quot;)
+      }
+    }
+  } | {poptrace(); fail}
+  poptrace()
+  return the_answer
+end
+</pre><blockquote>Defines <a href="#NWI-do_eliminate_instances_f"><code>do_eliminate_instances_f</code></a>, <a href="#NWI-eliminate_instances_f"><code>eliminate_instances_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDa">That last case has caused much consternation.</a>
+Originally we weren't sure if a latent pattern label of an instance
+input should vanish or just stay unchanged.
+For a long time we just let it stay unchanged.
+I do believe that's right, since I think the recursive call to
+<code><a href="#NWDS">eliminate_instances</a></code> handles the cases that need to be handled.
+<pre><a name="NWconF-latf-1" href="#NWDa"><dfn>&lt;latent pattern label of an instance input&gt;=</dfn></a> <b>(<a href="#NWDZ">&lt;-U</a>)</b>
+/issued_warning := 1 &amp; 
+  warning(&quot;Yes, Virginia, there are latent labels of instance inputs: &quot;, expimage(e))
+e # change nothing
+</pre><p>
+<a name="NWDb">Let it be noted that at one point we had the following Band-Aid:</a>
+<pre><a name="NWconF-Ban16-1" href="#NWDb"><dfn>&lt;Band-Aid that once covered latent pattern label of an instance input&gt;=</dfn></a>
+# fail or vanishing?  or other? not sure!
+# Should this arm should be like the one above? i.e.:
+# This gets us part of the way to binding an a &quot;<a href="#NWD2">constructor</a>-typed&quot; operand
+# in a <a href="#NWD2">constructor</a> application to a location in an instruction stream, 
+# but it's not quite right. 
+# I have to think about this some more.                           
+<a href="#NWDZ">eliminate_instances_f</a>(latent_patlabel(<a href="#NWDe">unwind_instance_inputs</a>(e.instance, &quot;&quot;)))
+</pre><p><a name="NWDc">This was before we introduced bottom-up simplification.</a>
+<p>
+
+<a name="NWDd">Unwinding the instance inputs may mean using an argument table, or it</a>
+may mean creating a fresh name for a field of a binding instance.
+<pre><a name="NWconF-*-U" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDZ">&lt;-</a>D<a href="#NWDe">-&gt;</a>]</b>
+record <a href="#NWDd">binding_instance_var</a>(s)
+
+procedure <a href="#NWDd">eliminate_binding_instance_vars</a>(e)
+  return gsubst(e, <a href="#NWDd">eliminate_binding_instance_vars_f</a>)
+end
+
+procedure <a href="#NWDd">eliminate_binding_instance_vars_f</a>(e)
+  if type(e) == &quot;<a href="#NWDd">binding_instance_var</a>&quot; then return e.s
+end 
+</pre><blockquote>Defines <a href="#NWI-binding_instance_var"><code>binding_instance_var</code></a>, <a href="#NWI-eliminate_binding_instance_vars"><code>eliminate_binding_instance_vars</code></a>, <a href="#NWI-eliminate_binding_instance_vars_f"><code>eliminate_binding_instance_vars_f</code></a> (links are to index).<p>
+</blockquote><p>
+If <code><a href="#NWDe">unwind_instance_inputs</a></code> succeeds, we're guaranteed to have
+made progress, so we can safely re-apply it.
+<p>
+In the arm for <code>Einstance</code> below, the ``false'' branch of the
+conditional returns <code>Efail</code>, because nested
+constructor applications can produce nonsense (<code>Efail</code>) guarded by
+<a name="NWDe">conditions that are statically false.</a>
+For example, in the following pattern, the first
+disjunct is always true, and the second is always false.
+<pre>
+  {Y(x) IS Y} =&gt; (?Y(x):): &lt;pattern&gt;
+| {Y(x) IS C, ... } =&gt; (?Y(x):): (?Y(x).C.B:): &lt;pattern&gt;
+</pre>
+The binding instance <tt>(?Y(x).C.B:)</tt> is meaningless because
+<tt>Y(x) is C</tt> is false.
+<pre><a name="NWconF-*-V" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDd">&lt;-</a>D<a href="#NWconF-*-W">-&gt;</a>]</b>
+procedure <a href="#NWDe">unwind_instance_inputs</a>(e, postfix_name)
+  /postfix_name := &quot;&quot;
+  type(e) == &quot;Einstance_input&quot; | impossible(&quot;unwinding &quot;, expimage(e), &quot; : &quot;, type(e))
+  postfix_name := &quot;.&quot; || e.cons.name || &quot;.&quot; || e.name || postfix_name
+  return case type(e.x) of {
+    &quot;Ebinding_instance&quot; :
+      <a href="#NWDd">binding_instance_var</a>(
+         <a href="#NWconF-*-W">binding_instance_input_name</a>(e.x.name || postfix_name, e.x.vart))
+    &quot;Einstance&quot; :  
+         if e.x.cons === e.cons then e.x.argt[e.name] else Efail(expimage(e))
+    &quot;Einstance_input&quot; :
+      case type(x := <a href="#NWDe">unwind_instance_inputs</a>(e.x, postfix_name)) of {
+        &quot;<a href="#NWDd">binding_instance_var</a>&quot; : x
+        default : {
+          e := Einstance_input(x, e.cons, e.name)
+          <a href="#NWDe">unwind_instance_inputs</a>(e, postfix_name) | e  # guaranteed to terminate
+        }
+      }
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-unwind_instance_inputs"><code>unwind_instance_inputs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-W" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDe">&lt;-</a>D<a href="#NWDf">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-W">binding_instance_input_name</a>(name, vart)
+  /vart[name] := fresh_variable(name)
+  return vart[name]
+end
+</pre><blockquote>Defines <a href="#NWI-binding_instance_input_name"><code>binding_instance_input_name</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDf">Machine-independent support for encoding procedures</a></h2>
+The deal here is to transform a pattern with tag conditions 
+into a nested case statement.  
+<pre><a name="NWconF-*-X" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-W">&lt;-</a>D<a href="#NWDg">-&gt;</a>]</b>
+record <a href="#NWDf">Stagcase</a>(x, type, arms)          # CASE x : type OF arms END
+</pre><blockquote>Defines <a href="#NWI-Stagcase"><code>Stagcase</code></a> (links are to index).<p>
+</blockquote><p><code><a name="NWDg">x</a></code> is the instance from which we will check the tag, 
+<code>type</code> is the constructor type (of <code>x</code>), and 
+<code>arms</code> is a table mapping each constructor of the type
+to a pattern (or another case statement).
+<p>
+We're going to destroy the pattern, so we use a fresh one.
+<pre><a name="NWconF-*-Y" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDf">&lt;-</a>D<a href="#NWDi">-&gt;</a>]</b>
+procedure <a href="#NWDg">pattern_to_case</a>(p)
+  <a name="NWconF-*-Y-u1" href="#NWconF-errV-1"><i>&lt;error if <code>p</code> has no disjuncts&gt;</i></a>
+  return <a href="#NWDi">do_pattern_to_case</a>(freshen_disjuncts(p))
+end
+</pre><blockquote>Defines <a href="#NWI-pattern_to_case"><code>pattern_to_case</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDh">To produce a case statement, pull out the tags, then recurse.</a>
+It's possible that some constructors have been discarded between the
+time we defined pattern&nbsp;<code>p</code> and the time we're actually doing the
+pattern-to-case conversion.  For example, on the Pentium, we specify all
+addressing modes, but when generating instructions for the 32-bit
+instructions, we discard unused constructors (e.g., <code>Index8</code>):
+<pre><a name="NWconF-exa7-1" href="#NWDh"><dfn>&lt;example&gt;=</dfn></a>
+constructors 
+  Index8  base,index: Eaddr ...
+  Index32 base,index: Eaddr ...
+  Add Eaddr, r is ...
+discard Index8
+</pre><p>
+<a name="NWDi">We drop disjuncts with conditions that say an instance is tagged with</a>
+a discarded constructor.
+Since <code>s.arms[cons]</code> is non-null only for kept
+constructors&nbsp;<code>cons</code>, we can use that test to drop such disjuncts.
+<pre><a name="NWconF-*-Z" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDg">&lt;-</a>D<a href="#NWconF-*-a">-&gt;</a>]</b>
+procedure <a href="#NWDi">do_pattern_to_case</a>(p)
+  local rep             # representative tag condition
+  if rep := <a href="#NWconF-*-b">tag_test_in_every_disjunct</a>(p) then {
+    s := <a href="#NWDf">Stagcase</a>(rep.x, rep.cons.type, table())
+    every s.arms[kept_constructors(s.type)] := pattern([])
+    every d := !p.disjuncts do {
+      if type(c := !d.conditions) == &quot;Einstance_tagged&quot; &amp; c.uid = rep.uid &amp;
+         exps_eq(rep.x, c.x) 
+      then {
+        delete(d.conditions, c)
+        put((\s.arms[c.cons]).disjuncts, d)
+      } else
+        impossible(&quot;Mislaid a tag condition on &quot;, expimage(rep.x))
+    }
+    every c := key(s.arms) do s.arms[c] := <a href="#NWDi">do_pattern_to_case</a>(s.arms[c])
+    return s
+  } else if rep := <a href="#NWconF-*-a">tag_test_in_any_disjunct</a>(p) then {
+     PPxwrite(PPnew(&amp;errout), &quot;Can't eliminate tag condition on &quot;, ppexpimage(rep.x), 
+                       &quot; $t$ofrom pattern $c&quot;, ppexpimage(p))
+     impossible(&quot;Report a bug in the toolkit&quot;)
+  } else
+    return simplify(p)
+end
+</pre><blockquote>Defines <a href="#NWI-do_pattern_to_case"><code>do_pattern_to_case</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-a" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDi">&lt;-</a>D<a href="#NWconF-*-b">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-a">tag_test_in_any_disjunct</a>(p)
+  suspend type(rep := !\(!p.disjuncts).conditions) == &quot;Einstance_tagged&quot; &amp; rep
+end
+</pre><blockquote>Defines <a href="#NWI-tag_test_in_any_disjunct"><code>tag_test_in_any_disjunct</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-b" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-a">&lt;-</a>D<a href="#NWDj">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-b">tag_test_in_every_disjunct</a>(p)
+  every type(rep := !\p.disjuncts[1].conditions) == &quot;Einstance_tagged&quot; do
+    if <a href="#NWconF-*-b">tag_test_not_in_disjunct</a>(rep, !p.disjuncts) then &amp;null else return rep
+  fail
+end
+
+procedure <a href="#NWconF-*-b">tag_test_not_in_disjunct</a>(rep, d)
+  if type(c := !\d.conditions) == &quot;Einstance_tagged&quot; &amp; c.uid = rep.uid &amp;
+     exps_eq(rep.x, c.x) then fail
+  else return
+end
+</pre><blockquote>Defines <a href="#NWI-tag_test_in_every_disjunct"><code>tag_test_in_every_disjunct</code></a>, <a href="#NWI-tag_test_not_in_disjunct"><code>tag_test_not_in_disjunct</code></a> (links are to index).<p>
+</blockquote><p>
+The structure of an encoding procedure is complex because of the number of 
+conditions to be checked.  Here is a sketch of the conditions:
+<blockquote>
+iwidth --- input-width conditions for the constructor<br>conds --- conditions for a branch to be taken<br>cknown --- conditions that must hold before <code>conds</code> can be evaluated
+(e.g., relocatable addresses are known)<br>fits --- field-width conditions for fields to be emitted, and conditions that
+<a name="NWDj">attempts to narrow actually fit</a><br>fknown --- conditions that must hold before fields can be emitted or
+<code>fits</code> can be evaluated (again, relocatable addresses).
+<code>fknown</code> never repeats any conditions already in <code>cknown</code>,
+because its use is always guarded by <code>cknown</code><br></blockquote>
+The <code>*known</code> conditions influence closure creation, the <code>*width</code>
+conditions are error checks only, and <code>conds</code> is used for branch selection.
+<p>
+Rather than use C templates, we use a language-independent
+representation of control flow.
+<pre><a name="NWconF-*-c" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-b">&lt;-</a>D<a href="#NWDl">-&gt;</a>]</b>
+record <a href="#NWDj">Sstms</a>(stmts)                     # statement sequence
+</pre><blockquote>Defines <a href="#NWI-Sstms"><code>Sstms</code></a> (links are to index).<p>
+</blockquote><p>
+
+<a name="NWDk">A constructor branch is chosen conservatively, except for the last</a>
+branch, which gets special treatment.
+While an early branch is taken iff its conditions are known to be
+true, a late branch is taken iff its conditions are not known to be
+false.
+<p>
+Field conditions are used to decide branches now.
+<pre><a name="NWconF-earE-1" href="#NWDk"><dfn>&lt;early-branch.s&gt;=</dfn></a>
+if (cknown &amp;&amp; conds &amp;&amp; fknown &amp;&amp; fits) {
+  emit
+}
+</pre><pre><a name="NWconF-oldI-1" href="#NWconF-oldI-1"><dfn>&lt;old-early-branch.s&gt;=</dfn></a>
+if (cknown &amp;&amp; conds) {
+  if (fknown) {
+    fits_aborts;        # abort if fits not satisfied
+    emit_fields;
+  } else
+    create_closure;
+}
+</pre><p>
+<a name="NWDl">The Icon branch procedures add their branches to a list of arms.</a>
+<pre><a name="NWconF-*-d" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDj">&lt;-</a>D<a href="#NWDm">-&gt;</a>]</b>
+procedure <a href="#NWDl">old_early_branch</a>(arms, cknown, conds, fknown, fits, emit, closure)
+  local fits_and_emit
+  fits_and_emit := Sif([])
+  every c := !\fits do 
+    put(fits_and_emit.arms, Sguarded(Enot(c), <a href="#NWconF-*-v">widthfailure</a>(c)))
+  put(fits_and_emit.arms, Sguarded(1, emit))
+  return put(arms, Sguarded(Eand(cknown, conds), 
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, closure)])))
+end
+
+procedure <a href="#NWDl">early_branch</a>(arms, cknown, conds, emit)
+  return put(arms, Sguarded(<a href="#NWDm">conjoin</a>(cknown, conds), emit))
+end
+</pre><blockquote>Defines <a href="#NWI-early_branch"><code>early_branch</code></a>, <a href="#NWI-old_early_branch"><code>old_early_branch</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDm" href="#NWDm">conjoin</a></code> eliminates duplicate conditions.
+This code should probably be moved into the simplifier somewhere, but
+I'm not sure where.
+<pre><a name="NWconF-*-e" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDl">&lt;-</a>D<a href="#NWconF-*-f">-&gt;</a>]</b>
+procedure <a href="#NWDm">conjoin</a>(L[])
+  pushtrace(&quot;CONJ&quot;)
+  x := <a href="#NWconF-*-f">do_conjoin</a>(1, set(), L)
+  poptrace()
+  return x
+end
+</pre><blockquote>Defines <a href="#NWI-conjoin"><code>conjoin</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-f" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDm">&lt;-</a>D<a href="#NWconF-*-g">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-f">do_conjoin</a>(early, tested, rest)
+  if e := get(rest) then
+    case type(e) of {
+      default : {
+        e := super_simplify(e)
+        if exps_eq(!tested, e) then {
+#write(&quot;TESTED &quot;, expimage(e))
+          return <a href="#NWconF-*-f">do_conjoin</a>(early, tested, rest)
+        } else {
+#write(&quot;USING &quot;, expimage(e))
+          insert(tested, e)
+          return <a href="#NWconF-*-f">binary_conjunction</a>(early, <a href="#NWconF-*-f">do_conjoin</a>(e, tested, rest))
+        }
+      }
+      &quot;set&quot; : {
+        every push(rest, !e)
+        return <a href="#NWconF-*-f">do_conjoin</a>(early, tested, rest)
+      }
+    }
+  else 
+    return early
+end   
+
+procedure <a href="#NWconF-*-f">binary_conjunction</a>(x, y)
+  return if x === 1 then y else if y === 1 then x else Eand(x, y)
+end
+</pre><blockquote>Defines <a href="#NWI-binary_conjunction"><code>binary_conjunction</code></a>, <a href="#NWI-do_conjoin"><code>do_conjoin</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-latD-1" href="#NWconF-latD-1"><dfn>&lt;late-branch.s&gt;=</dfn></a>
+if (cknown) {
+  if (conds) {
+    if (fknown) {
+      fits_aborts;
+      emit_fields;
+    } else {
+      unchecked_closure;
+    }
+  } else {
+    condition_failure;
+  }
+} else {
+  checked_closure;
+}
+</pre><pre><a name="NWconF-*-g" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-f">&lt;-</a>D<a href="#NWconF-*-h">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-g">last_branch</a>(arms, cknown, conds, fknown, fits_and_emit, uclosure, 
+                      condfail, cclosure)
+  every put(arms, 
+            Sguarded(cknown, Sif(
+                [Sguarded(conds,
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, uclosure)])),
+                 Sguarded(1, condfail)])) |
+            Sguarded(1, cclosure))
+  return arms
+end
+</pre><blockquote>Defines <a href="#NWI-last_branch"><code>last_branch</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-h" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-g">&lt;-</a>D<a href="#NWDn">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-h">emitter_body</a>(cons)
+  s := []
+  every f := <a href="#NWDD">inputs_of</a>(cons, &quot;field&quot;).meaning &amp; 
+        not member(unchecked_fields, f) &amp; fwidth(f) &lt; wordsize do
+    put(s, Sguarded(Enot(Efitsu(literal(f.name), fwidth(f))), 
+                    <a href="#NWDn">Sfail</a>(&quot;field &quot; || f.name || &quot; does not fit in &quot; || 
+                          fwidth(f) || &quot; unsigned bits&quot;)))
+  every f := symtab[<a href="#NWDD">inputs_of</a>(cons, &quot;integer&quot;).name] &amp; 
+        not member(unchecked_fields, f) &amp; fwidth(f) &lt; wordsize do
+    put(s, Sguarded(Enot(Efitss(literal(f.name), fwidth(f))), 
+                    <a href="#NWDn">Sfail</a>(&quot;field &quot; || f.name || &quot; does not fit in &quot; || 
+                          fwidth(f) || &quot; signed bits&quot;)))
+  put(s, Sguarded(1, <a href="#NWDp">case_to_emitter</a>(<a href="#NWDg">pattern_to_case</a>(
+                subst_tab(<a href="#NWDH">crhs</a>(cons), <a href="#NWDo">parmtab</a>(cons), 1)), cons)))
+  return super_simplify(Sif(s))
+end
+</pre><blockquote>Defines <a href="#NWI-emitter_body"><code>emitter_body</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDn" href="#NWDn">Sfail</a></code> is like <code>printf</code>
+<pre><a name="NWconF-*-i" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-h">&lt;-</a>D<a href="#NWDo">-&gt;</a>]</b>
+record <a href="#NWDn">Sfail</a>(fmt, a1, a2, a3)
+</pre><blockquote>Defines <a href="#NWI-Sfail"><code>Sfail</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDo" href="#NWDo">parmtab</a></code> produces a substitution table that does the right thing with 
+the parameters to a C emission procedure.
+<pre><a name="NWconF-*-j" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDn">&lt;-</a>D<a href="#NWDp">-&gt;</a>]</b>
+procedure <a href="#NWDo">parmtab</a>(cons)
+  t := table()
+  every ipt := <a href="#NWDD">inputs_of</a>(cons) do
+    t[ipt.name] := case type(ipt.meaning) of { 
+      &quot;<a href="#NWD2">constype</a>&quot; : ipt.name # name stands for an instance
+      &quot;field&quot;    : ipt.name
+      &quot;integer&quot;  : Enarrows(ipt.name, ipt.meaning)
+      &quot;string&quot;   : Eforce(ipt.name)
+      &quot;null&quot;     : ipt.name
+      default    : impossible(&quot;input type&quot;)
+    }
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-parmtab"><code>parmtab</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDp">Emission</a></h3>
+<pre><a name="NWconF-*-k" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDo">&lt;-</a>D<a href="#NWconF-*-l">-&gt;</a>]</b>
+procedure <a href="#NWDp">case_to_emitter</a>(p, cons)
+  local cknown, conds, fknown, fits, condition_failure_msg
+  case type(p) of {
+    &quot;<a href="#NWDf">Stagcase</a>&quot;   : {
+       every c := kept_constructors(p.type) do
+         p.arms[c] := <a href="#NWDp">case_to_emitter</a>(p.arms[c], cons)
+       return p
+    }
+    &quot;pattern&quot; : {<a name="NWconF-*-k-u1" href="#NWDq"><i>&lt;turn pattern <code>p</code> into emitter and return it&gt;</i></a>}
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-case_to_emitter"><code>case_to_emitter</code></a> (links are to index).<p>
+</blockquote><p>
+We go ahead and permit encoding of patterns with no disjuncts, because
+they might represent one case in a statement where other cases are
+valid.
+This situation holds on machines like the 68k, which  forbid certain
+addressing modes for certain instructions.
+We issue a warning message, and if sonmebody tries the mode at
+<a name="NWDq">encoding time they get slapped with an error message.</a>
+<p>
+Note that we just set the <code>patlabel</code> offsets, not worrying about
+whether they're shared (although by the invariant they shouldn't be).
+It shouldn't matter because the offsets are then used immediately.
+<p>
+Except for the last disjunct (branch), 
+we have to attach ``fits'' conditions to the pattern before the
+redundancy check.
+<pre><a name="NWconF-turj-1" href="#NWDq"><dfn>&lt;turn pattern <code>p</code> into emitter and return it&gt;=</dfn></a> <b>(<a href="#NWDp">&lt;-U</a>)</b>
+p := freshen_disjuncts(p)
+every <a href="#NWconF-*-y">add_fits_conditions_and_sanitize</a>(p.disjuncts[1 to *p.disjuncts-1], cons)
+<a href="#NWDu">remove_duplicate_conditions</a>(p, cons)
+if *p.disjuncts = 0 then {
+  <a name="NWconF-turj-1-u1" href="#NWconF-posj-1"><i>&lt;possibly warn about bad encoding for <code>cons</code>&gt;</i></a>
+  return <a href="#NWDn">Sfail</a>(&quot;impossible encoding (no disjuncts) --- perhaps a bad address mode?&quot;)
+} 
+s := Sif([])
+<a name="NWconF-turj-1-u2" href="#NWconF-mak1N-1"><i>&lt;make <code>condition_failure_msg</code> complain of undecided branch or unsatisfied conditions&gt;</i></a>
+while *p.disjuncts &gt; 1 do { # early branches
+  d := get(p.disjuncts)
+  set_patlabel_offsets(d)
+  d := gsubst(d, <a href="#NWconF-*-l">Epatlabel_to_Epc</a>)
+  conds := <a href="#NWDx">conditions_with_narrows_check</a>(d.conditions, cons)
+  cknown := <a href="#NWDv">known_conditions</a>(conds)
+  <a href="#NWDl">early_branch</a>(s.arms, cknown, conds, <a href="#NWDt">disjunct_to_emission</a>(d))
+}
+if d := get(p.disjuncts) then { # last <a href="#NWD2">branch</a> --- fits conditions not folded in!
+  *p.disjuncts = 0 | impossible(&quot;bug in constructors&quot;)
+  set_patlabel_offsets(d)
+  d := gsubst(d, <a href="#NWconF-*-l">Epatlabel_to_Epc</a>)
+  conds := <a href="#NWDx">conditions_with_narrows_check</a>(d.conditions, cons)
+  cknown := <a href="#NWDv">known_conditions</a>(conds)
+  fknown := <a href="#NWDv">known_conditions</a>(d.sequents)
+  <a name="NWconF-turj-1-u3" href="#NWconF-strq-1"><i>&lt;strip <code>fknown</code> of conditions already in <code>cknown</code>&gt;</i></a>
+  fits := <a href="#NWDw">fits_conditions_of</a>(d, cons)
+  <a href="#NWDs">sanitize_sequents</a>(d, fits)
+  fwe := Sif([])
+  every c := !\fits do 
+    put(fwe.arms, Sguarded(Enot(c), <a href="#NWconF-*-v">widthfailure</a>(c)))
+  put(fwe.arms, Sguarded(1, <a href="#NWDt">disjunct_to_emission</a>(d)))
+  <a href="#NWconF-*-g">last_branch</a> (s.arms, cknown, conds, fknown, fwe, <a href="#NWconF-*-n">Sclosure</a>(d),
+               <a href="#NWDn">Sfail</a>(condition_failure_msg || &quot; for <a href="#NWD2">constructor</a> &quot; || cons.name), 
+               <a href="#NWconF-*-n">Sclosure</a>(d, conds))
+}
+return s
+</pre><p>
+<a name="NWDr">This old code is BOGUS because it doesn't include ``fits''</a>
+conditions before the redunancy check.  Therefore all but the first
+disjunct gets thrown out, and then when a value doesn't fit, the
+toolkit goes belly-up at run time.  Not pretty. 15.
+<pre><a name="NWconF-oldu-1" href="#NWDr"><dfn>&lt;old, bogus turn pattern <code>p</code> into emitter and return it&gt;=</dfn></a>
+<a href="#NWDu">remove_duplicate_conditions</a>(p, cons)
+if *p.disjuncts = 0 then {
+  <a name="NWconF-oldu-1-u1" href="#NWconF-posj-1"><i>&lt;possibly warn about bad encoding for <code>cons</code>&gt;</i></a>
+  return <a href="#NWDn">Sfail</a>(&quot;impossible encoding (no disjuncts) --- perhaps a bad address mode?&quot;)
+} 
+s := Sif([])
+<a name="NWconF-oldu-1-u2" href="#NWconF-mak1N-1"><i>&lt;make <code>condition_failure_msg</code> complain of undecided branch or unsatisfied conditions&gt;</i></a>
+while d := get(p.disjuncts) do {
+  set_patlabel_offsets(d)
+  d := gsubst(d, <a href="#NWconF-*-l">Epatlabel_to_Epc</a>)
+  conds := <a href="#NWDx">conditions_with_narrows_check</a>(d.conditions, cons)
+  cknown := <a href="#NWDv">known_conditions</a>(conds)
+  fknown := <a href="#NWDv">known_conditions</a>(d.sequents)
+  <a name="NWconF-oldu-1-u3" href="#NWconF-strq-1"><i>&lt;strip <code>fknown</code> of conditions already in <code>cknown</code>&gt;</i></a>
+  fits := <a href="#NWDw">fits_conditions_of</a>(d, cons)
+  <a href="#NWDs">sanitize_sequents</a>(d, fits)
+  fwe := Sif([])
+  every c := !\fits do 
+    put(fwe.arms, Sguarded(Enot(c), <a href="#NWconF-*-v">widthfailure</a>(c)))
+  put(fwe.arms, Sguarded(1, <a href="#NWDt">disjunct_to_emission</a>(d)))
+if *p.disjuncts &gt; 0 then write(&amp;errout, &quot;Early <a href="#NWD2">branch</a> for <a href="#NWD2">constructor</a> &quot;, cons.name)
+  if *p.disjuncts &gt; 0 then
+    <a href="#NWDl">early_branch</a>(s.arms, cknown, conds, fknown, fits, <a href="#NWDt">disjunct_to_emission</a>(d), <a href="#NWconF-*-n">Sclosure</a>(d))
+  else
+    <a href="#NWconF-*-g">last_branch</a> (s.arms, cknown, conds, fknown, fwe, <a href="#NWconF-*-n">Sclosure</a>(d),
+                 <a href="#NWDn">Sfail</a>(condition_failure_msg || &quot; for <a href="#NWD2">constructor</a> &quot; || cons.name), 
+                 <a href="#NWconF-*-n">Sclosure</a>(d, conds))
+}
+return s
+</pre><pre><a name="NWconF-*-l" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDp">&lt;-</a>D<a href="#NWconF-*-m">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-l">Epatlabel_to_Epc</a>(x)
+  if type(x) == &quot;Epatlabel&quot; then
+    return binop(the_global_pc, &quot;+&quot;, x.l.offset)
+end
+</pre><blockquote>Defines <a href="#NWI-Epatlabel_to_Epc"><code>Epatlabel_to_Epc</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-mak1N-1" href="#NWconF-mak1N-1"><dfn>&lt;make <code>condition_failure_msg</code> complain of undecided branch or unsatisfied conditions&gt;=</dfn></a> <b>(<a href="#NWDq">&lt;-U</a> <a href="#NWDr">&lt;-U</a>)</b>
+condition_failure_msg := 
+  if *p.disjuncts &gt; 1 then &quot;Can't decide on <a href="#NWD2">branch</a>&quot;
+  else &quot;Conditions not satisfied&quot;
+</pre><pre><a name="NWconF-errV-1" href="#NWconF-errV-1"><dfn>&lt;error if <code>p</code> has no disjuncts&gt;=</dfn></a> <b>(<a href="#NWDg">U-&gt;</a>)</b>
+if *p.disjuncts = 0 then 
+  error(&quot;Output pattern for <a href="#NWD2">constructor</a> &quot;, cons.name, &quot; can never match anything.\n&quot;,
+        &quot;\tCould you have written a bad conjunction?&quot;)
+</pre><pre><a name="NWconF-posj-1" href="#NWconF-posj-1"><dfn>&lt;possibly warn about bad encoding for <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWDq">&lt;-U</a> <a href="#NWDr">&lt;-U</a>)</b>
+{ /<a href="#NWconF-*-m">warned_no_disjuncts</a> := table()
+  if /<a href="#NWconF-*-m">warned_no_disjuncts</a>[cons] := 1 then
+    warning(&quot;<a href="#NWD2">constructor</a> &quot;, cons.name, 
+            &quot; has an encoding with no matches -- maybe a bad address mode?&quot;)
+}  
+</pre><pre><a name="NWconF-*-m" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-l">&lt;-</a>D<a href="#NWconF-*-n">-&gt;</a>]</b>
+global <a href="#NWconF-*-m">warned_no_disjuncts</a>
+</pre><blockquote>Defines <a href="#NWI-warned_no_disjuncts"><code>warned_no_disjuncts</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-n" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-m">&lt;-</a>D<a href="#NWDs">-&gt;</a>]</b>
+record <a href="#NWconF-*-n">Sclosure</a>(disjunct, conditions, creation)
+</pre><blockquote>Defines <a href="#NWI-Sclosure"><code>Sclosure</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-argL-1" href="#NWconF-argL-1"><dfn>&lt;argument descriptions&gt;=</dfn></a>
+expargs disjunct conditions creation.
+</pre><p>
+<a name="NWDs">Sanitize </a><code>d</code>'s sequents, possibly adding conditions to <code>fits</code>.
+<pre><a name="NWconF-*-o" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-n">&lt;-</a>D<a href="#NWDt">-&gt;</a>]</b>
+procedure <a href="#NWDs">sanitize_sequents</a>(d, fits) 
+  l := []
+  every put(l, sanitize_for_output(!d.sequents, fits))
+  d.sequents := l
+end
+</pre><blockquote>Defines <a href="#NWI-sanitize_sequents"><code>sanitize_sequents</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDt">sequent_to_stoken</a></code> can't know the offsets, so <code><a href="#NWDt">disjunct_to_emission</a></code> 
+keeps track of them.  You can optionally pass the initial offset.
+<pre><a name="NWconF-*-p" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDs">&lt;-</a>D<a href="#NWconF-*-q">-&gt;</a>]</b>
+procedure <a href="#NWDt">disjunct_to_emission</a>(d, n)
+  s := Semit([])
+  /n := 0
+  every seq := !d.sequents &amp; type(seq) == &quot;sequent&quot; do {
+    put(s.x, <a href="#NWconF-*-q">sequent_to_Stoken</a>(seq, n))
+    n +:= s.x[-1].n
+  }
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-disjunct_to_emission"><code>disjunct_to_emission</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-q" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDt">&lt;-</a>D<a href="#NWconF-*-r">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-q">sequent_to_Stoken</a>(s, offset)
+  v := &amp;null
+  o := <a href="#NWconF-*-r">start_overlap_check</a>()
+  every c := !s.constraints &amp; x := case type(c) of {
+    &quot;constraint&quot;: 
+        if c.lo + 1 = c.hi then {
+            <a href="#NWconF-*-r">add_overlap_field</a>(o, c.field)
+            if 0 &lt;= c.lo &lt; 2^fwidth(c.field) then
+               c.lo
+            else {
+               warning(&quot;Field value &quot;, c.lo, &quot; exceeds width of field &quot;, c.field.name);
+               Eslice(c.lo, 0, fwidth(c.field))
+            }
+        } else if c.lo &lt; c.hi then {
+              warning(&quot;Field &quot;, c.field.name, &quot; is underconstrained by &quot;, 
+                     constraintimage(c), &quot;; no value output&quot;) 
+              &amp;fail
+        }
+    &quot;fieldbinding&quot;: {
+       <a href="#NWconF-*-r">add_overlap_field</a>(o, c.field)
+       if member(guaranteed_fields, c.field) # | not member(unchecked_fields, c.field)
+       then
+         c.code
+       else 
+         Eslice(c.code, 0, fwidth(c.field))
+    }
+  } &amp; y := <a href="#NWconF-*-s">emitshift</a>(x, c.field.lo) do
+    v := Eorb(\v, y) | y
+  return Stoken(\v | 0, 
+     if s.class.size % emit_unit_bits = 0 then s.class.size / emit_unit_bits 
+     else error(&quot;tokens are emitted in units of &quot;, token_unit_bits, 
+                &quot;, but some pattern is &quot;, s.class.size, &quot; bits wide&quot;),
+     offset)
+end
+</pre><blockquote>Defines <a href="#NWI-sequent_to_Stoken"><code>sequent_to_Stoken</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-r" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-q">&lt;-</a>D<a href="#NWconF-*-s">-&gt;</a>]</b>
+record <a href="#NWconF-*-r">overlap_check</a>(fields, loset, hiset)
+procedure <a href="#NWconF-*-r">start_overlap_check</a>()
+  return <a href="#NWconF-*-r">overlap_check</a>(set(), set(), set())
+end
+
+procedure <a href="#NWconF-*-r">add_overlap_field</a>(o, f)
+  if overlaps(o.loset, o.hiset, f.lo, f.hi) then {
+    <a name="NWconF-*-r-u1" href="#NWconF-issi-1"><i>&lt;issue error message about overlapping fields&gt;</i></a>
+  } else {
+    insert(o.fields, f)
+    addinterval(o.loset, o.hiset, f.lo, f.hi) 
+  }
+  return o
+end
+</pre><blockquote>Defines <a href="#NWI-add_overlap_field"><code>add_overlap_field</code></a>, <a href="#NWI-overlap_check"><code>overlap_check</code></a>, <a href="#NWI-start_overlap_check"><code>start_overlap_check</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-issi-1" href="#NWconF-issi-1"><dfn>&lt;issue error message about overlapping fields&gt;=</dfn></a> <b>(<a href="#NWconF-*-r">&lt;-U</a>)</b>
+every g := !o.fields do
+  if f.hi &lt;= g.lo | g.hi &lt;= f.lo then
+    &amp;null
+  else
+    error(&quot;Cannot use overlapping fields &quot;, f.name, &quot; and &quot;, g.name, &quot; in the same token&quot;)
+impossible(&quot;some fields overlap, but I can't tell which ones&quot;)
+</pre><pre><a name="NWconF-*-s" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-r">&lt;-</a>D<a href="#NWDu">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-s">emitshift</a>(x, n)
+  return if n = 0 then x
+         else if \simplify_emits then Eshift(x, n)
+         else Eshift(Enosimp(super_simplify(x)), n)
+end
+</pre><blockquote>Defines <a href="#NWI-emitshift"><code>emitshift</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDu">Delete </a><code>p</code>'s disjuncts with duplicate conditions, 
+issuing suitable warnings.
+<pre><a name="NWconF-*-t" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-s">&lt;-</a>D<a href="#NWconF-*-u">-&gt;</a>]</b>
+procedure <a href="#NWDu">remove_duplicate_conditions</a>(p, cons)
+  local l
+  l := []
+  every i := *p.disjuncts to 1 by -1 do
+    if j := 1 to i-1 &amp;
+       <a href="#NWconF-*-u">same_conditions</a>(p.disjuncts[i].conditions, p.disjuncts[j].conditions) then
+      <a name="NWconF-*-t-u1" href="#NWconF-warQ-1"><i>&lt;warn of redundant disjunct&gt;</i></a>
+    else
+      push(l, p.disjuncts[i])
+  if *l &lt; *p.disjuncts then p.disjuncts := l
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-remove_duplicate_conditions"><code>remove_duplicate_conditions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-warQ-1" href="#NWconF-warQ-1"><dfn>&lt;warn of redundant disjunct&gt;=</dfn></a> <b>(<a href="#NWDu">&lt;-U</a>)</b>
+warning(&quot;Pattern on right-hand side of <a href="#NWD2">constructor</a> &quot;, cons.name, 
+        &quot; has redundant disjuncts &quot;, expimage(p.disjuncts[j]), &quot; and &quot;,
+        expimage(p.disjuncts[i]), &quot;.\tI'll use the first one for encoding&quot;)
+</pre><pre><a name="NWconF-*-u" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDu">&lt;-</a>D<a href="#NWconF-*-v">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-u">same_conditions</a>(c1, c2)
+  if /c1 &amp; /c2 then return
+  else if /c1 | /c2 then fail
+  else if *c1 = *c2 then {
+    c := copy(c1)
+    every insert_condition(c, !c2)
+    if *c &gt; *c1 then fail
+    else return
+  } else fail
+end
+</pre><blockquote>Defines <a href="#NWI-same_conditions"><code>same_conditions</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-*-v" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-u">&lt;-</a>D<a href="#NWDv">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-v">widthfailure</a>(c)
+  c.n &lt; wordsize | impossible(&quot;test to fit in word: &quot;, expimage(c))
+  case type(c) of {
+    &quot;Efitsu&quot; : {f := &quot;0x%x&quot;; s := &quot;unsigned&quot;}
+    &quot;Efitss&quot; : {f := &quot;%d&quot;;   s := &quot;signed&quot;}
+    default  : impossible(&quot;width condition&quot;)
+  }
+  return <a href="#NWDn">Sfail</a>(&quot;`&quot; || expimage(c.x) || &quot;' = &quot; || f || &quot; won't fit in &quot; || 
+               c.n || &quot; &quot; || s || &quot; bits.&quot;, c.x)
+end
+</pre><blockquote>Defines <a href="#NWI-widthfailure"><code>widthfailure</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDv">Conditions</a></h3>
+<pre><a name="NWconF-*-w" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-v">&lt;-</a>D<a href="#NWDw">-&gt;</a>]</b>
+procedure <a href="#NWDv">known_conditions</a>(e)
+  local known
+  known := set()
+  every ff := subterms_matching(e, &quot;Eforce&quot;) &amp;
+        cc := super_simplify(Eforceable(ff.x)) do
+    insert_condition(known, cc)
+  if subterms_matching(e, &quot;Epc&quot;) then
+    insert_condition(known, Epc_known())
+  delete(known, 1)
+  return if *known = 0 then 1 else known 
+end
+</pre><blockquote>Defines <a href="#NWI-known_conditions"><code>known_conditions</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-strq-1" href="#NWconF-strq-1"><dfn>&lt;strip <code>fknown</code> of conditions already in <code>cknown</code>&gt;=</dfn></a> <b>(<a href="#NWDq">&lt;-U</a> <a href="#NWDr">&lt;-U</a>)</b>
+if type(cknown) == &quot;set&quot; then
+  every ff := !fknown do
+    if exps_eq(ff, !cknown) then
+      delete(fknown, ff)
+if *fknown = 0 then fknown := 1
+</pre><p>
+<a name="NWDw">At this point, we know that field and extended inputs satisfy the appropriate width</a>
+conditions. 
+<pre><a name="NWconF-*-x" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDv">&lt;-</a>D<a href="#NWconF-*-y">-&gt;</a>]</b>
+procedure <a href="#NWDw">fits_conditions_of</a>(d, cons)
+  local fits, ff
+  fits := set()
+  every ff := subterms_matching(d.sequents, &quot;fieldbinding&quot;) &amp;
+        not member(unchecked_fields, ff.field) do
+    if not <a href="#NWDy">known_to_fit</a>(<a href="#NWconF-*-12">input_fitsu</a>, ff.code, cons, fwidth(ff.field)) then
+      <a href="#NWconF-*-10">insert_width_condition</a>(fits, Efitsu(ff.code, fwidth(ff.field)))
+  return fits ++ <a href="#NWDx">narrows_ok_conditions</a>(d.sequents, cons)
+end
+</pre><blockquote>Defines <a href="#NWI-fits_conditions_of"><code>fits_conditions_of</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-*-y" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDw">&lt;-</a>D<a href="#NWDx">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-y">add_fits_conditions_and_sanitize</a>(d, cons)
+  local fits
+  fits := <a href="#NWDw">fits_conditions_of</a>(d, cons)
+  if *fits &gt; 0 then {
+    /d.conditions := set()
+    every insert_condition(d.conditions, !fits)
+  }
+  <a href="#NWDs">sanitize_sequents</a>(d, fits)
+  return d
+end
+</pre><blockquote>Defines <a href="#NWI-add_fits_conditions_and_sanitize"><code>add_fits_conditions_and_sanitize</code></a> (links are to index).<p>
+</blockquote><p>
+We lost earlier because the solver converted the condition:
+<code>v = v[0:15]!</code> to
+<blockquote>
+<a name="NWDx">Enarrows(v, 16) = v[0:15].</a>
+</blockquote>
+Without a check for the success of the narrow, this condition becomes
+a tautology, with the result that we were always taking an incorrect
+branch of the SPARC <code>set</code> constructor.
+By seeking out narrows in conditions, we make sure to include the
+correct check (although we continue to emit C&nbsp;code for the tautology,
+which is annoying).
+<pre><a name="NWconF-*-z" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-y">&lt;-</a>D<a href="#NWconF-*-10">-&gt;</a>]</b>
+procedure <a href="#NWDx">narrows_ok_conditions</a>(e, cons)
+  local ok
+  ok := set()
+  every ee := subterms_matching(e, &quot;Enarrowu&quot;) do
+    if not <a href="#NWDy">known_to_fit</a>(<a href="#NWconF-*-12">input_fitsu</a>, ee.x, cons, ee.n) then
+      <a href="#NWconF-*-10">insert_width_condition</a>(ok, Efitsu(ee.x, ee.n))
+  every ee := subterms_matching(e, &quot;Enarrows&quot;) do
+    if not <a href="#NWDy">known_to_fit</a>(<a href="#NWconF-*-12">input_fitss</a>, ee.x, cons, ee.n) then
+      <a href="#NWconF-*-10">insert_width_condition</a>(ok, Efitss(ee.x, ee.n))
+  return ok
+end
+
+procedure <a href="#NWDx">conditions_with_narrows_check</a>(conds, cons)
+  if *\conds &gt; 0 then {
+    c := <a href="#NWDx">narrows_ok_conditions</a>(conds, cons)
+    return if *c &gt; 0 then c ++ conds else conds
+  } else 
+    return 1
+end
+</pre><blockquote>Defines <a href="#NWI-conditions_with_narrows_check"><code>conditions_with_narrows_check</code></a>, <a href="#NWI-narrows_ok_conditions"><code>narrows_ok_conditions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-10" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDx">&lt;-</a>D<a href="#NWDy">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-10">insert_width_condition</a>(fits, c)
+  if (x := super_simplify(c)) === 0 then
+    error(<a href="#NWconF-*-v">widthfailure</a>(c).fmt)
+  else
+    insert_condition(fits, x)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-insert_width_condition"><code>insert_width_condition</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDy">Either inputs or instances can be known to fit.</a>
+The test on strings is valid <em>only when all free variables represent inputs of
+constructor <code>cons</code></em>.
+In particular, it is valid when patterns are prepared for emission.
+The test on instance inputs is, of course, always valid.
+<code>test</code> is <code><a href="#NWconF-*-12">input_fitsu</a></code> or <code><a href="#NWconF-*-12">input_fitss</a></code>.
+<pre><a name="NWconF-*-11" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-10">&lt;-</a>D<a href="#NWconF-*-12">-&gt;</a>]</b>
+procedure <a href="#NWDy">known_to_fit</a>(test, code, cons, width)
+  return case type(code) of {
+    &quot;string&quot;          : test(code, cons, width)
+    &quot;Einstance_input&quot; : <a href="#NWDy">known_to_fit</a>(test, code.name, code.cons, width)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-known_to_fit"><code>known_to_fit</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-12" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDy">&lt;-</a>D<a href="#NWD10">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-12">input_fitsu</a>(name, cons, width)
+  return width &gt;= wordsize | 
+    ((ipt := <a href="#NWDD">inputs_of</a>(cons)).name == name &amp; case type(ipt.meaning) of {
+      &quot;field&quot;   : fwidth(ipt.meaning) &lt;= width
+      &quot;integer&quot; : ipt.meaning &lt;= width
+    })
+end
+
+procedure <a href="#NWconF-*-12">input_fitss</a>(name, cons, width)
+  return width &gt;= wordsize | 
+    ((ipt := <a href="#NWDD">inputs_of</a>(cons)).name == name &amp; case type(ipt.meaning) of {
+      &quot;integer&quot; : ipt.meaning &lt;= width
+      &quot;field&quot;   : fwidth(ipt.meaning) &lt; width
+    })
+end
+</pre><blockquote>Defines <a href="#NWI-input_fitss"><code>input_fitss</code></a>, <a href="#NWI-input_fitsu"><code>input_fitsu</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Support for encoding procedures (in C)</h2>
+<h3>C type declarations for instances</h3>
+<p>
+<a name="NWDz">A user-defined constructor type is represented by </a><i>T</i><code>Instance</code>, a
+C type that stores an instance of a constructor type <i>T</i>.
+It contains a union of all possible constructors of type <i>T</i>;
+for each one it stores the instance.
+The header <code>h</code> points to a statically allocated record that contains,
+among other information, a tag that identifies not just the constructor,
+but its branch.
+Here's the template:
+<pre><a name="NWconF-insF-1" href="#NWDz"><dfn>&lt;instance-type.t&gt;=</dfn></a>
+typedef struct %{name}_instance {$t
+int tag;
+union {$t%constructors$b
+} u;$b
+} %{name}_Instance;
+</pre><p><a name="NWD10">And here's the code the does the emission.</a>
+<pre><a name="NWconF-*-13" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-12">&lt;-</a>D<a href="#NWD11">-&gt;</a>]</b>
+procedure <a href="#NWD10">emit_instance_type</a>(pp, ct)
+  local constructors
+  <a href="#NWDF">enforce_instance</a>(ct)
+  constructors := []
+  every put(constructors, <a href="#NWD11">input_record_for</a>(kept_constructors(ct)))
+  emit_template(pp, &quot;instance-type.t&quot;, &quot;name&quot;, ct.name, &quot;constructors&quot;, constructors)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_instance_type"><code>emit_instance_type</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD11">There's a trick to the layout of  an input record; we</a>
+use bit fields to hold field inputs, and we want to make them consecutive so
+they have a decent chance of packing.
+To achieve this effect, we run through the inputs twice.
+<pre><a name="NWconF-*-14" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD10">&lt;-</a>D<a href="#NWD12">-&gt;</a>]</b>
+procedure <a href="#NWD11">input_record_for</a>(cons, struct_name)
+  local pp, ipt
+  pp := []
+  put(pp, &quot;$nstruct {$t&quot;);
+  every ipt := <a href="#NWDD">inputs_of</a>(cons) do       ## emit bit fields
+    case type(ipt.meaning) of {
+      &quot;field&quot;   : put(pp, &quot;$nunsigned &quot; || ipt.name || &quot;:&quot; || fwidth(ipt.meaning)||&quot;;&quot;)
+      &quot;integer&quot; : put(pp, &quot;$nint &quot;      || ipt.name || &quot;:&quot; || ipt.meaning        ||&quot;;&quot;)
+    }
+  every ipt := <a href="#NWDD">inputs_of</a>(cons) do       ## emit other inputs
+    case type(ipt.meaning) of {
+      &quot;null&quot;     : put(pp, &quot;$nint &quot;   ||                                ipt.name ||&quot;;&quot;)
+      &quot;string&quot;   : put(pp, &quot;$nRAddr &quot; ||                                ipt.name ||&quot;;&quot;)
+      &quot;<a href="#NWD2">constype</a>&quot; : put(pp, &quot;$n&quot; || ipt.meaning.name || &quot;_Instance  &quot; || ipt.name ||&quot;;&quot;)
+      &quot;field&quot; | &quot;integer&quot; : &amp;fail
+      default : impossible(&quot;input meaning&quot;)
+    }
+  if not <a href="#NWDD">inputs_of</a>(cons) then
+    put(pp, &quot;\nchar avoid_empty_structures;&quot;)
+  put(pp, &quot;$b$n} &quot; || (\struct_name | cons.name) || &quot;;&quot;)
+  return pp
+end
+</pre><blockquote>Defines <a href="#NWI-input_record_for"><code>input_record_for</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD12">While we're playing the input game, we use a similar technique to</a>
+compute a list of argument declarations.
+<pre><a name="NWconF-*-15" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD11">&lt;-</a>D<a href="#NWD13">-&gt;</a>]</b>
+procedure <a href="#NWD12">arg_decls</a>(cons)
+  l := []
+  every ipt := <a href="#NWDD">inputs_of</a>(cons) do
+    put(l, case type(ipt.meaning) of {
+            &quot;null&quot;     : &quot;int&quot;
+            &quot;string&quot;   : &quot;RAddr&quot;
+            &quot;<a href="#NWD2">constype</a>&quot; : ipt.meaning.name || &quot;_Instance&quot;
+            &quot;field&quot;    : unsigned_type(fwidth(ipt.meaning))
+            &quot;integer&quot;  : &quot;int&quot;
+            default    : impossible(&quot;<a href="#NWD12">arg_decls</a> input&quot;)
+          } || &quot; &quot; || ipt.name)
+  return if *l = 0 then &quot;void&quot; else commaseparate(l)
+end
+</pre><blockquote>Defines <a href="#NWI-arg_decls"><code>arg_decls</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD13">C support for closures</a></h2>
+Closures are numbered within a particular constructor, except for the first.
+<pre><a name="NWconF-*-16" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD12">&lt;-</a>D<a href="#NWD14">-&gt;</a>]</b>
+procedure <a href="#NWD13">emit_original_closure_functions</a>(pp, cons, b)
+  local suffix   
+  every cl := subterms_matching(b, &quot;<a href="#NWconF-*-n">Sclosure</a>&quot;) do
+    <a href="#NWD14">emit_original_closure_function</a>(pp, cons, cons.name || <a name="NWconF-*-16-u1" href="#NWconF-sufI-1"><i>&lt;suffix with update&gt;</i></a>, cl) 
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_original_closure_functions"><code>emit_original_closure_functions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-sufI-1" href="#NWconF-sufI-1"><dfn>&lt;suffix with update&gt;=</dfn></a> <b>(<a href="#NWD13">&lt;-U</a>)</b>
+(if /suffix then (suffix := 1, &quot;&quot;) else &quot;_&quot; || (suffix +:= 1))
+</pre><p>
+The idea with a closure is to ferret out all the free variables and stuff them
+into a custom closure.  The trick is, we don't want to use <em>instance</em>-valued
+variables; we want the components of the instance.  Step 1, then, is to grab all
+the instance selections, noting the instances that we're not interested in.
+Step 2 will add all the free variables.
+<a name="NWD14">The things to save,</a>
+are the selections and free variables that aren't selected from.
+<p>
+Everything to save is put in the closure.
+Equivalent expressions are to be saved only once, so we use a table mapping things to be 
+saved to their names in the closure.
+<code><a href="#NWconF-*-19">closurenametab</a></code> computes that table.
+<p>
+The definition of a closure type requires the inverse of that table.
+<pre><a name="NWconF-*-17" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD13">&lt;-</a>D<a href="#NWD15">-&gt;</a>]</b>
+procedure <a href="#NWD14">emit_original_closure_function</a>(pp, cons, name, cl)
+  local selections, selected, free, save, upc
+  <a name="NWconF-*-17-u1" href="#NWconF-mak1d-1"><i>&lt;make <code>selections</code>, <code>selected</code>, <code>free</code> hold selections, things selected from, and free variables&gt;</i></a>
+  nt := <a href="#NWconF-*-19">closurenametab</a>(selections ++ free -- selected)
+  mt := <a href="#NWconF-*-1E">meaningtab</a>(nt, cons)
+  <a href="#NWD16">emit_original_closure_typedef</a>(pp, name, cons, mt)
+  <a href="#NWconF-*-1B">emit_original_closure_relocfn</a>(pp, name, cons, mt)
+  <a href="#NWD17">emit_original_closure_function_def</a>(pp, name, cl, nt)
+  <a href="#NWD15">emit_closure_header_def</a>(pp, name, name || &quot;_app&quot;, cl)
+  <a name="NWconF-*-17-u2" href="#NWconF-makx-1"><i>&lt;make <code>cl.creation</code> to create closure and emit placeholder&gt;</i></a>
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_original_closure_function"><code>emit_original_closure_function</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-makx-1" href="#NWconF-makx-1"><dfn>&lt;make <code>cl.creation</code> to create closure and emit placeholder&gt;=</dfn></a> <b>(<a href="#NWD14">&lt;-U</a>)</b>
+<a name="NWconF-makx-1-u1" href="#NWconF-mak11-1"><i>&lt;make <code>l</code> a list of assignments by using the name table <code>nt</code>&gt;</i></a>
+upc := if subterms_matching(\cl.conditions | cl.disjunct, &quot;Epc&quot;, &quot;Epc_known&quot;) then 1
+       else 0
+cl.creation := Sstmts([
+  literal(template_to_list(&quot;create-closure.t&quot;, 
+                                &quot;name&quot;, name, &quot;save&quot;, l, &quot;clofun&quot;, name || &quot;_app&quot;)), 
+  <a href="#NWDt">disjunct_to_emission</a>(place_holder(cl.disjunct))])
+</pre><pre><a name="NWconF-creG-1" href="#NWconF-creG-1"><dfn>&lt;create-closure.t&gt;=</dfn></a>
+$t{ %{name}_Closure _c;
+_c = (%{name}_Closure) mc_create_closure_here(sizeof *_c, &amp;%{clofun}_closure_header);
+%{save}/* this line intentionally left blank */$b
+}  
+</pre><pre><a name="NWconF-creJ-1" href="#NWconF-creJ-1"><dfn>&lt;create-closure-at.t&gt;=</dfn></a>
+$t{ %{name}_Closure _c;
+_c = (%{name}_Closure) mc_create_closure_at_offset(sizeof *_c, &amp;%{clofun}_closure_header, %offset);
+%{save}/* this line intentionally left blank */$b
+}  
+</pre><p>
+<pre><a name="NWconF-mak11-1" href="#NWconF-mak11-1"><dfn>&lt;make <code>l</code> a list of assignments by using the name table <code>nt</code>&gt;=</dfn></a> <b>(<a href="#NWconF-makx-1">&lt;-U</a>)</b>
+l := []
+s := set()
+every e := key(nt) &amp; not member(s, nt[e]) do {
+  insert(s, nt[e])
+  put(l, &quot;_c-&gt;v.&quot; || nt[e] || &quot; = &quot; || pretty(e) || &quot;;$n&quot;)
+}
+s := &amp;null # enable garbage collection
+</pre><p>
+<a name="NWD15">Added this to restructure so we could emit one header per closure</a>
+function in the optimized case (instead of one header per encoding
+function). 
+<pre><a name="NWconF-*-18" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD14">&lt;-</a>D<a href="#NWconF-*-19">-&gt;</a>]</b>
+procedure <a href="#NWD15">emit_closure_header_def</a>(pp, name, clofun, cl)
+  local upc
+  upc := if subterms_matching(\cl.conditions | cl.disjunct, &quot;Epc&quot;, &quot;Epc_known&quot;) then 1
+         else 0
+  emit_template(pp, &quot;closure-header.t&quot;, &quot;clofun&quot;, clofun, &quot;name&quot;, name, &quot;uses-pc&quot;, upc)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_closure_header_def"><code>emit_closure_header_def</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-cloG-1" href="#NWconF-cloG-1"><dfn>&lt;closure-header.t&gt;=</dfn></a>
+static struct closure_header %{clofun}_closure_header = $t
+{ %{clofun}, %{name}_relocfn, %{uses-pc}, sizeof (struct %{name}_closure) };$b
+</pre><p>
+<pre><a name="NWconF-mak1d-1" href="#NWconF-mak1d-1"><dfn>&lt;make <code>selections</code>, <code>selected</code>, <code>free</code> hold selections, things selected from, and free variables&gt;=</dfn></a> <b>(<a href="#NWD14">&lt;-U</a>)</b>
+every selections | selected | free := set()
+every s := subterms_matching(cl.disjunct | \cl.conditions, &quot;Einstance_input&quot;) do {
+  insert(selections, s)
+  insert(selected, s.x)
+}
+every insert(free, free_variables(cl.disjunct | \cl.conditions))
+</pre><p>
+<pre><a name="NWconF-*-19" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD15">&lt;-</a>D<a href="#NWD16">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-19">closurenametab</a>(save)
+  local namecounts, saved, name
+  every namecounts | t := table()
+  saved := set()
+  every e := !save do
+    if eprime := !saved &amp; exps_eq(e, eprime) then
+      t[e] := t[eprime]
+    else {
+      insert(saved, e)
+      <a name="NWconF-*-19-u1" href="#NWconF-sets-1"><i>&lt;set <code>name</code> to the proper name of the field for <code>e</code>&gt;</i></a>
+      t[e] := name
+    }
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-closurenametab"><code>closurenametab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-sets-1" href="#NWconF-sets-1"><dfn>&lt;set <code>name</code> to the proper name of the field for <code>e</code>&gt;=</dfn></a> <b>(<a href="#NWconF-*-19">&lt;-U</a>)</b>
+name := case type(e) of {
+  &quot;string&quot; : e
+  &quot;Einstance_input&quot; : e.name
+  default : impossible(&quot;type of saved exp&quot;)
+}
+if /namecounts[name] then 
+  namecounts[name] := 1
+else 
+  name ||:= &quot;__&quot; || (namecounts[name] +:= 1)
+</pre><p>
+<a name="NWD16">To compute the closure type, we pack the names;</a>
+big ones first, then little ones.
+First we invert the table, so that the names are the unique keys in <code>u</code>.
+<pre><a name="NWconF-*-1A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-19">&lt;-</a>D<a href="#NWconF-*-1B">-&gt;</a>]</b>
+procedure <a href="#NWD16">emit_original_closure_typedef</a>(pp, name, cons, t)
+  l := []
+  every fname := key(t) do 
+    put(l, case type(t[fname]) of {
+             &quot;null&quot;     : &quot;$cint &quot;   || fname || &quot;;&quot;
+             &quot;string&quot;   : &quot;$cRAddr &quot; || fname || &quot;;&quot;
+             &quot;<a href="#NWD2">constype</a>&quot; : impossible(&quot;failed to eliminate an instance&quot;)
+           })
+  every fname := key(t) do
+    put(l, case type(t[fname]) of {
+             &quot;field&quot;   : &quot;$cunsigned &quot; || fname || &quot;:&quot; || fwidth(t[fname]) || &quot;;&quot;
+             &quot;integer&quot; : &quot;$cint &quot;      || fname || &quot;:&quot; || t[fname]         || &quot;;&quot;
+           })
+  emit_template(pp, &quot;closure-type.t&quot;, &quot;name&quot;, name, &quot;decls&quot;, l)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_original_closure_typedef"><code>emit_original_closure_typedef</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-cloE-1" href="#NWconF-cloE-1"><dfn>&lt;closure-type.t&gt;=</dfn></a>
+typedef struct %{name}_closure {$t
+ClosureHeader h;
+ClosureLocation loc;
+struct { $t${%decls $b$c$}} v;$b
+} *%{name}_Closure;
+</pre><pre><a name="NWconF-*-1B" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD16">&lt;-</a>D<a href="#NWD17">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1B">emit_original_closure_relocfn</a>(pp, name, cons, t)
+  local calls
+  calls := []
+  every fname := key(t) &amp; type(t[fname]) == &quot;string&quot; do
+     put(calls, template_to_list(&quot;reloc-call.t&quot;, &quot;irec&quot;, &quot;v&quot;, &quot;input&quot;, fname))
+  emit_template(pp, &quot;<a href="#NWD2">constructor</a>-labels.t&quot;, &quot;ptrtype&quot;, name || &quot;_Closure&quot;,
+                                 &quot;name&quot;, name, &quot;calls&quot;, calls)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_original_closure_relocfn"><code>emit_original_closure_relocfn</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD17">The  emitter code in </a><code>Cexp</code> assumes that the closure is stored in <code>_c</code>.
+<pre><a name="NWconF-*-1C" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1B">&lt;-</a>D<a href="#NWconF-*-1D">-&gt;</a>]</b>
+procedure <a href="#NWD17">emit_original_closure_function_def</a>(pp, name, cl, t)
+  local es
+  tt := copy(t)
+  every k := key(t) do tt[k] := literal(&quot;_c-&gt;v.&quot; || tt[k])
+  tt[the_global_pc] := Eforce(Eclosure_loc())
+  PPxwrite(pp, &quot;static void &quot;, name,
+               &quot;_app (RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n&quot;,
+               name, &quot;_Closure _c = (&quot;, name, &quot;_Closure) c;$n&quot;)
+  es := emitterstyle
+  emitterstyle := &quot;closure&quot;
+  PPxwrite(pp, pretty(
+     super_simplify(Sif([Sguarded(subst_table_elements(cl.conditions, tt), 
+                                  <a href="#NWDt">disjunct_to_emission</a>(
+                                      subst_table_elements(cl.disjunct, tt))),
+        ### <a href="#NWDt">disjunct_to_emission</a> should be changed to include width conditions &amp;c
+                   Sguarded(1, 
+                      <a href="#NWDn">Sfail</a>(&quot;Conditions not satisfied for <a href="#NWD2">constructor</a> &quot; || name))]))))
+  emitterstyle := es
+  PPxwrite(pp, &quot;$b$n}&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_original_closure_function_def"><code>emit_original_closure_function_def</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-appB-1" href="#NWconF-appB-1"><dfn>&lt;apply-fun.t&gt;=</dfn></a>
+static void %{name}_app (RClosure c, Emitter emitter, FailCont fail) {
+</pre><pre><a name="NWconF-*-1D" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD17">&lt;-</a>D<a href="#NWconF-*-1E">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1D">find_input</a>(name, cons)
+  return <a href="#NWDE">input_named</a>(cons, name)
+end
+</pre><blockquote>Defines <a href="#NWI-find_input"><code>find_input</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1E" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1D">&lt;-</a>D<a href="#NWD18">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1E">meaningtab</a>(t, cons)
+  u := table()
+  every k := key(t) do
+    (u[t[k]] := <a href="#NWDy">known_to_fit</a>(<a href="#NWconF-*-1D">find_input</a>, k, cons).meaning) | 
+        impossible(&quot;unknown free variable &quot;, k)
+  return u
+end
+</pre><blockquote>Defines <a href="#NWI-meaningtab"><code>meaningtab</code></a> (links are to index).<p>
+</blockquote><p>
+<h3>Extracting relocatable addresses from instances and closures</h3>
+There are three possible sources of relocatable addresses:
+<a name="NWD18">the program counter, relocatable inputs, or constructors (input or applied).</a>
+<p>
+<code><a href="#NWD18">uses_pc</a></code> determines if a constructor
+<em>directly</em> uses the program counter.
+Conservatively, we estimate that a constructor uses the program
+counter if any of its branches have labels, or
+if some constructor used in <em>any</em> of the constructor's
+output patterns uses the program counter.
+This is overly conservative but easy to implement.
+<pre><a name="NWconF-*-1F" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1E">&lt;-</a>D<a href="#NWD19">-&gt;</a>]</b>
+procedure <a href="#NWD18">uses_pc</a>(x)
+  static pccache
+  initial pccache := table()
+  if not member(pccache, x) then {
+    pccache[x] := 0
+    type(x) == &quot;<a href="#NWD2">constructor</a>&quot; | impossible(&quot;<a href="#NWD18">uses_pc</a>&quot;)
+    if pattern_label_names((!x.branches).pat) |
+       <a href="#NWD18">uses_pc</a>(constructors_applied_in((!x.branches).pat)) then
+      return pccache[x] := 1
+  }
+  return 0 &lt; pccache[x]
+end
+</pre><blockquote>Defines <a href="#NWI-uses_pc"><code>uses_pc</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWD19" href="#NWD19">uses_reloc</a></code> determines if the given constructor
+can depend on the label of some relocatable address.
+<code><a href="#NWD19">uses_reloc</a></code> holds if <code><a href="#NWD18">uses_pc</a></code> holds
+or if a relocatable address is in the constructor's inputs,
+or if <code><a href="#NWD19">uses_reloc</a></code> holds for some constructor-typed input
+or for any constructor used in an output pattern.
+<pre><a name="NWconF-*-1G" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD18">&lt;-</a>D<a href="#NWconF-*-1H">-&gt;</a>]</b>
+procedure <a href="#NWD19">uses_reloc</a>(x)
+   static cache
+   initial cache := table()
+   if not member(cache, x) then {
+     cache[x] := 0
+     case type(x) of {
+       &quot;<a href="#NWD2">constype</a>&quot;    : if <a href="#NWD19">uses_reloc</a>(kept_constructors(x)) then return cache[x] := 1
+       &quot;<a href="#NWD2">constructor</a>&quot; :
+         if <a href="#NWDD">inputs_of</a>(x, &quot;string&quot;) | <a href="#NWD18">uses_pc</a>(x) |
+            <a href="#NWD19">uses_reloc</a>(<a href="#NWDD">inputs_of</a>(x, &quot;<a href="#NWD2">constype</a>&quot;).meaning |
+                       constructors_applied_in((!x.branches).pat))
+         then
+           return cache[x] := 1
+       default : impossible(&quot;<a href="#NWD19">uses_reloc</a>&quot;)
+     }
+   }
+   return 0 &lt; cache[x]
+end
+</pre><blockquote>Defines <a href="#NWI-uses_reloc"><code>uses_reloc</code></a> (links are to index).<p>
+</blockquote><p>
+
+<code><a name="NWD1A">ptrtype</a></code> is the exact pointer type of this instance or closure.
+<code>irec</code> is the record containing the inputs.
+<p>
+<pre><a name="NWconF-conK-1" href="#NWD1A"><dfn>&lt;constructor-labels.t&gt;=</dfn></a>
+static void %{name}_relocfn(RClosure c, RelocCallback f, void *closure) {$t
+%ptrtype _c = (%ptrtype) c;
+%calls$b}
+</pre><pre><a name="NWconF-relC-1" href="#NWconF-relC-1"><dfn>&lt;reloc-call.t&gt;=</dfn></a>
+(*f)(closure, _c-&gt;%irec.%input);
+</pre><pre><a name="NWconF-conB-1" href="#NWconF-conB-1"><dfn>&lt;cons-call.t&gt;=</dfn></a>
+$t${(*(_c-&gt;%irec.%input.h-&gt;relocfn))$o((Instance*)(&amp;_c-&gt;%irec.%input), f, closure);$}$b
+</pre><pre><a name="NWconF-no*B-1" href="#NWconF-no*B-1"><dfn>&lt;no-labels.t&gt;=</dfn></a>
+static void %{name}_relocfn(RClosure c, RelocCallback f, void *closure) {
+  return;
+}
+</pre><p>
+<h3><a name="NWD1B">Creating instances</a></h3>
+Instance creation is simple-minded---check the widths of the field inputs, and
+stuff all the inputs into the instance.
+<pre><a name="NWconF-creM-1" href="#NWD1B"><dfn>&lt;create-instance-body.t&gt;=</dfn></a>
+%{class}%{type}_Instance %safename(%args) {$t
+%{type}_Instance _i = { %{name}_TAG };
+%{input-tests}%{assignments}return _i;$b
+}
+</pre><pre><a name="NWconF-inpC-1" href="#NWconF-inpC-1"><dfn>&lt;input-test.t&gt;=</dfn></a>
+$t${if (!(${%condition$})) $c(*fail) (&quot;%name = %%d won't fit in %width %signed bits&quot;);$}$b
+</pre><pre><a name="NWconF-insL.2-1" href="#NWconF-insL.2-1"><dfn>&lt;instance-assignment.t&gt;=</dfn></a>
+_i.u.%name.%l = %r;
+</pre><pre><a name="NWconF-*-1H" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD19">&lt;-</a>D<a href="#NWconF-*-1I">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1H">input_width_tests</a>(cons) 
+  t := []
+  every i := <a href="#NWDD">inputs_of</a>(cons) &amp; case type(i.meaning) of {
+    &quot;integer&quot; : { w := i.meaning; s := &quot;signed&quot;; c := Efitss(literal(i.name), w) }
+    &quot;field&quot;   : if member(unchecked_fields, i.meaning) then &amp;fail
+                else { w := fwidth(i.meaning); s := &quot;unsigned&quot;
+                       c := Efitsu(literal(i.name), w) }
+  } do put(t, template_to_list(&quot;input-test.t&quot;, &quot;name&quot;, i.name, &quot;width&quot;, w, &quot;signed&quot;, s,
+                                               &quot;condition&quot;, pretty(c)))
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-input_width_tests"><code>input_width_tests</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWconF-*-1I" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1H">&lt;-</a>D<a href="#NWconF-*-1J">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1I">emit_proc_declaration</a>(pp, cons)
+  if cons.type === instructionctype then
+    <a href="#NWD1C">emit_emitter_proto</a>(pp, cons)
+  else
+    <a href="#NWconF-*-1J">emit_create_instance_proto</a>(pp, cons)
+  return
+end    
+</pre><blockquote>Defines <a href="#NWI-emit_proc_declaration"><code>emit_proc_declaration</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1J" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1I">&lt;-</a>D<a href="#NWconF-*-1K">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1J">emit_create_instance_proto</a>(pp, cons)
+  c_function_declaration(pp, cons.type.name || &quot;_Instance&quot;, Cnoreserve(cons.name), 
+                         <a href="#NWD12">arg_decls</a>(cons))
+end
+</pre><blockquote>Defines <a href="#NWI-emit_create_instance_proto"><code>emit_create_instance_proto</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1K" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1J">&lt;-</a>D<a href="#NWD1C">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1K">emit_create_instance_body</a>(pp, cons)
+  a := []
+  every i := <a href="#NWDD">inputs_of</a>(cons).name do
+     put(a, template_to_list(&quot;instance-assignment.t&quot;, &quot;name&quot;, cons.name, &quot;l&quot;, i, &quot;r&quot;, i))
+  emit_template(pp, &quot;create-instance-body.t&quot;, &quot;safename&quot;, Cnoreserve(cons.name),
+                   &quot;name&quot;, cons.name, &quot;type&quot;, cons.type.name, &quot;args&quot;, <a href="#NWD12">arg_decls</a>(cons), 
+                   &quot;class&quot;, if \indirectname then &quot;static &quot; else &quot;&quot;,
+                   &quot;<a href="#NWD18">uses_pc</a>&quot;, if <a href="#NWD18">uses_pc</a>(cons) then 1 else 0, 
+                   &quot;input-tests&quot;, <a href="#NWconF-*-1H">input_width_tests</a>(cons), &quot;assignments&quot;, a)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_create_instance_body"><code>emit_create_instance_body</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWD1C">Emitting</a></h3>
+<pre><a name="NWconF-*-1L" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1K">&lt;-</a>D<a href="#NWD1D">-&gt;</a>]</b>
+procedure <a href="#NWD1C">emit_emitter_proto</a>(pp, cons)
+  c_function_declaration(pp, &quot;void&quot;, Cnoreserve(cons.name), <a href="#NWD12">arg_decls</a>(cons))
+  return
+end
+
+procedure <a href="#NWD1C">emit_emitter_body</a>(pp, cons)
+  b := <a href="#NWconF-*-h">emitter_body</a>(cons)
+  emit_closure_functions(pp, cons, b)
+  emit_template(pp, &quot;emitter-body.t&quot;, 
+                &quot;safename&quot;, Cnoreserve(cons.name), &quot;args&quot;, <a href="#NWD12">arg_decls</a>(cons),
+                &quot;class&quot;, if \indirectname then &quot;static &quot; else &quot;&quot;)
+  PPxwrites(pp, pretty(b))
+  if \gen_counters then
+    PPxwrites(pp, &quot;$n&quot;, cons.name, &quot;_ctr++;&quot;)
+  PPxwrite(pp, &quot;$b$n}&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_emitter_body"><code>emit_emitter_body</code></a>, <a href="#NWI-emit_emitter_proto"><code>emit_emitter_proto</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-emiE-1" href="#NWconF-emiE-1"><dfn>&lt;emitter-body.t&gt;=</dfn></a>
+%{class}void %safename(%args) {$t
+</pre><p>
+<h2><a name="NWD1D">Optimizing closures</a></h2>
+We don't have to number optimized closures; their naming is arbitrary.
+<pre><a name="NWconF-*-1M" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1C">&lt;-</a>D<a href="#NWD1E">-&gt;</a>]</b>
+procedure <a href="#NWD1D">emit_optimized_closure_functions</a>(pp, cons, b)
+  pushtrace(&quot;CLO&quot;)
+  every cl := subterms_matching(b, &quot;<a href="#NWconF-*-n">Sclosure</a>&quot;) do
+    <a href="#NWD1E">emit_optimized_closure_function</a>(pp, cons, cons.name, cl) 
+  poptrace()
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_optimized_closure_functions"><code>emit_optimized_closure_functions</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD1E">We really ought to add a string type to the closure, so that we</a>
+could give the name of the constructor when conditions aren't
+satisfied in the closure.  As it is, I use the same error message for
+each constructor---otherwise they won't all use the same closure function!
+<pre><a name="NWconF-*-1N" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1D">&lt;-</a>D<a href="#NWconF-*-1O">-&gt;</a>]</b>
+procedure <a href="#NWD1E">emit_optimized_closure_function</a>(pp, cons, name, cl)
+  local selections, selected, free, save, upc, latevars, clo, subst, body
+  latevars := set()
+  every insert(latevars, <a href="#NWDD">inputs_of</a>(cons, &quot;string&quot;).name)
+  body := 
+     super_simplify(Sif([Sguarded(cl.conditions, <a href="#NWDt">disjunct_to_emission</a>(cl.disjunct)),
+        ### <a href="#NWDt">disjunct_to_emission</a> should be changed to include width conditions &amp;c
+                         Sguarded(1, 
+                            <a href="#NWDn">Sfail</a>(&quot;Conditions not satisfied for unnamed <a href="#NWD2">constructor</a>&quot;))
+                        ]))
+  p := <a href="#NWconF-*-1P">hoist</a>(pp, <a href="#NWconF-*-1O">Elambda</a>(sort(latevars), body), latevars)
+  clo := p.e # is a closure
+  clo := <a href="#NWconF-*-1U">apply_subst</a>(clo, p.sigma)
+  free := set(); every insert(free, free_variables(clo))
+  free := sort(free)
+PPwrite(pp, &quot;/****************&quot;)
+PPxwrite(pp, &quot;CLOSURE IS:$t $o&quot;, ppexpimage(clo), &quot;$b&quot;)
+PPwrite(pp, &quot;****************/&quot;)
+  <a name="NWconF-*-1N-u1" href="#NWconF-mak1F-1"><i>&lt;make <code>cl.creation</code> to create optimized closure <code>clo</code> and emit placeholder&gt;</i></a>
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_optimized_closure_function"><code>emit_optimized_closure_function</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD1F">N.B. I think there's a potential botch because </a><code>latevars</code> doesn't
+include relocatable addresses hidden inside constructor-typed
+arguments.
+
+<pre><a name="NWconF-mak1F-1" href="#NWconF-mak1F-1"><dfn>&lt;make <code>cl.creation</code> to create optimized closure <code>clo</code> and emit placeholder&gt;=</dfn></a> <b>(<a href="#NWD1E">&lt;-U</a>)</b>
+l := []
+every i := 1 to *clo.values do
+  put(l, pretty(Gasgn(Eclosure_val(i),  clo.values[i])) || &quot;$n&quot;)
+every i := 1 to *clo.addresses do
+  put(l, pretty(Gasgn(Eclosure_addr(i), clo.addresses[i])) || &quot;$n&quot;)
+upc := if subterms_matching(\cl.conditions | cl.disjunct, &quot;Epc&quot;, &quot;Epc_known&quot;) then 1
+       else 0
+cl.creation := Sstmts([
+  literal(template_to_list(&quot;create-closure.t&quot;, &quot;name&quot;, clo.ty, &quot;clofun&quot;, clo.fun, 
+                           &quot;uses-pc&quot;, upc, &quot;save&quot;, l)),
+  <a href="#NWDt">disjunct_to_emission</a>(place_holder(cl.disjunct))])
+</pre><p>
+<pre><a name="NWconF-*-1O" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1E">&lt;-</a>D<a href="#NWconF-*-1P">-&gt;</a>]</b>
+record <a href="#NWconF-*-1O">Elambda</a>(formals, body)
+record <a href="#NWconF-*-1O">hoisted</a>(e, sigma)        # pair containing exp, substitution
+record <a href="#NWconF-*-1O">arrow</a>(v, e)              # part of a substitution
+procedure <a href="#NWconF-*-1O">make_early</a>(v, e, sigma)
+  v := fresh_variable(v)
+  return <a href="#NWconF-*-1O">hoisted</a>(v, push(sigma, <a href="#NWconF-*-1O">arrow</a>(v, e)))
+end
+
+procedure <a href="#NWconF-*-1O">make_late</a>(v, e, sigma)
+  return <a href="#NWconF-*-1O">hoisted</a>(e, sigma)
+end
+
+procedure <a href="#NWconF-*-1O">make_time</a>(e, latevars)
+  return if <a href="#NWconF-*-1O">islate</a>(e, latevars) then <a href="#NWconF-*-1O">make_late</a> else <a href="#NWconF-*-1O">make_early</a>
+end
+
+procedure <a href="#NWconF-*-1O">islate</a>(e, latevars)
+  return case type(e) of {
+    &quot;string&quot; : member(latevars, e)
+    &quot;list&quot;   : <a href="#NWconF-*-1O">islate</a>(!e, latevars)
+    default  : 1
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-arrow"><code>arrow</code></a>, <a href="#NWI-Elambda"><code>Elambda</code></a>, <a href="#NWI-hoisted"><code>hoisted</code></a>, <a href="#NWI-islate"><code>islate</code></a>, <a href="#NWI-make_early"><code>make_early</code></a>, <a href="#NWI-make_late"><code>make_late</code></a>, <a href="#NWI-make_time"><code>make_time</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1P" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1O">&lt;-</a>D<a href="#NWD1G">-&gt;</a>]</b>
+record <a href="#NWconF-*-1P">Eclosure</a>(ty, fun, headertype, values, addresses)
+
+procedure <a href="#NWconF-*-1P">hoist</a>(pp, e, latevars)
+  local body, sigma, sigma1, p, free, freeset, clo, clofun, closubst, early, late, hd
+  local values, addresses
+  x := case type(e) of {
+    &quot;string&quot;  : <a href="#NWconF-*-1O">hoisted</a>(e, [])
+    &quot;integer&quot; : <a href="#NWconF-*-1O">make_early</a>(&quot;lit&quot;, e, []) 
+    &quot;list&quot;    : <a href="#NWconF-*-1R">hoistlist</a>(pp, e, latevars)
+    &quot;<a href="#NWconF-*-1O">Elambda</a>&quot; : {
+       p := <a href="#NWconF-*-1P">hoist</a>(pp, e.body, set(e.formals))
+       body := p.e
+       sigma := p.sigma
+       <a name="NWconF-*-1P-u1" href="#NWD1H"><i>&lt;make <code>addresses</code> and <code>values</code> free vars of body (in order of appearance)&gt;</i></a>
+       if \lateconst then {
+         <a name="NWconF-*-1P-u2" href="#NWconF-usi1A-1"><i>&lt;using <code>sigma</code>, push constants back into <code>body</code> and out of <code>values</code>&gt;</i></a>
+       }
+
+       clo := fresh_variable(&quot;clo&quot;)
+       <a name="NWconF-*-1P-u3" href="#NWconF-mak16-1"><i>&lt;make <code>closubst</code> change addresses and values to select from <code>clo</code>&gt;</i></a>
+       body := <a href="#NWconF-*-1U">apply_subst</a>(body, closubst)
+
+       clotype := <a href="#NWD1N">closure_type</a>(pp, values, addresses)
+       clofun := <a href="#NWconF-*-1X">closure_function</a>(pp, clotype, addresses, body)
+       hd := <a href="#NWD1P">closure_header_type</a>(pp, clofun, clotype, body)
+       <a name="NWconF-*-1P-u4" href="#NWconF-mak1B-1"><i>&lt;make <code>cloargs</code> the list of closure args, using <code>values</code> and <code>sigma</code>&gt;</i></a>
+       p := <a href="#NWconF-*-1R">hoistlist</a>(pp, cloargs, latevars)
+       <a href="#NWconF-*-1O">make_time</a>(p.e, latevars)(&quot;closure&quot;, 
+            <a href="#NWconF-*-1P">Eclosure</a>(clotype, clofun, hd, p.e, <a href="#NWconF-*-1U">apply_subst</a>(addresses, sigma)), p.sigma)
+    }
+    &quot;Epc&quot; | &quot;Epc_known&quot; : <a href="#NWconF-*-1O">make_late</a>(&quot;pc&quot;, e, [])
+    <a name="NWconF-*-1P-u5" href="#NWconF-othO-1"><i>&lt;other cases for hoisting&gt;</i></a>
+    <a name="NWconF-*-1P-u6" href="#NWconF-genS-1"><i>&lt;generated cases for hoisting&gt;</i></a>
+    default : impossible(&quot;hoisting &quot;, image(type(e)))
+  }
+### PPxwrites(pp, &quot;Hoisting &quot;, ppexpimage(e), &quot;$t$ngot $t${$o&quot;, ppexpimage(x.e), 
+###                       &quot;$}$b$nwith&quot;)
+### <a href="#NWconF-*-1V">showsigma</a>(pp, x.sigma)
+### PPxwrite(pp, &quot;$nso, when applied, have $t$o${&quot;, 
+###              ppexpimage(<a href="#NWconF-*-1U">apply_subst</a>(x.e, x.sigma)),
+###                  &quot;$}$b$b$n&quot;)
+  return x
+end
+</pre><blockquote>Defines <a href="#NWI-Eclosure"><code>Eclosure</code></a>, <a href="#NWI-hoist"><code>hoist</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-genS-1" href="#NWconF-genS-1"><dfn>&lt;generated cases for hoisting&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b>
+</pre><p>
+<a name="NWD1G">A value is an address if it's a formal parameter or if it's a suitable</a>
+element of an instance input:
+<pre><a name="NWconF-*-1Q" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1P">&lt;-</a>D<a href="#NWconF-*-1R">-&gt;</a>]</b>
+procedure <a href="#NWD1G">is_address</a>(e, addressparms)
+  return e === !addressparms |
+         (type(e) == &quot;Einstance_input&quot;, 
+          type(<a href="#NWDE">input_named</a>(e.cons, e.name).meaning) == &quot;string&quot;)
+end          
+</pre><blockquote>Defines <a href="#NWI-is_address"><code>is_address</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD1H">Preserving order here helps keep us from creating</a>
+closure functions that differ only by a permutation of arguments.
+We have to apply <code>sigma</code>, and see what sort of value the free
+variable stands for, in order to classify it as a value or an address.
+<pre><a name="NWconF-mak1E-1" href="#NWD1H"><dfn>&lt;make <code>addresses</code> and <code>values</code> free vars of body (in order of appearance)&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b>
+every addresses | values := []
+freeset := set()
+every v := free_variables(body) &amp; not member(freeset, v) &amp; 
+      x := <a href="#NWconF-*-1U">apply_subst</a>(v, sigma) 
+do {
+  insert(freeset, v)
+  put(if <a href="#NWD1G">is_address</a>(x, e.formals) then addresses else values, v)
+}
+</pre><pre><a name="NWconF-usi1A-1" href="#NWconF-usi1A-1"><dfn>&lt;using <code>sigma</code>, push constants back into <code>body</code> and out of <code>values</code>&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b>
+l := []
+every f := !values do
+  if x := constant(<a href="#NWconF-*-1U">apply_subst</a>(f, sigma)) then
+    body := <a href="#NWconF-*-1U">apply_subst</a>(body, <a href="#NWconF-*-1O">arrow</a>(f, x))
+  else
+    put(l, f)
+values := l
+</pre><pre><a name="NWconF-mak16-1" href="#NWconF-mak16-1"><dfn>&lt;make <code>closubst</code> change addresses and values to select from <code>clo</code>&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b>
+closubst := []
+every i := 1 to *values do
+  put(closubst, <a href="#NWconF-*-1O">arrow</a>(values[i], Eclosure_val(i)))
+every i := 1 to *addresses do
+  put(closubst, <a href="#NWconF-*-1O">arrow</a>(addresses[i], Eclosure_addr(i)))
+</pre><pre><a name="NWconF-mak1B-1" href="#NWconF-mak1B-1"><dfn>&lt;make <code>cloargs</code> the list of closure args, using <code>values</code> and <code>sigma</code>&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b>
+cloargs := []
+every put(cloargs, <a href="#NWconF-*-1U">apply_subst</a>(!values, sigma))
+</pre><pre><a name="NWconF-othO-1" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[D<a href="#NWconF-othO-2">-&gt;</a>]</b>
+&quot;table&quot; : {
+  kl := []; every k := key(e) &amp; e[k] ~= 0 do put(kl, k)
+  hl := <a href="#NWconF-*-1R">hoistlist</a>(pp, kl, latevars)
+  sigma := hl.sigma
+  hl := hl.e
+  if x := !hl &amp; not <a href="#NWconF-*-1O">islate</a>(x, latevars) then {
+    t := table(0)
+    every k := kl[i := 1 to *kl] &amp; x := hl[i] &amp; not <a href="#NWconF-*-1O">islate</a>(x, latevars) do
+      t[x] +:= e[k]
+    early := <a href="#NWconF-*-1O">make_early</a>(&quot;sum&quot;, t, sigma)
+    sigma := early.sigma
+    early := early.e
+  } else 
+    early := &amp;null
+  if <a href="#NWconF-*-1O">islate</a>(!hl, latevars) then {
+    t := table(0)
+    every k := kl[i := 1 to *kl] &amp; x := hl[i] &amp; <a href="#NWconF-*-1O">islate</a>(x, latevars) do
+      t[x] +:= e[k]
+    t[\early] +:= 1
+    <a href="#NWconF-*-1O">make_late</a>(&quot;sum&quot;, t, sigma)
+  } else {
+    <a href="#NWconF-*-1O">make_early</a>(&quot;sum&quot;, \early | 0, sigma)
+  }
+}
+</pre><pre><a name="NWconF-othO-2" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWconF-othO-1">&lt;-</a>D<a href="#NWconF-othO-3">-&gt;</a>]</b>
+&quot;Eorb&quot; : {
+  l := <a href="#NWconF-*-1R">hoistlist</a>(pp, flatten(e, &quot;Eorb&quot;), latevars)
+  every early | late := []
+  every x := !l.e do put(if <a href="#NWconF-*-1O">islate</a>(x, latevars) then late else early, x)
+  if *late &gt; 0 then
+    if *early = 0 then 
+      <a href="#NWconF-*-1O">make_late</a>(&quot;or&quot;, unflatten(late, Eorb, 0), l.sigma)
+    else {
+      early := <a href="#NWconF-*-1O">make_early</a>(&quot;or&quot;, unflatten(early, Eorb, 0), l.sigma)
+      push(late, early.e)
+      <a href="#NWconF-*-1O">make_late</a>(&quot;or&quot;, unflatten(late, Eorb, 0), early.sigma)
+    }
+  else 
+    <a href="#NWconF-*-1O">make_early</a>(&quot;or&quot;, unflatten(early, Eorb, 0), l.sigma)
+}
+</pre><pre><a name="NWconF-othO-3" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWconF-othO-2">&lt;-</a>D<a href="#NWD1I">-&gt;</a>]</b>
+&quot;set&quot; : {
+  sigma := []
+  s := set()
+  every x := !e do {
+    p := <a href="#NWconF-*-1P">hoist</a>(pp, x, latevars)
+    insert(s, p.e)
+    sigma := <a href="#NWD1O">compose</a>(sigma, p.sigma)
+  }
+  <a href="#NWconF-*-1O">hoisted</a>(s, sigma)
+}
+</pre><p>
+<a name="NWD1I">For equations, we try a funky heuristic, namely, if we see a zero on</a>
+the right-hand side, <em>don't</em> hoist it.
+<pre><a name="NWconF-othO-4" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWconF-othO-3">&lt;-</a>D<a href="#NWD1J">-&gt;</a>]</b>
+&quot;eqn&quot; : {
+  sigma := []
+  m := <a href="#NWconF-*-1O">make_early</a>
+  _a0 := <a href="#NWconF-*-1P">hoist</a>(pp, e.left, latevars)
+  sigma := <a href="#NWD1O">compose</a>(sigma, _a0.sigma)
+  _a0 := _a0.e
+  if <a href="#NWconF-*-1O">islate</a>(_a0, latevars) then m := <a href="#NWconF-*-1O">make_late</a>
+  if \latezero &amp; untable(e.right) === 0 then {
+    _a2 := 0
+    m := <a href="#NWconF-*-1O">make_late</a>
+  } else {
+    _a2 := <a href="#NWconF-*-1P">hoist</a>(pp, e.right, latevars)
+    sigma := <a href="#NWD1O">compose</a>(sigma, _a2.sigma)
+    _a2 := _a2.e
+    if <a href="#NWconF-*-1O">islate</a>(_a2, latevars) then m := <a href="#NWconF-*-1O">make_late</a>
+  }
+  if not (_a0 === e.left, _a2 === e.right) then
+    e := eqn(_a0, e.op, _a2)
+  m(&quot;eqn&quot;, e, sigma)
+}
+</pre><p>
+<a name="NWD1J">We can't hoist a guard!  And we might as well not hoist&nbsp;1 when it's</a>
+just the guard that's always satisfied.
+<pre><a name="NWconF-othO-5" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWD1I">&lt;-</a>D<a href="#NWD1K">-&gt;</a>]</b>
+&quot;Sguarded&quot; : {
+  p := if guard_always_satisfied(e.guard) then <a href="#NWconF-*-1O">hoisted</a>(1, [])
+       else <a href="#NWconF-*-1P">hoist</a>(pp, e.guard, latevars)
+  q := <a href="#NWconF-*-1P">hoist</a>(pp, e.x, latevars)
+  <a href="#NWconF-*-1O">hoisted</a>(Sguarded(p.e, q.e), <a href="#NWD1O">compose</a>(p.sigma, q.sigma))
+}
+&quot;Sepsilon&quot; : <a href="#NWconF-*-1O">hoisted</a>(e, [])
+</pre><p>
+<a name="NWD1K">For </a><code><a href="#NWDn">Sfail</a></code>, we ought to be able to keep track of the types of
+variables that are hoisted, so we could hoist both the message and, if
+need be, the arguments.
+<pre><a name="NWconF-othO-6" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWD1J">&lt;-</a>D<a href="#NWD1L">-&gt;</a>]</b>
+&quot;<a href="#NWDn">Sfail</a>&quot;    : <a href="#NWconF-*-1O">hoisted</a>(e, [])
+</pre><p>
+<a name="NWD1L">For emission, we ought to do something extra special.</a>
+We ought <em>always</em> to hoist emission, converting unknown tokens
+into placeholders as we go.  Then we can build closures for the
+remaining tokesn.  Perhaps if we have a type mechanism, we can do that
+one day.
+<p>
+For now, we prevent hoisting by keeping <code>Stoken</code>s late.
+<pre><a name="NWconF-othO-7" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWD1K">&lt;-</a>D<a href="#NWD1M">-&gt;</a>]</b>
+&quot;Stoken&quot; : {
+  p := <a href="#NWconF-*-1P">hoist</a>(pp, e.x, latevars)
+  <a href="#NWconF-*-1O">hoisted</a>(Stoken(p.e, e.n, e.offset), p.sigma)
+}
+</pre><p>
+<a name="NWD1M">For a particular instance input, we have to check its type to know</a>
+whether it is early or late.
+<pre><a name="NWconF-othO-8" href="#NWconF-othO-1"><dfn>&lt;other cases for hoisting&gt;+=</dfn></a> <b>(<a href="#NWconF-*-1P">&lt;-U</a>)</b> <b>[<a href="#NWD1L">&lt;-</a>D]</b>
+&quot;Eforce&quot; : {
+  p := <a href="#NWconF-*-1P">hoist</a>(pp, e.x, latevars)
+  <a href="#NWconF-*-1O">hoisted</a>(Eforce(p.e), p.sigma)
+}
+</pre><pre><a name="NWconF-*-1R" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1G">&lt;-</a>D<a href="#NWD1N">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1R">hoistlist</a>(pp, l, latevars)
+  local sigma, newl, e
+  sigma := []
+  newl := []
+  every e := !l do {
+    p := <a href="#NWconF-*-1P">hoist</a>(pp, e, latevars)
+    put(newl, p.e)
+    sigma := <a href="#NWD1O">compose</a>(p.sigma, sigma)
+  }
+  return <a href="#NWconF-*-1O">hoisted</a>(newl, sigma)
+end
+</pre><blockquote>Defines <a href="#NWI-hoistlist"><code>hoistlist</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD1N">The function </a><code><a href="#NWD1N">closure_type</a></code> looks at the number of free and bound
+variables and finds (or emits) a type suitable for use as the closure.
+If it has to emit a new type, it also emits a ``reloc function'' to go
+with it.      
+<pre><a name="NWconF-*-1S" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1R">&lt;-</a>D<a href="#NWD1O">-&gt;</a>]</b>
+procedure <a href="#NWD1N">closure_type</a>(pp, values, addresses)
+  static closure_types
+  local clname, calls
+  initial closure_types := set()
+  clname := &quot;O&quot; || *addresses || &quot;_&quot; || *values
+  if not member(closure_types, clname) then {
+    insert(closure_types, clname)
+    every calls | l := []
+    every i := 1 to *addresses do {
+      put(l, &quot; $cRAddr a&quot; || i || &quot;;&quot;)
+      put(calls, template_to_list(&quot;reloc-call.t&quot;, &quot;irec&quot;, &quot;v&quot;, &quot;input&quot;, &quot;a&quot; || i))
+    }
+    every i := 1 to *values do
+      put(l, &quot; $cunsigned u&quot; || i || &quot;;&quot;)
+    emit_template(pp, &quot;closure-type.t&quot;, &quot;name&quot;, clname, &quot;decls&quot;, l)
+    emit_template(pp, &quot;<a href="#NWD2">constructor</a>-labels.t&quot;, &quot;ptrtype&quot;, clname || &quot;_Closure&quot;,
+                                 &quot;name&quot;, clname, &quot;calls&quot;, calls)
+  }
+  return clname
+end
+</pre><blockquote>Defines <a href="#NWI-closure_type"><code>closure_type</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD1O">For compose, the right-hand substitution is applied first.</a>
+<pre><a name="NWconF-*-1T" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1N">&lt;-</a>D<a href="#NWconF-*-1U">-&gt;</a>]</b>
+procedure <a href="#NWD1O">compose</a>(sigma1, sigma2)
+  return if *sigma1 = 0 then sigma2
+         else if *sigma2 = 0 then sigma1
+         else push(sigma1, sigma2)
+end
+</pre><blockquote>Defines <a href="#NWI-compose"><code>compose</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1U" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1O">&lt;-</a>D<a href="#NWconF-*-1V">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1U">apply_subst</a>(e, sigma)
+  return case type(sigma) of {
+           &quot;list&quot; : {
+               every s := !sigma do e := <a href="#NWconF-*-1U">apply_subst</a>(e, s)
+               e
+             }
+           &quot;<a href="#NWconF-*-1O">arrow</a>&quot;: subst(e, sigma.v, sigma.e)
+           default :  impossible(&quot;substitution&quot;)
+         }
+end
+procedure <a href="#NWconF-*-1U">apply_subst_list</a>(e, sigma)
+  every i := 
+  return case type(sigma) of {
+           &quot;list&quot; : <a href="#NWconF-*-1U">apply_subst_list</a>(e, sigma, 1)
+           &quot;<a href="#NWconF-*-1O">arrow</a>&quot;: subst(e, s.v, s.e)
+           default :  impossible(&quot;substitution&quot;)
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-apply_subst"><code>apply_subst</code></a>, <a href="#NWI-apply_subst_list"><code>apply_subst_list</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1V" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1U">&lt;-</a>D<a href="#NWconF-*-1W">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1V">showsigma</a>(pp, sigma)
+  case type(sigma) of {
+    &quot;<a href="#NWconF-*-1O">arrow</a>&quot; : PPxwrites(pp, &quot;$t$n${&quot;, sigma.v, &quot; --&gt; &quot;, 
+                        ppexpimage(sigma.e), &quot;$}$b&quot;)
+    &quot;list&quot;  : every <a href="#NWconF-*-1V">showsigma</a>(pp, !sigma)
+    default : impossible(&quot;substitution&quot;)
+  }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-showsigma"><code>showsigma</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1W" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1V">&lt;-</a>D<a href="#NWconF-*-1X">-&gt;</a>]</b>
+global <a href="#NWconF-*-1W">closure_functions_postfix</a>
+procedure <a href="#NWconF-*-1W">emit_closure_functions_postfix</a>(pp, interfacebasename)
+  if *\<a href="#NWconF-*-1W">closure_functions_postfix</a> &gt; 0 then {
+    PPxwrite(pp, &quot;/*****************************$t&quot;)
+    every k := key(\<a href="#NWconF-*-1W">closure_functions_postfix</a>) do
+      PPxwrite(pp, &quot;${&quot;, k, &quot; = $t$c&quot;, <a href="#NWconF-*-1W">closure_functions_postfix</a>[k], &quot;$b$}&quot;)
+    PPxwrite(pp, &quot;$b$n****************/&quot;)
+  }
+  PPxwrites(pp, &quot;ClosurePostfix &quot;, 
+                <a href="#NWconF-*-9">mapoutbadchars</a>(interfacebasename), &quot;_clofuns[] = {$t&quot;)
+  every k := key(\<a href="#NWconF-*-1W">closure_functions_postfix</a>) do
+    PPxwrites(pp, &quot;$n{ &quot;, k, &quot;, &quot;, image(<a href="#NWconF-*-1W">closure_functions_postfix</a>[k]), &quot; }, &quot;)
+  PPxwrites(pp, &quot;$n{ (ApplyMethod) 0, (char *) 0 }&quot;)
+  PPxwrite(pp, &quot;$b$n};&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-closure_functions_postfix"><code>closure_functions_postfix</code></a>, <a href="#NWI-emit_closure_functions_postfix"><code>emit_closure_functions_postfix</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-*-1X" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1W">&lt;-</a>D<a href="#NWD1P">-&gt;</a>]</b>
+procedure <a href="#NWconF-*-1X">closure_function</a>(pp, cloty, addresses, body)
+  static cache, count
+  local bodyimage, es, orig_body, bytecode
+  initial { every <a href="#NWconF-*-1W">closure_functions_postfix</a> | cache := table(); count := 0 }
+  tt := table()
+  every i := 1 to *addresses do tt[addresses[i]] := Eclosure_addr(i)
+  tt[the_global_pc] := Eforce(Eclosure_loc())
+  orig_body := body
+  body := subst_table_elements(body, tt)
+  bodyimage := expps(body)
+  if /cache[bodyimage] then {
+    cache[bodyimage] := &quot;_clofun_&quot; || (count +:= 1)
+    <a href="#NWconF-*-1W">closure_functions_postfix</a>[cache[bodyimage]] := bodyimage
+    verbose(&quot;New closure function for \n&quot;, bodyimage)
+    PPxwrite(pp, &quot;/* CLOSURE FUNCTION _clofun_&quot;, count, &quot; is $t$n&quot;, bodyimage, &quot;$b$n */&quot;)
+    bytecode := expbc(body) || bc_halt()
+    PPwrite(pp, &quot;/* bytecode (&quot;, *bytecode, &quot;) is &quot;, image(bytecode), &quot; */&quot;)
+    <a name="NWconF-*-1X-u1" href="#NWconF-emi12-1"><i>&lt;emit new closure function numbered <code>count</code> and put it in cache&gt;</i></a>
+  }
+  return cache[bodyimage]
+end
+</pre><blockquote>Defines <a href="#NWI-closure_function"><code>closure_function</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWconF-emi12-1" href="#NWconF-emi12-1"><dfn>&lt;emit new closure function numbered <code>count</code> and put it in cache&gt;=</dfn></a> <b>(<a href="#NWconF-*-1X">&lt;-U</a>)</b>
+es := emitterstyle
+emitterstyle := &quot;closure&quot;
+PPxwrite(pp, &quot;static void _clofun_&quot;, count, 
+             &quot;(RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n&quot;,
+             cloty, &quot;_Closure _c = (&quot;, cloty, &quot;_Closure) c;$n&quot;)
+PPxwrite(pp, pretty(body))
+emitterstyle := es
+PPxwrite(pp, &quot;$b$n}&quot;)
+</pre><p>
+<a name="NWD1P">Added this so we could emit one header per closure</a>
+function in the optimized case (instead of one header per encoding
+function). 
+<pre><a name="NWconF-*-1Y" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWconF-*-1X">&lt;-</a>D]</b>
+procedure <a href="#NWD1P">closure_header_type</a>(pp, clofun, clotype, body)
+  local upc
+  static cache
+  initial cache := table()
+  if /cache[clofun] then {
+    cache[clofun] := clofun || &quot;_closure_header&quot;
+    upc := if subterms_matching(body, &quot;Epc&quot;, &quot;Epc_known&quot;) then 1 else 0
+    emit_template(pp, &quot;closure-header.t&quot;, 
+                              &quot;clofun&quot;, clofun, &quot;name&quot;, clotype, &quot;uses-pc&quot;, upc)
+  }
+  return cache[clofun]
+end
+
+
+
+
+</pre><blockquote>Defines <a href="#NWI-closure_header_type"><code>closure_header_type</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD5">D2</a>, <a href="#NWD6">D3</a>, <a href="#NWD7">D4</a>, <a href="#NWD9">D5</a>, <a href="#NWDA">D6</a>, <a href="#NWDB">D7</a>, <a href="#NWDC">D8</a>, <a href="#NWconF-*-9">D9</a>, <a href="#NWDD">D10</a>, <a href="#NWDE">D11</a>, <a href="#NWDF">D12</a>, <a href="#NWconF-*-D">D13</a>, <a href="#NWDG">D14</a>, <a href="#NWconF-*-F">D15</a>, <a href="#NWconF-*-G">D16</a>, <a href="#NWDH">D17</a>, <a href="#NWconF-*-I">D18</a>, <a href="#NWDJ">D19</a>, <a href="#NWDK">D20</a>, <a href="#NWDM">D21</a>, <a href="#NWDN">D22</a>, <a href="#NWDO">D23</a>, <a href="#NWDP">D24</a>, <a href="#NWconF-*-P">D25</a>, <a href="#NWconF-*-Q">D26</a>, <a href="#NWconF-*-R">D27</a>, <a href="#NWDS">D28</a>, <a href="#NWDZ">D29</a>, <a href="#NWDd">D30</a>, <a href="#NWDe">D31</a>, <a href="#NWconF-*-W">D32</a>, <a href="#NWDf">D33</a>, <a href="#NWDg">D34</a>, <a href="#NWDi">D35</a>, <a href="#NWconF-*-a">D36</a>, <a href="#NWconF-*-b">D37</a>, <a href="#NWDj">D38</a>, <a href="#NWDl">D39</a>, <a href="#NWDm">D40</a>, <a href="#NWconF-*-f">D41</a>, <a href="#NWconF-*-g">D42</a>, <a href="#NWconF-*-h">D43</a>, <a href="#NWDn">D44</a>, <a href="#NWDo">D45</a>, <a href="#NWDp">D46</a>, <a href="#NWconF-*-l">D47</a>, <a href="#NWconF-*-m">D48</a>, <a href="#NWconF-*-n">D49</a>, <a href="#NWDs">D50</a>, <a href="#NWDt">D51</a>, <a href="#NWconF-*-q">D52</a>, <a href="#NWconF-*-r">D53</a>, <a href="#NWconF-*-s">D54</a>, <a href="#NWDu">D55</a>, <a href="#NWconF-*-u">D56</a>, <a href="#NWconF-*-v">D57</a>, <a href="#NWDv">D58</a>, <a href="#NWDw">D59</a>, <a href="#NWconF-*-y">D60</a>, <a href="#NWDx">D61</a>, <a href="#NWconF-*-10">D62</a>, <a href="#NWDy">D63</a>, <a href="#NWconF-*-12">D64</a>, <a href="#NWD10">D65</a>, <a href="#NWD11">D66</a>, <a href="#NWD12">D67</a>, <a href="#NWD13">D68</a>, <a href="#NWD14">D69</a>, <a href="#NWD15">D70</a>, <a href="#NWconF-*-19">D71</a>, <a href="#NWD16">D72</a>, <a href="#NWconF-*-1B">D73</a>, <a href="#NWD17">D74</a>, <a href="#NWconF-*-1D">D75</a>, <a href="#NWconF-*-1E">D76</a>, <a href="#NWD18">D77</a>, <a href="#NWD19">D78</a>, <a href="#NWconF-*-1H">D79</a>, <a href="#NWconF-*-1I">D80</a>, <a href="#NWconF-*-1J">D81</a>, <a href="#NWconF-*-1K">D82</a>, <a href="#NWD1C">D83</a>, <a href="#NWD1D">D84</a>, <a href="#NWD1E">D85</a>, <a href="#NWconF-*-1O">D86</a>, <a href="#NWconF-*-1P">D87</a>, <a href="#NWD1G">D88</a>, <a href="#NWconF-*-1R">D89</a>, <a href="#NWD1N">D90</a>, <a href="#NWD1O">D91</a>, <a href="#NWconF-*-1U">D92</a>, <a href="#NWconF-*-1V">D93</a>, <a href="#NWconF-*-1W">D94</a>, <a href="#NWconF-*-1X">D95</a>, <a href="#NWD1P">D96</a>
+<li><a href="#NWconF-appB-1"><i>&lt;apply-fun.t&gt;</i></a>: <a href="#NWconF-appB-1">D1</a>
+<li><a href="#NWconF-argL-1"><i>&lt;argument descriptions&gt;</i></a>: <a href="#NWconF-argL-1">D1</a>
+<li><a href="#NWDb"><i>&lt;Band-Aid that once covered latent pattern label of an instance input&gt;</i></a>: <a href="#NWDb">D1</a>
+<li><a href="#NWconF-chee-1"><i>&lt;check for unused definitions in <code>cons</code>&gt;</i></a>: <a href="#NWconF-if*y-1">U1</a>, <a href="#NWconF-chee-1">D2</a>
+<li><a href="#NWconF-cher-1"><i>&lt;check that <code>t.type.ntags</code> doesn't overflow tag bits&gt;</i></a>: <a href="#NWD7">U1</a>, <a href="#NWconF-cher-1">D2</a>
+<li><a href="#NWconF-cloG-1"><i>&lt;closure-header.t&gt;</i></a>: <a href="#NWconF-cloG-1">D1</a>
+<li><a href="#NWconF-cloE-1"><i>&lt;closure-type.t&gt;</i></a>: <a href="#NWconF-cloE-1">D1</a>
+<li><a href="#NWconF-comc-1"><i>&lt;compute and cache pattern for <code>cons</code>&gt;</i></a>: <a href="#NWDH">U1</a>, <a href="#NWconF-comc-1">D2</a>
+<li><a href="#NWDL"><i>&lt;compute and cache pattern for <code>constype</code>&gt;</i></a>: <a href="#NWDK">U1</a>, <a href="#NWDL">D2</a>
+<li><a href="#NWconF-conB-1"><i>&lt;cons-call.t&gt;</i></a>: <a href="#NWconF-conB-1">D1</a>
+<li><a href="#NWD1A"><i>&lt;constructor-labels.t&gt;</i></a>: <a href="#NWD1A">D1</a>
+<li><a href="#NWDI"><i>&lt;convert branch <code>b</code> to a pattern <code>q</code>&gt;</i></a>: <a href="#NWconF-comc-1">U1</a>, <a href="#NWDI">D2</a>
+<li><a href="#NWconF-creJ-1"><i>&lt;create-closure-at.t&gt;</i></a>: <a href="#NWconF-creJ-1">D1</a>
+<li><a href="#NWconF-creG-1"><i>&lt;create-closure.t&gt;</i></a>: <a href="#NWconF-creG-1">D1</a>
+<li><a href="#NWD1B"><i>&lt;create-instance-body.t&gt;</i></a>: <a href="#NWD1B">D1</a>
+<li><a href="#NWDk"><i>&lt;early-branch.s&gt;</i></a>: <a href="#NWDk">D1</a>
+<li><a href="#NWconF-emi12-1"><i>&lt;emit new closure function numbered <code>count</code> and put it in cache&gt;</i></a>: <a href="#NWconF-*-1X">U1</a>, <a href="#NWconF-emi12-1">D2</a>
+<li><a href="#NWconF-emiE-1"><i>&lt;emitter-body.t&gt;</i></a>: <a href="#NWconF-emiE-1">D1</a>
+<li><a href="#NWconF-errV-1"><i>&lt;error if <code>p</code> has no disjuncts&gt;</i></a>: <a href="#NWDg">U1</a>, <a href="#NWconF-errV-1">D2</a>
+<li><a href="#NWDh"><i>&lt;example&gt;</i></a>: <a href="#NWDh">D1</a>
+<li><a href="#NWconF-genS-1"><i>&lt;generated cases for hoisting&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-genS-1">D2</a>
+<li><a href="#NWconF-if*y-1"><i>&lt;if first time thru, check for unused definitions in <code>cons</code>&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWconF-if*y-1">D2</a>
+<li><a href="#NWconF-inpC-1"><i>&lt;input-test.t&gt;</i></a>: <a href="#NWconF-inpC-1">D1</a>
+<li><a href="#NWconF-insQ-1"><i>&lt;insist input lengths match&gt;</i></a>: <a href="#NWDN">U1</a>, <a href="#NWDO">U2</a>, <a href="#NWconF-insQ-1">D3</a>
+<li><a href="#NWconF-insL-1"><i>&lt;insist on <code>*\t > 0</code>&gt;</i></a>: <a href="#NWD9">U1</a>, <a href="#NWconF-insL-1">D2</a>, <a href="#NWDA">U3</a>
+<li><a href="#NWconF-insL.2-1"><i>&lt;instance-assignment.t&gt;</i></a>: <a href="#NWconF-insL.2-1">D1</a>
+<li><a href="#NWDz"><i>&lt;instance-type.t&gt;</i></a>: <a href="#NWDz">D1</a>
+<li><a href="#NWconF-issi-1"><i>&lt;issue error message about overlapping fields&gt;</i></a>: <a href="#NWconF-*-r">U1</a>, <a href="#NWconF-issi-1">D2</a>
+<li><a href="#NWconF-latD-1"><i>&lt;late-branch.s&gt;</i></a>: <a href="#NWconF-latD-1">D1</a>
+<li><a href="#NWDa"><i>&lt;latent pattern label of an instance input&gt;</i></a>: <a href="#NWDZ">U1</a>, <a href="#NWDa">D2</a>
+<li><a href="#NWD1H"><i>&lt;make <code>addresses</code> and <code>values</code> free vars of body (in order of appearance)&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWD1H">D2</a>
+<li><a href="#NWconF-maka-1"><i>&lt;make <code>args[i]</code> a constructor input&gt;</i></a>: <a href="#NWDP">U1</a>, <a href="#NWconF-maka-1">D2</a>
+<li><a href="#NWconF-makd-1"><i>&lt;make <code>args[i]</code> a signed integer input&gt;</i></a>: <a href="#NWDP">U1</a>, <a href="#NWconF-makd-1">D2</a>
+<li><a href="#NWDQ"><i>&lt;make <code>args[i]</code> an unsigned integer input&gt;</i></a>: <a href="#NWDP">U1</a>, <a href="#NWDQ">D2</a>
+<li><a href="#NWconF-makx-1"><i>&lt;make <code>cl.creation</code> to create closure and emit placeholder&gt;</i></a>: <a href="#NWD14">U1</a>, <a href="#NWconF-makx-1">D2</a>
+<li><a href="#NWconF-mak1F-1"><i>&lt;make <code>cl.creation</code> to create optimized closure <code>clo</code> and emit placeholder&gt;</i></a>: <a href="#NWD1E">U1</a>, <a href="#NWconF-mak1F-1">D2</a>
+<li><a href="#NWconF-mak1B-1"><i>&lt;make <code>cloargs</code> the list of closure args, using <code>values</code> and <code>sigma</code>&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-mak1B-1">D2</a>
+<li><a href="#NWconF-mak16-1"><i>&lt;make <code>closubst</code> change addresses and values to select from <code>clo</code>&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-mak16-1">D2</a>
+<li><a href="#NWconF-mak1N-1"><i>&lt;make <code>condition_failure_msg</code> complain of undecided branch or unsatisfied conditions&gt;</i></a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWconF-mak1N-1">D3</a>
+<li><a href="#NWconF-mak15-1"><i>&lt;make <code>inputs</code> the set of input names, barfing if duplicates exist&gt;</i></a>: <a href="#NWD6">U1</a>, <a href="#NWconF-mak15-1">D2</a>
+<li><a href="#NWD8"><i>&lt;make <code>inputs_labs</code> <code>inputs</code> plus labels defined in <code>b[2]</code>, barfing on duplicates&gt;</i></a>: <a href="#NWD6">U1</a>, <a href="#NWD8">D2</a>
+<li><a href="#NWconF-mak11-1"><i>&lt;make <code>l</code> a list of assignments by using the name table <code>nt</code>&gt;</i></a>: <a href="#NWconF-makx-1">U1</a>, <a href="#NWconF-mak11-1">D2</a>
+<li><a href="#NWconF-mak1d-1"><i>&lt;make <code>selections</code>, <code>selected</code>, <code>free</code> hold selections, things selected from, and free variables&gt;</i></a>: <a href="#NWD14">U1</a>, <a href="#NWconF-mak1d-1">D2</a>
+<li><a href="#NWconF-no*B-1"><i>&lt;no-labels.t&gt;</i></a>: <a href="#NWconF-no*B-1">D1</a>
+<li><a href="#NWDr"><i>&lt;old, bogus turn pattern <code>p</code> into emitter and return it&gt;</i></a>: <a href="#NWDr">D1</a>
+<li><a href="#NWDR"><i>&lt;old possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;</i></a>: <a href="#NWDR">D1</a>
+<li><a href="#NWconF-oldI-1"><i>&lt;old-early-branch.s&gt;</i></a>: <a href="#NWconF-oldI-1">D1</a>
+<li><a href="#NWconF-othO-1"><i>&lt;other cases for hoisting&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-othO-1">D2</a>, <a href="#NWconF-othO-2">D3</a>, <a href="#NWconF-othO-3">D4</a>, <a href="#NWD1I">D5</a>, <a href="#NWD1J">D6</a>, <a href="#NWD1K">D7</a>, <a href="#NWD1L">D8</a>, <a href="#NWD1M">D9</a>
+<li><a href="#NWconF-pos15-1"><i>&lt;possible binding instance <code>x</code> of constructor type <code>ipt.meaning</code>&gt;</i></a>: <a href="#NWconF-maka-1">U1</a>, <a href="#NWconF-pos15-1">D2</a>
+<li><a href="#NWconF-posj-1"><i>&lt;possibly warn about bad encoding for <code>cons</code>&gt;</i></a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWconF-posj-1">D3</a>
+<li><a href="#NWconF-relC-1"><i>&lt;reloc-call.t&gt;</i></a>: <a href="#NWconF-relC-1">D1</a>
+<li><a href="#NWconF-sets-1"><i>&lt;set <code>name</code> to the proper name of the field for <code>e</code>&gt;</i></a>: <a href="#NWconF-*-19">U1</a>, <a href="#NWconF-sets-1">D2</a>
+<li><a href="#NWconF-strq-1"><i>&lt;strip <code>fknown</code> of conditions already in <code>cknown</code>&gt;</i></a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWconF-strq-1">D3</a>
+<li><a href="#NWconF-sufI-1"><i>&lt;suffix with update&gt;</i></a>: <a href="#NWD13">U1</a>, <a href="#NWconF-sufI-1">D2</a>
+<li><a href="#NWconF-to*y-1"><i>&lt;to avoid circularity, make sure <code>type</code> has never been used&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWconF-to*y-1">D2</a>
+<li><a href="#NWDq"><i>&lt;turn pattern <code>p</code> into emitter and return it&gt;</i></a>: <a href="#NWDp">U1</a>, <a href="#NWDq">D2</a>
+<li><a href="#NWconF-usi1A-1"><i>&lt;using <code>sigma</code>, push constants back into <code>body</code> and out of <code>values</code>&gt;</i></a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-usi1A-1">D2</a>
+<li><a href="#NWconF-warQ-1"><i>&lt;warn of redundant disjunct&gt;</i></a>: <a href="#NWDu">U1</a>, <a href="#NWconF-warQ-1">D2</a>
+<li><a href="#NWDT"><i>&lt;what we might write if we were doing this with rewrite rules&gt;</i></a>: <a href="#NWDT">D1</a>, <a href="#NWDU">D2</a>, <a href="#NWDW">D3</a>
+</ul>
+<ul>
+<li><a name="NWI-add_fits_conditions_and_sanitize" href="#NWconF-*-y">add_fits_conditions_and_sanitize</a>: <a href="#NWDq">U1</a>, <a href="#NWconF-*-y">D2</a>
+<li><a name="NWI-add_overlap_field" href="#NWconF-*-r">add_overlap_field</a>: <a href="#NWconF-*-q">U1</a>, <a href="#NWconF-*-r">D2</a>
+<li><a name="NWI-apply_constructor" href="#NWDN">apply_constructor</a>: <a href="#NWDN">D1</a>
+<li><a name="NWI-apply_subst" href="#NWconF-*-1U">apply_subst</a>: <a href="#NWD1E">U1</a>, <a href="#NWconF-*-1P">U2</a>, <a href="#NWD1H">U3</a>, <a href="#NWconF-usi1A-1">U4</a>, <a href="#NWconF-mak1B-1">U5</a>, <a href="#NWconF-*-1U">D6</a>
+<li><a name="NWI-apply_subst_list" href="#NWconF-*-1U">apply_subst_list</a>: <a href="#NWconF-*-1U">D1</a>
+<li><a name="NWI-app_to_instance" href="#NWDO">app_to_instance</a>: <a href="#NWDO">D1</a>, <a href="#NWconF-maka-1">U2</a>
+<li><a name="NWI-arg_decls" href="#NWD12">arg_decls</a>: <a href="#NWD12">D1</a>, <a href="#NWconF-*-1J">U2</a>, <a href="#NWconF-*-1K">U3</a>, <a href="#NWD1C">U4</a>
+<li><a name="NWI-argtable" href="#NWDP">argtable</a>: <a href="#NWDN">U1</a>, <a href="#NWDO">U2</a>, <a href="#NWDP">D3</a>
+<li><a name="NWI-arrow" href="#NWconF-*-1O">arrow</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-usi1A-1">U2</a>, <a href="#NWconF-mak16-1">U3</a>, <a href="#NWconF-*-1U">U4</a>, <a href="#NWconF-*-1V">U5</a>
+<li><a name="NWI-badarg" href="#NWconF-*-R">badarg</a>: <a href="#NWconF-*-P">U1</a>, <a href="#NWconF-*-Q">U2</a>, <a href="#NWconF-maka-1">U3</a>, <a href="#NWconF-*-R">D4</a>
+<li><a name="NWI-binary_conjunction" href="#NWconF-*-f">binary_conjunction</a>: <a href="#NWconF-*-f">D1</a>
+<li><a name="NWI-binding_instance_input_name" href="#NWconF-*-W">binding_instance_input_name</a>: <a href="#NWDe">U1</a>, <a href="#NWconF-*-W">D2</a>
+<li><a name="NWI-binding_instance_var" href="#NWDd">binding_instance_var</a>: <a href="#NWDY">U1</a>, <a href="#NWDZ">U2</a>, <a href="#NWDd">D3</a>, <a href="#NWDe">U4</a>
+<li><a name="NWI-branch" href="#NWD2">branch</a>: <a href="#NWD2">D1</a>, <a href="#NWD6">U2</a>, <a href="#NWconF-chee-1">U3</a>, <a href="#NWDq">U4</a>, <a href="#NWDr">U5</a>, <a href="#NWconF-mak1N-1">U6</a>
+<li><a name="NWI-case_to_emitter" href="#NWDp">case_to_emitter</a>: <a href="#NWconF-*-h">U1</a>, <a href="#NWDp">D2</a>
+<li><a name="NWI-closure_function" href="#NWconF-*-1X">closure_function</a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-*-1X">D2</a>
+<li><a name="NWI-closure_functions_postfix" href="#NWconF-*-1W">closure_functions_postfix</a>: <a href="#NWconF-*-1W">D1</a>, <a href="#NWconF-*-1X">U2</a>
+<li><a name="NWI-closure_header_type" href="#NWD1P">closure_header_type</a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWD1P">D2</a>
+<li><a name="NWI-closurenametab" href="#NWconF-*-19">closurenametab</a>: <a href="#NWD14">U1</a>, <a href="#NWconF-*-19">D2</a>
+<li><a name="NWI-closure_type" href="#NWD1N">closure_type</a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWD1N">D2</a>
+<li><a name="NWI-compose" href="#NWD1O">compose</a>: <a href="#NWconF-othO-3">U1</a>, <a href="#NWD1I">U2</a>, <a href="#NWD1J">U3</a>, <a href="#NWconF-*-1R">U4</a>, <a href="#NWD1O">D5</a>
+<li><a name="NWI-conditions_with_narrows_check" href="#NWDx">conditions_with_narrows_check</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDx">D3</a>
+<li><a name="NWI-conjoin" href="#NWDm">conjoin</a>: <a href="#NWDl">U1</a>, <a href="#NWDm">D2</a>
+<li><a name="NWI-consinput_pattern" href="#NWDJ">consinput_pattern</a>: <a href="#NWconF-comc-1">U1</a>, <a href="#NWDJ">D2</a>
+<li><a name="NWI-cons_named" href="#NWDG">cons_named</a>: <a href="#NWDG">D1</a>, <a href="#NWconF-maka-1">U2</a>
+<li><a name="NWI-constemplate" href="#NWD6">constemplate</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-constructor" href="#NWD2">constructor</a>: <a href="#NWD2">D1</a>, <a href="#NWD5">U2</a>, <a href="#NWD6">U3</a>, <a href="#NWD7">U4</a>, <a href="#NWconF-mak15-1">U5</a>, <a href="#NWD8">U6</a>, <a href="#NWconF-chee-1">U7</a>, <a href="#NWDF">U8</a>, <a href="#NWconF-*-D">U9</a>, <a href="#NWDG">U10</a>, <a href="#NWconF-*-F">U11</a>, <a href="#NWDJ">U12</a>, <a href="#NWconF-maka-1">U13</a>, <a href="#NWDb">U14</a>, <a href="#NWDq">U15</a>, <a href="#NWDr">U16</a>, <a href="#NWconF-errV-1">U17</a>, <a href="#NWconF-posj-1">U18</a>, <a href="#NWconF-warQ-1">U19</a>, <a href="#NWconF-*-1B">U20</a>, <a href="#NWD17">U21</a>, <a href="#NWD18">U22</a>, <a href="#NWD19">U23</a>, <a href="#NWD1E">U24</a>, <a href="#NWD1N">U25</a>
+<li><a name="NWI-constype" href="#NWD2">constype</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWDB">U3</a>, <a href="#NWconF-comc-1">U4</a>, <a href="#NWDJ">U5</a>, <a href="#NWDK">U6</a>, <a href="#NWDL">U7</a>, <a href="#NWDP">U8</a>, <a href="#NWDo">U9</a>, <a href="#NWD11">U10</a>, <a href="#NWD12">U11</a>, <a href="#NWD16">U12</a>, <a href="#NWD19">U13</a>
+<li><a name="NWI-constype_pattern" href="#NWDK">constype_pattern</a>: <a href="#NWDJ">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-crhs" href="#NWDH">crhs</a>: <a href="#NWD5">U1</a>, <a href="#NWDH">D2</a>, <a href="#NWDL">U3</a>, <a href="#NWDN">U4</a>, <a href="#NWconF-*-h">U5</a>
+<li><a name="NWI-discard_cons_named" href="#NWconF-*-F">discard_cons_named</a>: <a href="#NWconF-*-F">D1</a>
+<li><a name="NWI-disjunct_to_emission" href="#NWDt">disjunct_to_emission</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDt">D3</a>, <a href="#NWconF-makx-1">U4</a>, <a href="#NWD17">U5</a>, <a href="#NWD1E">U6</a>, <a href="#NWconF-mak1F-1">U7</a>
+<li><a name="NWI-do_conjoin" href="#NWconF-*-f">do_conjoin</a>: <a href="#NWDm">U1</a>, <a href="#NWconF-*-f">D2</a>
+<li><a name="NWI-do_eliminate_instances_f" href="#NWDZ">do_eliminate_instances_f</a>: <a href="#NWDY">U1</a>, <a href="#NWDZ">D2</a>
+<li><a name="NWI-do_pattern_to_case" href="#NWDi">do_pattern_to_case</a>: <a href="#NWDg">U1</a>, <a href="#NWDi">D2</a>
+<li><a name="NWI-early_branch" href="#NWDl">early_branch</a>: <a href="#NWDl">D1</a>, <a href="#NWDq">U2</a>, <a href="#NWDr">U3</a>
+<li><a name="NWI-Eclosure" href="#NWconF-*-1P">Eclosure</a>: <a href="#NWconF-*-1P">D1</a>
+<li><a name="NWI-Elambda" href="#NWconF-*-1O">Elambda</a>: <a href="#NWD1E">U1</a>, <a href="#NWconF-*-1O">D2</a>, <a href="#NWconF-*-1P">U3</a>
+<li><a name="NWI-eliminate_binding_instance_vars" href="#NWDd">eliminate_binding_instance_vars</a>: <a href="#NWDZ">U1</a>, <a href="#NWDd">D2</a>
+<li><a name="NWI-eliminate_binding_instance_vars_f" href="#NWDd">eliminate_binding_instance_vars_f</a>: <a href="#NWDd">D1</a>
+<li><a name="NWI-eliminate_instances" href="#NWDS">eliminate_instances</a>: <a href="#NWDS">D1</a>
+<li><a name="NWI-eliminate_instances_f" href="#NWDZ">eliminate_instances_f</a>: <a href="#NWDS">U1</a>, <a href="#NWDY">U2</a>, <a href="#NWDZ">D3</a>, <a href="#NWDb">U4</a>
+<li><a name="NWI-emit_closure_functions_postfix" href="#NWconF-*-1W">emit_closure_functions_postfix</a>: <a href="#NWconF-*-1W">D1</a>
+<li><a name="NWI-emit_closure_header_def" href="#NWD15">emit_closure_header_def</a>: <a href="#NWD14">U1</a>, <a href="#NWD15">D2</a>
+<li><a name="NWI-emit_create_instance_body" href="#NWconF-*-1K">emit_create_instance_body</a>: <a href="#NWconF-*-1K">D1</a>
+<li><a name="NWI-emit_create_instance_proto" href="#NWconF-*-1J">emit_create_instance_proto</a>: <a href="#NWconF-*-1I">U1</a>, <a href="#NWconF-*-1J">D2</a>
+<li><a name="NWI-emit_emitter_body" href="#NWD1C">emit_emitter_body</a>: <a href="#NWD1C">D1</a>
+<li><a name="NWI-emit_emitter_proto" href="#NWD1C">emit_emitter_proto</a>: <a href="#NWconF-*-1I">U1</a>, <a href="#NWD1C">D2</a>
+<li><a name="NWI-emit_instance_type" href="#NWD10">emit_instance_type</a>: <a href="#NWD10">D1</a>
+<li><a name="NWI-emit_optimized_closure_function" href="#NWD1E">emit_optimized_closure_function</a>: <a href="#NWD1D">U1</a>, <a href="#NWD1E">D2</a>
+<li><a name="NWI-emit_optimized_closure_functions" href="#NWD1D">emit_optimized_closure_functions</a>: <a href="#NWD1D">D1</a>
+<li><a name="NWI-emit_original_closure_function" href="#NWD14">emit_original_closure_function</a>: <a href="#NWD13">U1</a>, <a href="#NWD14">D2</a>
+<li><a name="NWI-emit_original_closure_function_def" href="#NWD17">emit_original_closure_function_def</a>: <a href="#NWD14">U1</a>, <a href="#NWD17">D2</a>
+<li><a name="NWI-emit_original_closure_functions" href="#NWD13">emit_original_closure_functions</a>: <a href="#NWD13">D1</a>
+<li><a name="NWI-emit_original_closure_relocfn" href="#NWconF-*-1B">emit_original_closure_relocfn</a>: <a href="#NWD14">U1</a>, <a href="#NWconF-*-1B">D2</a>
+<li><a name="NWI-emit_original_closure_typedef" href="#NWD16">emit_original_closure_typedef</a>: <a href="#NWD14">U1</a>, <a href="#NWD16">D2</a>
+<li><a name="NWI-emit_proc_declaration" href="#NWconF-*-1I">emit_proc_declaration</a>: <a href="#NWconF-*-1I">D1</a>
+<li><a name="NWI-emitshift" href="#NWconF-*-s">emitshift</a>: <a href="#NWconF-*-q">U1</a>, <a href="#NWconF-*-s">D2</a>
+<li><a name="NWI-emitter_body" href="#NWconF-*-h">emitter_body</a>: <a href="#NWconF-*-h">D1</a>, <a href="#NWD1C">U2</a>
+<li><a name="NWI-enforce_closure" href="#NWconF-*-D">enforce_closure</a>: <a href="#NWconF-*-D">D1</a>
+<li><a name="NWI-enforce_instance" href="#NWDF">enforce_instance</a>: <a href="#NWDF">D1</a>, <a href="#NWD10">U2</a>
+<li><a name="NWI-Epatlabel_to_Epc" href="#NWconF-*-l">Epatlabel_to_Epc</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWconF-*-l">D3</a>
+<li><a name="NWI-explode" href="#NWD9">explode</a>: <a href="#NWD4">U1</a>, <a href="#NWD5">U2</a>, <a href="#NWD9">D3</a>
+<li><a name="NWI-explode_names" href="#NWDA">explode_names</a>: <a href="#NWDA">D1</a>
+<li><a name="NWI-fieldinput_pattern" href="#NWDM">fieldinput_pattern</a>: <a href="#NWconF-comc-1">U1</a>, <a href="#NWDM">D2</a>
+<li><a name="NWI-find_input" href="#NWconF-*-1D">find_input</a>: <a href="#NWconF-*-1D">D1</a>, <a href="#NWconF-*-1E">U2</a>
+<li><a name="NWI-fits_conditions_of" href="#NWDw">fits_conditions_of</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDw">D3</a>, <a href="#NWconF-*-y">U4</a>
+<li><a name="NWI-hoist" href="#NWconF-*-1P">hoist</a>: <a href="#NWD1E">U1</a>, <a href="#NWconF-*-1P">D2</a>, <a href="#NWconF-othO-3">U3</a>, <a href="#NWD1I">U4</a>, <a href="#NWD1J">U5</a>, <a href="#NWD1L">U6</a>, <a href="#NWD1M">U7</a>, <a href="#NWconF-*-1R">U8</a>
+<li><a name="NWI-hoisted" href="#NWconF-*-1O">hoisted</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-*-1P">U2</a>, <a href="#NWconF-othO-3">U3</a>, <a href="#NWD1J">U4</a>, <a href="#NWD1K">U5</a>, <a href="#NWD1L">U6</a>, <a href="#NWD1M">U7</a>, <a href="#NWconF-*-1R">U8</a>
+<li><a name="NWI-hoistlist" href="#NWconF-*-1R">hoistlist</a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-othO-1">U2</a>, <a href="#NWconF-othO-2">U3</a>, <a href="#NWconF-*-1R">D4</a>
+<li><a name="NWI-implicit_pattern" href="#NWDB">implicit_pattern</a>: <a href="#NWD6">U1</a>, <a href="#NWDB">D2</a>
+<li><a name="NWI-iname" href="#NWDC">iname</a>: <a href="#NWD7">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWDC">D3</a>, <a href="#NWDG">U4</a>, <a href="#NWconF-*-F">U5</a>
+<li><a name="NWI-inject_soln" href="#NWconF-*-I">inject_soln</a>: <a href="#NWD6">U1</a>, <a href="#NWDI">U2</a>, <a href="#NWconF-*-I">D3</a>
+<li><a name="NWI-input_fitss" href="#NWconF-*-12">input_fitss</a>: <a href="#NWDx">U1</a>, <a href="#NWconF-*-12">D2</a>
+<li><a name="NWI-input_fitsu" href="#NWconF-*-12">input_fitsu</a>: <a href="#NWDw">U1</a>, <a href="#NWDx">U2</a>, <a href="#NWconF-*-12">D3</a>
+<li><a name="NWI-input_named" href="#NWDE">input_named</a>: <a href="#NWDE">D1</a>, <a href="#NWconF-*-1D">U2</a>, <a href="#NWD1G">U3</a>
+<li><a name="NWI-input_record_for" href="#NWD11">input_record_for</a>: <a href="#NWD10">U1</a>, <a href="#NWD11">D2</a>
+<li><a name="NWI-inputs_of" href="#NWDD">inputs_of</a>: <a href="#NWconF-chee-1">U1</a>, <a href="#NWDD">D2</a>, <a href="#NWDE">U3</a>, <a href="#NWconF-comc-1">U4</a>, <a href="#NWDL">U5</a>, <a href="#NWDN">U6</a>, <a href="#NWDO">U7</a>, <a href="#NWconF-*-h">U8</a>, <a href="#NWDo">U9</a>, <a href="#NWconF-*-12">U10</a>, <a href="#NWD11">U11</a>, <a href="#NWD12">U12</a>, <a href="#NWD19">U13</a>, <a href="#NWconF-*-1H">U14</a>, <a href="#NWconF-*-1K">U15</a>, <a href="#NWD1E">U16</a>
+<li><a name="NWI-inputs_of_operands" href="#NWDD">inputs_of_operands</a>: <a href="#NWconF-mak15-1">U1</a>, <a href="#NWDB">U2</a>, <a href="#NWDD">D3</a>
+<li><a name="NWI-input_width_tests" href="#NWconF-*-1H">input_width_tests</a>: <a href="#NWconF-*-1H">D1</a>, <a href="#NWconF-*-1K">U2</a>
+<li><a name="NWI-insert_width_condition" href="#NWconF-*-10">insert_width_condition</a>: <a href="#NWDw">U1</a>, <a href="#NWDx">U2</a>, <a href="#NWconF-*-10">D3</a>
+<li><a name="NWI-instantiate_template" href="#NWD7">instantiate_template</a>: <a href="#NWD7">D1</a>, <a href="#NWD9">U2</a>
+<li><a name="NWI-is_address" href="#NWD1G">is_address</a>: <a href="#NWD1G">D1</a>, <a href="#NWD1H">U2</a>
+<li><a name="NWI-is_constructor" href="#NWDG">is_constructor</a>: <a href="#NWDG">D1</a>
+<li><a name="NWI-islate" href="#NWconF-*-1O">islate</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-othO-1">U2</a>, <a href="#NWconF-othO-2">U3</a>, <a href="#NWD1I">U4</a>
+<li><a name="NWI-known_conditions" href="#NWDv">known_conditions</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDv">D3</a>
+<li><a name="NWI-known_to_fit" href="#NWDy">known_to_fit</a>: <a href="#NWDw">U1</a>, <a href="#NWDx">U2</a>, <a href="#NWDy">D3</a>, <a href="#NWconF-*-1E">U4</a>
+<li><a name="NWI-last_branch" href="#NWconF-*-g">last_branch</a>: <a href="#NWconF-*-g">D1</a>, <a href="#NWDq">U2</a>, <a href="#NWDr">U3</a>
+<li><a name="NWI-make_early" href="#NWconF-*-1O">make_early</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-*-1P">U2</a>, <a href="#NWconF-othO-1">U3</a>, <a href="#NWconF-othO-2">U4</a>, <a href="#NWD1I">U5</a>
+<li><a name="NWI-make_late" href="#NWconF-*-1O">make_late</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-*-1P">U2</a>, <a href="#NWconF-othO-1">U3</a>, <a href="#NWconF-othO-2">U4</a>, <a href="#NWD1I">U5</a>
+<li><a name="NWI-make_time" href="#NWconF-*-1O">make_time</a>: <a href="#NWconF-*-1O">D1</a>, <a href="#NWconF-*-1P">U2</a>
+<li><a name="NWI-mapoutbadchars" href="#NWconF-*-9">mapoutbadchars</a>: <a href="#NWDC">U1</a>, <a href="#NWconF-*-9">D2</a>, <a href="#NWconF-*-1W">U3</a>
+<li><a name="NWI-meaningtab" href="#NWconF-*-1E">meaningtab</a>: <a href="#NWD14">U1</a>, <a href="#NWconF-*-1E">D2</a>
+<li><a name="NWI-narrows_ok_conditions" href="#NWDx">narrows_ok_conditions</a>: <a href="#NWDw">U1</a>, <a href="#NWDx">D2</a>
+<li><a name="NWI-note_constructor" href="#NWD5">note_constructor</a>: <a href="#NWD4">U1</a>, <a href="#NWD5">D2</a>
+<li><a name="NWI-old_early_branch" href="#NWDl">old_early_branch</a>: <a href="#NWDl">D1</a>
+<li><a name="NWI-opcode_component_name" href="#NWDC">opcode_component_name</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-ordinal" href="#NWconF-*-G">ordinal</a>: <a href="#NWconF-chee-1">U1</a>, <a href="#NWconF-*-G">D2</a>, <a href="#NWconF-*-R">U3</a>
+<li><a name="NWI-overlap_check" href="#NWconF-*-r">overlap_check</a>: <a href="#NWconF-*-r">D1</a>
+<li><a name="NWI-parmtab" href="#NWDo">parmtab</a>: <a href="#NWconF-*-h">U1</a>, <a href="#NWDo">D2</a>
+<li><a name="NWI-pattern_to_case" href="#NWDg">pattern_to_case</a>: <a href="#NWDg">D1</a>, <a href="#NWconF-*-h">U2</a>
+<li><a name="NWI-remove_duplicate_conditions" href="#NWDu">remove_duplicate_conditions</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDu">D3</a>
+<li><a name="NWI-same_conditions" href="#NWconF-*-u">same_conditions</a>: <a href="#NWDu">U1</a>, <a href="#NWconF-*-u">D2</a>
+<li><a name="NWI-sanitize_sequents" href="#NWDs">sanitize_sequents</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWDs">D3</a>, <a href="#NWconF-*-y">U4</a>
+<li><a name="NWI-Sclosure" href="#NWconF-*-n">Sclosure</a>: <a href="#NWDq">U1</a>, <a href="#NWDr">U2</a>, <a href="#NWconF-*-n">D3</a>, <a href="#NWD13">U4</a>, <a href="#NWD1D">U5</a>
+<li><a name="NWI-sequent_to_Stoken" href="#NWconF-*-q">sequent_to_Stoken</a>: <a href="#NWDt">U1</a>, <a href="#NWconF-*-q">D2</a>
+<li><a name="NWI-Sfail" href="#NWDn">Sfail</a>: <a href="#NWconF-*-h">U1</a>, <a href="#NWDn">D2</a>, <a href="#NWDq">U3</a>, <a href="#NWDr">U4</a>, <a href="#NWconF-*-v">U5</a>, <a href="#NWD17">U6</a>, <a href="#NWD1E">U7</a>, <a href="#NWD1K">U8</a>
+<li><a name="NWI-showsigma" href="#NWconF-*-1V">showsigma</a>: <a href="#NWconF-*-1P">U1</a>, <a href="#NWconF-*-1V">D2</a>
+<li><a name="NWI-signed_arg_f" href="#NWconF-*-Q">signed_arg_f</a>: <a href="#NWconF-makd-1">U1</a>, <a href="#NWconF-*-Q">D2</a>
+<li><a name="NWI-Sstms" href="#NWDj">Sstms</a>: <a href="#NWDj">D1</a>
+<li><a name="NWI-Stagcase" href="#NWDf">Stagcase</a>: <a href="#NWDf">D1</a>, <a href="#NWDi">U2</a>, <a href="#NWDp">U3</a>
+<li><a name="NWI-start_overlap_check" href="#NWconF-*-r">start_overlap_check</a>: <a href="#NWconF-*-q">U1</a>, <a href="#NWconF-*-r">D2</a>
+<li><a name="NWI-tag_test_in_any_disjunct" href="#NWconF-*-a">tag_test_in_any_disjunct</a>: <a href="#NWDi">U1</a>, <a href="#NWconF-*-a">D2</a>
+<li><a name="NWI-tag_test_in_every_disjunct" href="#NWconF-*-b">tag_test_in_every_disjunct</a>: <a href="#NWDi">U1</a>, <a href="#NWconF-*-b">D2</a>
+<li><a name="NWI-tag_test_not_in_disjunct" href="#NWconF-*-b">tag_test_not_in_disjunct</a>: <a href="#NWconF-*-b">D1</a>
+<li><a name="NWI-unsigned_arg_f" href="#NWconF-*-P">unsigned_arg_f</a>: <a href="#NWDQ">U1</a>, <a href="#NWconF-*-P">D2</a>
+<li><a name="NWI-unwind_instance_inputs" href="#NWDe">unwind_instance_inputs</a>: <a href="#NWDZ">U1</a>, <a href="#NWDb">U2</a>, <a href="#NWDe">D3</a>
+<li><a name="NWI-uses_pc" href="#NWD18">uses_pc</a>: <a href="#NWD18">D1</a>, <a href="#NWD19">U2</a>, <a href="#NWconF-*-1K">U3</a>
+<li><a name="NWI-uses_reloc" href="#NWD19">uses_reloc</a>: <a href="#NWD19">D1</a>
+<li><a name="NWI-warned_no_disjuncts" href="#NWconF-*-m">warned_no_disjuncts</a>: <a href="#NWconF-posj-1">U1</a>, <a href="#NWconF-*-m">D2</a>
+<li><a name="NWI-widthfailure" href="#NWconF-*-v">widthfailure</a>: <a href="#NWDl">U1</a>, <a href="#NWDq">U2</a>, <a href="#NWDr">U3</a>, <a href="#NWconF-*-v">D4</a>, <a href="#NWconF-*-10">U5</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,330 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+% l2h ignore bug {
+% l2h ignore change {
+\chapter{Code generation for matching}
+This module contains the language-independent part of code generation
+for a matching statement.
+The records beginning with [[G]] define the structure, which is to be
+instantiated in a language-dependent way.
+<<*>>=
+record Glines(x)		# list of lines to be written out
+record Gresynch(line, file)	# C #line or m3 <* LINE ... *>
+record Gblock(decls, stmts)	# block with local variables
+record Gdecl(name, type, init)	# variable with name, type, optional initial value
+record Gcall(name, args)	# call to named function
+@ For [[Gdecl]], we require only that a type or an initial value be 
+specified, as in Modula-3.  Emitters for C may have to infer a type when an
+initial value is given.
+@
+<<*>>=
+record Gdeclnamearray(na)	# declares CONST ARRAY OF TEXT specified by
+				# namearray na.
+<<*>>=
+record Gcase(x, arms)		# CASE x OF arms END;
+record Gcasearm(tags, x)	# tags is sorted list of lo, hi s.t. lo <= x < hi
+
+record Ginrange(lo, x, hi)	# predicate lo <= x < hi
+record Gsetname(lhs, name)	# lhs := name (where name is string or namearray)
+
+record Gnomatch()		# what happens when there's no match
+
+record Tunsigned(width)		# unsigned value of width bits (word size if /width)
+record Tsigned(width)		# signed value of width bits (word size if /width)
+record Gasgn(lhs, x)		# set lhs := x
+<<argument descriptions>>=
+expargs decls stmts init.
+<<rewrite rules>>=
+Ginrange(lo, N, hi) -> if lo <= N < hi then 1 else 0
+<<*>>=
+global gen_file_header, gen_outer_decls
+procedure genheader(header)
+  return Glines([ 
+            Gresynch(codeline := 1), 
+            literal(gen_file_header),
+            Gresynch(header.line, header.file), 
+            Glines(header.code), 
+     	    Gresynch(codeline +:= 100)])
+end
+<<*>>=
+global fetchtab			# code to use to fetch words: size -> fetch string
+global codeline
+<<*>>=
+procedure gencase(cs, root) 
+  static label
+  local decls
+  initial label := 0
+  /root := tree(cs)
+  outtree(\ascii_tree, root)
+  decls := [Gdecl("MATCH_p", fetchtab["type"], cs.valcode)]
+  every put(decls, !gen_outer_decls | Gdeclnamearray(!namesused(root)))
+  return Glines([Gblock(decls, [Gresynch(codeline +:= 100), gennode(root, set())])] |||
+                armscode(cs.trailer))
+end
+@ 
+I special-case the case of two children where one has a single range; 
+the generated code is cleaner if I just use one [[if]] statement.
+Actually, I could do this any time I have only two children\ldots\change{28}
+<<*>>=
+procedure gennode(n, wordsmatched)
+    local firstif, decls, added, single_range, other_child, answer
+    while *n.children = 1 do 
+        n := n.children[1].node
+    decls := []
+    if *n.children > 0 then {
+        added := add_decls(decls, wordsmatched, node_fields(n.field))
+	if *n.children = 2 & single_range := !n.children & *single_range.lo = 1 then {
+          <<set [[answer]] to single [[if]] statement>>
+        } else {
+          <<split children into [[if]] and case tests, and make combination [[answer]]>>
+        }
+    } else {
+        added := add_decls(decls, wordsmatched, constraint_fields(n.cs.arms))
+	s := genarms(n.cs.arms, n, wordsmatched)
+	answer := subst_for_pc(Gblock(decls, [s]), address_to_integer("MATCH_p"))
+    }
+    every delete(wordsmatched, !added)
+    return answer
+end
+<<split children into [[if]] and case tests, and make combination [[answer]]>>=
+edges := table()
+every e := !n.children do edges[sort(e.lo)[1]] := e
+edges := sort(edges)
+ifarms := []
+every addarms(ifarms, n.field, (!edges)[2], wordsmatched)
+casearms := []
+every genedge(casearms, n.field, (!edges)[2], wordsmatched)
+put(ifarms, Sguarded(1, Gcase(afieldexp(n.field), casearms)))
+answer := subst_for_pc(Gblock(decls, [Sif(ifarms)]), address_to_integer("MATCH_p"))
+<<set [[answer]] to single [[if]] statement>>=
+other_child := single_range ~=== !n.children
+<<if [[other_child]]'s range has one element, exchange it with [[single_range]]>>
+f := afieldexp(n.field)
+s := Sif([Sguarded(Ginrange(!single_range.lo, f, !single_range.hi),
+                   gennode(single_range.node, wordsmatched)),
+          Sguarded(1, gennode(other_child.node, wordsmatched))])
+answer := subst_for_pc(Gblock(decls, [s]), address_to_integer("MATCH_p"))
+@ 
+This little goodie makes it a bit more likely to use just one equality test.
+It's not clear whether it's the right heuristic when both ranges
+contain more than one element.
+<<if [[other_child]]'s range has one element, exchange it with [[single_range]]>>=
+if *other_child.lo = 1 & (!other_child.lo + 1 = !other_child.hi) then {
+  *other_child.hi = 1 | impossible("ranges")
+  other_child :=: single_range
+}
+@
+[[wordsmatched]] is slightly misnamed.  It contains the {\em names} of
+all the words that have been fetched, and it also contains the absolute fields that
+have been fetched.
+<<*>>=
+procedure add_decls(decls, wordsmatched, fields)
+  local added
+  added := set()
+  every w := wordname(f := !fields) & not member(wordsmatched, w) do {
+    put(decls, Gdecl(wordname(f), Tunsigned(f.field.class.size), 
+                     fetchcode(address_add("MATCH_p", f.offset), f.field.class.size)))
+    every insert(wordsmatched | added, w)
+  }
+  # with [[afieldexp]], these are no longer needed
+  ##  every f := !fields & not member(wordsmatched, f) do {
+  ##  	put(decls, Gdecl(afieldname(f), Tunsigned(fwidth(f.field)), 
+  ##  			   Eslice(literal(wordname(f)), f.field.lo, fwidth(f.field))))
+  ##  	every insert(wordsmatched | added, f)
+  ##  }
+  return added
+end  
+<<*>>=
+procedure node_fields(f)
+  return case type(f) of {
+    "set"   : f
+    "list"  : set(f)
+    default : set([f])
+  }
+end
+@ 
+Make sure to declare these fields before use.\change{43}\bug{18}
+<<*>>=
+procedure constraint_fields(arms)
+  local fields
+  fields := set()
+  every a := !arms do
+    every insert(fields,
+		 absolute_fields((\a.imp_soln).constraints |
+				 subst_tab(!(\a.soln).constraints,
+					   (\a.imp_soln).answers, 1)))
+  return fields
+end
+
+procedure absolute_fields(e)
+  suspend subterms_matching(e, "absolute_field")
+end
+@
+We use a stylized [[wordname]] to refer to the word containing a particular
+field.  It's uniquely determined by its size and offset.
+<<*>>=
+procedure wordname(f)
+  return "MATCH_w_" || f.field.class.size || "_" || f.offset;
+end
+@ A similar trick gives us a unique name for each absolute field.
+<<*>>=
+##  procedure afieldname(f)
+##    return "MATCH_f_" || f.field.name || "_" || f.offset
+##  end
+@ BUT we're no longer using that trick; instead, we're grabbing the
+word directly.
+<<*>>=
+record Gcommented(e, comment)
+procedure afieldexp(f)
+  return Gcommented(Eslice(literal(wordname(f)), f.field.lo, fwidth(f.field)),
+                    f.field.name || " at " || f.offset)
+end
+<<*>>=
+global MAXRANGE
+
+procedure genedge(casearms, f, e, wordsmatched)
+    local tags
+    tags := []
+    r := sort(e.lo ++ e.hi)
+    while lo := get(r) & hi := get(r) do
+        if hi - lo <= MAXRANGE then
+            every put(tags, lo | hi)
+    if *tags > 0 then 
+        put(casearms, Gcasearm(tags, gennode(e.node, wordsmatched)))
+    return
+end
+<<*>>=
+procedure addarms(ifarms, f, e, wordsmatched)
+    r := sort(e.lo ++ e.hi)
+    while lo := get(r) & hi := get(r) do
+        if hi - lo > MAXRANGE then
+            put(ifarms, Sguarded(Ginrange(lo, afieldexp(f), hi), 
+                                 gennode(e.node, wordsmatched)))
+    return 
+end
+<<*>>=
+procedure genarms(arms, thenode, wordsmatched)
+    local ifarms
+    ifarms := []
+    every a := !arms do {
+      c := copy((\a.imp_soln).constraints) | set()
+      every insert_condition(c, 
+                subst_tab(!(\a.soln).constraints, (\a.imp_soln).answers, 1))
+      put(ifarms, Sguarded(c, genarm(a, thenode, wordsmatched)))
+    }
+    put(ifarms, Sguarded(1, Gnomatch()))
+    return Sif(ifarms)
+end
+@
+It might be surprising to see us declaring identifiers with the null type
+(using [[Gdecl]] below), but that's what we use when the exact type is unknown
+or unimportant.  
+Emitters for languages like SML or Modula-3 can then ignore type
+entirely. 
+
+Something is going awry in the equation solver. Pattern labels
+are inputs to the solver, and therefore should 
+not appear in [[answers]]; however, they do appear in [[answers]],
+which means they were declared twice.  Omitting the code to 
+declare pattern labels seems to solve the problem, but why?
+Notice also that the omitted code could never have been right to begin
+with, since it bound the label to an \emph{offset}, not to its true value.
+
+Both implicit and explicit solutions contribute to fields used.\change{49}
+<<*>>=
+procedure genarm(a, thenode, wordsmatched)
+    local bindings, fused, block, decls, stmts, patlabels
+    /continue := 0
+    <<insist there are no field bindings in arm [[a]]>>
+    fused := set(); 
+    every e := (t := (\a.soln | \a.imp_soln).answers,
+		id := key(t) & not is_wildcard(id),
+		t[id]) do
+      every insert(fused, absolute_fields(e))
+    decls := []
+    added := add_decls(decls, wordsmatched, fused)
+#    patlabels := a.pattern.disjuncts[1].patlabelbindings
+#    every id := key(\patlabels) do
+#      put(decls, Gdecl(id, unsigned_type(), patlabels[id]))
+    every id := key((\a.imp_soln).answers) & not is_wildcard(id) do 
+      put(decls, Gdecl(id, &null, a.imp_soln.answers[id]))
+    every id := key((\a.soln).answers) & not is_wildcard(id)  do
+      put(decls, Gdecl(id, &null, a.soln.answers[id]))
+    if (\a.name & /thenode.name) then {
+      warning("Name `" || a.name || "' in pattern arm is unbound.\n")
+      put(decls, Gsetname(a.name, "??name of unnamed pattern??"))
+    }
+    put(decls, Gsetname(\a.name, \thenode.name))
+    every delete(wordsmatched, !added)
+    stmts := armscode(a)
+    push(stmts, Gasgn(\thenode.cs.succptr, address_add("MATCH_p", \a.patlen)))
+    write(\mdebug, "successor for ", image(a), " at ", \a.patlen)
+    return subst_for_pc(Gblock(decls, stmts), address_to_integer("MATCH_p"))
+end
+<<insist there are no field bindings in arm [[a]]>>=
+if type(c := !(!(\a.pattern).disjuncts).aconstraints) == "fieldbinding" 
+  then impossible("field binding in arm: ", expimage(c))
+<<*>>=
+procedure armscode(a)
+  return [Gresynch(a.line, a.file), Glines(a.code), Gresynch(codeline +:= 100)]
+end
+@ 
+We don't create declarations for the [[_]] wildcard.
+At the moment, its implementation is as a fresh variable, and since
+fresh variables should not otherwise leak out (aren't valid C names
+anyway), this should be enough:\change{30}
+<<*>>=
+procedure is_wildcard(v)
+  return member(fresh_variables, v)
+end
+@
+\section{Handling fetch and address templates}
+[[fetchcode]] does the expansion of the fetch table.
+<<*>>=
+procedure address_add(address, offset)
+  if offset % pc_unit_bits ~= 0 then
+    error("Tried to fetch at offset ", offset, ", but pc_unit_bits = ", 
+	  pc_unit_bits, " doesn't divide ", offset)
+  offset /:= pc_unit_bits;
+  return interpret_fetchtab(\fetchtab["add"], address, offset, &null, "address add") |
+    error("No template given for 'address add'")
+end
+<<refman: address add template>>=
+The \verb+address add+ template may use \verb+%a+ and \verb+%o+.
+<<*>>=
+procedure fetchcode(address, width)
+  return interpret_fetchtab(\fetchtab[width | "any"], address, &null, width, "fetch") |
+    error("No template given to fetch ", width, "-bit word")
+end
+<<refman: fetch template>>=
+\verb+fetch+ templates may use \verb+%a+ and \verb+%w+.
+<<*>>=
+procedure address_to_integer(address)
+  return interpret_fetchtab(\fetchtab["integer"], address, &null, &null, 
+                            "address to integer") |
+    error("No template given for 'address to integer'")
+end
+<<refman: address to integer template>>=
+The \verb+address to integer+ template may use only \verb+%a+.
+<<*>>=
+procedure interpret_fetchtab(s, address, offset, width, msg)
+  r := "("
+  s ? {
+    while r ||:= tab(upto('%')) do {
+      ="%"
+      r ||:= case move(1) of {
+               "a" : \address | error("%a illegal in template for ", msg)
+               "o" : \offset  | error("%o illegal in template for ", msg)
+               "w" : \width   | error("%w illegal in template for ", msg)
+               "%" : "%"
+               default : error("Bad escape in fetch string for ", 
+                               width, "-bit word: %", move(-1), "; try %a, %o, or %w")
+             }
+    }
+    return r || tab(0) || ")"
+  }
+end
+<<refman: meaning of fetchtab strings>>=
+In the templates, \verb+%a+ stands for an address,
+\verb+%o+ for an offset, and \verb+%w+ for a width.
+Offsets are measured in increments of \verb+pc_unit_bits+, but
+widths are measured in bits.

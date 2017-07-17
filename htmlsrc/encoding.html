@@ -1,0 +1,217 @@
+<html><head><title> encoding.nw</title></head><body>
+<h1><a name="NWD1">Managing generation of binary encoders</a></h1>
+<pre><a name="NWencB-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWencB-*-2">-&gt;</a>]</b>
+link pretty
+procedure <a href="#NWD1">emit_encoding</a>(outfilename)
+  local i, f
+  <a href="#NWencB-*-2">emit_encoding_interface</a>(open(i := outfilename || interface_extension, &quot;w&quot;)) |
+    error(&quot;Could not open &quot;, image(i), &quot; for writing&quot;)
+  <a href="#NWencB-*-4">emit_encoding_implementation</a>(
+         open(f := outfilename || implementation_extension, &quot;w&quot;), i, outfilename) |
+    error(&quot;Could not open &quot;, image(f), &quot; for writing&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_encoding"><code>emit_encoding</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWencB-*-3">-&gt;</a>]</b>
+procedure <a href="#NWencB-*-2">emit_encoding_interface</a>(outfile)
+  local cons, t, u
+  verbose(&quot;Emitting encoding interface&quot;)
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  PPwrite(pp, &quot;/* must #include &lt;mclib.h&gt; before this file */&quot;)
+  <a name="NWencB-*-2-u1" href="#NWencB-wrid-1"><i>&lt;write definitions of all instance types&gt;</i></a>
+  if \gen_counters then <a href="#NWencB-*-7">declare_counter_types</a>(pp)
+  if \indirectname then
+    PPxwrite(pp, &quot;struct &quot;, indirecttype, &quot; {$t&quot;)
+  <a name="NWencB-*-2-u2" href="#NWD2"><i>&lt;emit declarations for all of the kept constructors&gt;</i></a>
+  if \gen_counters then <a href="#NWencB-*-7">declare_counter_funs</a>(pp)
+  if \indirectname then
+    PPxwrite(pp, &quot;$b$n};&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_encoding_interface"><code>emit_encoding_interface</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-wrid-1" href="#NWencB-wrid-1"><dfn>&lt;write definitions of all instance types&gt;=</dfn></a> <b>(<a href="#NWencB-*-2">&lt;-U</a>)</b>
+s := set([instructionctype])  # don't try to emit instance def for untyped constructors
+every cons := kept_constructors() &amp; not member(s, cons.type) do {
+  insert(s, cons.type)
+  emit_instance_type(pp, cons.type)
+}
+s := &amp;null # enable garbage collection
+</pre><p>
+<a name="NWD2">If an indirect encoder is emitted, the order of the constructors has</a>
+to match exactly the order used in <code><a href="#NWencB-*-2">emit_encoding_interface</a></code>.
+At one time we rearranged things to put typed constructors first, but
+on March 3, 1996, we decided there was no good reason to rearrange the
+users' constructor declarations.
+<pre><a name="NWencB-emio-1" href="#NWD2"><dfn>&lt;emit declarations for all of the kept constructors&gt;=</dfn></a> <b>(<a href="#NWencB-*-2">&lt;-U</a>)</b>
+every emit_proc_declaration(pp, kept_constructors())
+</pre><pre><a name="NWencB-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWencB-*-2">&lt;-</a>D<a href="#NWencB-*-4">-&gt;</a>]</b>
+procedure <a href="#NWencB-*-3">emit_indirect_encoder</a>(pp)
+  e := []
+  every cons := kept_constructors() do
+    put(e, Cnoreserve(cons.name) || &quot;, $o&quot;)
+  c := if \gen_counters then <a href="#NWencB-*-7">counter_names</a>() else &quot;&quot;
+  emit_template(pp, &quot;proc-structure.t&quot;, 
+                    &quot;indirectname&quot;, indirectname, &quot;indirecttype&quot;, indirecttype,
+                    &quot;encoders&quot;, e, &quot;counters&quot;, c)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_indirect_encoder"><code>emit_indirect_encoder</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-proG-1" href="#NWencB-proG-1"><dfn>&lt;proc-structure.t&gt;=</dfn></a>
+static struct %indirecttype encoding_procs = {$t%encoders%counters$b
+};
+struct %indirecttype *%indirectname = &amp;encoding_procs;
+</pre><p>
+<a name="NWD3">Here's some old code</a>
+<pre><a name="NWencB-prob-1" href="#NWD3"><dfn>&lt;proc-structure.t (segregated version)&gt;=</dfn></a>
+static struct %indirecttype encoding_procs = {$t%typed%untyped%counters$b
+};
+struct %indirecttype *%indirectname = &amp;encoding_procs;
+</pre><pre><a name="NWencB-emi19-1" href="#NWencB-emi19-1"><dfn>&lt;emit declarations for all of the kept constructors (segregated version)&gt;=</dfn></a>
+every t | u := []
+every cons := kept_constructors() do
+  put(if cons.type === instructionctype then u else t, cons)
+    every emit_proc_declaration(pp, !t | !u)
+</pre><p>
+<pre><a name="NWencB-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWencB-*-3">&lt;-</a>D<a href="#NWencB-*-5">-&gt;</a>]</b>
+procedure <a href="#NWencB-*-4">emit_encoding_implementation</a>(outfile, interfacename, basename)
+  verbose(&quot;Emitting encoding implementation&quot;)
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  PPwrite(pp, &quot;#include &lt;mclib.h&gt;&quot;)
+  PPwrite(pp, &quot;#include &quot;, image(interfacename))
+  PPwrite(pp, &quot;#define sign_extend(N,SIZE) \\&quot;)
+  PPwrite(pp, &quot;  (((int)((N) &lt;&lt; (sizeof(unsigned)*8-(SIZE)))) &quot;,
+              &quot;&gt;&gt; (sizeof(unsigned)*8-(SIZE)))&quot;)
+
+  pushtrace(&quot;ASS&quot;)
+  if \gen_counters then <a href="#NWencB-*-7">declare_counters</a>(pp)
+  <a name="NWencB-*-4-u1" href="#NWencB-wrir-1"><i>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;</i></a>
+  every cons := kept_constructors() do {
+    verbose(&quot;Encoder for constructor &quot;, cons.name)
+    PPwrite(pp, &quot;/**************&quot;)
+    <a href="#NWencB-*-5">show_constructor</a>(pp, cons)
+    PPwrite(pp, &quot;***********/&quot;)
+    if cons.type ~=== instructionctype then
+      emit_create_instance_body(pp, cons)
+    else 
+      emit_emitter_body(pp, cons) 
+  }
+  PPwrite(pp)   # flush prettyprinter
+  poptrace()
+  if \gen_counters then <a href="#NWencB-*-7">define_counter_funs</a>(pp)
+  if \indirectname then <a href="#NWencB-*-3">emit_indirect_encoder</a>(pp)
+  emit_closure_functions_postfix(pp, basename)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_encoding_implementation"><code>emit_encoding_implementation</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-wrir-1" href="#NWencB-wrir-1"><dfn>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;=</dfn></a> <b>(<a href="#NWencB-*-4">&lt;-U</a>)</b>
+every cons := kept_constructors() &amp; cons.type ~=== instructionctype do 
+  PPwrite(pp, &quot;#define &quot;, cons.name, &quot;_TAG &quot;, cons.tag)
+</pre><p>
+<pre><a name="NWencB-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWencB-*-4">&lt;-</a>D<a href="#NWencB-*-6">-&gt;</a>]</b>
+procedure <a href="#NWencB-*-5">show_constructor</a>(pp, cons)
+  PPwrite(pp)
+  PPwrites(pp, cons.name, &quot; &quot;)
+  every o := !cons.operands do 
+    case type(o) of {
+      &quot;literal&quot; : PPwrites(pp, o.s)
+      &quot;input&quot;   : PPwrites(pp, o.name, 
+                         if type(o.meaning) == &quot;integer&quot; then &quot;!&quot; else &quot;&quot;)
+      default   : impossible(&quot;operand&quot;)
+    }
+  PPxwrites(pp, &quot; is $t${$c&quot;)
+  PPxwrite(pp, ppexpimage(pattern_to_case(crhs(cons))), &quot;$}$b$n&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-show_constructor"><code>show_constructor</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWencB-*-5">&lt;-</a>D<a href="#NWencB-*-7">-&gt;</a>]</b>
+procedure <a href="#NWencB-*-6">show_constype</a>(outfile, type)
+  write(outfile)  
+  l := []; every put(l, kept_constructors(type).name)
+  PPwrite(pp, type.name, &quot; (&quot;, commaseparate(l, &quot; | &quot;), &quot;):&quot;)
+  show_case(outfile, pattern_to_case(constype_pattern(type)))
+  write(outfile)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-show_constype"><code>show_constype</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWencB-*-6">&lt;-</a>D]</b>
+procedure <a href="#NWencB-*-7">declare_counters</a>(pp)
+  every PPwrite(pp, &quot;static int &quot;, kept_constructors().name, &quot;_ctr = 0;&quot;)
+  return
+end
+procedure <a href="#NWencB-*-7">declare_counter_types</a>(pp)
+  PPwrite(pp, &quot;typedef void (*Printer)(void *closure, char *fmt, ...);&quot;)
+  return
+end
+procedure <a href="#NWencB-*-7">declare_counter_funs</a>(pp)
+  c_function_declaration(pp, &quot;void&quot;, &quot;reset_cons_counters&quot;, &quot;(void)&quot;)
+  c_function_declaration(pp, &quot;void&quot;, &quot;dump_cons_counters&quot;,&quot;(Printer p, void *closure)&quot;)
+  return
+end
+procedure <a href="#NWencB-*-7">counter_names</a>()
+  return &quot;reset_cons_counters, dump_cons_counters, $o&quot;
+end
+procedure <a href="#NWencB-*-7">define_counter_funs</a>(pp)  
+  PPxwrites(pp, if \indirectname then &quot;static &quot; else &quot;&quot;,
+               &quot;void reset_cons_counters(void) {$t&quot;)
+  every PPxwrites(pp, &quot;$n&quot;, kept_constructors().name, &quot;_ctr = 0;&quot;)
+  PPxwrite(pp, &quot;$b$n}&quot;)
+  PPxwrites(pp, if \indirectname then &quot;static &quot; else &quot;&quot;,
+                 &quot;void dump_cons_counters(Printer p, void *closure) {$t&quot;)
+  every cons := kept_constructors() do
+    PPxwrites(pp, &quot;$np(closure, \&quot;%d &quot;, cons.name, &quot; : &quot;, <a name="NWencB-*-7-u1" href="#NWencB-typG-1"><i>&lt;type of <code>cons</code>&gt;</i></a>, 
+          &quot;\\n\&quot;, &quot;, cons.name, &quot;_ctr);&quot;)
+  PPxwrite(pp, &quot;$b$n}&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-counter_names"><code>counter_names</code></a>, <a href="#NWI-declare_counter_funs"><code>declare_counter_funs</code></a>, <a href="#NWI-declare_counters"><code>declare_counters</code></a>, <a href="#NWI-declare_counter_types"><code>declare_counter_types</code></a>, <a href="#NWI-define_counter_funs"><code>define_counter_funs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWencB-typG-1" href="#NWencB-typG-1"><dfn>&lt;type of <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWencB-*-7">&lt;-U</a>)</b>
+(if cons.type === instructionctype then &quot;&lt;instruction&gt;&quot; else cons.type.name)
+</pre><pre><a name="NWencB-refP-1" href="#NWencB-refP-1"><dfn>&lt;refman: counter functions&gt;=</dfn></a>
+The C procedure
+\begin{quote}
+\tt void reset\_cons\_counters(void);
+\end{quote}
+resets the counters; the procedure
+\begin{quote}
+\tt
+typedef void (*Printer)(void *closure, char *fmt, ...);\\
+void dump\_cons\_counters(Printer p, void *closure);
+\end{quote}
+dumps the values of all the counters.
+The user must provide a function of type {\tt Printer}, a variadic
+function which
+accepts a closure, a {\tt printf}-style format, and additional arguments.
+The closure encapsulates any information needed by the
+user's printing function.
+For example, the standard C~function {\tt fprintf} may be used as a {\tt Printer},
+in which case a file pointer acts as a closure.
+</pre><p>
+
+
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWencB-*-2">D2</a>, <a href="#NWencB-*-3">D3</a>, <a href="#NWencB-*-4">D4</a>, <a href="#NWencB-*-5">D5</a>, <a href="#NWencB-*-6">D6</a>, <a href="#NWencB-*-7">D7</a>
+<li><a href="#NWD2"><i>&lt;emit declarations for all of the kept constructors&gt;</i></a>: <a href="#NWencB-*-2">U1</a>, <a href="#NWD2">D2</a>
+<li><a href="#NWencB-emi19-1"><i>&lt;emit declarations for all of the kept constructors (segregated version)&gt;</i></a>: <a href="#NWencB-emi19-1">D1</a>
+<li><a href="#NWencB-proG-1"><i>&lt;proc-structure.t&gt;</i></a>: <a href="#NWencB-proG-1">D1</a>
+<li><a href="#NWD3"><i>&lt;proc-structure.t (segregated version)&gt;</i></a>: <a href="#NWD3">D1</a>
+<li><a href="#NWencB-refP-1"><i>&lt;refman: counter functions&gt;</i></a>: <a href="#NWencB-refP-1">D1</a>
+<li><a href="#NWencB-typG-1"><i>&lt;type of <code>cons</code>&gt;</i></a>: <a href="#NWencB-*-7">U1</a>, <a href="#NWencB-typG-1">D2</a>
+<li><a href="#NWencB-wrid-1"><i>&lt;write definitions of all instance types&gt;</i></a>: <a href="#NWencB-*-2">U1</a>, <a href="#NWencB-wrid-1">D2</a>
+<li><a href="#NWencB-wrir-1"><i>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;</i></a>: <a href="#NWencB-*-4">U1</a>, <a href="#NWencB-wrir-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-counter_names" href="#NWencB-*-7">counter_names</a>: <a href="#NWencB-*-3">U1</a>, <a href="#NWencB-*-7">D2</a>
+<li><a name="NWI-declare_counter_funs" href="#NWencB-*-7">declare_counter_funs</a>: <a href="#NWencB-*-2">U1</a>, <a href="#NWencB-*-7">D2</a>
+<li><a name="NWI-declare_counters" href="#NWencB-*-7">declare_counters</a>: <a href="#NWencB-*-4">U1</a>, <a href="#NWencB-*-7">D2</a>
+<li><a name="NWI-declare_counter_types" href="#NWencB-*-7">declare_counter_types</a>: <a href="#NWencB-*-2">U1</a>, <a href="#NWencB-*-7">D2</a>
+<li><a name="NWI-define_counter_funs" href="#NWencB-*-7">define_counter_funs</a>: <a href="#NWencB-*-4">U1</a>, <a href="#NWencB-*-7">D2</a>
+<li><a name="NWI-emit_encoding" href="#NWD1">emit_encoding</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-emit_encoding_implementation" href="#NWencB-*-4">emit_encoding_implementation</a>: <a href="#NWD1">U1</a>, <a href="#NWencB-*-4">D2</a>
+<li><a name="NWI-emit_encoding_interface" href="#NWencB-*-2">emit_encoding_interface</a>: <a href="#NWD1">U1</a>, <a href="#NWencB-*-2">D2</a>
+<li><a name="NWI-emit_indirect_encoder" href="#NWencB-*-3">emit_indirect_encoder</a>: <a href="#NWencB-*-3">D1</a>, <a href="#NWencB-*-4">U2</a>
+<li><a name="NWI-show_constructor" href="#NWencB-*-5">show_constructor</a>: <a href="#NWencB-*-4">U1</a>, <a href="#NWencB-*-5">D2</a>
+<li><a name="NWI-show_constype" href="#NWencB-*-6">show_constype</a>: <a href="#NWencB-*-6">D1</a>
+</ul>
+</body></html>
+

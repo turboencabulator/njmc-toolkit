@@ -1,0 +1,116 @@
+<html><head><title>Visualizing toolkit browsers</title></head><body>
+
+
+
+<h2>Visualizing generated decoders</h2>
+<p>
+
+
+It can be tricky to understand the structure of a decoder by looking
+at the generated code.
+The <tt>-ascii-dag</tt> and <tt>-ascii-tree</tt> options dump complete
+listings of decision dags and trees, but it can be difficult to
+understand these dumps.
+The toolkit can also generate Icon code that you can use to explore
+trees, viewing one path at a time.
+This Icon code, when combined with a suitable main program, can act as
+a CGI script on the World-Wide Web, and you can explore the trees
+using your favorite Web browser.
+<p>
+The CGI script provides dual views of each node in the decision tree
+for each matching statement:
+<ul>
+<li>The <em>text view</em> shows the path to that node and the choices
+available at that node.
+A ``choice'' is simply a range of values for a particular field,
+and the path to the node gives the choices made that enabled us to
+reach this node.
+<p>
+<li>The <em>graphical view</em> shows the path to the node, plus all
+nodes reachable from the current node.
+Ellipses represent <em>decision nodes</em> that test the value of the
+field written in the node.
+Double ellipses represent decisions that have already been made.
+Leaf nodes are shown as boxes; they execute code in the matching statement.
+<p>
+If your browser supports client-side image maps, you can click on any
+visible node to move to that node.
+Clicking on a leaf node moves you back to the text view, so you can
+see the code associated with that node.
+<em>Graphical views of large trees are unwieldy and unhelpful, and
+they will probably break your browser</em>.
+Confine graphical views to those of interior nodes that don't reach
+too many leaves.
+</ul>
+We have an <a href=/cgi-bin/cgiwrap/~nr/trees/view?sparcdis>example</a>
+based on our <a href=examples/sparc>SPARC disassembler</a>.
+Here's <a href=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?sparcdis+-clickable+4+1>a fairly
+simple interior node</a>.
+Here's an <a
+href=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?big+-clickable+1+3+4>interesting
+node from a user's matching statement</a>.
+For subtrees like this, the toolkit should be generating better code
+than it is.
+The graph-drawing is by <tt>dot</tt>.
+
+
+<h2>Setting up your own browser</h2>
+
+
+This section shows how to set things up so you can browse matching
+statements that you write.
+<p>
+Let's suppose you have a SLED specification called
+<tt>problem.spec</tt>, and you've written one or more matching
+statements in the file <tt>problem.m</tt>.
+<ol>
+<li>Create the Icon file used to describe the matching statements:
+<pre>
+tools -icon-dag problem.icn -matcher problem.m problem.spec
+</pre>
+The writes a description of the generated matchers into
+<tt>problem.icn</tt>.
+You need an <a href=xtools.icn.gz>experimental version of the
+toolkit</a>, which supports the <tt>-icon-dag</tt> option.
+<li>Combine this Icon file with the <tt><a href=htmltree.icn>htmltree.icn</a></tt> file supplied
+with the toolkit distribution, and call the resulting program
+<tt>problem</tt>:
+<pre>
+icont -o problem problem.icn htmltree.icn
+</pre>
+(If you want the graphics view, you'll have to install <tt>dot</tt>
+from the AT&amp;T <A
+href=http://www.research.att.com/~north/graphviz/graphviz.html>graphviz</a>
+package, and you'll have to edit <tt>htmltree.icn</tt> to use the
+appropriate path name.)
+<li>Put the resulting executable where it can be executed as a CGI script.
+You'll probably need help from your friendly local systems
+administrator.
+Here's what I had to do at my site, which runs the Apache 1.0.3
+server; your mileage may vary: 
+<ol>
+<li>Put the executable Icon program in the directory
+<tt>/home/nr/public_html/cgi-bin/trees/</tt>.
+The corresponding URL is 
+<tt>http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/</tt>.
+<li>The code in <tt>htmltree.icn</tt> uses the environment variables
+<tt>SERVER_NAME</tt> and <tt>SCRIPT_NAME</tt> to reconstruct the URL.
+With luck, these will be independent of server.  Ha ha.
+<li>For some unknown reason, Icon programs won't run as CGI scripts at my
+site, so I had to wrap things in this shell script:
+<pre>
+#!/bin/sh
+tree=&quot;$1&quot;
+shift
+SCRIPT_NAME=&quot;${SCRIPT_NAME}?$tree&quot;
+export SCRIPT_NAME
+exec /home/nr/public_html/cgi-bin/trees/$tree &quot;$@&quot;
+</pre>
+</ol>
+<li>Use the URL to explore the matching statements.
+You can see matcher for the sample SPARC disassembler at
+<tt><a href=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?sparcdis>http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?sparcdis</a></tt>.
+</ol>
+
+<hr>Visit the <a href=index.html>Toolkit home page</a>
+</body></html>

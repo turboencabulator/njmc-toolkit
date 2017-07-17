@@ -1,0 +1,314 @@
+<html><head><title> expbc.nw</title></head><body>
+<h2><a name="NWD1">Mapping expressions to bytecodes</a></h2>
+The idea is to get a postfix, executable representation of function
+bodies, like <code>expps</code> but more compact.
+As with <code>expuniq</code>, we try to ensure two representations of the same
+function map to the same string.
+<pre><a name="NWexp8-bytD-1" href="#NWD1"><dfn>&lt;bytecode.spec&gt;=</dfn></a>
+fields of op (8)
+  op3 0:2 lit5 3:7
+  op4 3   lit4 4:7
+  op6 4:5 lit2 6:7
+  op7 6   lit1 7
+  op8 7
+
+fields of lit (8) lit8 0:7
+
+<a name="NWexp8-bytD-1-u1" href="#NWexp8-pat8-1"><i>&lt;patterns&gt;</i></a>
+<a name="NWexp8-bytD-1-u2" href="#NWexp8-conC-1"><i>&lt;constructors&gt;</i></a>
+constructors
+  <a name="NWexp8-bytD-1-u3" href="#NWexp8-synA-1"><i>&lt;synthetics&gt;</i></a>
+
+</pre><pre><a name="NWexp8-pat8-1" href="#NWexp8-pat8-1"><dfn>&lt;patterns&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWexp8-pat8-2">-&gt;</a>]</b>
+# operators for 0..31
+patterns 
+  u5 is any of [ narrows_lit narrowu_lit loslice ], which is op3 = [0 1 2]
+</pre><pre><a name="NWexp8-synA-1" href="#NWexp8-synA-1"><dfn>&lt;synthetics&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWexp8-synA-2">-&gt;</a>]</b>
+  narrows n!
+     when {n != 0} is narrows_lit &amp; lit5 = n
+     otherwise is sint(n); narrows
+  halt  is narrows_lit &amp; lit5 = 0
+  narrowu n!
+     when {n != 0}   is narrowu_lit &amp; lit5 = n
+     otherwise is sint(n); narrowu
+  unsat is narrowu_lit &amp; lit5 = 0
+  bitslice lo! hi! 
+     when {lo = 0, lit5 = hi}  is  loslice &amp; lit5
+     when {}           is sint(lo); sint(hi); bitslice  # lo &lt;= hi fails!
+</pre><pre><a name="NWexp8-pat8-2" href="#NWexp8-pat8-1"><dfn>&lt;patterns&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-pat8-1">&lt;-</a>D<a href="#NWexp8-pat8-3">-&gt;</a>]</b>
+# operators for -8..7  --- can have at most 13
+patterns
+  s4 is any of [ intlit addlit emitlocplus bitshiftlit ], 
+  which is op3 = [3 4] &amp; op4 = [0 1] 
+</pre><pre><a name="NWexp8-synA-2" href="#NWexp8-synA-1"><dfn>&lt;synthetics&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-synA-1">&lt;-</a>D<a href="#NWexp8-synA-3">-&gt;</a>]</b>
+addlit n!  when {n != 0, lit4! = n}   is addlit &amp; lit4
+           otherwise is sint(n); add
+cl_loc_force  is addlit &amp; lit4 = 0
+#  emitlocplus n   when {lit4! = n} is emitlocplus &amp; lit4
+#                  otherwise is cl_loc; force; sint(n); add; emit_at
+bitshift n!  when {lit4! = n} is bitshiftlit &amp; lit4
+               otherwise is sint(n); bitshift
+</pre><pre><a name="NWexp8-pat8-3" href="#NWexp8-pat8-1"><dfn>&lt;patterns&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-pat8-2">&lt;-</a>D<a href="#NWexp8-pat8-4">-&gt;</a>]</b>
+# operators for 1 2 4 8
+patterns emit_at_loc is op3 = 5 &amp; op4 = 0 &amp; op6 = 0
+</pre><pre><a name="NWexp8-synA-3" href="#NWexp8-synA-1"><dfn>&lt;synthetics&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-synA-2">&lt;-</a>D<a href="#NWexp8-synA-4">-&gt;</a>]</b>
+emit_at_loc n
+  when {n = 1} is emit_at_loc &amp; lit2 = 0
+  when {n = 2} is emit_at_loc &amp; lit2 = 1
+  when {n = 4} is emit_at_loc &amp; lit2 = 2
+  when {n = 8} is emit_at_loc &amp; lit2 = 3
+  otherwise    is cl_loc; force; sint(n); emit_at
+</pre><pre><a name="NWexp8-pat8-4" href="#NWexp8-pat8-1"><dfn>&lt;patterns&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-pat8-3">&lt;-</a>D<a href="#NWexp8-pat8-5">-&gt;</a>]</b>
+# operators for 1..2
+patterns lit1.2 is any of [ cla_force_lit clv_lit clv_orb_lit ], 
+which is op3 = 5 &amp; op4 = 0 &amp; op6 = [1 2 3] &amp; op7 = 0
+</pre><pre><a name="NWexp8-synA-4" href="#NWexp8-synA-1"><dfn>&lt;synthetics&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-synA-3">&lt;-</a>D]</b>
+cla n          is sint(n); cla
+cla_force n    when {} is  cla_force_lit &amp; lit1 = n-1
+               otherwise is sint(n); cla; force
+clv       n    when { n &lt;= 2 } is  clv_lit &amp; lit1 = n-1  # condition shouldn't be needed
+               otherwise is sint(n); clv
+clv_orb     n  when {} is  clv_orb_lit &amp; lit1 = n-1
+               otherwise is sint(n); clv; orb
+</pre><pre><a name="NWexp8-pat8-5" href="#NWexp8-pat8-1"><dfn>&lt;patterns&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-pat8-4">&lt;-</a>D]</b>
+# raw operations
+patterns
+  [ 
+    sint8 sint16 sint32 
+  ] is op3 = 5 &amp; op4 = 0 &amp; op6 = [1 2 3] &amp; op7 = 1
+  [ mark array set procmark proc stringlit null uint64
+  ] is op3 = 5 &amp; op4 = 1 &amp; op6 = [0 1 2 3] &amp; op7 = [0 1]
+  [
+    bitslice bitshift narrowu narrows widen fitsu fitss failmsg 
+    lt le gt ge ne eq false true
+    orb and not add sub mul idiv mod
+    cl_loc cla clv force known emit_at if_guard neg
+  ] is op3 = [6 7] &amp; op4 = [0 1] &amp; op6 = [0 1 2 3] &amp; op7 = [0 1]
+
+patterns
+  nullary is mark | array | set | procmark | proc | stringlit | null 
+           | lt | le | gt | ge | ne | eq | false | true
+           | orb | and | not | add | sub | mul | idiv | mod
+           | cl_loc | force | known | if_guard | neg | failmsg
+  unary is emit_at | widen | fitsu | fitss
+</pre><pre><a name="NWexp8-conC-1" href="#NWexp8-conC-1"><dfn>&lt;constructors&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+constructors
+  nullary
+  sint n!
+     when {lit4! = n} is intlit &amp; lit4
+     when {lit8! = n} is sint8;  lit8
+     when {lit8! = n@[8:31]!}  is sint16; lit8 = n@[0:7]; lit8
+     when {lit8! = n@[24:31]!} is sint32; lit8 = n@[0:7]; lit8 = n@[8:15];
+                                          lit8 = n@[16:23]; lit8
+  unary n!  is sint(n); unary  
+</pre><pre><a name="NWexp8-*-1" href="#NWexp8-*-1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWexp8-*-2">-&gt;</a>]</b>
+procedure <a href="#NWexp8-*-1">expbc</a>(e)
+  local leadingsign, prefix
+  static psopstab
+  initial {<a name="NWexp8-*-1-u1" href="#NWexp8-ini4-1"><i>&lt;init&gt;</i></a>}
+  return case type(e) of {
+    <a name="NWexp8-*-1-u2" href="#NWexp8-casJ-1"><i>&lt;cases for <code>expbc</code>&gt;</i></a>
+    default    : &amp;fail
+  } | impossible(&quot;postfix expression &quot;, image(e), &quot; : &quot;, type(e))
+end
+</pre><blockquote>Defines <a href="#NWI-expbc"><code>expbc</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp8-casJ-1" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[D<a href="#NWexp8-casJ-2">-&gt;</a>]</b>
+&quot;list&quot;     : bc_mark() || commaseparate(maplist(<a href="#NWexp8-*-1">expbc</a>, e), &quot;&quot;) || bc_array()
+&quot;set&quot;      : bc_mark() || commaseparate(sort(maplist(<a href="#NWexp8-*-1">expbc</a>, sort(e))), &quot;&quot;) || bc_set()
+&quot;eqn&quot;      : <a href="#NWexp8-*-1">expbc</a>(e.left) || <a href="#NWexp8-*-1">expbc</a>(e.right)  || \psopstab[e.op]
+</pre><pre><a name="NWexp8-ini4-1" href="#NWexp8-ini4-1"><dfn>&lt;init&gt;=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b>
+psopstab := table()
+psopstab[&quot;&lt;&quot;]  := bc_lt()
+psopstab[&quot;&lt;=&quot;] := bc_le()
+psopstab[&quot;&gt;&quot;]  := bc_gt()
+psopstab[&quot;&gt;=&quot;] := bc_ge()
+psopstab[&quot;!=&quot;] := bc_ne()
+psopstab[&quot;=&quot;]  := bc_eq()
+</pre><pre><a name="NWexp8-casJ-2" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-1">&lt;-</a>D<a href="#NWexp8-casJ-3">-&gt;</a>]</b>
+&quot;table&quot;    : {                      # standard normal form
+    <a name="NWexp8-casJ-2-u1" href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>&gt;</i></a>
+    s 
+  }
+&quot;string&quot;   : <a href="#NWexp8-*-2">bc_stringout</a>(e)
+&quot;literal&quot;  : <a href="#NWexp8-*-2">bc_stringout</a>(e.s) || bc_lit()
+&quot;integer&quot;  : bc_sint(e)
+&quot;null&quot;     : bc_null()
+</pre><pre><a name="NWexp8-*-2" href="#NWexp8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp8-*-1">&lt;-</a>D<a href="#NWexp8-*-3">-&gt;</a>]</b>
+procedure <a href="#NWexp8-*-2">bc_stringout</a>(s)
+  return bc_stringlit() || bc_sint(*s) || s
+end
+</pre><blockquote>Defines <a href="#NWI-bc_stringout"><code>bc_stringout</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">Be sure to omit multiplicative and additive units.</a>
+Otherwise, it doesn't matter.
+<pre><a name="NWexp8-makW-1" href="#NWD2"><dfn>&lt;make <code>s</code> represent table <code>e</code>&gt;=</dfn></a> <b>(<a href="#NWexp8-casJ-2">&lt;-U</a>)</b>
+{
+  s := &quot;&quot;; firstterm := 1
+  t := table(0)
+  l := []
+  every e[k := 1 ~=== key(e)] do {
+    type(k) ~== &quot;integer&quot; | impossible(&quot;key &quot;, k, &quot; in &quot;, expimage(e))
+    put(l, x := <a href="#NWexp8-*-1">expbc</a>(k))
+    t[x] +:= e[k]
+  }
+  l := sort(l)
+  every x := !l &amp; t[x] &gt; 0 do {
+    s ||:= <a href="#NWexp8-*-3">bcx</a>(x, t[x], firstterm)
+    firstterm := &amp;null
+  }
+  every x := !l &amp; t[x] &lt; 0 do {
+    s ||:= <a href="#NWexp8-*-3">bcx</a>(x, t[x], firstterm)
+    firstterm := &amp;null
+  }
+  if \firstterm then
+    s ||:= bc_sint(e[1])
+  else if e[1] ~= 0 then 
+    s ||:= bc_addlit(e[1])
+}
+</pre><pre><a name="NWexp8-*-3" href="#NWexp8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp8-*-2">&lt;-</a>D<a href="#NWexp8-*-4">-&gt;</a>]</b>
+procedure <a href="#NWexp8-*-3">bcx</a>(x, mul, firstterm)
+  return if \firstterm then case mul of {
+            1 : x
+           -1 : x || bc_neg()
+           default : x || bc_sint(mul) || bc_mul()
+         } else case mul of {
+            1 : x || bc_add()
+           -1 : x || bc_sub()
+           default : x || bc_sint(mul) || bc_mul() || bc_add()
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-bcx"><code>bcx</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWexp8-casJ-3" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-2">&lt;-</a>D<a href="#NWexp8-casJ-4">-&gt;</a>]</b>
+&quot;Eorb&quot;     : { l := sort(maplist(<a href="#NWexp8-*-1">expbc</a>, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= l[2 to *l] || bc_orb()
+               s
+             }
+&quot;Eand&quot;     : { l := sort(maplist(<a href="#NWexp8-*-1">expbc</a>, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= l[2 to *l] || bc_and()
+               s
+             }
+</pre><pre><a name="NWexp8-casJ-4" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-3">&lt;-</a>D<a href="#NWexp8-casJ-5">-&gt;</a>]</b>
+&quot;Eslice&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_bitslice(e.lo, e.lo + e.n - 1)
+&quot;Eshift&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_bitshift(e.n)
+</pre><pre><a name="NWexp8-casJ-5" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-4">&lt;-</a>D<a href="#NWexp8-casJ-6">-&gt;</a>]</b>
+&quot;Enarrowu&quot; : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_narrowu(e.n)
+&quot;Enarrows&quot; : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_narrows(e.n)
+&quot;Ewiden&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_widen(e.n)
+</pre><pre><a name="NWexp8-casJ-6" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-5">&lt;-</a>D<a href="#NWexp8-casJ-7">-&gt;</a>]</b>
+&quot;Ediv&quot;     : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_sint(e.n) || bc_idiv()
+&quot;Emod&quot;     : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_sint(e.n) || bc_mod()
+</pre><pre><a name="NWexp8-casJ-7" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-6">&lt;-</a>D<a href="#NWexp8-casJ-8">-&gt;</a>]</b>
+&quot;Semit&quot;    : commaseparate(maplist(<a href="#NWexp8-*-1">expbc</a>, e.x), &quot;&quot;) 
+&quot;Stoken&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) ||
+               if e.offset = 0 then bc_emit_at_loc(e.n)
+               else bc_cl_loc() || bc_force() || bc_addlit(e.offset) || bc_emit_at(e.n)
+</pre><pre><a name="NWexp8-casJ-8" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-7">&lt;-</a>D<a href="#NWexp8-casJ-9">-&gt;</a>]</b>
+&quot;Efitsu&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_fitsu(e.n)
+&quot;Efitss&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_fitss(e.n)
+</pre><pre><a name="NWexp8-casJ-9" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-8">&lt;-</a>D<a href="#NWexp8-casJ-A">-&gt;</a>]</b>
+&quot;Epatlabel&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-A" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-9">&lt;-</a>D<a href="#NWexp8-casJ-B">-&gt;</a>]</b>
+&quot;Eforce&quot;    : 
+  case type(e.x) of {
+    &quot;Eclosure_addr&quot; : bc_cla_force(e.x.n)
+    &quot;Eclosure_loc&quot;  : bc_cl_loc_force()
+    default         : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_force()
+  }
+&quot;Eforceable&quot;: <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_known()
+</pre><pre><a name="NWexp8-casJ-B" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-A">&lt;-</a>D<a href="#NWexp8-casJ-C">-&gt;</a>]</b>
+&quot;Epc&quot;       : &amp;fail
+&quot;Epc_known&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-C" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-B">&lt;-</a>D<a href="#NWexp8-casJ-D">-&gt;</a>]</b>
+&quot;Enot&quot;      : <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_not()
+</pre><pre><a name="NWexp8-casJ-D" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-C">&lt;-</a>D<a href="#NWexp8-casJ-E">-&gt;</a>]</b>
+&quot;Enosimp&quot;   : <a href="#NWexp8-*-1">expbc</a>(e.x)
+</pre><pre><a name="NWexp8-casJ-E" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-D">&lt;-</a>D<a href="#NWexp8-casJ-F">-&gt;</a>]</b>
+&quot;Sstmts&quot;    : commaseparate(maplist(<a href="#NWexp8-*-1">expbc</a>, e.x), &quot;&quot;)
+</pre><pre><a name="NWexp8-casJ-F" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-E">&lt;-</a>D<a href="#NWexp8-casJ-G">-&gt;</a>]</b>
+&quot;Einstance&quot; : &amp;fail
+&quot;Einstance_input&quot; : &amp;fail 
+&quot;Einstance_tagged&quot; : &amp;fail
+&quot;Ebinding_instance&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-G" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-F">&lt;-</a>D<a href="#NWexp8-casJ-H">-&gt;</a>]</b>
+&quot;Sif&quot;      : { s := bc_mark()
+               every s ||:= <a href="#NWexp8-*-1">expbc</a>(!e.arms)
+               s || bc_array() || bc_if_guard()
+             }
+&quot;Sguarded&quot; : <a href="#NWexp8-*-4">bcguard</a>(e.guard) || bc_procmark() || <a href="#NWexp8-*-1">expbc</a>(e.x) || bc_proc()
+</pre><pre><a name="NWexp8-*-4" href="#NWexp8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp8-*-3">&lt;-</a>D]</b>
+procedure <a href="#NWexp8-*-4">bcguard</a>(e)
+  return case type(e) of {
+    &quot;integer&quot; : case e of { 0 : bc_false(); 1 : bc_true()
+                            default: impossible(&quot;condition&quot;) }
+    &quot;null&quot; : bc_true()
+    &quot;set&quot; : {
+       l := sort(maplist(<a href="#NWexp8-*-1">expbc</a>, sort(e)))
+       s := l[1]
+       every s ||:= l[2 to *l] || bc_and()
+       if *l = 0 then bc_true() else s
+    }
+    default : <a href="#NWexp8-*-1">expbc</a>(e)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-bcguard"><code>bcguard</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp8-casJ-H" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-G">&lt;-</a>D<a href="#NWexp8-casJ-I">-&gt;</a>]</b>
+&quot;Stagcase&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-I" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-H">&lt;-</a>D<a href="#NWexp8-casJ-J">-&gt;</a>]</b>
+&quot;Sfail&quot;    : if e.fmt ~== &quot;Conditions not satisfied for unnamed constructor&quot; |
+                \(e.a1|e.a2|e.a3)
+             then {
+               s := <a href="#NWexp8-*-2">bc_stringout</a>(e.fmt) || bc_mark()
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= <a href="#NWexp8-*-1">expbc</a>(\a)
+               s ||:= bc_array() || bc_failmsg()
+             } else
+               bc_unsat()
+&quot;Sepsilon&quot; : &quot;&quot;
+</pre><pre><a name="NWexp8-casJ-J" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-I">&lt;-</a>D<a href="#NWexp8-casJ-K">-&gt;</a>]</b>
+&quot;Efail&quot;    : &amp;fail
+</pre><pre><a name="NWexp8-casJ-K" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-J">&lt;-</a>D<a href="#NWexp8-casJ-L">-&gt;</a>]</b>
+&quot;Glines&quot;    : commaseparate(maplist2(<a href="#NWexp8-*-1">expbc</a>, e.x), &quot;&quot;)
+&quot;Gresynch&quot;  : &quot;&quot;
+&quot;Gblock&quot;    : &amp;fail
+&quot;Gdecl&quot;     : &amp;fail
+</pre><pre><a name="NWexp8-casJ-L" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-K">&lt;-</a>D<a href="#NWexp8-casJ-M">-&gt;</a>]</b>
+&quot;Gcase&quot;     : &amp;fail
+&quot;Gcasearm&quot;  : &amp;fail
+&quot;Ginrange&quot;  : &amp;fail
+</pre><pre><a name="NWexp8-casJ-M" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-L">&lt;-</a>D<a href="#NWexp8-casJ-N">-&gt;</a>]</b>
+&quot;Gasgn&quot;     : &amp;fail
+&quot;Gsetname&quot;  : &amp;fail
+&quot;Gnomatch&quot;  : &amp;fail
+&quot;Tunsigned&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-N" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-M">&lt;-</a>D<a href="#NWexp8-casJ-O">-&gt;</a>]</b>
+&quot;Eapp&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-O" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-N">&lt;-</a>D<a href="#NWexp8-casJ-P">-&gt;</a>]</b>
+&quot;Eclosure_loc&quot;  : bc_cl_loc()
+&quot;Eclosure_addr&quot; : bc_cla(e.n)
+&quot;Eclosure_val&quot;  : bc_clv(e.n)
+</pre><pre><a name="NWexp8-casJ-P" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expbc</code>&gt;+=</dfn></a> <b>(<a href="#NWexp8-*-1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-O">&lt;-</a>D]</b>
+&quot;Eclosure&quot; : &amp;fail
+&quot;Elambda&quot; :  &amp;fail
+</pre>
+
+<ul>
+<li><a href="#NWexp8-*-1"><i>&lt;*&gt;</i></a>: <a href="#NWexp8-*-1">D1</a>, <a href="#NWexp8-*-2">D2</a>, <a href="#NWexp8-*-3">D3</a>, <a href="#NWexp8-*-4">D4</a>
+<li><a href="#NWD1"><i>&lt;bytecode.spec&gt;</i></a>: <a href="#NWD1">D1</a>
+<li><a href="#NWexp8-casJ-1"><i>&lt;cases for <code>expbc</code>&gt;</i></a>: <a href="#NWexp8-*-1">U1</a>, <a href="#NWexp8-casJ-1">D2</a>, <a href="#NWexp8-casJ-2">D3</a>, <a href="#NWexp8-casJ-3">D4</a>, <a href="#NWexp8-casJ-4">D5</a>, <a href="#NWexp8-casJ-5">D6</a>, <a href="#NWexp8-casJ-6">D7</a>, <a href="#NWexp8-casJ-7">D8</a>, <a href="#NWexp8-casJ-8">D9</a>, <a href="#NWexp8-casJ-9">D10</a>, <a href="#NWexp8-casJ-A">D11</a>, <a href="#NWexp8-casJ-B">D12</a>, <a href="#NWexp8-casJ-C">D13</a>, <a href="#NWexp8-casJ-D">D14</a>, <a href="#NWexp8-casJ-E">D15</a>, <a href="#NWexp8-casJ-F">D16</a>, <a href="#NWexp8-casJ-G">D17</a>, <a href="#NWexp8-casJ-H">D18</a>, <a href="#NWexp8-casJ-I">D19</a>, <a href="#NWexp8-casJ-J">D20</a>, <a href="#NWexp8-casJ-K">D21</a>, <a href="#NWexp8-casJ-L">D22</a>, <a href="#NWexp8-casJ-M">D23</a>, <a href="#NWexp8-casJ-N">D24</a>, <a href="#NWexp8-casJ-O">D25</a>, <a href="#NWexp8-casJ-P">D26</a>
+<li><a href="#NWexp8-conC-1"><i>&lt;constructors&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexp8-conC-1">D2</a>
+<li><a href="#NWexp8-ini4-1"><i>&lt;init&gt;</i></a>: <a href="#NWexp8-*-1">U1</a>, <a href="#NWexp8-ini4-1">D2</a>
+<li><a href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>&gt;</i></a>: <a href="#NWexp8-casJ-2">U1</a>, <a href="#NWD2">D2</a>
+<li><a href="#NWexp8-pat8-1"><i>&lt;patterns&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexp8-pat8-1">D2</a>, <a href="#NWexp8-pat8-2">D3</a>, <a href="#NWexp8-pat8-3">D4</a>, <a href="#NWexp8-pat8-4">D5</a>, <a href="#NWexp8-pat8-5">D6</a>
+<li><a href="#NWexp8-synA-1"><i>&lt;synthetics&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexp8-synA-1">D2</a>, <a href="#NWexp8-synA-2">D3</a>, <a href="#NWexp8-synA-3">D4</a>, <a href="#NWexp8-synA-4">D5</a>
+</ul>
+<ul>
+<li><a name="NWI-bcguard" href="#NWexp8-*-4">bcguard</a>: <a href="#NWexp8-casJ-G">U1</a>, <a href="#NWexp8-*-4">D2</a>
+<li><a name="NWI-bc_stringout" href="#NWexp8-*-2">bc_stringout</a>: <a href="#NWexp8-casJ-2">U1</a>, <a href="#NWexp8-*-2">D2</a>, <a href="#NWexp8-casJ-I">U3</a>
+<li><a name="NWI-bcx" href="#NWexp8-*-3">bcx</a>: <a href="#NWD2">U1</a>, <a href="#NWexp8-*-3">D2</a>
+<li><a name="NWI-expbc" href="#NWexp8-*-1">expbc</a>: <a href="#NWexp8-*-1">D1</a>, <a href="#NWexp8-casJ-1">U2</a>, <a href="#NWD2">U3</a>, <a href="#NWexp8-casJ-3">U4</a>, <a href="#NWexp8-casJ-4">U5</a>, <a href="#NWexp8-casJ-5">U6</a>, <a href="#NWexp8-casJ-6">U7</a>, <a href="#NWexp8-casJ-7">U8</a>, <a href="#NWexp8-casJ-8">U9</a>, <a href="#NWexp8-casJ-A">U10</a>, <a href="#NWexp8-casJ-C">U11</a>, <a href="#NWexp8-casJ-D">U12</a>, <a href="#NWexp8-casJ-E">U13</a>, <a href="#NWexp8-casJ-G">U14</a>, <a href="#NWexp8-*-4">U15</a>, <a href="#NWexp8-casJ-I">U16</a>, <a href="#NWexp8-casJ-K">U17</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,216 @@
+<html><head><title> fieldinfo.nw</title></head><body>
+<h1>Field-dependent information</h1>
+<h2>Field categories</h2>
+There are a number of things one wants to know about each field,
+depending on whether one is to assemble, disassemble, or generate C
+code for assembly.
+Here's a tentative classification:
+<ul>
+<li>How to disassemble
+<ul>
+<li>array of names
+<li>enumeration (for sparsely populated fields)
+<li><tt>printf</tt> format string (e.g. for MIPS <code>spec03</code>)?
+</ul> 
+<li><a name="NWD1">Type of argument to pass to C or Modula-3 procedure (could be</a>
+enumeration or subrange type, for example).  Different types may
+require different value checking within the procedure.
+<li>Literals
+<ul>
+<li>C <tt>enum</tt>s or constants
+<li>use in assembly code (syntactic category?)
+</ul> 
+</ul> 
+
+<a name="NWD2">If field names are specified, they are kept in a name-to-value table.</a>
+That table is associated with the field in the global table <code><a href="#NWD2">fnt</a></code> 
+(standing for ``field-name table'').
+<pre><a name="NWfieC-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWfieC-*-2">-&gt;</a>]</b>
+global <a href="#NWD2">fnt</a>              # field -&gt; name -&gt; value
+</pre><blockquote>Defines <a href="#NWI-fnt"><code>fnt</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWfieC-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWfieC-*-2">fieldinfo</a>(f, info) 
+    initial { /<a href="#NWD2">fnt</a> := table(); /fieldasm := table() }
+    case type(info) of {
+        &quot;string&quot; :  case info of { &quot;checked&quot;    : { <a name="NWfieC-*-2-u1" href="#NWfieC-makI-1"><i>&lt;make <code>f</code> checked&gt;</i></a> }
+                                   &quot;unchecked&quot;  : { <a name="NWfieC-*-2-u2" href="#NWfieC-makK-1"><i>&lt;make <code>f</code> unchecked&gt;</i></a> }
+                                   &quot;guaranteed&quot; : { <a name="NWfieC-*-2-u3" href="#NWfieC-makL-1"><i>&lt;make <code>f</code> guaranteed&gt;</i></a> }
+                                   default : { <a name="NWfieC-*-2-u4" href="#NWfieC-comX-1"><i>&lt;complain about fieldspec <code>info</code>&gt;</i></a> }
+                                 }
+        &quot;<a href="#NWD4">namespec</a>&quot;  : (/<a href="#NWD2">fnt</a>[f] := <a href="#NWfieC-*-7">check_namespec</a>(info, f)) | 
+                         error(&quot;Field names for field &quot;, f.name, &quot; already specified&quot;)
+        default     : fail
+    }
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-fieldinfo"><code>fieldinfo</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-makI-1" href="#NWfieC-makI-1"><dfn>&lt;make <code>f</code> checked&gt;=</dfn></a> <b>(<a href="#NWfieC-*-2">&lt;-U</a>)</b>
+every delete(<a href="#NWD3">guaranteed_fields</a> | <a href="#NWD3">unchecked_fields</a>, f)
+</pre><pre><a name="NWfieC-makK-1" href="#NWfieC-makK-1"><dfn>&lt;make <code>f</code> unchecked&gt;=</dfn></a> <b>(<a href="#NWfieC-*-2">&lt;-U</a>)</b>
+insert(<a href="#NWD3">unchecked_fields</a>, f)
+delete(<a href="#NWD3">guaranteed_fields</a>, f)
+</pre><pre><a name="NWfieC-makL-1" href="#NWfieC-makL-1"><dfn>&lt;make <code>f</code> guaranteed&gt;=</dfn></a> <b>(<a href="#NWfieC-*-2">&lt;-U</a>)</b>
+every insert(<a href="#NWD3">guaranteed_fields</a> | <a href="#NWD3">unchecked_fields</a>, f)
+</pre><pre><a name="NWfieC-comX-1" href="#NWfieC-comX-1"><dfn>&lt;complain about fieldspec <code>info</code>&gt;=</dfn></a> <b>(<a href="#NWfieC-*-2">&lt;-U</a>)</b>
+error(&quot;Unknown field info specifier `&quot;, info, &quot;'&quot;)
+</pre><p>
+<a name="NWD3">Fields can be checked or unchecked at assembly time.</a>
+<pre><a name="NWfieC-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+global <a href="#NWD3">unchecked_fields</a>, <a href="#NWD3">guaranteed_fields</a>
+</pre><blockquote>Defines <a href="#NWI-guaranteed_fields"><code>guaranteed_fields</code></a>, <a href="#NWI-unchecked_fields"><code>unchecked_fields</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD4">Field values may be assigned pneumonic names that are used during disassembly</a>
+of instructions.
+The names bound to field values within an enumeration are used to
+synthesize the sames of opcodes.
+<pre><a name="NWfieC-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWfieC-*-5">-&gt;</a>]</b>
+record <a href="#NWD4">namespec</a>(nametable, full)
+procedure <a href="#NWD4">sparse_name_table</a>(bindlist)
+  t := table()
+  every b := !bindlist do
+    (/t[b.name] := b.val) | error(&quot;duplicate field names&quot;)
+  return <a href="#NWD4">namespec</a>(t)
+end
+</pre><blockquote>Defines <a href="#NWI-namespec"><code>namespec</code></a>, <a href="#NWI-sparse_name_table"><code>sparse_name_table</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWfieC-*-6">-&gt;</a>]</b>
+record <a href="#NWfieC-*-5">enumbinding</a>(name, val)
+</pre><blockquote>Defines <a href="#NWI-enumbinding"><code>enumbinding</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWfieC-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-5">&lt;-</a>D<a href="#NWfieC-*-7">-&gt;</a>]</b>
+procedure <a href="#NWfieC-*-6">full_name_table</a>(namelist, f)
+  t := table()
+  every i := 1 to *namelist do
+    (/t[namelist[i]] := i - 1) | error(&quot;duplicate field names&quot;)
+  return <a href="#NWD4">namespec</a>(t, 1)
+end
+</pre><blockquote>Defines <a href="#NWI-full_name_table"><code>full_name_table</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-6">&lt;-</a>D<a href="#NWfieC-*-8">-&gt;</a>]</b>
+procedure <a href="#NWfieC-*-7">check_namespec</a>(spec, f)
+  if \spec.full then
+    *spec.nametable = 2^fwidth(f) | 
+       error(&quot;Field &quot;, f.name, &quot; has &quot;, 2^fwidth(f), &quot; values, not &quot;, *spec.nametable)
+  if x := spec.nametable[n := key(spec.nametable)] &amp; (x &lt; 0 | x &gt;= 2^fwidth(f)) then
+    error(&quot;name &quot;, image(n), &quot; = &quot;, x, 
+          &quot; falls outside the value range of field &quot;, f.name)
+  return spec.nametable
+end
+</pre><blockquote>Defines <a href="#NWI-check_namespec"><code>check_namespec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-7">&lt;-</a>D<a href="#NWfieC-*-9">-&gt;</a>]</b>
+procedure <a href="#NWfieC-*-8">fieldname_table</a>(f)
+  initial /<a href="#NWD2">fnt</a> := table()
+  return <a href="#NWD2">fnt</a>[f]
+end
+</pre><blockquote>Defines <a href="#NWI-fieldname_table"><code>fieldname_table</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-8">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWfieC-*-9">fieldname_env_for</a>(f)
+  return [\<a href="#NWfieC-*-8">fieldname_table</a>(f)] | []
+end
+
+procedure <a href="#NWfieC-*-9">fieldname_env_for_ipt</a>(ipt)
+  return (type(ipt.meaning) == &quot;field&quot;, <a href="#NWfieC-*-9">fieldname_env_for</a>(ipt.meaning)) | []
+end
+</pre><blockquote>Defines <a href="#NWI-fieldname_env_for"><code>fieldname_env_for</code></a>, <a href="#NWI-fieldname_env_for_ipt"><code>fieldname_env_for_ipt</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD5">Emitting field names</a></h2>
+We concoct a <code>namearray</code> and pass it to <code>pretty</code>.
+<pre><a name="NWfieC-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWfieC-*-9">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">emit_fieldnames</a>(base)
+  local header, data, fields
+  data := open(base || implementation_extension, &quot;w&quot;)
+  header := open(base || interface_extension, &quot;w&quot;);
+  if interface_extension == &quot;.h&quot; then
+    write(data, &quot;#include \&quot;&quot;, base, interface_extension, &quot;\&quot;&quot;)
+  pp := PPnew(data);
+  <a name="NWfieC-*-A-u1" href="#NWfieC-makr-1"><i>&lt;make <code>fields</code> an array of all fields sorted by name&gt;</i></a>
+  every PPxwrite(pp, pretty(Gdeclnamearray(<a href="#NWD6">fieldnamearray</a>(!fields))), &quot;;&quot;)
+  every write(header, &quot;extern char *&quot;, (!fields).name, &quot;_names[];&quot;)
+  every close(data | header)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_fieldnames"><code>emit_fieldnames</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-makr-1" href="#NWfieC-makr-1"><dfn>&lt;make <code>fields</code> an array of all fields sorted by name&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+t := table()
+fields := []
+every f := !symtab &amp; type(f) == &quot;field&quot; do t[f.name] := f
+every put(fields, (!sort(t))[2])
+</pre><p>
+<a name="NWD6">To build a name array, we first create a table of all invalid field values.</a>
+The valid ones are then overwritten using names from 
+<code><a href="#NWfieC-*-8">fieldname_table</a>(f)</code>.
+<p>
+<pre><a name="NWfieC-*-B" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD6">fieldnamearray</a>(f)
+  return <a href="#NWD6">name_array_from_table</a>(\<a href="#NWfieC-*-8">fieldname_table</a>(f), 2^fwidth(f), f.name)
+end
+procedure <a href="#NWD6">name_array_from_table</a>(t, limit, fieldname)
+  local name
+  limit &lt;= 1024 |
+    error(&quot;Tried to enumerate &quot;, limit, &quot; names for field or operand &quot;, fieldname)
+  na := namearray(field, table(), limit, fieldname || &quot;_names&quot;, &quot;&quot;)
+  every i := 0 to na.hi - 1 do
+    na.tbl[i] := <a href="#NWD6">bad_operand_name</a>(fieldname, i)
+  every name := key(t) do
+    na.tbl[t[name]] := name
+  return na
+end
+procedure <a href="#NWD6">bad_operand_name</a>(name, value)
+  return &quot;??&quot; || name || &quot;=&quot; || value || &quot;?!&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-bad_operand_name"><code>bad_operand_name</code></a>, <a href="#NWI-fieldnamearray"><code>fieldnamearray</code></a>, <a href="#NWI-name_array_from_table"><code>name_array_from_table</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">For use in identifying fields with identical naming patterns, we have</a>
+to turn a name table into a suitable string.  This means covering the
+keys in order.
+<pre><a name="NWfieC-*-C" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D]</b>
+procedure <a href="#NWD7">nametablekey</a>(nametab)
+  local min, max
+  static cache
+  initial cache := table()
+  if \cache[nametab] then return cache[nametab]
+  if /nametab then return cache[f] := &quot;(no name table)&quot;
+  u := table()
+  every k := key(nametab) do u[nametab[k]] := k
+  <a name="NWfieC-*-C-u1" href="#NWfieC-mak15-1"><i>&lt;make <code>min</code> and <code>max</code> smallest and largest values in <code>nametab</code>&gt;</i></a>  
+  s := &quot;&quot;
+  every i := min to max do
+    s ||:= \u[i] || &quot;@&quot; || i || &quot;\0&quot;
+  return cache[f] := s
+end
+</pre><blockquote>Defines <a href="#NWI-nametablekey"><code>nametablekey</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWfieC-mak15-1" href="#NWfieC-mak15-1"><dfn>&lt;make <code>min</code> and <code>max</code> smallest and largest values in <code>nametab</code>&gt;=</dfn></a> <b>(<a href="#NWD7">&lt;-U</a>)</b>
+min := max := !nametab | 0
+every min &gt;:= !nametab
+every max &lt;:= !nametab
+</pre>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWfieC-*-2">D2</a>, <a href="#NWD3">D3</a>, <a href="#NWD4">D4</a>, <a href="#NWfieC-*-5">D5</a>, <a href="#NWfieC-*-6">D6</a>, <a href="#NWfieC-*-7">D7</a>, <a href="#NWfieC-*-8">D8</a>, <a href="#NWfieC-*-9">D9</a>, <a href="#NWD5">D10</a>, <a href="#NWD6">D11</a>, <a href="#NWD7">D12</a>
+<li><a href="#NWfieC-comX-1"><i>&lt;complain about fieldspec <code>info</code>&gt;</i></a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWfieC-comX-1">D2</a>
+<li><a href="#NWfieC-makI-1"><i>&lt;make <code>f</code> checked&gt;</i></a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWfieC-makI-1">D2</a>
+<li><a href="#NWfieC-makL-1"><i>&lt;make <code>f</code> guaranteed&gt;</i></a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWfieC-makL-1">D2</a>
+<li><a href="#NWfieC-makK-1"><i>&lt;make <code>f</code> unchecked&gt;</i></a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWfieC-makK-1">D2</a>
+<li><a href="#NWfieC-makr-1"><i>&lt;make <code>fields</code> an array of all fields sorted by name&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWfieC-makr-1">D2</a>
+<li><a href="#NWfieC-mak15-1"><i>&lt;make <code>min</code> and <code>max</code> smallest and largest values in <code>nametab</code>&gt;</i></a>: <a href="#NWD7">U1</a>, <a href="#NWfieC-mak15-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-bad_operand_name" href="#NWD6">bad_operand_name</a>: <a href="#NWD6">D1</a>
+<li><a name="NWI-check_namespec" href="#NWfieC-*-7">check_namespec</a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWfieC-*-7">D2</a>
+<li><a name="NWI-emit_fieldnames" href="#NWD5">emit_fieldnames</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-enumbinding" href="#NWfieC-*-5">enumbinding</a>: <a href="#NWfieC-*-5">D1</a>
+<li><a name="NWI-fieldinfo" href="#NWfieC-*-2">fieldinfo</a>: <a href="#NWfieC-*-2">D1</a>
+<li><a name="NWI-fieldnamearray" href="#NWD6">fieldnamearray</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-fieldname_env_for" href="#NWfieC-*-9">fieldname_env_for</a>: <a href="#NWfieC-*-9">D1</a>
+<li><a name="NWI-fieldname_env_for_ipt" href="#NWfieC-*-9">fieldname_env_for_ipt</a>: <a href="#NWfieC-*-9">D1</a>
+<li><a name="NWI-fieldname_table" href="#NWfieC-*-8">fieldname_table</a>: <a href="#NWfieC-*-8">D1</a>, <a href="#NWfieC-*-9">U2</a>, <a href="#NWD6">U3</a>
+<li><a name="NWI-fnt" href="#NWD2">fnt</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWfieC-*-2">U3</a>, <a href="#NWfieC-*-8">U4</a>
+<li><a name="NWI-full_name_table" href="#NWfieC-*-6">full_name_table</a>: <a href="#NWfieC-*-6">D1</a>
+<li><a name="NWI-guaranteed_fields" href="#NWD3">guaranteed_fields</a>: <a href="#NWfieC-makI-1">U1</a>, <a href="#NWfieC-makK-1">U2</a>, <a href="#NWfieC-makL-1">U3</a>, <a href="#NWD3">D4</a>
+<li><a name="NWI-name_array_from_table" href="#NWD6">name_array_from_table</a>: <a href="#NWD6">D1</a>
+<li><a name="NWI-namespec" href="#NWD4">namespec</a>: <a href="#NWfieC-*-2">U1</a>, <a href="#NWD4">D2</a>, <a href="#NWfieC-*-6">U3</a>
+<li><a name="NWI-nametablekey" href="#NWD7">nametablekey</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-sparse_name_table" href="#NWD4">sparse_name_table</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-unchecked_fields" href="#NWD3">unchecked_fields</a>: <a href="#NWfieC-makI-1">U1</a>, <a href="#NWfieC-makK-1">U2</a>, <a href="#NWfieC-makL-1">U3</a>, <a href="#NWD3">D4</a>
+</ul>
+</body></html>
+

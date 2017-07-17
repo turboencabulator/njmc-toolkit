@@ -1,0 +1,243 @@
+<html><head><title> dag.nw</title></head><body>
+
+<h1>Converting trees to dags</h1>
+The problem with the trees generated in the previous section is that
+there's a different edge, and therefore a different child, for each
+possible interval of the field tested, even if those children both
+execute exactly the same ``original'' arm of the case statement.
+The code in this section converts the trees to dags, and as part of
+the process it combines edges pointing to the same node.
+This can reduce the size of the tree by huge factors.
+<p>
+To make the transformation work, I have to represent a <em>set of
+<a name="NWD1">intervals</a></em> on each edge, not just a single interval.  Because no two intervals
+overlap, I can use a wonderful dirty trick, detailed below.
+I also <em>may</em> convert a node's name string to a <code><a href="#NWD8">namearray</a></code> mapping
+field values to strings.  The goal is for children of the same
+parent to share a single name array; that way the edges can be merged and
+the name operator can be implemented with an array reference.
+If I don't convert a node's name, the only penalty is that the tree
+might be bigger.
+(Code generation will be different for the two cases.)
+
+Now, the dirty representation trick: 
+I can represent a set of numbers <i>S</i> (a union of intervals) as two
+sets, <i>lo</i> and <i>hi</i>, such that
+
+
+
+<ul>
+<li><a name="NWD2">--</a><i>lo <b>intersect</b>hi = <b>emptyset</b></i>
+<li>--if <i><tt>sort</tt>(lo <b>union</b>hi) = a, b, c, d, ...</i>, then
+<i>S = [a,b-1] <b>union</b>[c,d-1] <b>union</b>...</i>.
+</ul>
+The procedure <code><a href="#NWD2">addinterval</a></code> adds a new interval to such a set <i>S</i>,
+relying on the fact that no two intervals overlap.
+The implementation may be treated as ``black magic'' or ``mathematics;''
+take your pick.
+<b>[</b>Extra credit for proofs of correctness.<b>]</b>
+<pre><a name="NWdag6-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">addinterval</a>(loset, hiset, lonum, hinum)
+    if member(loset, hinum) then delete(loset, hinum) else insert(hiset, hinum)
+    if member(hiset, lonum) then delete(hiset, lonum) else insert(loset, lonum)
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-addinterval"><code>addinterval</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">A new interval overlaps unless it falls between two existing intervals.</a>
+The local variable
+<code>leftcount</code> is the number of intervals completely to the left of the
+new interval.
+<code>rightcount</code> is the number of intervals completely to the right of the
+new interval.
+If these total to the number of intervals, there is no overlap.
+Otherwise, there is an overlap.
+<pre><a name="NWdag6-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWD3">overlaps</a>(loset, hiset, lonum, hinum)
+  local leftcount, rightcount
+  leftcount  := 0; every lonum &gt;= !hiset do leftcount  +:= 1
+  rightcount := 0; every hinum &lt;= !loset do rightcount +:= 1
+  return leftcount + rightcount &lt; *loset
+end
+</pre><blockquote>Defines <a href="#NWI-overlaps"><code>overlaps</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD4">To show a bit set, give the number of bits.</a>
+<pre><a name="NWdag6-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWD4">showbitset</a>(loset, hiset, width)
+  l := sort(loset ++ hiset)
+  b := 0
+  i := 0
+  s := &quot;&quot;
+  while i &lt; width do {
+    if i = l[1] then {
+      get(l)
+      b := 1 - b
+    } 
+    s ||:= b
+    i +:= 1
+  }
+  return reverse(s)
+end
+</pre><blockquote>Defines <a href="#NWI-showbitset"><code>showbitset</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">To convert trees to dags I need to be able to compare two nodes</a>
+for structural identity, and the easiest way is to compute a canonical
+representation as a string:
+<pre>
+ node : [fname:patimage(list of edges)]
+      | (image(node.name):image(node.cs.arms.(original,imp_soln))
+ edge : patimage(list of sort(loset ++ hiset)):node
+</pre>
+<pre><a name="NWdag6-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWdag6-*-5">-&gt;</a>]</b>
+procedure <a href="#NWD5">nodetostring</a>(n, depth)
+    static cache 
+    initial cache := table()
+    /depth := 0
+    if /cache[n] then
+        if *n.children &gt; 0 then {
+            result := &quot;[&quot; || n.field.field.name || &quot;@&quot; || n.field.offset || &quot;:&quot;
+            every result ||:= <a href="#NWdag6-*-5">edgetostring</a>(!n.children, depth+2)
+            cache[n] := result || &quot;]&quot;
+        } else {
+            cache[n] := &quot;(&quot; || image(n.name) 
+            every a := !n.cs.arms do
+              cache[n] ||:= &quot;:&quot; || image(a.original) || &quot;:&quot; || image(a.imp_soln) ||
+                            &quot;:&quot; || image(a.patlen)
+            cache[n] ||:= &quot;)&quot;
+        }
+    return \cache[n]
+end
+</pre><blockquote>Defines <a href="#NWI-nodetostring"><code>nodetostring</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWdag6-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWdag6-*-5">edgetostring</a>(e,depth)
+    return left(&quot;\n&quot;, depth) || 
+          &quot;{&quot; || patimage(sort(e.lo ++ e.hi)) || &quot;:&quot; || <a href="#NWD5">nodetostring</a>(e.node,depth) || &quot;}&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-edgetostring"><code>edgetostring</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">Conversion to dag is the usual bottom-up hashing; here I compute the</a>
+string and then use the string to index into a table.
+The real work of merging edges is done by <code><a href="#NWD9">combinechildren</a></code>.
+If edge merging results in a single each, the node is replaced by
+its child, provided the edge really covers all possible values
+of the field.
+<pre><a name="NWdag6-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWdag6-*-5">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD6">tree2dag</a>(n, nodetable, depth)
+    outtree(\ascii_tree, n)
+    /nodetable := table()
+    /depth := 0
+    if *n.children &gt; 0 then
+        <a href="#NWD9">combinechildren</a>(n, nodetable, depth+2)  # converts edges to set form
+    if *n.children = 1 then {
+        e := n.children[1]
+        if <a href="#NWD7">covers</a>(n.children[1], fwidth(n.field.field)) then
+            n := n.children[1].node     # all roads to child: hoist it
+        else
+            warning(&quot;node with one child doesn't match all cases&quot;)    
+    }
+    s := <a href="#NWD5">nodetostring</a>(n, depth)
+    outtree(\ascii_dag, n)
+    /nodetable[s] := n
+    return nodetable[s]
+end
+</pre><blockquote>Defines <a href="#NWI-tree2dag"><code>tree2dag</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">Here's where I check coverage.</a>
+Only success or failure of <code><a href="#NWD7">covers</a></code> is meaningful, not
+the value returned.
+<pre><a name="NWdag6-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+procedure <a href="#NWD7">covers</a>(e, width)
+    l := sort(e.lo ++ e.hi)
+    return *l = 2 &amp; l[1] = 0 &amp; l[2] = 2^width
+end
+</pre><blockquote>Defines <a href="#NWI-covers"><code>covers</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD8">The complicated stuff here is identifying a name array.</a>
+At each node, either all edges go in an exiting name array 
+or a new name array is used.
+If not, I create a new one.
+<pre><a name="NWdag6-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+record <a href="#NWD8">namearray</a>(field, tbl, hi, codename, storageclass)
+# field used as index, table[integer] of name, bound on table, name of this array
+global <a href="#NWD8">natable</a>
+</pre><blockquote>Defines <a href="#NWI-namearray"><code>namearray</code></a>, <a href="#NWI-natable"><code>natable</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD9">The fields </a><code>codename</code> and <code>storageclass</code> can be defaulted (to a
+gensym'ed name and to <code>static</code>, respectively).
+<pre><a name="NWdag6-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWdag6-*-A">-&gt;</a>]</b>
+procedure <a href="#NWD9">arraycandidates</a>(n)
+    initial MAXRANGE := 32
+    suspend e := !n.children &amp; type(e.node.name) == &quot;string&quot; &amp; 
+            e.hi - e.lo &lt;= MAXRANGE &amp; e
+end
+
+procedure <a href="#NWD9">combinechildren</a>(n, nodetable, depth)
+    initial <a href="#NWD8">natable</a> := table()
+
+    if <a href="#NWD9">arraycandidates</a>(n).node.name ~== <a href="#NWD9">arraycandidates</a>(n).node.name then {
+        <a name="NWdag6-*-9-u1" href="#NWdag6-cha13-1"><i>&lt;change names of children from strings to namearrays when possible&gt;</i></a>
+    }
+
+    lotable := table()
+    hitable := table()
+    every e := !n.children &amp; child := <a href="#NWD6">tree2dag</a>(e.node, nodetable, depth) do {
+        /lotable[child] := set()
+        /hitable[child] := set()
+        <a href="#NWD2">addinterval</a>(lotable[child], hitable[child], e.lo, e.hi)
+    }
+    n.children := []
+    every child := key(lotable) do
+        put(n.children, edge(child, lotable[child], hitable[child]))
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-arraycandidates"><code>arraycandidates</code></a>, <a href="#NWI-combinechildren"><code>combinechildren</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWdag6-cha13-1" href="#NWdag6-cha13-1"><dfn>&lt;change names of children from strings to namearrays when possible&gt;=</dfn></a> <b>(<a href="#NWD9">&lt;-U</a>)</b>
+mightuse := set()           # name arrays we might use must have right field
+every na := !\<a href="#NWD8">natable</a>[n.field] do
+    insert(mightuse, na)
+every e := <a href="#NWD9">arraycandidates</a>(n) &amp; na := !mightuse do
+    if \na.tbl[e.lo to e.hi - 1] ~== e.node.name then  # slot used with wrong name
+        delete(mightuse, na)
+if *mightuse &gt; 0 then
+    willuse := ?mightuse
+else {
+    /<a href="#NWD8">natable</a>[n.field] := set()
+    insert(<a href="#NWD8">natable</a>[n.field], willuse := <a href="#NWD8">namearray</a>(n.field, table(), 0))
+}
+every e := <a href="#NWD9">arraycandidates</a>(n) &amp;
+      e.lo - willuse.hi &lt;= MAXRANGE do {
+          every willuse.tbl[e.lo to e.hi - 1] := e.node.name;
+          e.node.name := willuse
+          willuse.hi &lt;:= e.hi
+      }
+</pre><p>
+<pre><a name="NWdag6-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D]</b>
+procedure <a href="#NWdag6-*-A">namesused</a>(n, result)
+    /result := set()
+    if type(n.name) == &quot;<a href="#NWD8">namearray</a>&quot; then insert(result, n.name)
+    every <a href="#NWdag6-*-A">namesused</a>((!n.children).node, result)
+    return result
+end
+</pre><blockquote>Defines <a href="#NWI-namesused"><code>namesused</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWD4">D3</a>, <a href="#NWD5">D4</a>, <a href="#NWdag6-*-5">D5</a>, <a href="#NWD6">D6</a>, <a href="#NWD7">D7</a>, <a href="#NWD8">D8</a>, <a href="#NWD9">D9</a>, <a href="#NWdag6-*-A">D10</a>
+<li><a href="#NWdag6-cha13-1"><i>&lt;change names of children from strings to namearrays when possible&gt;</i></a>: <a href="#NWD9">U1</a>, <a href="#NWdag6-cha13-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-addinterval" href="#NWD2">addinterval</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWD9">U3</a>
+<li><a name="NWI-arraycandidates" href="#NWD9">arraycandidates</a>: <a href="#NWD9">D1</a>, <a href="#NWdag6-cha13-1">U2</a>
+<li><a name="NWI-combinechildren" href="#NWD9">combinechildren</a>: <a href="#NWD6">U1</a>, <a href="#NWD9">D2</a>
+<li><a name="NWI-covers" href="#NWD7">covers</a>: <a href="#NWD6">U1</a>, <a href="#NWD7">D2</a>
+<li><a name="NWI-edgetostring" href="#NWdag6-*-5">edgetostring</a>: <a href="#NWD5">U1</a>, <a href="#NWdag6-*-5">D2</a>
+<li><a name="NWI-namearray" href="#NWD8">namearray</a>: <a href="#NWD8">D1</a>, <a href="#NWdag6-cha13-1">U2</a>, <a href="#NWdag6-*-A">U3</a>
+<li><a name="NWI-namesused" href="#NWdag6-*-A">namesused</a>: <a href="#NWdag6-*-A">D1</a>
+<li><a name="NWI-natable" href="#NWD8">natable</a>: <a href="#NWD8">D1</a>, <a href="#NWD9">U2</a>, <a href="#NWdag6-cha13-1">U3</a>
+<li><a name="NWI-nodetostring" href="#NWD5">nodetostring</a>: <a href="#NWD5">D1</a>, <a href="#NWdag6-*-5">U2</a>, <a href="#NWD6">U3</a>
+<li><a name="NWI-overlaps" href="#NWD3">overlaps</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-showbitset" href="#NWD4">showbitset</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-tree2dag" href="#NWD6">tree2dag</a>: <a href="#NWD6">D1</a>, <a href="#NWD9">U2</a>
+</ul>
+</body></html>
+

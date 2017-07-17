@@ -1,0 +1,381 @@
+<html><head><title> Iconexp.nw</title></head><body>
+<h1><a name="NWD1">Converting Expressions to Icon</a></h1>
+<code><a href="#NWD1">prettyIcon</a></code> returns Icon code for an expression (or statement)
+with embedded prettyprinting escapes.
+<code>nohex</code> is a purely internal flag.
+If it is non-null, constants are in hex; otherwise they're in decimal.
+<pre><a name="NWIcoA-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWIcoA-*-2">-&gt;</a>]</b>
+procedure <a href="#NWD1">prettyIcon</a>(e, precedence, associativity, nohex)
+  <a name="NWIcoA-*-1-u1" href="#NWIcoA-locb-1"><i>&lt;local declarations for <code>prettyIcon</code>&gt;</i></a>
+  initial {<a name="NWIcoA-*-1-u2" href="#NWIcoA-inif-1"><i>&lt;initialize <code>Iconprec</code> and <code>Iconassoc</code>&gt;</i></a>}
+  /precedence := 0
+  /associativity := &quot;L&quot;
+  return case type(e) of {
+    <a name="NWIcoA-*-1-u3" href="#NWIcoA-casO-1"><i>&lt;cases for <code>prettyIcon</code>&gt;</i></a>
+    default    : impossible(&quot;Bad code to <a href="#NWD1">prettyIcon</a>&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-prettyIcon"><code>prettyIcon</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWIcoA-casO-1" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWIcoA-casO-2">-&gt;</a>]</b>
+&quot;Gcomment&quot; : &quot;# &quot; || e.s || &quot;\n&quot;
+&quot;list&quot;     : commaseparate(maplist2(<a href="#NWD1">prettyIcon</a>, e, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;]), &quot;, $o&quot;)
+&quot;set&quot;      : commaseparate(maplist2(<a href="#NWD1">prettyIcon</a>, sort(e), <a href="#NWIcoA-*-6">Iconprec</a>[&quot;&amp;&quot;]), &quot; &amp; $o&quot;)
+&quot;eqn&quot;      : { o := <a href="#NWIcoA-*-7">Iconop</a>(e.op)
+               <a href="#NWIcoA-*-6">Iconbracket</a>(<a href="#NWD1">prettyIcon</a>(e.left,  <a href="#NWIcoA-*-6">Iconprec</a>[o]) || &quot; &quot; || o || &quot; $o&quot; ||
+                        <a href="#NWD1">prettyIcon</a>(e.right, <a href="#NWIcoA-*-6">Iconprec</a>[o]), &quot;=&quot;, precedence)
+             }
+&quot;table&quot;    : {                      # standard normal form
+    <a name="NWIcoA-casO-1-u1" href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>
+    &quot;$t${&quot; || s || &quot;$}$b&quot;
+  }
+&quot;string&quot;   : e
+&quot;literal&quot;  : list_to_string(e.s)
+&quot;integer&quot;  : if e &gt; max_decimal then &quot;16r&quot; || hexstring(e) else string(e)
+</pre><p><a name="NWD2">The old version printed in any old order, but the new version prints</a>
+positive terms first, then negative terms, with the constant term last in its group.
+
+<pre><a name="NWIcoA-mak1F-1" href="#NWD2"><dfn>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a> <b>(<a href="#NWIcoA-casO-1">&lt;-U</a>)</b>
+{
+  s := &quot;&quot;; leadingsign := &quot;&quot;
+  <a name="NWIcoA-mak1F-1-u1" href="#NWIcoA-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>
+  leadingsign := &quot; - $o&quot;
+  <a name="NWIcoA-mak1F-1-u2" href="#NWIcoA-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWIcoA-addR-1" href="#NWIcoA-addR-1"><dfn>&lt;add positive terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &gt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWD1">prettyIcon</a>(k, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;*&quot;])
+    leadingsign := &quot; + $o&quot;
+}
+if e[1] &gt; 0 then s ||:= leadingsign || string(e[1])
+</pre><pre><a name="NWIcoA-addR.2-1" href="#NWIcoA-addR.2-1"><dfn>&lt;add negative terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &lt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWD1">prettyIcon</a>(k, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;*&quot;])
+}
+if e[1] &lt; 0 then s ||:= leadingsign || string(-e[1])
+</pre><p>
+<pre><a name="NWIcoA-old1J-1" href="#NWIcoA-old1J-1"><dfn>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a>
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := &quot; + $o&quot; }
+  else s := leadingsign := &quot;&quot;
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] &lt; 0 then &quot; - &quot; else leadingsign
+      leadingsign := &quot; + $o&quot;
+      s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+      s ||:= <a href="#NWD1">prettyIcon</a>(k, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;*&quot;])
+  }
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWIcoA-locb-1" href="#NWIcoA-locb-1"><dfn>&lt;local declarations for <code>prettyIcon</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWIcoA-locb-2">-&gt;</a>]</b>
+local leadingsign
+</pre><pre><a name="NWIcoA-casO-2" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-1">&lt;-</a>D<a href="#NWIcoA-casO-3">-&gt;</a>]</b>
+&quot;Eorb&quot;     : { s := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;], &quot;L&quot;)
+               t := <a href="#NWD1">prettyIcon</a>(e.y, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;], &quot;R&quot;)
+               &quot;ior(&quot; || s || &quot;, $o&quot; || t ||  &quot;)&quot;
+             }
+&quot;Eand&quot;     : { s := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;&amp;&quot;], &quot;L&quot;)
+               t := <a href="#NWD1">prettyIcon</a>(e.y, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;&amp;&quot;], &quot;R&quot;)
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s || &quot; &amp; $o&quot; || t, &quot;&amp;&quot;, precedence)
+             }
+</pre><pre><a name="NWIcoA-casO-3" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-2">&lt;-</a>D<a href="#NWIcoA-casO-4">-&gt;</a>]</b>
+&quot;Eslice&quot;   : { s := <a href="#NWD1">prettyIcon</a>(super_simplify(Eshift(e.x, -e.lo)), <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;], &quot;L&quot;)
+               &quot;iand(&quot; || s || &quot;, &quot; || mask(e.n) || &quot;)&quot;
+             }
+&quot;Eshift&quot;   : { &quot;ishift(&quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;]) || &quot;, &quot; || e.n || &quot;)&quot; }
+</pre><pre><a name="NWIcoA-casO-4" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-3">&lt;-</a>D<a href="#NWIcoA-casO-5">-&gt;</a>]</b>
+&quot;Enarrowu&quot; : <a href="#NWD1">prettyIcon</a>(e.x, precedence, associativity) # checked, so must be identity
+&quot;Enarrows&quot; : <a href="#NWD1">prettyIcon</a>(super_simplify(Eslice(e.x, 0, e.n)), precedence, associativity)
+&quot;Ewiden&quot;   : &quot;sign_extend($t${$o&quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot;, $o&quot; || e.n || &quot;$}$b)&quot;
+</pre><pre><a name="NWIcoA-casO-5" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-4">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+&quot;Ediv&quot;     : { s := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;/&quot;]) 
+               s := &quot;integer(&quot; || s || &quot;)&quot; 
+               s ||:= &quot; / &quot; || e.n
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;/&quot;, precedence)
+             }
+&quot;Emod&quot;     : { s := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;%&quot;]) 
+               s ||:= &quot; % &quot; || e.n
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;%&quot;, precedence)
+             }
+</pre><p>
+<a name="NWD3">Have to be careful emitting no tokens.</a>
+<pre><a name="NWIcoA-casO-6" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-5">&lt;-</a>D<a href="#NWIcoA-casO-7">-&gt;</a>]</b>
+&quot;Semit&quot;    : 
+  if *e.x = 0 then &quot;{ \&quot;emit epsilon\&quot; }&quot; else {
+    s := if *e.x &gt; 1 then &quot;$t${{ $c&quot; else &quot;&quot;
+    <a name="NWIcoA-casO-6-u1" href="#NWD5"><i>&lt;if direct style and late pc, add <code>ENCODE_pc</code> declaration to <code>s</code> and set <code>pc_override</code>&gt;</i></a>
+    s ||:= commaseparate(maplist(<a href="#NWD1">prettyIcon</a>, e.x), &quot; $n&quot;)
+    <a name="NWIcoA-casO-6-u2" href="#NWIcoA-resN-1"><i>&lt;restore <code>pc_override</code>&gt;</i></a>
+    s || if *e.x &gt; 1 then &quot; $b$c}$}&quot; else &quot;&quot;
+  } 
+&quot;Stoken&quot; :
+  case emitterstyle of {
+    &quot;direct&quot; : {<a name="NWIcoA-casO-6-u3" href="#NWIcoA-dirZ-1"><i>&lt;direct call through <code>emittername</code>&gt;</i></a>}
+    &quot;closure&quot;: {<a name="NWIcoA-casO-6-u4" href="#NWD4"><i>&lt;closure call to <code>emitter</code>&gt;</i></a>}
+  } | impossible(&quot;emitter style&quot;)
+</pre><p>
+<pre><a name="NWIcoA-dirZ-1" href="#NWIcoA-dirZ-1"><dfn>&lt;direct call through <code>emittername</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+if e.n = 1 then
+  s := &quot;_result ||:= char(&quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;]) || &quot;)&quot;
+else
+  error(&quot;Internal limitation: Can't emit other than 1-byte tokens when generating Icon code&quot;)
+</pre><p>
+<a name="NWD4">For the closure call, we assume that the closure is stored in local variable </a><code>_c</code>.
+<pre><a name="NWIcoA-cloR-1" href="#NWD4"><dfn>&lt;closure call to <code>emitter</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+error(&quot;Internal limitation: No closure support in Icon emitter&quot;)
+o := if e.offset &gt; 0 then &quot; + &quot; || e.offset else &quot;&quot;
+s := &quot;emitter$t(_c-&gt;loc.dest_block, $o_c-&gt;loc.dest_lc&quot; || o || &quot;, $o&quot; || 
+     <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;]) || &quot;, $o&quot; || e.n || &quot;)&quot;
+<a href="#NWIcoA-*-6">Iconbracket</a>(&quot;$c&quot; || s, &quot;app&quot;, precedence) || &quot;;$b&quot;
+</pre><p>
+<a name="NWD5">This code fixes bug&nbsp;5 by using </a><code>ENCODE_pc</code> instead of <code>cur_pc</code> when
+an emitted token other than the first requires the program counter.
+It's needed because <code>cur_pc()</code> changes as a side effect of <code>emit</code>, 
+but ``the program counter'' always refers to the location of
+the <em>first</em> token emitted.
+<pre><a name="NWIcoA-if*1T-1" href="#NWD5"><dfn>&lt;if direct style and late pc, add <code>ENCODE_pc</code> declaration to <code>s</code> and set <code>pc_override</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+if *e.x &gt; 1 &amp; emitterstyle == &quot;direct&quot; &amp; expwalk(e.x[2:0], equals_pc) then {
+  s ||:= &quot;ENCODE_pc = cur_pc(); $c&quot;
+  save_pc_override := <a href="#NWIcoA-*-2">pc_override</a>
+  <a href="#NWIcoA-*-2">pc_override</a> := &quot;ENCODE_pc&quot;
+}
+</pre><pre><a name="NWIcoA-resN-1" href="#NWIcoA-resN-1"><dfn>&lt;restore <code>pc_override</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+<a href="#NWIcoA-*-2">pc_override</a> := save_pc_override
+</pre><pre><a name="NWIcoA-locb-2" href="#NWIcoA-locb-1"><dfn>&lt;local declarations for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-locb-1">&lt;-</a>D<a href="#NWIcoA-locb-3">-&gt;</a>]</b>
+local save_pc_override
+</pre><pre><a name="NWIcoA-casO-7" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWIcoA-casO-8">-&gt;</a>]</b>
+&quot;Epc&quot; : \<a href="#NWIcoA-*-2">pc_override</a> | &quot;cur_pc()&quot;
+&quot;Epc_known&quot; : &quot;cur_pc_known()&quot;
+</pre><pre><a name="NWIcoA-casO-8" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-7">&lt;-</a>D<a href="#NWIcoA-casO-9">-&gt;</a>]</b>
+&quot;Eclosure_loc&quot;  : &quot;_c.loc&quot;
+&quot;Eclosure_addr&quot; : &quot;_c.v.a&quot; || e.n
+&quot;Eclosure_val&quot;  : &quot;_c.v.u&quot; || e.n
+</pre><pre><a name="NWIcoA-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWIcoA-*-3">-&gt;</a>]</b>
+global <a href="#NWIcoA-*-2">pc_override</a>
+</pre><blockquote>Defines <a href="#NWI-pc_override"><code>pc_override</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWIcoA-casO-9" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-8">&lt;-</a>D<a href="#NWIcoA-casO-A">-&gt;</a>]</b>
+&quot;Efitsu&quot;   : <a href="#NWD1">prettyIcon</a>(Ginrange(0, e.x, 2^e.n), precedence, associativity)
+&quot;Efitss&quot;   : <a href="#NWD1">prettyIcon</a>(Ginrange(-2^(e.n-1), e.x, 2^(e.n-1)), precedence,associativity)
+</pre><pre><a name="NWIcoA-casO-A" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-9">&lt;-</a>D<a href="#NWIcoA-casO-B">-&gt;</a>]</b>
+&quot;Eforce&quot; | &quot;Eforceable&quot;  : {
+                error(&quot;no relocation support in Icon&quot;)
+                    (if type(e.x) == &quot;Eclosure_loc&quot; then &quot;pc_&quot; else &quot;&quot;) || 
+                    &quot;location&quot; ||
+                    (if type(e) == &quot;Eforceable&quot; then &quot;_known&quot; else &quot;&quot;) ||
+                    &quot;$t${(&quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot;)$}$b&quot;
+             }
+</pre><pre><a name="NWIcoA-casO-B" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-A">&lt;-</a>D<a href="#NWIcoA-casO-C">-&gt;</a>]</b>
+&quot;Enot&quot;      : { s := &quot;not &quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;not&quot;])
+                <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;not&quot;, precedence)
+              }
+</pre><pre><a name="NWIcoA-casO-C" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-B">&lt;-</a>D<a href="#NWIcoA-casO-D">-&gt;</a>]</b>
+&quot;Enosimp&quot;   : <a href="#NWD1">prettyIcon</a>(e.x, precedence, associativity)
+</pre><pre><a name="NWIcoA-casO-D" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-C">&lt;-</a>D<a href="#NWIcoA-casO-E">-&gt;</a>]</b>
+&quot;Sstmts&quot;    : &quot;$t${{ $c&quot; || commaseparate(maplist2(<a href="#NWD1">prettyIcon</a>, e.x), &quot; $n&quot;) || &quot; $b$c}$}&quot;
+</pre><pre><a name="NWIcoA-casO-E" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-D">&lt;-</a>D<a href="#NWIcoA-casO-F">-&gt;</a>]</b>
+&quot;Gcall&quot; : { l := []; every put(l, <a href="#NWD1">prettyIcon</a>(!e.args))
+            Cnoreserve(e.name) || &quot;(&quot; || commaseparate(l) || &quot;)&quot;
+         }
+</pre><pre><a name="NWIcoA-casO-F" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-E">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+&quot;Einstance_input&quot; : { 
+               s := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;.&quot;]) || &quot;.&quot; || e.name
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;.&quot;, precedence)
+             }
+&quot;Einstance_tagged&quot; : { 
+               s := &quot;type(&quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;.&quot;]) || &quot; == &quot; || 
+                                image(e.cons.name)
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;==&quot;, precedence)
+             }
+</pre><p>
+<a name="NWD6">I assume the if statement has been simplified, so there are no arms beyond</a>
+any <code>else</code> arm
+<pre><a name="NWIcoA-casO-G" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-F">&lt;-</a>D<a href="#NWIcoA-casO-H">-&gt;</a>]</b>
+&quot;Sif&quot;      : { preif := &quot;&quot;
+               s := &quot;&quot;
+               every a := !e.arms do {
+                 s ||:= preif || <a href="#NWIcoA-*-3">Icontest</a>(a.guard) || <a href="#NWIcoA-*-4">Iconarm</a>(a.x)
+                 preif := &quot;$nelse &quot;
+               }
+               &quot;${&quot; || s || &quot;$}&quot;
+             }
+</pre><pre><a name="NWIcoA-casO-H" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWIcoA-casO-I">-&gt;</a>]</b>
+&quot;Efail&quot; : error(&quot;Generate-time operation failed: &quot;, e.msg)
+</pre><pre><a name="NWIcoA-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-2">&lt;-</a>D<a href="#NWIcoA-*-4">-&gt;</a>]</b>
+procedure <a href="#NWIcoA-*-3">Icontest</a>(guard)
+  return if guard_always_satisfied(guard) then &quot;&quot;
+         else &quot;if $t${&quot; || <a href="#NWD1">prettyIcon</a>(guard) || &quot; then$}$b &quot;
+end
+</pre><blockquote>Defines <a href="#NWI-Icontest"><code>Icontest</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWIcoA-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-3">&lt;-</a>D<a href="#NWIcoA-*-5">-&gt;</a>]</b>
+procedure <a href="#NWIcoA-*-4">Iconarm</a>(e)
+  return if type(e) == (&quot;Gblock&quot;|&quot;Sstmts&quot;) then <a href="#NWD1">prettyIcon</a>(e) || &quot; &quot;
+         else &quot;$t$c${&quot; || <a href="#NWD1">prettyIcon</a>(e) || &quot;$}$b &quot;
+end
+</pre><blockquote>Defines <a href="#NWI-Iconarm"><code>Iconarm</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWIcoA-casO-I" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-H">&lt;-</a>D<a href="#NWIcoA-casO-J">-&gt;</a>]</b>
+&quot;Stagcase&quot; : { s := &quot;case type(&quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;.&quot;]) ||&quot;) of {$t${&quot;
+              every c := kept_constructors(e.type) do
+                s ||:= &quot;$n  &quot; || image(c.name) || &quot; : {$t$c${&quot; ||
+                          <a href="#NWD1">prettyIcon</a>(e.arms[c]) || &quot; $c}$}$b&quot;
+              s || &quot;$ndefault: &amp;null+1$}$b$c} # &quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot;\n&quot;
+            }
+</pre><pre><a name="NWIcoA-casO-J" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-I">&lt;-</a>D<a href="#NWIcoA-casO-K">-&gt;</a>]</b>
+&quot;Sfail&quot;    : { s := &quot;fail($t${&quot; || image(escape_dollars(e.fmt))
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= &quot;, $o&quot; || <a href="#NWD1">prettyIcon</a>(\a, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;,&quot;])
+               s ||:= &quot;$}$b);&quot;
+               <a href="#NWIcoA-*-6">Iconbracket</a>(s, &quot;app&quot;, precedence)
+             }
+&quot;Sepsilon&quot; : &quot;{ \&quot;skip\&quot; }&quot;
+</pre><pre><a name="NWIcoA-casO-K" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-J">&lt;-</a>D<a href="#NWIcoA-casO-L">-&gt;</a>]</b>
+&quot;Sclosure&quot; : <a href="#NWD1">prettyIcon</a>(\e.creation) | impossible(&quot;creating closure&quot;)
+</pre><pre><a name="NWIcoA-casO-L" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-K">&lt;-</a>D<a href="#NWIcoA-casO-M">-&gt;</a>]</b>
+&quot;Glines&quot;    : { s := &quot;&quot;; every s ||:= <a href="#NWD1">prettyIcon</a>(!e.x) || &quot;\n&quot;; s }
+&quot;Gresynch&quot;  : &quot;$n#line &quot; || e.line  || &quot; &quot; || image(\e.file | &quot;generated-code&quot;)
+</pre><pre><a name="NWIcoA-casO-M" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-L">&lt;-</a>D<a href="#NWIcoA-casO-N">-&gt;</a>]</b>
+&quot;Gblock&quot;    : { s := &quot;{ ${$t$c&quot;
+                every s ||:= <a href="#NWD1">prettyIcon</a>(!e.decls) || &quot;$n&quot;
+                s ||:= commaseparate(maplist(<a href="#NWD1">prettyIcon</a>, e.stmts), &quot;$n&quot;)
+                s || &quot;$b $c}$}&quot;
+              }
+&quot;Gdecl&quot;     : &quot;${ &quot; || e.name || &quot; := $t$c&quot; || <a href="#NWD1">prettyIcon</a>(\e.init) || &quot;$b$}&quot;
+</pre><pre><a name="NWIcoA-casO-N" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-M">&lt;-</a>D<a href="#NWIcoA-casO-O">-&gt;</a>]</b>
+&quot;Gdeclnamearray&quot; : {
+  error(&quot;no name arrays in Icon&quot;)
+  /na_count := 0
+  /e.na.codename := &quot;MATCH_name_&quot; || e.na.field.field.name || &quot;_&quot; || (na_count +:= 1)
+  /e.na.storageclass := &quot;static&quot;
+  s := e.na.storageclass || &quot; char *&quot; || e.na.codename || &quot;[] = {&quot;
+  s ||:= &quot;${$t&quot;
+  every i := 0 to e.na.hi - 1 do
+    s ||:= &quot; $c&quot; || image(\e.na.tbl[i]|0) || &quot;,&quot;
+  s || &quot;$b $c$}}&quot;
+}
+</pre><pre><a name="NWIcoA-locb-3" href="#NWIcoA-locb-1"><dfn>&lt;local declarations for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-locb-2">&lt;-</a>D]</b>
+static na_count
+</pre><pre><a name="NWIcoA-casO-O" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-N">&lt;-</a>D<a href="#NWIcoA-casO-P">-&gt;</a>]</b>
+&quot;Gsetname&quot;  :   error(&quot;no name arrays in Icon&quot;)
+</pre><pre><a name="NWIcoA-casO-P" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-O">&lt;-</a>D<a href="#NWIcoA-casO-Q">-&gt;</a>]</b>
+&quot;Gcase&quot;     : { s := &quot;case &quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot; of {$t${ &quot;
+                every s ||:= <a href="#NWD1">prettyIcon</a>(!e.arms)
+                s || &quot;$ndefault: &amp;null+1$}$b$c} # &quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot;\n&quot;
+               }
+&quot;Gcasearm&quot;  : { s := &quot;$n&quot;
+                every i := 1 to *e.tags by 2 do {
+                  if e.tags[i] + 1 = e.tags[i+1] then 
+                    s ||:= &quot;$n &quot; || e.tags[i] || &quot;: &quot; 
+                  else {
+                    every s ||:= &quot;$n &quot; || (e.tags[i] to (e.tags[i+1]-1)) || &quot; | &quot;
+                    s ||:= &quot;&amp;fail : &quot;
+                  }
+                } 
+                s ||:= &quot;{$t$c${&quot; || <a href="#NWD1">prettyIcon</a>(e.x) || &quot; $}$b}&quot;
+              }
+</pre><pre><a name="NWIcoA-casO-Q" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-P">&lt;-</a>D<a href="#NWIcoA-casO-R">-&gt;</a>]</b>
+&quot;Ginrange&quot;  : { x := <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;&lt;&quot;])
+                if e.lo + 1 = e.hi then {
+                  <a href="#NWIcoA-*-6">Iconbracket</a>(x || &quot; = &quot; || e.lo, &quot;=&quot;, precedence)
+                } else {
+                  <a href="#NWIcoA-*-6">Iconbracket</a>(e.lo || &quot; &lt;= &quot; || x || &quot; &lt; &quot; || e.hi, &quot;=&quot;, precedence)
+                }
+              }
+&quot;Gsetname&quot;  : error(&quot;no setname ion Icon&quot;)
+&quot;Gasgn&quot;  : &quot;${&quot; || <a href="#NWD1">prettyIcon</a>(e.lhs) || &quot; := $t$o&quot; || <a href="#NWD1">prettyIcon</a>(e.x, <a href="#NWIcoA-*-6">Iconprec</a>[&quot;:=&quot;]) || &quot;$b$}&quot;
+</pre><pre><a name="NWIcoA-casO-R" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-Q">&lt;-</a>D<a href="#NWIcoA-casO-S">-&gt;</a>]</b>
+&quot;Gnomatch&quot;  : &quot;&amp;null+1 /* no match */$n&quot;
+&quot;Tunsigned&quot; : error(&quot;no types in Icon&quot;)
+&quot;Tsigned&quot;   : error(&quot;no types in Icon&quot;)
+</pre><pre><a name="NWIcoA-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-4">&lt;-</a>D<a href="#NWIcoA-*-6">-&gt;</a>]</b>
+</pre><pre><a name="NWIcoA-casO-S" href="#NWIcoA-casO-1"><dfn>&lt;cases for <code>prettyIcon</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWIcoA-casO-R">&lt;-</a>D]</b>
+&quot;absolute_field&quot; : 
+   <a href="#NWD1">prettyIcon</a>(super_simplify(Eslice(literal(wordname(e)), e.field.lo, fwidth(e.field))),
+           precedence, associativity, nohex)
+</pre><pre><a name="NWIcoA-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-5">&lt;-</a>D<a href="#NWIcoA-*-7">-&gt;</a>]</b>
+global <a href="#NWIcoA-*-6">Iconprec</a>, <a href="#NWIcoA-*-6">Iconassoc</a>
+procedure <a href="#NWIcoA-*-6">Iconbracket</a>(s, op, p, a)
+  /a := &quot;L&quot;
+  return &quot;${&quot; || (if <a href="#NWIcoA-*-6">Iconprec</a>[op] &gt; p | (<a href="#NWIcoA-*-6">Iconprec</a>[op] = p &amp; <a href="#NWIcoA-*-6">Iconassoc</a>[p] == a) then s
+                   else &quot;(&quot; || s || &quot;)&quot;) || &quot;$}&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-Iconassoc"><code>Iconassoc</code></a>, <a href="#NWI-Iconbracket"><code>Iconbracket</code></a>, <a href="#NWI-Iconprec"><code>Iconprec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWIcoA-inif-1" href="#NWIcoA-inif-1"><dfn>&lt;initialize <code>Iconprec</code> and <code>Iconassoc</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+ops := [&quot;N&quot;, [&quot;low&quot;],
+    &quot;L&quot;, [&quot;,&quot;],
+    &quot;L&quot;, [&quot;&amp;&quot;],
+    &quot;L&quot;, [&quot;?&quot;],
+    &quot;L&quot;, [&quot;:=&quot;,&quot;&lt;-&quot;,&quot;:=:&quot;,&quot;&lt;-&gt;&quot;],
+    &quot;L&quot;, [&quot;to&quot;],
+    &quot;L&quot;, [&quot;|&quot;],
+    &quot;L&quot;, [&quot;&lt;&quot;,&quot;&lt;=&quot;,&quot;=&quot;,&quot;&gt;=&quot;,&quot;&gt;&quot;,&quot;~=&quot;,&quot;&lt;&lt;&quot;,&quot;&lt;&lt;=&quot;,&quot;==&quot;,&quot;&gt;&gt;=&quot;,&quot;&gt;&gt;&quot;,&quot;~==&quot;,&quot;===&quot;,&quot;~===&quot;],
+    &quot;L&quot;, [&quot;||&quot;,&quot;|||&quot;],
+    &quot;L&quot;, [&quot;++&quot;,&quot;--&quot;],
+    &quot;L&quot;, [&quot;+&quot;,&quot;-&quot;],
+    &quot;L&quot;, [&quot;*&quot;,&quot;/&quot;,&quot;%&quot;,&quot;**&quot;],
+    &quot;L&quot;, [&quot;^&quot;],
+    &quot;L&quot;, [&quot;\\&quot;,&quot;@&quot;,&quot;!&quot;],
+    &quot;N&quot;, [&quot;not&quot;],
+    &quot;N&quot;, [&quot;app&quot;],
+    &quot;N&quot;, [&quot;high&quot;]
+  ]
+<a href="#NWIcoA-*-6">Iconprec</a> := table([])  # missed lookups break arithmetic comparisons
+<a href="#NWIcoA-*-6">Iconassoc</a> := table()
+every i := 1 to *ops by 2 do {
+  every <a href="#NWIcoA-*-6">Iconprec</a>[!ops[i+1]] := i
+  <a href="#NWIcoA-*-6">Iconassoc</a>[i] := ops[i]
+}
+</pre><p>
+<pre><a name="NWIcoA-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-6">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWIcoA-*-7">Iconop</a>(op)
+  return if op == &quot;!=&quot; then &quot;~=&quot; else op
+end
+</pre><blockquote>Defines <a href="#NWI-Iconop"><code>Iconop</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD7">Support for decoding code in Icon</a></h2>
+Nonexistent.
+<pre><a name="NWIcoA-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWIcoA-*-7">&lt;-</a>D]</b>
+procedure <a href="#NWD7">Generate_Icon</a>()
+  pretty := <a href="#NWD1">prettyIcon</a>
+  hex_prefix := &quot;16r&quot;
+  gen_outer_decls := []
+  gen_file_header := []
+  fetchtab[&quot;type&quot;] := &quot;bogus&quot;;
+  fetchtab[&quot;add&quot;] := &quot;((%a) + %o)&quot;
+  fetchtab[&quot;integer&quot;] := &quot;(bogus)(%a)&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-Generate_Icon"><code>Generate_Icon</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWIcoA-*-2">D2</a>, <a href="#NWIcoA-*-3">D3</a>, <a href="#NWIcoA-*-4">D4</a>, <a href="#NWIcoA-*-5">D5</a>, <a href="#NWIcoA-*-6">D6</a>, <a href="#NWIcoA-*-7">D7</a>, <a href="#NWD7">D8</a>
+<li><a href="#NWIcoA-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWIcoA-addR.2-1">D2</a>
+<li><a href="#NWIcoA-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWIcoA-addR-1">D2</a>
+<li><a href="#NWIcoA-casO-1"><i>&lt;cases for <code>prettyIcon</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWIcoA-casO-1">D2</a>, <a href="#NWIcoA-casO-2">D3</a>, <a href="#NWIcoA-casO-3">D4</a>, <a href="#NWIcoA-casO-4">D5</a>, <a href="#NWIcoA-casO-5">D6</a>, <a href="#NWD3">D7</a>, <a href="#NWIcoA-casO-7">D8</a>, <a href="#NWIcoA-casO-8">D9</a>, <a href="#NWIcoA-casO-9">D10</a>, <a href="#NWIcoA-casO-A">D11</a>, <a href="#NWIcoA-casO-B">D12</a>, <a href="#NWIcoA-casO-C">D13</a>, <a href="#NWIcoA-casO-D">D14</a>, <a href="#NWIcoA-casO-E">D15</a>, <a href="#NWIcoA-casO-F">D16</a>, <a href="#NWD6">D17</a>, <a href="#NWIcoA-casO-H">D18</a>, <a href="#NWIcoA-casO-I">D19</a>, <a href="#NWIcoA-casO-J">D20</a>, <a href="#NWIcoA-casO-K">D21</a>, <a href="#NWIcoA-casO-L">D22</a>, <a href="#NWIcoA-casO-M">D23</a>, <a href="#NWIcoA-casO-N">D24</a>, <a href="#NWIcoA-casO-O">D25</a>, <a href="#NWIcoA-casO-P">D26</a>, <a href="#NWIcoA-casO-Q">D27</a>, <a href="#NWIcoA-casO-R">D28</a>, <a href="#NWIcoA-casO-S">D29</a>
+<li><a href="#NWD4"><i>&lt;closure call to <code>emitter</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWD4">D2</a>
+<li><a href="#NWIcoA-dirZ-1"><i>&lt;direct call through <code>emittername</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWIcoA-dirZ-1">D2</a>
+<li><a href="#NWD5"><i>&lt;if direct style and late pc, add <code>ENCODE_pc</code> declaration to <code>s</code> and set <code>pc_override</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWD5">D2</a>
+<li><a href="#NWIcoA-inif-1"><i>&lt;initialize <code>Iconprec</code> and <code>Iconassoc</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWIcoA-inif-1">D2</a>
+<li><a href="#NWIcoA-locb-1"><i>&lt;local declarations for <code>prettyIcon</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWIcoA-locb-1">D2</a>, <a href="#NWIcoA-locb-2">D3</a>, <a href="#NWIcoA-locb-3">D4</a>
+<li><a href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWIcoA-casO-1">U1</a>, <a href="#NWD2">D2</a>
+<li><a href="#NWIcoA-old1J-1"><i>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWIcoA-old1J-1">D1</a>
+<li><a href="#NWIcoA-resN-1"><i>&lt;restore <code>pc_override</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWIcoA-resN-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-Generate_Icon" href="#NWD7">Generate_Icon</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-Iconarm" href="#NWIcoA-*-4">Iconarm</a>: <a href="#NWD6">U1</a>, <a href="#NWIcoA-*-4">D2</a>
+<li><a name="NWI-Iconassoc" href="#NWIcoA-*-6">Iconassoc</a>: <a href="#NWIcoA-*-6">D1</a>, <a href="#NWIcoA-inif-1">U2</a>
+<li><a name="NWI-Iconbracket" href="#NWIcoA-*-6">Iconbracket</a>: <a href="#NWIcoA-casO-1">U1</a>, <a href="#NWD2">U2</a>, <a href="#NWIcoA-old1J-1">U3</a>, <a href="#NWIcoA-casO-2">U4</a>, <a href="#NWIcoA-casO-5">U5</a>, <a href="#NWD4">U6</a>, <a href="#NWIcoA-casO-B">U7</a>, <a href="#NWIcoA-casO-F">U8</a>, <a href="#NWIcoA-casO-J">U9</a>, <a href="#NWIcoA-casO-Q">U10</a>, <a href="#NWIcoA-*-6">D11</a>
+<li><a name="NWI-Iconop" href="#NWIcoA-*-7">Iconop</a>: <a href="#NWIcoA-casO-1">U1</a>, <a href="#NWIcoA-*-7">D2</a>
+<li><a name="NWI-Iconprec" href="#NWIcoA-*-6">Iconprec</a>: <a href="#NWIcoA-casO-1">U1</a>, <a href="#NWIcoA-addR-1">U2</a>, <a href="#NWIcoA-addR.2-1">U3</a>, <a href="#NWIcoA-old1J-1">U4</a>, <a href="#NWIcoA-casO-2">U5</a>, <a href="#NWIcoA-casO-3">U6</a>, <a href="#NWIcoA-casO-5">U7</a>, <a href="#NWIcoA-dirZ-1">U8</a>, <a href="#NWD4">U9</a>, <a href="#NWIcoA-casO-B">U10</a>, <a href="#NWIcoA-casO-F">U11</a>, <a href="#NWIcoA-casO-I">U12</a>, <a href="#NWIcoA-casO-J">U13</a>, <a href="#NWIcoA-casO-Q">U14</a>, <a href="#NWIcoA-*-6">D15</a>, <a href="#NWIcoA-inif-1">U16</a>
+<li><a name="NWI-Icontest" href="#NWIcoA-*-3">Icontest</a>: <a href="#NWD6">U1</a>, <a href="#NWIcoA-*-3">D2</a>
+<li><a name="NWI-pc_override" href="#NWIcoA-*-2">pc_override</a>: <a href="#NWD5">U1</a>, <a href="#NWIcoA-resN-1">U2</a>, <a href="#NWIcoA-casO-7">U3</a>, <a href="#NWIcoA-*-2">D4</a>
+<li><a name="NWI-prettyIcon" href="#NWD1">prettyIcon</a>: <a href="#NWD1">D1</a>, <a href="#NWIcoA-casO-1">U2</a>, <a href="#NWIcoA-addR-1">U3</a>, <a href="#NWIcoA-addR.2-1">U4</a>, <a href="#NWIcoA-old1J-1">U5</a>, <a href="#NWIcoA-casO-2">U6</a>, <a href="#NWIcoA-casO-3">U7</a>, <a href="#NWIcoA-casO-4">U8</a>, <a href="#NWIcoA-casO-5">U9</a>, <a href="#NWD3">U10</a>, <a href="#NWIcoA-dirZ-1">U11</a>, <a href="#NWD4">U12</a>, <a href="#NWIcoA-casO-9">U13</a>, <a href="#NWIcoA-casO-A">U14</a>, <a href="#NWIcoA-casO-B">U15</a>, <a href="#NWIcoA-casO-C">U16</a>, <a href="#NWIcoA-casO-D">U17</a>, <a href="#NWIcoA-casO-E">U18</a>, <a href="#NWIcoA-casO-F">U19</a>, <a href="#NWIcoA-*-3">U20</a>, <a href="#NWIcoA-*-4">U21</a>, <a href="#NWIcoA-casO-I">U22</a>, <a href="#NWIcoA-casO-J">U23</a>, <a href="#NWIcoA-casO-K">U24</a>, <a href="#NWIcoA-casO-L">U25</a>, <a href="#NWIcoA-casO-M">U26</a>, <a href="#NWIcoA-casO-P">U27</a>, <a href="#NWIcoA-casO-Q">U28</a>, <a href="#NWIcoA-casO-S">U29</a>, <a href="#NWD7">U30</a>
+</ul>
+</body></html>
+

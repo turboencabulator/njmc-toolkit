@@ -1,0 +1,82 @@
+% l2h ignore change {
+<<*>>=
+global debug, debugs, debugstack
+procedure wrerr(L[])
+    write ! ([&errout] ||| L)
+end
+procedure wrerrs(L[])
+    writes ! ([&errout] ||| L)
+end
+procedure nop()
+end
+
+procedure debug_on()
+  /debugstack := []
+  every push(debugstack, debug | debugs)
+  debug := wrerr
+  debugs := wrerrs
+  return
+end
+
+procedure debug_off()
+  /debugstack := []
+  every push(debugstack, debug | debugs)
+  debug := debugs := nop
+  return
+end
+
+procedure debug_pop()
+  every debugs | debug := pop(debugstack)
+  return
+end
+
+<<integer-input error>>=
+# error("unknown integer input `", image(i),"' of type `", type(i), "'")
+@
+Note this procedure doesn't parenthesize properly.
+<<*>>=
+procedure astimage(n)
+    return case type(n) of { 
+        "pattern"  : "<pattern> " || patternimage(n)
+        "Pident"   : n.name
+        "Pcon"     : n.name || " " || n.relop || " " || astimage(n.value)
+        "Pand"     : commaseparate(astimage(n.patterns), " & ")
+        "Por"      : commaseparate(astimage(n.patterns), " | ") 
+        "Pseq"     : <<image of [[Pseq]] (possibly with dots)>>
+        "Papp"     : astimage(n.cons) || "(" || commaseparate(astimage(n.args)) || ")"
+        "integer"  : n
+        "string"   : n
+        "Glist"    : astimage(n.values)
+        "list"     : maplist(astimage, n)
+        default    : image(n)
+    }
+end
+<<image of [[Pseq]] (possibly with dots)>>=
+if *n.patterns = 2 & n.patterns[1] === dots_pattern() then 
+  "... " || astimage(n.patterns[2])
+else if *n.patterns = 2 & n.patterns[2] === dots_pattern() then
+  astimage(n.patterns[1]) || " ..."
+else 
+  commaseparate(astimage(n.patterns), "; ")
+<<*>>=
+procedure solnimage(soln)
+  s := envimage(soln.answers, "answers") || "\n"
+  s ||:= "Uses " || commafy(maplist(expimage, sort(\soln.used))) || "\n"
+  s ||:= "Defines " || commafy(maplist(expimage, sort(\soln.defined))) || "\n"
+  s ||:= "(constraints: " || commafy(maplist(expimage, \soln.constraints)) || " )"
+  return s
+end
+<<*>>=
+procedure injectimage(i)
+  return "\tas pattern: " || expimage(i.pattern) || "\n" ||
+	 "\tas integer: " || expimage(i.integer) || "\n" ||
+	 "\tas consop: " || expimage(i.consop) || "\n" 
+end
+@ Show with positive coefficients.
+<<*>>=
+procedure zeroimage(z)
+  e := eqn(table(0), "=", table(0))
+  every k := key(z) do
+    if z[k] > 0 then e.left[k] := z[k] else e.right[k] := -z[k]
+  return expimage(e)
+end

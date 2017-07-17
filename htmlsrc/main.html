@@ -1,0 +1,874 @@
+<html><head><title> main.nw</title></head><body>
+<h1><a name="NWD1">Main program</a></h1>
+<pre><a name="NWmai7-verE-1" href="#NWD1"><dfn>&lt;version string&gt;=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b>
+&quot;0.5&quot;
+</pre><pre><a name="NWmai7-*-1" href="#NWmai7-*-1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWmai7-*-2">-&gt;</a>]</b>
+link pushtrace
+</pre><pre><a name="NWmai7-*-2" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-1">&lt;-</a>D<a href="#NWmai7-*-3">-&gt;</a>]</b>
+procedure <a href="#NWmai7-*-2">usage</a>() 
+    every write(&amp;errout, ![
+        &quot;Usage: tools [options] [specfile ...]&quot;,
+        &quot;Options:&quot;,
+        <a name="NWmai7-*-2-u1" href="#NWmai7-usaB-1"><i>&lt;usage lines&gt;</i></a>
+        &quot;`-' may be used in place of a file name to mean stdin or stdout&quot;])
+    stop()
+end
+</pre><blockquote>Defines <a href="#NWI-usage"><code>usage</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-casJ-1" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[D<a href="#NWmai7-casJ-2">-&gt;</a>]</b>
+&quot;-alt&quot;        : alt := &amp;output
+</pre><pre><a name="NWmai7-refF-1" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;=</dfn></a> <b>[D<a href="#NWmai7-refF-2">-&gt;</a>]</b>
+\tkoption{d}{alt}{Show <a href="#NWmai7-*-F">alternates</a> at decision-tree leaves}
+Prints something to do with alternatives at the leaves of decision
+trees?
+I'm no longer sure\ldots
+\endtkoption
+</pre><pre><a name="NWmai7-usaB-1" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[D<a href="#NWmai7-usaB-2">-&gt;</a>]</b>
+&quot;    -ascii-dag file   write an ascii representation of matching-statement code&quot;,
+</pre><pre><a name="NWmai7-casJ-2" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-1">&lt;-</a>D<a href="#NWmai7-casJ-3">-&gt;</a>]</b>
+&quot;-ascii-dag&quot; : ascii_dag   := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-2" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-1">&lt;-</a>D<a href="#NWmai7-refF-3">-&gt;</a>]</b>
+\tkoption{d}{ascii-dag \file}
+   {write an ascii representation of decision DAGs used in matching statements}
+Writes on {\file} an ASCII representation of the decision trees
+(actually DAGs) used
+to implement matching statements.
+Useful for debugging, especially performance debugging.
+\warning{Probably broken.  In any case, it should be rewritten to use
+the new prettyprinter.}
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-2" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-1">&lt;-</a>D<a href="#NWmai7-usaB-3">-&gt;</a>]</b>
+&quot;    -ascii-tree file  write an ascii representation of matchin-statement trees&quot;,
+</pre><pre><a name="NWmai7-casJ-3" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-2">&lt;-</a>D<a href="#NWmai7-casJ-4">-&gt;</a>]</b>
+&quot;-ascii-tree&quot; : ascii_tree := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-3" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-2">&lt;-</a>D<a href="#NWmai7-refF-4">-&gt;</a>]</b>
+\tkoption{d}{ascii-tree \file}
+   {write an ascii representation of decision trees used to build matching DAGs}
+Writes on {\file} an ASCII representation of the decision trees before
+they are converted to DAGs.
+This option is really here only in case something goes badly wrong
+with the dagging process (or in case you're curious).
+\warning{This, too, is probably broken.}
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-3" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-2">&lt;-</a>D<a href="#NWmai7-usaB-4">-&gt;</a>]</b>
+&quot;    -asm-encoder file generate assembly-emitting encoding procedures on file.[ch]&quot;,
+</pre><pre><a name="NWmai7-casJ-4" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-3">&lt;-</a>D<a href="#NWmai7-casJ-5">-&gt;</a>]</b>
+&quot;-asm-encoder&quot; : asmencoderfilename  := get(args)
+</pre><pre><a name="NWmai7-refF-4" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-3">&lt;-</a>D<a href="#NWmai7-refF-5">-&gt;</a>]</b>
+\tkoption{E}{asm-encoder {\file}}{generate assembly-emitting encoding procedures on \file}
+Like {\tt -encoder}, but the generated encoding procedures use
+{\tt asmprintf}, {\tt asmprintfd}, and {\tt asmprintreloc} to emit
+assembly language instead of binary.
+Puts the implementation into {\tt\file.c} and puts suitable
+declarations into {\tt\file.h}.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-4" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-3">&lt;-</a>D<a href="#NWmai7-usaB-5">-&gt;</a>]</b>
+&quot;    -asm-grammar file generate assembly-language grammar on file&quot;,
+</pre><pre><a name="NWmai7-casJ-5" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-4">&lt;-</a>D<a href="#NWmai7-casJ-6">-&gt;</a>]</b>
+&quot;-asm-grammar&quot; : <a href="#NWmai7-*-9">asmgrammarfilename</a>  := get(args)
+</pre><pre><a name="NWmai7-refF-5" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-4">&lt;-</a>D<a href="#NWmai7-refF-6">-&gt;</a>]</b>
+\tkoption{?}{asm-grammar {\file}}{generate assembly-language grammar on \file}
+Writes an EBNF grammar to the specified \file.
+Semantic actions call encoding procedures either direct or indirect
+according to whether the \opt{indirect} option is used.
+In the current <a href="#NWmai7-*-9">version</a> of the toolkit, the grammar written is not the
+input of any known parser generator---it is for illustrative purposes only.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-5" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-4">&lt;-</a>D<a href="#NWmai7-usaB-6">-&gt;</a>]</b>
+&quot;    -byteorder O      use order O (one of [blm]) to emit words&quot;,
+</pre><pre><a name="NWmai7-casJ-6" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-5">&lt;-</a>D<a href="#NWmai7-casJ-7">-&gt;</a>]</b>
+&quot;-byteorder&quot;  : <a href="#NWmai7-*-9">emittername</a> := &quot;emit&quot; || get(args)
+</pre><pre><a name="NWmai7-refF-6" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-5">&lt;-</a>D<a href="#NWmai7-refF-7">-&gt;</a>]</b>
+\tkoption{E}{byteorder \optarg{string}}{choose emission procedure}
+This misleadingly named option actually determines the name of the
+function that the encoding procedures use to emit tokens 
+(\texttt{emit}\optarg{string}).
+Since the toolkit library provides \texttt{emitb}, \texttt{emitl}, and
+\texttt{emitm} procedures, which emit tokens using big-endian,
+little-endian, or machine-dependent byte orders, the values
+\texttt{b}, \texttt{l}, and \texttt{m} are good choices.
+My favorite trick, however, is to use \texttt{-byteorder X}, then use
+the C compiler to pick a byte order later on, for example, by
+compiling with {\tt cc -DemitX=emitfast}.
+This trick avoids running the generator multiple times, which is good,
+because running the generator can be expensive.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-6" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-5">&lt;-</a>D<a href="#NWmai7-usaB-7">-&gt;</a>]</b>
+&quot;    -c                generate C code [default]&quot;,
+</pre><pre><a name="NWmai7-casJ-7" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-6">&lt;-</a>D<a href="#NWmai7-casJ-8">-&gt;</a>]</b>
+&quot;-c&quot; : { Generate_C(); <a href="#NWmai7-*-9">interface_extension</a> := &quot;.h&quot;; <a href="#NWmai7-*-9">implementation_extension</a> := &quot;.c&quot; }
+</pre><pre><a name="NWmai7-refF-7" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-6">&lt;-</a>D<a href="#NWmai7-refF-8">-&gt;</a>]</b>
+\tkoption{DE}{c}{generate C code}%
+Tells the generator to generate C~code (the only option),
+or tells the translator that the code emitted for the {\tt -decoder}
+file should be C code.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-7" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-6">&lt;-</a>D<a href="#NWmai7-usaB-8">-&gt;</a>]</b>
+&quot;    -checker file    generate a checker on file&quot;,
+</pre><pre><a name="NWmai7-casJ-8" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-7">&lt;-</a>D<a href="#NWmai7-casJ-9">-&gt;</a>]</b>
+&quot;-checker&quot;    :  { checkerfilename := get(args) }
+</pre><pre><a name="NWmai7-refF-8" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-7">&lt;-</a>D<a href="#NWmai7-refF-9">-&gt;</a>]</b>
+\tkoption{A}{checker \file}{generate a checker on \file}%
+Writes the source for a checker in {\file}.
+For each instruction in a specification,
+the checker program emits assembly code and binary code in ASCII
+into an assembly file. The resulting file is then assembled
+and disassembled. 
+The disassembled output should contain pairs of matching instructions.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-8" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-7">&lt;-</a>D<a href="#NWmai7-usaB-9">-&gt;</a>]</b>
+&quot;    -count            count invocations of encoding procedures&quot;,
+</pre><pre><a name="NWmai7-casJ-9" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-8">&lt;-</a>D<a href="#NWmai7-casJ-A">-&gt;</a>]</b>
+&quot;-count&quot;      : <a href="#NWmai7-*-9">gen_counters</a> := 1
+</pre><pre><a name="NWmai7-refF-9" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-8">&lt;-</a>D<a href="#NWmai7-refF-A">-&gt;</a>]</b>
+\tkoption{E}{count}{Count invocations of encoding procedures}
+Tells the generator to include code in encoding procedures that
+counts the invocations of such procedures.
+This is useful for determining the static frequency of an instruction
+in a program, e.g., how many loads are generated.
+<a name="NWmai7-refF-9-u1" href="#nw@notdef"><i>&lt;refman: counter functions&gt;</i></a>
+\endtkoption
+</pre><p>
+
+<pre><a name="NWmai7-usaB-9" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-8">&lt;-</a>D<a href="#NWmai7-usaB-A">-&gt;</a>]</b>
+&quot;    -debug-bal file   extra debugging info for balancer&quot;,
+</pre><pre><a name="NWmai7-casJ-A" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-9">&lt;-</a>D<a href="#NWmai7-casJ-B">-&gt;</a>]</b>
+&quot;-debug-bal&quot; : <a href="#NWmai7-*-3">baldebug</a> := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-A" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-9">&lt;-</a>D<a href="#NWmai7-refF-B">-&gt;</a>]</b>
+\tkoption{d}{debug-bal \file}
+  {write extra debugging information about the balancer}
+This option causes more information about the operation of the balancer to
+be written to \file, as an aid to debugging unsolvable sets of equations.
+\endtkoption
+</pre><pre><a name="NWmai7-*-3" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-2">&lt;-</a>D<a href="#NWmai7-*-4">-&gt;</a>]</b>
+global <a href="#NWmai7-*-3">baldebug</a>
+</pre><blockquote>Defines <a href="#NWI-baldebug"><code>baldebug</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-usaB-A" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-9">&lt;-</a>D<a href="#NWmai7-usaB-B">-&gt;</a>]</b>
+&quot;    -debug-checker file  write debugging info about checker&quot;,
+</pre><pre><a name="NWmai7-casJ-B" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-A">&lt;-</a>D<a href="#NWmai7-casJ-C">-&gt;</a>]</b>
+&quot;-debug-checker&quot; : <a href="#NWmai7-*-9">cdebug</a> := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-B" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-A">&lt;-</a>D<a href="#NWmai7-refF-C">-&gt;</a>]</b>
+\tkoption{d}{debug-checker \file}
+  {write information about generating checker inputs}
+To produce a checker program, the toolkit attempts to generate
+test inputs that will satisfy every branch of every constructor. 
+This option writes information about choosing test values onto \file.
+\endtkoption
+</pre><pre><a name="NWmai7-usaB-B" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-A">&lt;-</a>D<a href="#NWmai7-usaB-C">-&gt;</a>]</b>
+&quot;    -debug-heur file  write debugging info about heuristic scores&quot;,
+</pre><pre><a name="NWmai7-casJ-C" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-B">&lt;-</a>D<a href="#NWmai7-casJ-D">-&gt;</a>]</b>
+&quot;-debug-heur&quot; : <a href="#NWmai7-*-9">hdebug</a> := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-C" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-B">&lt;-</a>D<a href="#NWmai7-refF-D">-&gt;</a>]</b>
+\tkoption{d}{debug-heur \file}
+  {write information about heuristic scores for tree-building}
+When building the decision tree, the toolkit uses about a half dozen heuristics 
+to choose the field to test next.
+Each heuristic assigns a score to each field.
+This option writes information about heuristic scoring onto \file.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-C" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-B">&lt;-</a>D<a href="#NWmai7-usaB-D">-&gt;</a>]</b>
+&quot;    -debug-match file write debugging info about matching statements&quot;,
+</pre><pre><a name="NWmai7-casJ-D" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-C">&lt;-</a>D<a href="#NWmai7-casJ-E">-&gt;</a>]</b>
+&quot;-debug-match&quot; : <a href="#NWmai7-*-9">mdebug</a> := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-D" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-C">&lt;-</a>D<a href="#NWmai7-refF-E">-&gt;</a>]</b>
+\tkoption{d}{debug-match \file}
+  {write other information about building matching statements}
+During tree building, writes information about building matching statements onto \file.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-D" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-C">&lt;-</a>D<a href="#NWmai7-usaB-E">-&gt;</a>]</b>
+&quot;    -debug-solver     turn on solver debugging&quot;,
+</pre><pre><a name="NWmai7-casJ-E" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-D">&lt;-</a>D<a href="#NWmai7-casJ-F">-&gt;</a>]</b>
+&quot;-debug-solver&quot; : debug_on()
+</pre><pre><a name="NWmai7-refF-E" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-D">&lt;-</a>D<a href="#NWmai7-refF-F">-&gt;</a>]</b>
+\tkoption{V}{debug-solver}{turn on solver debugging (to {\tt stderr})}
+Makes the equation solver (and a few other parts of the toolkit) print
+lots of debugging information on standard error.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-E" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-D">&lt;-</a>D<a href="#NWmai7-usaB-F">-&gt;</a>]</b>
+&quot;    -debug-split file write debugging info when splitting tree nodes&quot;,
+</pre><pre><a name="NWmai7-casJ-F" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-E">&lt;-</a>D<a href="#NWmai7-casJ-G">-&gt;</a>]</b>
+&quot;-debug-split&quot; : <a href="#NWmai7-*-9">sdebug</a> := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-F" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-E">&lt;-</a>D<a href="#NWmai7-refF-G">-&gt;</a>]</b>
+\tkoption{d}{debug-split \file}{write debugging info when splitting tree nodes}
+During tree building, writes information about splitting internal nodes onto \file.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-F" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-E">&lt;-</a>D<a href="#NWmai7-usaB-G">-&gt;</a>]</b>
+&quot;    -decoder file     from matcher, generate decoder on file&quot;,
+</pre><pre><a name="NWmai7-casJ-G" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-F">&lt;-</a>D<a href="#NWmai7-casJ-H">-&gt;</a>]</b>
+&quot;-decoder&quot; : decoderout := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-G" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-F">&lt;-</a>D<a href="#NWmai7-refF-H">-&gt;</a>]</b>
+\tkoption{D}{decoder {\file}}
+    {from info in \texttt{-matcher} file, generate decoder on \file}
+<a name="NWmai7-refF-G-u1" href="#NWmai7-refb-1"><i>&lt;refman: doc for -matcher and -decoder&gt;</i></a>
+\endtkoption
+</pre><pre><a name="NWmai7-refb-1" href="#NWmai7-refb-1"><dfn>&lt;refman: doc for -matcher and -decoder&gt;=</dfn></a> <b>(<a href="#NWmai7-refF-G">&lt;-U</a> <a href="#NWmai7-refF-X">U-&gt;</a>)</b>
+Invoke the toolkit translator, which translates embedding matching
+statements from the {\tt -matcher} file and writes the results on the
+{\tt -decoder} file.
+To use the translator, both {\tt -matcher} and {\tt -decoder} must be
+given exactly once.
+</pre><p>
+<pre><a name="NWmai7-usaB-G" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-F">&lt;-</a>D<a href="#NWmai7-usaB-H">-&gt;</a>]</b>
+&quot;    -dis file         generate disassembly code on file&quot;,
+</pre><pre><a name="NWmai7-casJ-H" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-G">&lt;-</a>D<a href="#NWmai7-casJ-I">-&gt;</a>]</b>
+&quot;-dis&quot;        : <a href="#NWmai7-*-9">disassemblyfilename</a>  := get(args)
+</pre><pre><a name="NWmai7-refF-H" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-G">&lt;-</a>D<a href="#NWmai7-refF-I">-&gt;</a>]</b>
+\tkoption{D}{disr {\file}}{generate disassembly code on \file}
+Generate code for disassembly on \file.
+In flux right now.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-H" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-G">&lt;-</a>D<a href="#NWmai7-usaB-I">-&gt;</a>]</b>
+&quot;    -dot file         write dot(1) commands showing matching statements&quot;,
+</pre><pre><a name="NWmai7-casJ-I" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-H">&lt;-</a>D<a href="#NWmai7-casJ-J">-&gt;</a>]</b>
+&quot;-dot&quot; : dotfile   := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-I" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-H">&lt;-</a>D<a href="#NWmai7-refF-J">-&gt;</a>]</b>
+\tkoption{d}{dot {\file}}{write {\tt dot} commands showing matching statements}
+Creates output for the {\tt dot} graph-drawing program, which can be
+used to create a graphical representation of the decision tree
+(actually a DAG) used to implement matching statements.
+The output is written to {\file}.
+\warning{This option probably doesn't work.
+It certainly doesn't understand multiple branches with identical
+patterns but different conditions.}
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-I" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-H">&lt;-</a>D<a href="#NWmai7-usaB-J">-&gt;</a>]</b>
+&quot;    -emit-bits n      unit of emission is n bits (default 8)&quot;,
+</pre><pre><a name="NWmai7-casJ-J" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-I">&lt;-</a>D<a href="#NWmai7-casJ-K">-&gt;</a>]</b>
+&quot;-emit-bits&quot;   : <a href="#NWmai7-*-9">emit_unit_bits</a> := integer(get(args)) | stop(&quot;-emitbits not integer&quot;)
+</pre><pre><a name="NWmai7-refF-J" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-I">&lt;-</a>D<a href="#NWmai7-refF-K">-&gt;</a>]</b>
+\tkoption{E}{emit-bits \optarg{n}}
+  {unit of emission is \optarg{n} bits}
+The toolkit's generator works with bits, but it is more convenient for
+the toolkit's library to work with larger units.
+In particular, the second argument to the {\tt emit} functions tells
+the library how wide the emitted token is, in units of \optarg{n} bits.
+The default is~8, which means that the {\tt emit} functions work with
+bytes, since these are how the library distributed with the toolkit
+works.
+The width of every emitted token must be a multiple of~\optarg{n} or the
+generator will complain.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-J" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-I">&lt;-</a>D<a href="#NWmai7-usaB-K">-&gt;</a>]</b>
+&quot;    -encoder file     generate encoding procedures on file.[ch]&quot;,
+</pre><pre><a name="NWmai7-casJ-K" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-J">&lt;-</a>D<a href="#NWmai7-casJ-L">-&gt;</a>]</b>
+&quot;-encoder&quot; : encoderfilename  := get(args)
+</pre><pre><a name="NWmai7-refF-K" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-J">&lt;-</a>D<a href="#NWmai7-refF-L">-&gt;</a>]</b>
+\tkoption{E}{encoder {\file}}{generate encoding procedures on {\tt\file.[ch]}}
+Invokes the generator, which writes encoding procedures into
+{\tt\file.c} and puts suitable
+declarations into {\tt\file.h}.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-K" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-J">&lt;-</a>D<a href="#NWmai7-usaB-L">-&gt;</a>]</b>
+&quot;    -expand-spec file writes an expanded <a href="#NWmai7-*-9">version</a> of the input specification&quot;,
+</pre><pre><a name="NWmai7-casJ-L" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-K">&lt;-</a>D<a href="#NWmai7-casJ-M">-&gt;</a>]</b>
+&quot;-expand-spec&quot; : spec  := <a href="#NWD6">openfile</a>(get(args),&quot;w&quot;)
+</pre><pre><a name="NWmai7-refF-L" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-K">&lt;-</a>D<a href="#NWmai7-refF-M">-&gt;</a>]</b>
+\tkoption{A}{expand-spec {\file}}{write expanded specification on \file}
+Rewrites the specification onto {\file}, but with all patterns in
+normal form.  Can be useful for seeing the meanings of complex
+opcodes.
+\warning{
+This option predates the introduction of constructors, which it does
+not treat, and it may break horribly.  
+Pester us if you want it brought up to date, so that it emits a
+complete specification in some canonical form.}
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-L" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-K">&lt;-</a>D<a href="#NWmai7-usaB-M">-&gt;</a>]</b>
+&quot;    -fieldnames file  write arrays of field names on file.[ch]&quot;,
+</pre><pre><a name="NWmai7-casJ-M" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-L">&lt;-</a>D<a href="#NWmai7-casJ-N">-&gt;</a>]</b>
+&quot;-fieldnames&quot; : <a href="#NWmai7-*-9">fieldnamesbase</a> := get(args)
+</pre><pre><a name="NWmai7-refF-M" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-L">&lt;-</a>D<a href="#NWmai7-refF-N">-&gt;</a>]</b>
+\tkoption{A}{fieldnames \file}
+  {write arrays of field names on \file}
+For each field in the specification, write to {\tt\file.c} an array of string
+literals representing the names of values of that field.
+Write declarations to {\tt\file.h}.
+Such arrays may be useful in writing disassemblers.
+(Will use extensions {\tt.i3} and {\tt.m3} if {\tt-m3} is given.)
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-M" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-L">&lt;-</a>D<a href="#NWmai7-usaB-N">-&gt;</a>]</b>
+&quot;    -foldemit         fold constants in calls to emit functions&quot;,
+</pre><pre><a name="NWmai7-casJ-N" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-M">&lt;-</a>D<a href="#NWmai7-casJ-O">-&gt;</a>]</b>
+&quot;-foldemit&quot;   : <a href="#NWmai7-*-9">simplify_emits</a> := 1
+</pre><pre><a name="NWmai7-refF-N" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-M">&lt;-</a>D<a href="#NWmai7-refF-O">-&gt;</a>]</b>
+\tkoption{E}{foldemit}{fold constants in calls to emit procedure}
+Normally, the toolkit refrains from folding constants when generating
+the code that emits a token.
+This behavior makes it easy to examine the generated code to
+double-check that it really looks right.
+The {\tt -foldemit} option tells the toolkit to fold constants aggressively.
+Its only real use is to make the generated code smaller, because 
+modern compilers fold constants themselves, don't they?
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-N" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-M">&lt;-</a>D<a href="#NWmai7-usaB-O">-&gt;</a>]</b>
+&quot;    -icon             generate Icon code (for wizards only)&quot;,
+</pre><pre><a name="NWmai7-casJ-O" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-N">&lt;-</a>D<a href="#NWmai7-casJ-P">-&gt;</a>]</b>
+&quot;-icon&quot;         : { Generate_Icon(); 
+                  <a href="#NWmai7-*-9">interface_extension</a> := &quot;.bogus.icn&quot;; <a href="#NWmai7-*-9">implementation_extension</a> := &quot;.icn&quot; }
+</pre><pre><a name="NWmai7-refF-O" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-N">&lt;-</a>D<a href="#NWmai7-refF-P">-&gt;</a>]</b>
+\tkoption{D}{icon}{generate Icon code}
+Tells the translator to attempt to generate encoding procedures
+written in Icon.  Not really supported.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-O" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-N">&lt;-</a>D<a href="#NWmai7-usaB-P">-&gt;</a>]</b>
+&quot;    -impossible       force errors to stop with stack trace&quot;,
+</pre><pre><a name="NWmai7-casJ-P" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-O">&lt;-</a>D<a href="#NWmai7-casJ-Q">-&gt;</a>]</b>
+&quot;-impossible&quot; : error := stop := impossible
+</pre><pre><a name="NWmai7-refF-P" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-O">&lt;-</a>D<a href="#NWmai7-refF-Q">-&gt;</a>]</b>
+\tkoption{V}{impossible}{make errors force stop with stack trace}
+Arranges for all error messages to be treated as ``impossible,'' which 
+causes ``this can't happen'' to be printed and a stack trace to be
+generated.
+It is intended primarily for debugging the toolkit.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-P" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-O">&lt;-</a>D<a href="#NWmai7-usaB-Q">-&gt;</a>]</b>
+&quot;    -indirect name[:type] generated encoding procs called indirect through name&quot;,
+</pre><pre><a name="NWmai7-casJ-Q" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-P">&lt;-</a>D<a href="#NWmai7-casJ-R">-&gt;</a>]</b>
+&quot;-indirect&quot;   : get(args) ? 
+                  { <a href="#NWmai7-*-9">indirectname</a> := tab(upto(':') | 0)
+                    <a href="#NWmai7-*-9">indirecttype</a> := if =&quot;:&quot; then tab(0) else <a href="#NWmai7-*-9">indirectname</a>
+                  }
+</pre><pre><a name="NWmai7-refF-Q" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-P">&lt;-</a>D<a href="#NWmai7-refF-R">-&gt;</a>]</b>
+\setbox0=\hbox{\optarg{name}\optional{\tt:\optarg{type}}}%
+\tkoption{E}{indirect \box0}{generated encoding procs called indirect through \optarg{name}}
+Normally, the toolkit generates encoding procedures that are externally visible,
+that is, they occupy top-level name space.
+The {\tt -indirect} option tells the toolkit to make the procedures local to a 
+compilation unit and to provide indirect access to them through a structure
+holding procedure pointers.
+\optarg{name} gives the name of the structure, \optarg{type} its tag.
+(If \optarg{type} is omitted, we reuse \optarg{name}.)
+Useful for avoiding name clashes or for having multiple sets of encoding
+procedures in a single application.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-Q" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-P">&lt;-</a>D<a href="#NWmai7-usaB-R">-&gt;</a>]</b>
+&quot;    -late-const       include constants in closure functions (default)&quot;,
+</pre><pre><a name="NWmai7-casJ-R" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-Q">&lt;-</a>D<a href="#NWmai7-casJ-S">-&gt;</a>]</b>
+&quot;-late-const&quot; : <a href="#NWmai7-*-9">lateconst</a> := 1
+</pre><pre><a name="NWmai7-refF-R" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-Q">&lt;-</a>D<a href="#NWmai7-refF-S">-&gt;</a>]</b>
+\tkoption{E}{late-const}{use constants in closure functions (default)}
+A heuristic that attempts to make closures smaller at the risk of
+creating more closure functions, by putting literal constants in the
+function bodies instead of the closures.  
+This is the default.
+\endtkoption
+</pre><pre><a name="NWmai7-iniI-1" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[D<a href="#NWmai7-iniI-2">-&gt;</a>]</b>
+<a href="#NWmai7-*-9">lateconst</a> := 1
+</pre><p>
+<pre><a name="NWmai7-usaB-R" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-Q">&lt;-</a>D<a href="#NWmai7-usaB-S">-&gt;</a>]</b>
+&quot;    -late-none        include *no* constants in closure functions&quot;,
+</pre><pre><a name="NWmai7-casJ-S" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-R">&lt;-</a>D<a href="#NWmai7-casJ-T">-&gt;</a>]</b>
+&quot;-late-none&quot; : <a href="#NWmai7-*-9">lateconst</a> := <a href="#NWmai7-*-9">latezero</a> := &amp;null
+</pre><pre><a name="NWmai7-refF-S" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-R">&lt;-</a>D<a href="#NWmai7-refF-T">-&gt;</a>]</b>
+\tkoption{E}{late-none}{include no constants in closure functions}
+Do not apply either the \tkopt{late-const} or \tkopt{late-zero}
+heuristics. 
+ Makes closures larger but may create fewer closure functions.
+You probably don't want this.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-S" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-R">&lt;-</a>D<a href="#NWmai7-usaB-T">-&gt;</a>]</b>
+&quot;    -late-zero        include zero in closure functions&quot;,
+</pre><pre><a name="NWmai7-casJ-T" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-S">&lt;-</a>D<a href="#NWmai7-casJ-U">-&gt;</a>]</b>
+&quot;-late-zero&quot; : <a href="#NWmai7-*-9">latezero</a> := 1
+</pre><pre><a name="NWmai7-refF-T" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-S">&lt;-</a>D<a href="#NWmai7-refF-U">-&gt;</a>]</b>
+\tkoption{E}{late-zero}{use zeroes in closure functions}
+A heuristic that attempts to make closures smaller at the risk of
+creating more closure functions, by putting literal zeroes in the
+function bodies instead of the closures.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-T" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-S">&lt;-</a>D<a href="#NWmai7-usaB-U">-&gt;</a>]</b>
+&quot;    -lc-cons-names    use all lower case for constructor names&quot;,
+</pre><pre><a name="NWmai7-casJ-U" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-T">&lt;-</a>D<a href="#NWmai7-casJ-V">-&gt;</a>]</b>
+&quot;-lc-cons-names&quot; : <a href="#NWmai7-*-9">lowercons</a> := 1
+</pre><pre><a name="NWmai7-refF-U" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-T">&lt;-</a>D<a href="#NWmai7-refF-V">-&gt;</a>]</b>
+\tkoption{E}{lc-cons-names}{use all lower case for constructor names}
+Ensures that only lower-case letters are used in the names of
+generated encoding procedures.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-U" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-T">&lt;-</a>D<a href="#NWmai7-usaB-V">-&gt;</a>]</b>
+&quot;    -lc-pat-names     map pattern names to lower case in code&quot;,
+</pre><pre><a name="NWmai7-casJ-V" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-U">&lt;-</a>D<a href="#NWmai7-casJ-W">-&gt;</a>]</b>
+&quot;-lc-pat-names&quot; : <a href="#NWmai7-*-9">lc_pat_names</a> := 1
+</pre><pre><a name="NWmai7-refF-V" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-U">&lt;-</a>D<a href="#NWmai7-refF-W">-&gt;</a>]</b>
+\tkoption{D}{lc-pat-names}{force pattern names to lower case}
+Pattern names are accessible using the \lit[\term{name}\lit] syntax in matching
+statements; this option forces all such names to use lower-case
+letters only.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-V" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-U">&lt;-</a>D<a href="#NWmai7-usaB-W">-&gt;</a>]</b>
+&quot;    -ledger           tell dot(1) to use ledger paper with -dot&quot;,
+</pre><pre><a name="NWmai7-casJ-W" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-V">&lt;-</a>D<a href="#NWmai7-casJ-X">-&gt;</a>]</b>
+&quot;-ledger&quot;     : {ledger := 1; pagesize := &quot;11,17&quot;}
+</pre><pre><a name="NWmai7-refF-W" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-V">&lt;-</a>D<a href="#NWmai7-refF-X">-&gt;</a>]</b>
+\tkoption{d}{ledger}{Use ledger paper with {\tt -dot}}
+Insert a PostScript incantation that might make the {\tt -dot} option
+use ledger paper instead of regular paper.
+\warning{Almost certainly broken.}
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-W" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-V">&lt;-</a>D<a href="#NWmai7-usaB-X">-&gt;</a>]</b>
+&quot;    -matcher file     transform pattern-matching statements in file&quot;,
+</pre><pre><a name="NWmai7-casJ-X" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-W">&lt;-</a>D<a href="#NWmai7-casJ-Y">-&gt;</a>]</b>
+&quot;-matcher&quot;    : matcher := <a href="#NWD6">openfile</a>(get(args),&quot;r&quot;)
+</pre><pre><a name="NWmai7-refF-X" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-W">&lt;-</a>D<a href="#NWmai7-refF-Y">-&gt;</a>]</b>
+\tkoption{D}{matcher \file}
+  {transform pattern-matching statements in \file}
+<a name="NWmai7-refF-X-u1" href="#NWmai7-refb-1"><i>&lt;refman: doc for -matcher and -decoder&gt;</i></a>
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-X" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-W">&lt;-</a>D<a href="#NWmai7-usaB-Y">-&gt;</a>]</b>
+&quot;    -max-decimal n    values larger than n will be printed in hex&quot;,
+</pre><pre><a name="NWmai7-casJ-Y" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-X">&lt;-</a>D<a href="#NWmai7-casJ-Z">-&gt;</a>]</b>
+&quot;-max-decimal&quot; : <a href="#NWmai7-*-4">max_decimal</a> := 0 &lt;= get(args) | 
+                   error(&quot;-max-decimal value must be nonnegative integer&quot;)
+</pre><pre><a name="NWmai7-refF-Y" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-X">&lt;-</a>D<a href="#NWmai7-refF-Z">-&gt;</a>]</b>
+\tkoption{DE}{max-decimal \optarg{n}}
+        {values larger than \optarg{n} will be printed in hex}
+When generating code, 
+the toolkit will use hexadecimal notation for integer literals larger than 
+\optarg{n}.
+For smaller literals, it uses decimal notation.
+\optarg{n} must be nonnegative, so forcibly all negative integer literals are written
+in decimal notation.
+Default value is $2^{31}-1$.
+\endtkoption
+</pre><pre><a name="NWmai7-iniI-2" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-iniI-1">&lt;-</a>D<a href="#NWmai7-iniI-3">-&gt;</a>]</b>
+<a href="#NWmai7-*-4">max_decimal</a> := 2^31 - 1
+</pre><pre><a name="NWmai7-*-4" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-3">&lt;-</a>D<a href="#NWmai7-*-5">-&gt;</a>]</b>
+global <a href="#NWmai7-*-4">max_decimal</a>
+</pre><blockquote>Defines <a href="#NWI-max_decimal"><code>max_decimal</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-usaB-Y" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-X">&lt;-</a>D<a href="#NWmai7-usaB-Z">-&gt;</a>]</b>
+&quot;    -m3               generate Modula-3 code&quot;,
+</pre><pre><a name="NWmai7-casJ-Z" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-Y">&lt;-</a>D<a href="#NWmai7-casJ-a">-&gt;</a>]</b>
+&quot;-m3&quot;         : { Generate_M3(); 
+                  <a href="#NWmai7-*-9">interface_extension</a> := &quot;.i3&quot;; <a href="#NWmai7-*-9">implementation_extension</a> := &quot;.m3&quot; }
+</pre><pre><a name="NWmai7-refF-Z" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-Y">&lt;-</a>D<a href="#NWmai7-refF-a">-&gt;</a>]</b>
+\tkoption{D}{m3}{generate Modula-3 code}
+Tells the translator that the code emitted for the {\tt -decoder}
+file should be Modula-3 code.
+(The toolkit generator and library do not yet support Modula-3.)
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-Z" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-Y">&lt;-</a>D<a href="#NWmai7-usaB-a">-&gt;</a>]</b>
+&quot;    -no-asm-ws        remove whitespace from assembly syntax&quot;,
+</pre><pre><a name="NWmai7-casJ-a" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-Z">&lt;-</a>D<a href="#NWmai7-casJ-b">-&gt;</a>]</b>
+&quot;-no-asm-ws&quot; : <a href="#NWmai7-*-5">no_asm_ws</a> := 1
+</pre><pre><a name="NWmai7-refF-a" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-Z">&lt;-</a>D<a href="#NWmai7-refF-b">-&gt;</a>]</b>
+\tkoption{E}{no-asm-ws}{remove whitespace from assembly syntax}
+Removes all whitespace from between operands in assembly-language syntax.
+This might be a cheap way to get compatibility with other tools.
+\endtkoption
+</pre><pre><a name="NWmai7-*-5" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-4">&lt;-</a>D<a href="#NWD2">-&gt;</a>]</b>
+global <a href="#NWmai7-*-5">no_asm_ws</a>
+</pre><blockquote>Defines <a href="#NWI-no_asm_ws"><code>no_asm_ws</code></a> (links are to index).<p>
+</blockquote><p>
+<!--%<usage lines>>=-->
+<!--%"    -no-fits-cond     don't use fits conditions to decide branches",-->
+<!--%<cases for arguments>>=-->
+<!--%"-no-fits-cond" : early_branch := old_early_branch-->
+<!--%<refman: options><a name="NWD2">>=--></a>
+<!--%\tkoption{E}{no-fits-cond}{don't use fits conditions to decide branches}-->
+<!--%As of version 0.5, a generated encoding procedure skips-->
+<!--%a branch if the values to be encoded-->
+<!--%won't fit in the fields to which they are bound.-->
+<!--%This option reverts to the old behavior, in which only equations are used to choose -->
+<!--%branches, and the fields had just better fit or the encode will be aborted.-->
+<!--%Not recommended.-->
+<!--%\endtkoption-->
+<pre><a name="NWmai7-*-6" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-5">&lt;-</a>D<a href="#NWmai7-*-7">-&gt;</a>]</b>
+global <a href="#NWmai7-*-5">no_asm_ws</a>
+</pre><blockquote>Defines <a href="#NWI-no_asm_ws"><code>no_asm_ws</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-usaB-a" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-Z">&lt;-</a>D<a href="#NWmai7-usaB-b">-&gt;</a>]</b>
+&quot;    -<a href="#NWmai7-*-9">nowarn</a>           no warnings&quot;,
+</pre><pre><a name="NWmai7-casJ-b" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-a">&lt;-</a>D<a href="#NWmai7-casJ-c">-&gt;</a>]</b>
+&quot;-<a href="#NWmai7-*-9">nowarn</a>&quot; : <a href="#NWmai7-*-9">nowarn</a> := 1
+</pre><pre><a name="NWmai7-refF-b" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-a">&lt;-</a>D<a href="#NWmai7-refF-c">-&gt;</a>]</b>
+\tkoption{V}{<a href="#NWmai7-*-9">nowarn</a>}{suppress warnings (not recommended)}
+Suppresses warnings.
+It's not a good idea to use this option routinely.
+If a warning annoys you, let us know---maybe we can make it appear only when 
+{\tt-<a href="#NWmai7-*-9">verbose</a>}.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-b" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-a">&lt;-</a>D<a href="#NWmai7-usaB-c">-&gt;</a>]</b>
+&quot;    -old-closures     use the old closure technique&quot;,
+</pre><pre><a name="NWmai7-casJ-c" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-b">&lt;-</a>D<a href="#NWmai7-casJ-d">-&gt;</a>]</b>
+&quot;-old-closures&quot; : <a href="#NWmai7-*-9">emit_closure_functions</a> := emit_original_closure_functions
+</pre><pre><a name="NWmai7-refF-c" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-b">&lt;-</a>D<a href="#NWmai7-refF-d">-&gt;</a>]</b>
+\tkoption{?}{old-closures}{use the old closure technique (not recommended)}
+Uses the old, fast technique that produces way too many closure functions.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-c" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-b">&lt;-</a>D<a href="#NWmai7-usaB-d">-&gt;</a>]</b>
+&quot;    -<a href="#NWmai7-*-7">postfix</a>          use <a href="#NWmai7-*-7">postfix</a> assembly-language syntax&quot;,
+</pre><pre><a name="NWmai7-casJ-d" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-c">&lt;-</a>D<a href="#NWmai7-casJ-e">-&gt;</a>]</b>
+&quot;-<a href="#NWmai7-*-7">postfix</a>&quot; : <a href="#NWmai7-*-7">postfix</a> := 1
+</pre><pre><a name="NWmai7-refF-d" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-c">&lt;-</a>D<a href="#NWmai7-refF-e">-&gt;</a>]</b>
+\tkoption{ED}{<a href="#NWmai7-*-7">postfix</a>}{use <a href="#NWmai7-*-7">postfix</a> assembly-language syntax}
+For disassembly or for assembly-language encoding, put opcode
+\emph{after} operands.
+\endtkoption
+</pre><pre><a name="NWmai7-*-7" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWmai7-*-8">-&gt;</a>]</b>
+global <a href="#NWmai7-*-7">postfix</a>
+</pre><blockquote>Defines <a href="#NWI-postfix"><code>postfix</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-usaB-d" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-c">&lt;-</a>D<a href="#NWmai7-usaB-e">-&gt;</a>]</b>
+&quot;    -token-closures  use one closure per token&quot;,
+</pre><pre><a name="NWmai7-casJ-e" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-d">&lt;-</a>D<a href="#NWmai7-casJ-f">-&gt;</a>]</b>
+&quot;-token-closures&quot; : <a href="#NWmai7-*-9">emit_closure_functions</a> := emit_tokenized_closure_functions
+</pre><pre><a name="NWmai7-refF-e" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-d">&lt;-</a>D<a href="#NWmai7-refF-f">-&gt;</a>]</b>
+\tkoption{?}{token-closures}{use one closure per token (recommended)}
+Emit one closure function per token instead of one per instruction,
+which should further reduce counts of closure functions.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-e" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-d">&lt;-</a>D<a href="#NWmai7-usaB-f">-&gt;</a>]</b>
+&quot;    -test    pay no attention to the man behind the curtain&quot;,
+</pre><pre><a name="NWmai7-casJ-f" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-e">&lt;-</a>D<a href="#NWmai7-casJ-g">-&gt;</a>]</b>
+&quot;-test&quot; : {
+write(&quot;Uncommented &quot;, Cuncomment(&quot;/* foo at 0 */&quot;))
+######    pp := PPnew(&amp;output)
+######    t := constype(&quot;Outer&quot;, set(), 1, 1)
+######    t2 := constype(&quot;Inner&quot;, set(), 1, 1)
+######    c := constructor(&quot;mkOut&quot;, &quot;mkOut&quot;, [&quot;in&quot;], t, [epsilon()], [table()], 1)
+######    c2 := constructor(&quot;mkIn&quot;, &quot;mkIn&quot;, [&quot;fish&quot;], t2, [epsilon()], [table()], 1)
+######    t.members := [c]
+######    t2.members := [c2]
+######    b := Ebinding_instance(&quot;xxx&quot;, t, table())
+######  y2 := Einstance_tagged(Einstance_input(b, c, &quot;in&quot;), c2, 99)
+######    PPxwrite(pp, ppexpimage(y2), &quot; =&gt;$t$c &quot;, &quot;???&quot;, &quot;$b&quot;)
+######    pushtrace(&quot;TEST&quot;)
+######    x2 := eliminate_instances_f(y2)
+######  #  x1 := eliminate_instances_f(y1 := Einstance_input(Einstance_input(b, c, &quot;in&quot;), c2, &quot;fish&quot;))
+######    poptrace()
+######  #  PPxwrite(pp, ppexpimage(y1), &quot; =&gt;$t$c &quot;, ppexpimage(x1), &quot;$b&quot;)
+######    PPxwrite(pp, ppexpimage(y2), &quot; =&gt;$t$c &quot;, ppexpimage(x2), &quot;$b&quot;)
+}
+</pre><p>
+<pre><a name="NWmai7-usaB-f" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-e">&lt;-</a>D<a href="#NWmai7-usaB-g">-&gt;</a>]</b>
+&quot;    -<a href="#NWmai7-*-9">tryall</a>           try all heuristics on every field, node (for debugging)&quot;,
+</pre><pre><a name="NWmai7-casJ-g" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-f">&lt;-</a>D<a href="#NWmai7-casJ-h">-&gt;</a>]</b>
+&quot;-<a href="#NWmai7-*-9">tryall</a>&quot;     : <a href="#NWmai7-*-9">tryall</a> := 1
+</pre><pre><a name="NWmai7-refF-f" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-e">&lt;-</a>D<a href="#NWmai7-refF-g">-&gt;</a>]</b>
+\tkoption{d}{<a href="#NWmai7-*-9">tryall</a>}{try all heuristics on every field in tree}
+Show what split would be given by each heuristic.
+Useful only with the option {\tt -debug-heur}.
+\endtkoption
+</pre><p>
+<pre><a name="NWmai7-usaB-g" href="#NWmai7-usaB-1"><dfn>&lt;usage lines&gt;+=</dfn></a> <b>(<a href="#NWmai7-*-2">&lt;-U</a>)</b> <b>[<a href="#NWmai7-usaB-f">&lt;-</a>D]</b>
+&quot;    -<a href="#NWmai7-*-9">verbose</a>          extra warnings &amp; informatory messages&quot;,
+</pre><pre><a name="NWmai7-casJ-h" href="#NWmai7-casJ-1"><dfn>&lt;cases for arguments&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-casJ-g">&lt;-</a>D]</b>
+&quot;-<a href="#NWmai7-*-9">verbose</a>&quot;    : <a href="#NWmai7-*-9">verbose</a> := <a href="#NWmai7-*-8">info_msg</a>
+</pre><pre><a name="NWmai7-refF-g" href="#NWmai7-refF-1"><dfn>&lt;refman: options&gt;+=</dfn></a> <b>[<a href="#NWmai7-refF-f">&lt;-</a>D]</b>
+\tkoption{V}{<a href="#NWmai7-*-9">verbose</a>}{print extra warnings and information}
+Make the toolkit print extra warnings and informational messages.
+We've tried to include enough stuff so that you can watch the toolkit's 
+progress through a big specification, even on a slow computer.
+\endtkoption
+</pre><pre><a name="NWmai7-*-8" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-7">&lt;-</a>D<a href="#NWmai7-*-9">-&gt;</a>]</b>
+procedure <a href="#NWmai7-*-8">info_msg</a>(L[])
+  write ! ([&amp;errout, image(filename), &quot;, line &quot;, lineno, &quot;: Info -- &quot;] ||| L)
+end
+</pre><blockquote>Defines <a href="#NWI-info_msg"><code>info_msg</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmai7-*-9" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-8">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+global <a href="#NWmai7-*-9">cdebug</a>, <a href="#NWmai7-*-9">mdebug</a>, <a href="#NWmai7-*-9">sdebug</a>, <a href="#NWmai7-*-9">hdebug</a>, <a href="#NWmai7-*-9">tryall</a>, <a href="#NWmai7-*-9">indirectname</a>, <a href="#NWmai7-*-9">indirecttype</a>
+global <a href="#NWmai7-*-9">lc_pat_names</a>, <a href="#NWmai7-*-9">nowarn</a>, <a href="#NWmai7-*-9">emptyset</a>, <a href="#NWmai7-*-9">emittername</a>, <a href="#NWmai7-*-9">pretty</a>
+global <a href="#NWmai7-*-9">lowercons</a>, <a href="#NWmai7-*-9">pc_unit_bits</a>, <a href="#NWmai7-*-9">emit_unit_bits</a>, <a href="#NWmai7-*-9">simplify_emits</a>, <a href="#NWmai7-*-9">gen_counters</a>
+global <a href="#NWmai7-*-9">fieldnamesbase</a>, <a href="#NWmai7-*-9">verbose</a>, <a href="#NWmai7-*-9">version</a>
+global <a href="#NWmai7-*-9">interface_extension</a>, <a href="#NWmai7-*-9">implementation_extension</a>
+global <a href="#NWmai7-*-9">emit_closure_functions</a>, <a href="#NWmai7-*-9">latezero</a>, <a href="#NWmai7-*-9">lateconst</a>
+global <a href="#NWmai7-*-9">asmgrammarfilename</a>, <a href="#NWmai7-*-9">disassemblyfilename</a>
+</pre><blockquote>Defines <a href="#NWI-asmgrammarfilename"><code>asmgrammarfilename</code></a>, <a href="#NWI-cdebug"><code>cdebug</code></a>, <a href="#NWI-disassemblyfilename"><code>disassemblyfilename</code></a>, <a href="#NWI-emit_closure_functions"><code>emit_closure_functions</code></a>, <a href="#NWI-emittername"><code>emittername</code></a>, <a href="#NWI-emit_unit_bits"><code>emit_unit_bits</code></a>, <a href="#NWI-emptyset"><code>emptyset</code></a>, <a href="#NWI-fieldnamesbase"><code>fieldnamesbase</code></a>, <a href="#NWI-gen_counters"><code>gen_counters</code></a>, <a href="#NWI-hdebug"><code>hdebug</code></a>, <a href="#NWI-implementation_extension"><code>implementation_extension</code></a>, <a href="#NWI-indirectname"><code>indirectname</code></a>, <a href="#NWI-indirecttype"><code>indirecttype</code></a>, <a href="#NWI-interface_extension"><code>interface_extension</code></a>, <a href="#NWI-lateconst"><code>lateconst</code></a>, <a href="#NWI-latezero"><code>latezero</code></a>, <a href="#NWI-lc_pat_names"><code>lc_pat_names</code></a>, <a href="#NWI-lowercons"><code>lowercons</code></a>, <a href="#NWI-mdebug"><code>mdebug</code></a>, <a href="#NWI-nowarn"><code>nowarn</code></a>, <a href="#NWI-pc_unit_bits"><code>pc_unit_bits</code></a>, <a href="#NWI-pretty"><code>pretty</code></a>, <a href="#NWI-sdebug"><code>sdebug</code></a>, <a href="#NWI-simplify_emits"><code>simplify_emits</code></a>, <a href="#NWI-tryall"><code>tryall</code></a>, <a href="#NWI-verbose"><code>verbose</code></a>, <a href="#NWI-version"><code>version</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-iniI-3" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-iniI-2">&lt;-</a>D<a href="#NWmai7-iniI-4">-&gt;</a>]</b>
+dotfile := ascii_dag := spec := ascii_tree := decoderout :=
+  fulltree := <a href="#NWmai7-*-9">sdebug</a> := <a href="#NWmai7-*-9">hdebug</a> := encoderfilename := asmencoderfilename := 
+  ledger := <a href="#NWmai7-*-9">tryall</a> := <a href="#NWmai7-*-9">asmgrammarfilename</a> := <a href="#NWmai7-*-9">disassemblyfilename</a>
+  <a href="#NWmai7-*-9">lc_pat_names</a> := alt := matcher := <a href="#NWmai7-*-9">gen_counters</a> := <a href="#NWmai7-*-9">lowercons</a> := 
+  &amp;null 
+</pre><pre><a name="NWmai7-iniI-4" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-iniI-3">&lt;-</a>D<a href="#NWmai7-iniI-5">-&gt;</a>]</b>
+<a href="#NWmai7-*-9">emittername</a> := &quot;emitm&quot;
+<a href="#NWmai7-*-9">emptyset</a> := set()
+<a href="#NWmai7-*-9">verbose</a> := nop
+filename := &quot;-&quot;
+pagesize := &quot;8.5,11&quot;
+fetchtab := table()
+<a href="#NWmai7-*-9">pc_unit_bits</a> := 8
+<a href="#NWmai7-*-9">emit_unit_bits</a> := 8
+fresh_variables := set()
+<a href="#NWmai7-*-9">pretty</a> := prettyC
+<a href="#NWmai7-*-9">interface_extension</a> := &quot;.h&quot;
+<a href="#NWmai7-*-9">implementation_extension</a> := &quot;.c&quot;
+debug := debugs := nop 
+<a href="#NWmai7-*-9">emit_closure_functions</a> := emit_optimized_closure_functions
+</pre><p>
+<a name="NWD3">It's a hack, but I use the global variable </a><code><a href="#NWD3">emitterstyle</a></code> to determine whether
+code for <code>Semit</code> and <code>Stoken</code> should use a <em>direct</em>
+call to the emitter named by <code><a href="#NWmai7-*-9">emittername</a></code>,
+or whether it should use a style appropriate to a <em>closure</em>.
+<pre><a name="NWmai7-*-A" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-9">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+global <a href="#NWD3">emitterstyle</a> # closure or direct, controls emission
+</pre><blockquote>Defines <a href="#NWI-emitterstyle"><code>emitterstyle</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-iniI-5" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-iniI-4">&lt;-</a>D<a href="#NWmai7-iniI-6">-&gt;</a>]</b>
+<a href="#NWD3">emitterstyle</a> := &quot;direct&quot;
+</pre><p>
+<a name="NWD4">Used to make sure the program counter is unique, so that </a><code>pc - pc</code>
+is zero always.
+<pre><a name="NWmai7-*-B" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+global <a href="#NWD4">the_global_pc</a>
+</pre><blockquote>Defines <a href="#NWI-the_global_pc"><code>the_global_pc</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-iniI-6" href="#NWmai7-iniI-1"><dfn>&lt;initialize globals&gt;+=</dfn></a> <b>(<a href="#NWD5">U-&gt;</a>)</b> <b>[<a href="#NWmai7-iniI-5">&lt;-</a>D]</b>
+<a href="#NWD4">the_global_pc</a> := Epc()
+</pre><p>
+<a name="NWD5">I have to split up </a><code><a href="#NWD5">main</a></code>, otherwise I get too many definitions which leads to
+a line more than 3000 characters wide, and TeX dies.
+<pre><a name="NWmai7-*-C" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWmai7-*-D">-&gt;</a>]</b>
+global <a href="#NWD5">command_line</a>, <a href="#NWD5">header_lines</a>
+record <a href="#NWD5">Gcomment</a>(s)
+
+procedure <a href="#NWD5">main</a>(args)
+    <a name="NWmai7-*-C-u1" href="#NWmai7-iniI-1"><i>&lt;initialize globals&gt;</i></a>
+    <a href="#NWmai7-*-9">version</a> := <a name="NWmai7-*-C-u2" href="#NWD1"><i>&lt;version string&gt;</i></a>
+
+    <a href="#NWD5">command_line</a> := &quot;tools&quot;
+    every <a href="#NWD5">command_line</a> ||:= &quot; &quot; || !args
+    <a href="#NWD5">header_lines</a> := [
+      <a href="#NWD5">Gcomment</a>(&quot;Generated by the New Jersey Machine-Code Toolkit, <a href="#NWmai7-*-9">version</a> &quot; ||<a href="#NWmai7-*-9">version</a>),
+      <a href="#NWD5">Gcomment</a>(&quot;command line: &quot; || <a href="#NWD5">command_line</a>)]
+
+    Generate_C()        # default
+    while args[1][1:2] == &quot;-&quot; &amp; *args[1] &gt; 1 do
+        case a := get(args) of {
+            <a name="NWmai7-*-C-u3" href="#NWmai7-casJ-1"><i>&lt;cases for arguments&gt;</i></a>
+            default    : <a href="#NWmai7-*-2">usage</a>()
+       }
+
+    <a href="#NWmai7-*-9">verbose</a>(&quot;NJ Machine-Code Toolkit, <a href="#NWmai7-*-9">version</a> &quot;, <a href="#NWmai7-*-9">version</a>)
+
+    init_parser()
+    init_tests()        # see code.nw
+
+    if /quiet then write(&amp;errout, &quot;Parsing...&quot;)
+    if *args &gt; 0 then
+        every <a href="#NWmai7-*-E">consume</a>(<a href="#NWD6">openfile</a>(filename := !args,&quot;r&quot;))
+    else
+        <a href="#NWmai7-*-E">consume</a>(&amp;input)
+
+    if /quiet then write(&amp;errout, &quot;Done parsing.&quot;)
+
+    if \<a href="#NWmai7-*-5">no_asm_ws</a> then every strip_asm_whitespace(kept_constructors())
+    emit_encoding(\encoderfilename)
+    emit_assembly(\asmencoderfilename)
+    emit_asm_grammar(\<a href="#NWmai7-*-9">asmgrammarfilename</a>)
+    emit_disassembler(\<a href="#NWmai7-*-9">disassemblyfilename</a>)
+    emit_fieldnames(\<a href="#NWmai7-*-9">fieldnamesbase</a>)
+    emit_checker(\checkerfilename)
+    if \ledger then { <a name="NWmai7-*-C-u4" href="#NWmai7-wriX-1"><i>&lt;write PostScript for ledger paper&gt;</i></a> }
+
+    outspec(\spec)
+    if \matcher then {<a name="NWmai7-*-C-u5" href="#NWmai7-hanQ-1"><i>&lt;handle matching statements&gt;</i></a>}
+end
+</pre><blockquote>Defines <a href="#NWI-command_line"><code>command_line</code></a>, <a href="#NWI-Gcomment"><code>Gcomment</code></a>, <a href="#NWI-header_lines"><code>header_lines</code></a>, <a href="#NWI-main"><code>main</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-hanQ-1" href="#NWmai7-hanQ-1"><dfn>&lt;handle matching statements&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+codelex(matcher)
+P_CodeFile()
+<a name="NWmai7-hanQ-1-u1" href="#NWmai7-if*X-1"><i>&lt;if tokens are left over, complain&gt;</i></a>
+x := super_simplify(genheader(codeheader))
+PPxwrite(PPnew(\decoderout), <a href="#NWmai7-*-9">pretty</a>(x))
+every resolve_case_patterns(!matching_stmts)
+every t := tree(cs := !matching_stmts) do { <a name="NWmai7-hanQ-1-u2" href="#NWmai7-manU-1"><i>&lt;manipulate decision tree <code>t</code>&gt;</i></a> }
+</pre><pre><a name="NWmai7-*-D" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWmai7-*-E">-&gt;</a>]</b>
+global <a href="#NWmai7-*-D">showpnf</a>
+</pre><blockquote>Defines <a href="#NWI-showpnf"><code>showpnf</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-*-E" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-D">&lt;-</a>D<a href="#NWmai7-*-F">-&gt;</a>]</b>
+procedure <a href="#NWmai7-*-E">consume</a>(input)
+    lex(input)
+    P_Spec()
+    <a name="NWmai7-*-E-u1" href="#NWmai7-if*X-1"><i>&lt;if tokens are left over, complain&gt;</i></a>
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-consume"><code>consume</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-if*X-1" href="#NWmai7-if*X-1"><dfn>&lt;if tokens are left over, complain&gt;=</dfn></a> <b>(<a href="#NWmai7-hanQ-1">&lt;-U</a> <a href="#NWmai7-*-E">&lt;-U</a>)</b>
+while (token ~== EOF) do {
+    error(&quot;Leftover token &quot;, token, &quot; = &quot;, image(tval))
+    lex()
+}
+</pre><pre><a name="NWmai7-wriX-1" href="#NWmai7-wriX-1"><dfn>&lt;write PostScript for ledger paper&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+write(\dotfile,&quot;%!   PostScript&quot;)
+write(\dotfile,&quot;/setpapertraybyname {&quot;)
+write(\dotfile,&quot;  { /trayname exch def statusdict trayname known {&quot;)
+write(\dotfile,&quot;    statusdict trayname get exec } if} stopped&quot;)
+write(\dotfile,&quot;    { handleerror } if}bind def&quot;)
+write(\dotfile,&quot;/ledgertray setpapertraybyname&quot;)
+</pre><pre><a name="NWmai7-manU-1" href="#NWmai7-manU-1"><dfn>&lt;manipulate decision tree <code>t</code>&gt;=</dfn></a> <b>(<a href="#NWmai7-hanQ-1">&lt;-U</a>)</b>
+checktree(t, cs)
+outtree(\ascii_tree, t)
+if \dotfile | \ascii_dag | \decoderout | \alt then {
+    d := tree2dag(t)
+    outtree(\ascii_dag, d)
+    dotouttree(\dotfile, d)
+    PPxwrite(PPnew(\decoderout), <a href="#NWmai7-*-9">pretty</a>(super_simplify(gencase(cs, d))))
+    <a href="#NWmai7-*-G">printalternates</a>(\alt, d)
+    write(\alt,&quot;\n&quot;, repl(&quot;=&quot;, 50))
+}
+</pre><pre><a name="NWmai7-*-F" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-E">&lt;-</a>D<a href="#NWmai7-*-G">-&gt;</a>]</b>
+record <a href="#NWmai7-*-F">alternator</a>(constraints, thennode, elsenode)
+
+procedure <a href="#NWmai7-*-F">alternates</a>(n)
+    local alt
+    if *n.children = 2 then {
+        every i := 1 to 2 do
+            if alt := <a href="#NWmai7-*-F">alternates</a>(n.children[i].node) &amp;
+               n.children[3-i].node === alt.elsenode then
+                   suspend <a href="#NWmai7-*-F">alternator</a>(alt.constraints|||
+                       [constraint(n.field, n.children[i].lo, n.children[i].hi)],
+                       alt.thennode, alt.elsenode)
+        every i := 1 to 2 do
+            suspend <a href="#NWmai7-*-F">alternator</a>(
+                       [constraint(n.field, n.children[i].lo, n.children[i].hi)],
+                       n.children[i].node, n.children[3-i].node)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-alternates"><code>alternates</code></a>, <a href="#NWI-alternator"><code>alternator</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-*-G" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-F">&lt;-</a>D<a href="#NWmai7-*-H">-&gt;</a>]</b>
+procedure <a href="#NWmai7-*-G">printalternates</a>(file, n)
+    local alt
+    if alt := <a href="#NWmai7-*-F">alternates</a>(n) then {
+        write(file)
+        writes(file, &quot;if (&quot;)
+        l := copy(alt.constraints)
+        while <a href="#NWmai7-*-H">genconstraint</a>(file, get(l)) do writes(file, &quot; &amp;&amp; &quot;)
+        write(file, &quot;1) {&quot;)
+        writes(file, &quot;    /*&quot;)
+        writes(file, \alt.thennode.cs.arms[1].original.pattern.name | 
+                        &quot;[&quot; || alt.thennode.cs.arms[1].original.line || &quot;]&quot;)
+        write(file, &quot; */&quot;)
+        write(file, &quot;} else {&quot;)
+        writes(file, &quot;    /*&quot;)
+        writes(file, \alt.elsenode.cs.arms[1].original.pattern.name | 
+                        &quot;[&quot; || alt.elsenode.cs.arms[1].original.line || &quot;]&quot;)
+        write(file, &quot; */&quot;)
+        write(file, &quot;} else assert(0);&quot;)
+    } else
+        every <a href="#NWmai7-*-G">printalternates</a>(file, (!n.children).node)
+end    
+</pre><blockquote>Defines <a href="#NWI-printalternates"><code>printalternates</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmai7-*-H" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-G">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWmai7-*-H">genconstraint</a>(file, c)
+    r := sort(c.lo ++ c.hi)
+    writes(file, &quot;(&quot;, get(r), &quot;&lt;=&quot;, c.field.name, &quot;&lt;&quot;, get(r))
+    while writes(file, &quot; || &quot;, get(r), &quot;&lt;=&quot;, c.field.name, &quot;&lt;&quot;, get(r))
+    writes(file, &quot;)&quot;)
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-genconstraint"><code>genconstraint</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWD6" href="#NWD6">openfile</a></code> makes it possible to open standard input or output using
+the file name ``<tt>-</tt>.''
+<pre><a name="NWmai7-*-I" href="#NWmai7-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmai7-*-H">&lt;-</a>D]</b>
+procedure <a href="#NWD6">openfile</a>(name, mode) 
+    /mode := &quot;r&quot;
+    if name == &quot;-&quot; then
+       case mode of {
+          &quot;r&quot; : return &amp;input
+          &quot;w&quot; : return &amp;output
+          default : stop(&quot;bogus file mode: &quot;, mode)
+       }
+    else 
+      return open(name, mode) | stop(&quot;Can't open file &quot;, name, &quot; for &quot;, mode)
+end
+</pre><blockquote>Defines <a href="#NWI-openfile"><code>openfile</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWmai7-*-1"><i>&lt;*&gt;</i></a>: <a href="#NWmai7-*-1">D1</a>, <a href="#NWmai7-*-2">D2</a>, <a href="#NWmai7-*-3">D3</a>, <a href="#NWmai7-*-4">D4</a>, <a href="#NWmai7-*-5">D5</a>, <a href="#NWD2">D6</a>, <a href="#NWmai7-*-7">D7</a>, <a href="#NWmai7-*-8">D8</a>, <a href="#NWmai7-*-9">D9</a>, <a href="#NWD3">D10</a>, <a href="#NWD4">D11</a>, <a href="#NWD5">D12</a>, <a href="#NWmai7-*-D">D13</a>, <a href="#NWmai7-*-E">D14</a>, <a href="#NWmai7-*-F">D15</a>, <a href="#NWmai7-*-G">D16</a>, <a href="#NWmai7-*-H">D17</a>, <a href="#NWD6">D18</a>
+<li><a href="#NWmai7-casJ-1"><i>&lt;cases for arguments&gt;</i></a>: <a href="#NWmai7-casJ-1">D1</a>, <a href="#NWmai7-casJ-2">D2</a>, <a href="#NWmai7-casJ-3">D3</a>, <a href="#NWmai7-casJ-4">D4</a>, <a href="#NWmai7-casJ-5">D5</a>, <a href="#NWmai7-casJ-6">D6</a>, <a href="#NWmai7-casJ-7">D7</a>, <a href="#NWmai7-casJ-8">D8</a>, <a href="#NWmai7-casJ-9">D9</a>, <a href="#NWmai7-casJ-A">D10</a>, <a href="#NWmai7-casJ-B">D11</a>, <a href="#NWmai7-casJ-C">D12</a>, <a href="#NWmai7-casJ-D">D13</a>, <a href="#NWmai7-casJ-E">D14</a>, <a href="#NWmai7-casJ-F">D15</a>, <a href="#NWmai7-casJ-G">D16</a>, <a href="#NWmai7-casJ-H">D17</a>, <a href="#NWmai7-casJ-I">D18</a>, <a href="#NWmai7-casJ-J">D19</a>, <a href="#NWmai7-casJ-K">D20</a>, <a href="#NWmai7-casJ-L">D21</a>, <a href="#NWmai7-casJ-M">D22</a>, <a href="#NWmai7-casJ-N">D23</a>, <a href="#NWmai7-casJ-O">D24</a>, <a href="#NWmai7-casJ-P">D25</a>, <a href="#NWmai7-casJ-Q">D26</a>, <a href="#NWmai7-casJ-R">D27</a>, <a href="#NWmai7-casJ-S">D28</a>, <a href="#NWmai7-casJ-T">D29</a>, <a href="#NWmai7-casJ-U">D30</a>, <a href="#NWmai7-casJ-V">D31</a>, <a href="#NWmai7-casJ-W">D32</a>, <a href="#NWmai7-casJ-X">D33</a>, <a href="#NWmai7-casJ-Y">D34</a>, <a href="#NWmai7-casJ-Z">D35</a>, <a href="#NWmai7-casJ-a">D36</a>, <a href="#NWmai7-casJ-b">D37</a>, <a href="#NWmai7-casJ-c">D38</a>, <a href="#NWmai7-casJ-d">D39</a>, <a href="#NWmai7-casJ-e">D40</a>, <a href="#NWmai7-casJ-f">D41</a>, <a href="#NWmai7-casJ-g">D42</a>, <a href="#NWmai7-casJ-h">D43</a>, <a href="#NWD5">U44</a>
+<li><a href="#NWmai7-hanQ-1"><i>&lt;handle matching statements&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWmai7-hanQ-1">D2</a>
+<li><a href="#NWmai7-if*X-1"><i>&lt;if tokens are left over, complain&gt;</i></a>: <a href="#NWmai7-hanQ-1">U1</a>, <a href="#NWmai7-*-E">U2</a>, <a href="#NWmai7-if*X-1">D3</a>
+<li><a href="#NWmai7-iniI-1"><i>&lt;initialize globals&gt;</i></a>: <a href="#NWmai7-iniI-1">D1</a>, <a href="#NWmai7-iniI-2">D2</a>, <a href="#NWmai7-iniI-3">D3</a>, <a href="#NWmai7-iniI-4">D4</a>, <a href="#NWmai7-iniI-5">D5</a>, <a href="#NWmai7-iniI-6">D6</a>, <a href="#NWD5">U7</a>
+<li><a href="#NWmai7-manU-1"><i>&lt;manipulate decision tree <code>t</code>&gt;</i></a>: <a href="#NWmai7-hanQ-1">U1</a>, <a href="#NWmai7-manU-1">D2</a>
+<li><a href="#nw@notdef"><i>&lt;refman: counter functions&gt;</i></a>: <a href="#NWmai7-refF-9">U1</a>
+<li><a href="#NWmai7-refb-1"><i>&lt;refman: doc for -matcher and -decoder&gt;</i></a>: <a href="#NWmai7-refF-G">U1</a>, <a href="#NWmai7-refb-1">D2</a>, <a href="#NWmai7-refF-X">U3</a>
+<li><a href="#NWmai7-refF-1"><i>&lt;refman: options&gt;</i></a>: <a href="#NWmai7-refF-1">D1</a>, <a href="#NWmai7-refF-2">D2</a>, <a href="#NWmai7-refF-3">D3</a>, <a href="#NWmai7-refF-4">D4</a>, <a href="#NWmai7-refF-5">D5</a>, <a href="#NWmai7-refF-6">D6</a>, <a href="#NWmai7-refF-7">D7</a>, <a href="#NWmai7-refF-8">D8</a>, <a href="#NWmai7-refF-9">D9</a>, <a href="#NWmai7-refF-A">D10</a>, <a href="#NWmai7-refF-B">D11</a>, <a href="#NWmai7-refF-C">D12</a>, <a href="#NWmai7-refF-D">D13</a>, <a href="#NWmai7-refF-E">D14</a>, <a href="#NWmai7-refF-F">D15</a>, <a href="#NWmai7-refF-G">D16</a>, <a href="#NWmai7-refF-H">D17</a>, <a href="#NWmai7-refF-I">D18</a>, <a href="#NWmai7-refF-J">D19</a>, <a href="#NWmai7-refF-K">D20</a>, <a href="#NWmai7-refF-L">D21</a>, <a href="#NWmai7-refF-M">D22</a>, <a href="#NWmai7-refF-N">D23</a>, <a href="#NWmai7-refF-O">D24</a>, <a href="#NWmai7-refF-P">D25</a>, <a href="#NWmai7-refF-Q">D26</a>, <a href="#NWmai7-refF-R">D27</a>, <a href="#NWmai7-refF-S">D28</a>, <a href="#NWmai7-refF-T">D29</a>, <a href="#NWmai7-refF-U">D30</a>, <a href="#NWmai7-refF-V">D31</a>, <a href="#NWmai7-refF-W">D32</a>, <a href="#NWmai7-refF-X">D33</a>, <a href="#NWmai7-refF-Y">D34</a>, <a href="#NWmai7-refF-Z">D35</a>, <a href="#NWmai7-refF-a">D36</a>, <a href="#NWmai7-refF-b">D37</a>, <a href="#NWmai7-refF-c">D38</a>, <a href="#NWmai7-refF-d">D39</a>, <a href="#NWmai7-refF-e">D40</a>, <a href="#NWmai7-refF-f">D41</a>, <a href="#NWmai7-refF-g">D42</a>
+<li><a href="#NWmai7-usaB-1"><i>&lt;usage lines&gt;</i></a>: <a href="#NWmai7-*-2">U1</a>, <a href="#NWmai7-usaB-1">D2</a>, <a href="#NWmai7-usaB-2">D3</a>, <a href="#NWmai7-usaB-3">D4</a>, <a href="#NWmai7-usaB-4">D5</a>, <a href="#NWmai7-usaB-5">D6</a>, <a href="#NWmai7-usaB-6">D7</a>, <a href="#NWmai7-usaB-7">D8</a>, <a href="#NWmai7-usaB-8">D9</a>, <a href="#NWmai7-usaB-9">D10</a>, <a href="#NWmai7-usaB-A">D11</a>, <a href="#NWmai7-usaB-B">D12</a>, <a href="#NWmai7-usaB-C">D13</a>, <a href="#NWmai7-usaB-D">D14</a>, <a href="#NWmai7-usaB-E">D15</a>, <a href="#NWmai7-usaB-F">D16</a>, <a href="#NWmai7-usaB-G">D17</a>, <a href="#NWmai7-usaB-H">D18</a>, <a href="#NWmai7-usaB-I">D19</a>, <a href="#NWmai7-usaB-J">D20</a>, <a href="#NWmai7-usaB-K">D21</a>, <a href="#NWmai7-usaB-L">D22</a>, <a href="#NWmai7-usaB-M">D23</a>, <a href="#NWmai7-usaB-N">D24</a>, <a href="#NWmai7-usaB-O">D25</a>, <a href="#NWmai7-usaB-P">D26</a>, <a href="#NWmai7-usaB-Q">D27</a>, <a href="#NWmai7-usaB-R">D28</a>, <a href="#NWmai7-usaB-S">D29</a>, <a href="#NWmai7-usaB-T">D30</a>, <a href="#NWmai7-usaB-U">D31</a>, <a href="#NWmai7-usaB-V">D32</a>, <a href="#NWmai7-usaB-W">D33</a>, <a href="#NWmai7-usaB-X">D34</a>, <a href="#NWmai7-usaB-Y">D35</a>, <a href="#NWmai7-usaB-Z">D36</a>, <a href="#NWmai7-usaB-a">D37</a>, <a href="#NWmai7-usaB-b">D38</a>, <a href="#NWmai7-usaB-c">D39</a>, <a href="#NWmai7-usaB-d">D40</a>, <a href="#NWmai7-usaB-e">D41</a>, <a href="#NWmai7-usaB-f">D42</a>, <a href="#NWmai7-usaB-g">D43</a>
+<li><a href="#NWD1"><i>&lt;version string&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD5">U2</a>
+<li><a href="#NWmai7-wriX-1"><i>&lt;write PostScript for ledger paper&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWmai7-wriX-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-alternates" href="#NWmai7-*-F">alternates</a>: <a href="#NWmai7-refF-1">U1</a>, <a href="#NWmai7-*-F">D2</a>, <a href="#NWmai7-*-G">U3</a>
+<li><a name="NWI-alternator" href="#NWmai7-*-F">alternator</a>: <a href="#NWmai7-*-F">D1</a>
+<li><a name="NWI-asmgrammarfilename" href="#NWmai7-*-9">asmgrammarfilename</a>: <a href="#NWmai7-casJ-5">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>, <a href="#NWD5">U4</a>
+<li><a name="NWI-baldebug" href="#NWmai7-*-3">baldebug</a>: <a href="#NWmai7-casJ-A">U1</a>, <a href="#NWmai7-*-3">D2</a>
+<li><a name="NWI-cdebug" href="#NWmai7-*-9">cdebug</a>: <a href="#NWmai7-casJ-B">U1</a>, <a href="#NWmai7-*-9">D2</a>
+<li><a name="NWI-command_line" href="#NWD5">command_line</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-consume" href="#NWmai7-*-E">consume</a>: <a href="#NWD5">U1</a>, <a href="#NWmai7-*-E">D2</a>
+<li><a name="NWI-disassemblyfilename" href="#NWmai7-*-9">disassemblyfilename</a>: <a href="#NWmai7-casJ-H">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>, <a href="#NWD5">U4</a>
+<li><a name="NWI-emit_closure_functions" href="#NWmai7-*-9">emit_closure_functions</a>: <a href="#NWmai7-casJ-c">U1</a>, <a href="#NWmai7-casJ-e">U2</a>, <a href="#NWmai7-*-9">D3</a>, <a href="#NWmai7-iniI-4">U4</a>
+<li><a name="NWI-emittername" href="#NWmai7-*-9">emittername</a>: <a href="#NWmai7-casJ-6">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-4">U3</a>
+<li><a name="NWI-emitterstyle" href="#NWD3">emitterstyle</a>: <a href="#NWD3">D1</a>, <a href="#NWmai7-iniI-5">U2</a>
+<li><a name="NWI-emit_unit_bits" href="#NWmai7-*-9">emit_unit_bits</a>: <a href="#NWmai7-casJ-J">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-4">U3</a>
+<li><a name="NWI-emptyset" href="#NWmai7-*-9">emptyset</a>: <a href="#NWmai7-*-9">D1</a>, <a href="#NWmai7-iniI-4">U2</a>
+<li><a name="NWI-fieldnamesbase" href="#NWmai7-*-9">fieldnamesbase</a>: <a href="#NWmai7-casJ-M">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWD5">U3</a>
+<li><a name="NWI-Gcomment" href="#NWD5">Gcomment</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-genconstraint" href="#NWmai7-*-H">genconstraint</a>: <a href="#NWmai7-*-G">U1</a>, <a href="#NWmai7-*-H">D2</a>
+<li><a name="NWI-gen_counters" href="#NWmai7-*-9">gen_counters</a>: <a href="#NWmai7-casJ-9">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>
+<li><a name="NWI-hdebug" href="#NWmai7-*-9">hdebug</a>: <a href="#NWmai7-casJ-C">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>
+<li><a name="NWI-header_lines" href="#NWD5">header_lines</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-implementation_extension" href="#NWmai7-*-9">implementation_extension</a>: <a href="#NWmai7-casJ-7">U1</a>, <a href="#NWmai7-casJ-O">U2</a>, <a href="#NWmai7-casJ-Z">U3</a>, <a href="#NWmai7-*-9">D4</a>, <a href="#NWmai7-iniI-4">U5</a>
+<li><a name="NWI-indirectname" href="#NWmai7-*-9">indirectname</a>: <a href="#NWmai7-casJ-Q">U1</a>, <a href="#NWmai7-*-9">D2</a>
+<li><a name="NWI-indirecttype" href="#NWmai7-*-9">indirecttype</a>: <a href="#NWmai7-casJ-Q">U1</a>, <a href="#NWmai7-*-9">D2</a>
+<li><a name="NWI-info_msg" href="#NWmai7-*-8">info_msg</a>: <a href="#NWmai7-casJ-h">U1</a>, <a href="#NWmai7-*-8">D2</a>
+<li><a name="NWI-interface_extension" href="#NWmai7-*-9">interface_extension</a>: <a href="#NWmai7-casJ-7">U1</a>, <a href="#NWmai7-casJ-O">U2</a>, <a href="#NWmai7-casJ-Z">U3</a>, <a href="#NWmai7-*-9">D4</a>, <a href="#NWmai7-iniI-4">U5</a>
+<li><a name="NWI-lateconst" href="#NWmai7-*-9">lateconst</a>: <a href="#NWmai7-casJ-R">U1</a>, <a href="#NWmai7-iniI-1">U2</a>, <a href="#NWmai7-casJ-S">U3</a>, <a href="#NWmai7-*-9">D4</a>
+<li><a name="NWI-latezero" href="#NWmai7-*-9">latezero</a>: <a href="#NWmai7-casJ-S">U1</a>, <a href="#NWmai7-casJ-T">U2</a>, <a href="#NWmai7-*-9">D3</a>
+<li><a name="NWI-lc_pat_names" href="#NWmai7-*-9">lc_pat_names</a>: <a href="#NWmai7-casJ-V">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>
+<li><a name="NWI-lowercons" href="#NWmai7-*-9">lowercons</a>: <a href="#NWmai7-casJ-U">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>
+<li><a name="NWI-main" href="#NWD5">main</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-max_decimal" href="#NWmai7-*-4">max_decimal</a>: <a href="#NWmai7-casJ-Y">U1</a>, <a href="#NWmai7-iniI-2">U2</a>, <a href="#NWmai7-*-4">D3</a>
+<li><a name="NWI-mdebug" href="#NWmai7-*-9">mdebug</a>: <a href="#NWmai7-casJ-D">U1</a>, <a href="#NWmai7-*-9">D2</a>
+<li><a name="NWI-no_asm_ws" href="#NWmai7-*-5">no_asm_ws</a>: <a href="#NWmai7-casJ-a">U1</a>, <a href="#NWmai7-*-5">D2</a>, <a href="#NWD2">D3</a>, <a href="#NWD5">U4</a>
+<li><a name="NWI-nowarn" href="#NWmai7-*-9">nowarn</a>: <a href="#NWmai7-usaB-a">U1</a>, <a href="#NWmai7-casJ-b">U2</a>, <a href="#NWmai7-refF-b">U3</a>, <a href="#NWmai7-*-9">D4</a>
+<li><a name="NWI-openfile" href="#NWD6">openfile</a>: <a href="#NWmai7-casJ-2">U1</a>, <a href="#NWmai7-casJ-3">U2</a>, <a href="#NWmai7-casJ-A">U3</a>, <a href="#NWmai7-casJ-B">U4</a>, <a href="#NWmai7-casJ-C">U5</a>, <a href="#NWmai7-casJ-D">U6</a>, <a href="#NWmai7-casJ-F">U7</a>, <a href="#NWmai7-casJ-G">U8</a>, <a href="#NWmai7-casJ-I">U9</a>, <a href="#NWmai7-casJ-L">U10</a>, <a href="#NWmai7-casJ-X">U11</a>, <a href="#NWD5">U12</a>, <a href="#NWD6">D13</a>
+<li><a name="NWI-pc_unit_bits" href="#NWmai7-*-9">pc_unit_bits</a>: <a href="#NWmai7-*-9">D1</a>, <a href="#NWmai7-iniI-4">U2</a>
+<li><a name="NWI-postfix" href="#NWmai7-*-7">postfix</a>: <a href="#NWmai7-usaB-c">U1</a>, <a href="#NWmai7-casJ-d">U2</a>, <a href="#NWmai7-refF-d">U3</a>, <a href="#NWmai7-*-7">D4</a>
+<li><a name="NWI-pretty" href="#NWmai7-*-9">pretty</a>: <a href="#NWmai7-*-9">D1</a>, <a href="#NWmai7-iniI-4">U2</a>, <a href="#NWmai7-hanQ-1">U3</a>, <a href="#NWmai7-manU-1">U4</a>
+<li><a name="NWI-printalternates" href="#NWmai7-*-G">printalternates</a>: <a href="#NWmai7-manU-1">U1</a>, <a href="#NWmai7-*-G">D2</a>
+<li><a name="NWI-sdebug" href="#NWmai7-*-9">sdebug</a>: <a href="#NWmai7-casJ-F">U1</a>, <a href="#NWmai7-*-9">D2</a>, <a href="#NWmai7-iniI-3">U3</a>
+<li><a name="NWI-showpnf" href="#NWmai7-*-D">showpnf</a>: <a href="#NWmai7-*-D">D1</a>
+<li><a name="NWI-simplify_emits" href="#NWmai7-*-9">simplify_emits</a>: <a href="#NWmai7-casJ-N">U1</a>, <a href="#NWmai7-*-9">D2</a>
+<li><a name="NWI-the_global_pc" href="#NWD4">the_global_pc</a>: <a href="#NWD4">D1</a>, <a href="#NWmai7-iniI-6">U2</a>
+<li><a name="NWI-tryall" href="#NWmai7-*-9">tryall</a>: <a href="#NWmai7-usaB-f">U1</a>, <a href="#NWmai7-casJ-g">U2</a>, <a href="#NWmai7-refF-f">U3</a>, <a href="#NWmai7-*-9">D4</a>, <a href="#NWmai7-iniI-3">U5</a>
+<li><a name="NWI-usage" href="#NWmai7-*-2">usage</a>: <a href="#NWmai7-*-2">D1</a>, <a href="#NWD5">U2</a>
+<li><a name="NWI-verbose" href="#NWmai7-*-9">verbose</a>: <a href="#NWmai7-refF-b">U1</a>, <a href="#NWmai7-usaB-g">U2</a>, <a href="#NWmai7-casJ-h">U3</a>, <a href="#NWmai7-refF-g">U4</a>, <a href="#NWmai7-*-9">D5</a>, <a href="#NWmai7-iniI-4">U6</a>, <a href="#NWD5">U7</a>
+<li><a name="NWI-version" href="#NWmai7-*-9">version</a>: <a href="#NWmai7-refF-5">U1</a>, <a href="#NWmai7-usaB-K">U2</a>, <a href="#NWmai7-*-9">D3</a>, <a href="#NWD5">U4</a>
+</ul>
+</body></html>
+

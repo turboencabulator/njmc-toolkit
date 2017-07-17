@@ -1,0 +1,216 @@
+<html><head><title> expps.nw</title></head><body>
+<h2><a name="NWD1">Mapping expressions to postfix strings</a></h2>
+The idea is to get a postfix, executable representation of function
+bodies.
+As with <code>expuniq</code>, we try to ensure two representations of the same
+function map to the same string.
+<pre><a name="NWexp8-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWexp8-*-2">-&gt;</a>]</b>
+procedure <a href="#NWD1">expps</a>(e)
+  local leadingsign, prefix
+  static psopstab
+  initial {<a name="NWexp8-*-1-u1" href="#NWexp8-ini4-1"><i>&lt;init&gt;</i></a>}
+  return case type(e) of {
+    <a name="NWexp8-*-1-u2" href="#NWexp8-casJ-1"><i>&lt;cases for <code>expps</code>&gt;</i></a>
+    default    : &amp;fail
+  } | impossible(&quot;postfix expression &quot;, image(e), &quot; : &quot;, type(e))
+end
+</pre><blockquote>Defines <a href="#NWI-expps"><code>expps</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp8-casJ-1" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWexp8-casJ-2">-&gt;</a>]</b>
+&quot;list&quot;     : &quot;[&quot; || commaseparate(maplist(<a href="#NWD1">expps</a>, e), &quot; &quot;) || &quot;]&quot;
+&quot;set&quot;      : &quot;[&quot; || commaseparate(sort(maplist(<a href="#NWD1">expps</a>, sort(e))), &quot;,&quot;) || &quot;] set&quot;
+&quot;eqn&quot;      : <a href="#NWD1">expps</a>(e.left) || &quot; &quot; || <a href="#NWD1">expps</a>(e.right) || &quot; &quot; || \psopstab[e.op]
+</pre><pre><a name="NWexp8-ini4-1" href="#NWexp8-ini4-1"><dfn>&lt;init&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+psopstab := table()
+psopstab[&quot;&lt;&quot;]  := &quot;lt&quot;
+psopstab[&quot;&lt;=&quot;] := &quot;le&quot;
+psopstab[&quot;&gt;&quot;]  := &quot;gt&quot;
+psopstab[&quot;&gt;=&quot;] := &quot;ge&quot;
+psopstab[&quot;!=&quot;] := &quot;ne&quot;
+psopstab[&quot;=&quot;]  := &quot;eq&quot;
+</pre><pre><a name="NWexp8-casJ-2" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-1">&lt;-</a>D<a href="#NWexp8-casJ-3">-&gt;</a>]</b>
+&quot;table&quot;    : {                      # standard normal form
+    <a name="NWexp8-casJ-2-u1" href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>&gt;</i></a>
+    s 
+  }
+&quot;string&quot;   : e
+&quot;literal&quot;  : image(e.s) || &quot; lit&quot;
+&quot;integer&quot;  : string(e)
+&quot;null&quot;     : &quot;null&quot;
+</pre><p>
+<a name="NWD2">Be sure to omit multiplicative and additive units.</a>
+Otherwise, it doesn't matter.
+<pre><a name="NWexp8-makW-1" href="#NWD2"><dfn>&lt;make <code>s</code> represent table <code>e</code>&gt;=</dfn></a> <b>(<a href="#NWexp8-casJ-2">&lt;-U</a>)</b>
+{
+  s := &quot;&quot;; firstterm := 1
+  t := table(0)
+  l := []
+  every e[k := key(e)] do {
+    put(l, x := <a href="#NWD1">expps</a>(k))
+    t[x] +:= e[k]
+  }
+  l := sort(l)
+  every x := !l &amp; t[x] ~= 0 do {
+    if \firstterm then 
+      s ||:= <a href="#NWexp8-*-2">psx</a>(x, t[x])
+    else 
+      s ||:= &quot; &quot; || <a href="#NWexp8-*-2">psabs</a>(x, t[x]) || &quot; &quot; || if t[x] &gt; 0 then &quot;add&quot; else &quot;sub&quot;
+    firstterm := &amp;null
+  }
+  if s == &quot;&quot; then s := &quot;0&quot;
+}
+</pre><pre><a name="NWexp8-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWexp8-*-3">-&gt;</a>]</b>
+procedure <a href="#NWexp8-*-2">psabs</a>(x, mul)
+  return if x == &quot;1&quot; then mul
+         else if abs(mul) = 1 then x
+         else x || &quot; &quot; || abs(mul) || &quot; mul&quot;
+end
+procedure <a href="#NWexp8-*-2">psx</a>(x, mul)
+  return if x == &quot;1&quot; then mul
+         else case mul of {
+            1 : x
+           -1 : x || &quot; neg&quot;
+           default : x || &quot; &quot; || mul || &quot; mul&quot;
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-psabs"><code>psabs</code></a>, <a href="#NWI-psx"><code>psx</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWexp8-casJ-3" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-2">&lt;-</a>D<a href="#NWexp8-casJ-4">-&gt;</a>]</b>
+&quot;Eorb&quot;     : { l := sort(maplist(<a href="#NWD1">expps</a>, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= &quot; &quot; || l[2 to *l] || &quot; orb&quot;
+               s
+             }
+&quot;Eand&quot;     : { l := sort(maplist(<a href="#NWD1">expps</a>, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= &quot; &quot; || l[2 to *l] || &quot; and&quot;
+               s
+             }
+</pre><pre><a name="NWexp8-casJ-4" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-3">&lt;-</a>D<a href="#NWexp8-casJ-5">-&gt;</a>]</b>
+&quot;Eslice&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.lo || &quot; &quot; || (e.lo + e.n - 1) || &quot; bitslice&quot;
+&quot;Eshift&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; bitshift&quot;
+</pre><pre><a name="NWexp8-casJ-5" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-4">&lt;-</a>D<a href="#NWexp8-casJ-6">-&gt;</a>]</b>
+&quot;Enarrowu&quot; : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; narrowu&quot;
+&quot;Enarrows&quot; : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; narrows&quot;
+&quot;Ewiden&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; widen&quot;
+</pre><pre><a name="NWexp8-casJ-6" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-5">&lt;-</a>D<a href="#NWexp8-casJ-7">-&gt;</a>]</b>
+&quot;Ediv&quot;     : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; idiv&quot;
+&quot;Emod&quot;     : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; mod&quot;
+</pre><pre><a name="NWexp8-casJ-7" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-6">&lt;-</a>D<a href="#NWexp8-casJ-8">-&gt;</a>]</b>
+&quot;Semit&quot;    : commaseparate(maplist(<a href="#NWD1">expps</a>, e.x), &quot;\n&quot;) || &quot;\n&quot;
+&quot;Stoken&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; cl-loc force &quot; || 
+             (if e.offset ~= 0 then e.offset || &quot; add &quot; else &quot;&quot;) || 
+             e.n || &quot; emit-at&quot;
+</pre><pre><a name="NWexp8-casJ-8" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-7">&lt;-</a>D<a href="#NWexp8-casJ-9">-&gt;</a>]</b>
+&quot;Efitsu&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; fitsu&quot;
+&quot;Efitss&quot;   : <a href="#NWD1">expps</a>(e.x) || &quot; &quot; || e.n || &quot; fitss&quot;
+</pre><pre><a name="NWexp8-casJ-9" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-8">&lt;-</a>D<a href="#NWexp8-casJ-A">-&gt;</a>]</b>
+&quot;Epatlabel&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-A" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-9">&lt;-</a>D<a href="#NWexp8-casJ-B">-&gt;</a>]</b>
+&quot;Eforce&quot;    : <a href="#NWD1">expps</a>(e.x) || &quot; force&quot;
+&quot;Eforceable&quot;: <a href="#NWD1">expps</a>(e.x) || &quot; known&quot;
+</pre><pre><a name="NWexp8-casJ-B" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-A">&lt;-</a>D<a href="#NWexp8-casJ-C">-&gt;</a>]</b>
+&quot;Epc&quot;       : &amp;fail
+&quot;Epc_known&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-C" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-B">&lt;-</a>D<a href="#NWexp8-casJ-D">-&gt;</a>]</b>
+&quot;Enot&quot;      : <a href="#NWD1">expps</a>(e.x) || &quot; not&quot;
+</pre><pre><a name="NWexp8-casJ-D" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-C">&lt;-</a>D<a href="#NWexp8-casJ-E">-&gt;</a>]</b>
+&quot;Enosimp&quot;   : <a href="#NWD1">expps</a>(e.x)
+</pre><pre><a name="NWexp8-casJ-E" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-D">&lt;-</a>D<a href="#NWexp8-casJ-F">-&gt;</a>]</b>
+&quot;Sstmts&quot;    : commaseparate(maplist(<a href="#NWD1">expps</a>, e.x), &quot;\n&quot;) || &quot;\n&quot;
+</pre><pre><a name="NWexp8-casJ-F" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-E">&lt;-</a>D<a href="#NWexp8-casJ-G">-&gt;</a>]</b>
+&quot;Einstance&quot; : { s := &quot;&lt;&lt; /instance-of &quot; || e.cons.name
+                every i := inputs_of(e.cons) do
+                  s ||:= &quot; /&quot; || i.name || &quot; &quot; || <a href="#NWD1">expps</a>(e.argt[i.name])
+                s || &quot; &gt;&gt;&quot;
+              }
+&quot;Einstance_input&quot; : 
+        <a href="#NWD1">expps</a>(e.x) || &quot; /&quot; || e.cons.name || &quot; /&quot; || e.name || &quot; get_instance&quot;
+&quot;Einstance_tagged&quot; :      
+        <a href="#NWD1">expps</a>(e.x) || &quot; /&quot; || e.cons.name || &quot; is_instance&quot;
+&quot;Ebinding_instance&quot; : &amp;fail
+</pre><pre><a name="NWexp8-casJ-G" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-F">&lt;-</a>D<a href="#NWexp8-casJ-H">-&gt;</a>]</b>
+&quot;Sif&quot;      : { s := &quot;[&quot;
+               every s ||:= &quot;\n&quot; || <a href="#NWD1">expps</a>(!e.arms)
+               s || &quot;\n] if-guard&quot;
+             }
+&quot;Sguarded&quot; : <a href="#NWexp8-*-3">psguard</a>(e.guard) || &quot;\n\t{&quot; || <a href="#NWD1">expps</a>(e.x) || &quot;}&quot;
+</pre><pre><a name="NWexp8-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp8-*-2">&lt;-</a>D]</b>
+procedure <a href="#NWexp8-*-3">psguard</a>(e)
+  return case type(e) of {
+    &quot;integer&quot; : case e of { 0 : &quot;false&quot;; 1 : &quot;true&quot;; default: impossible(&quot;condition&quot;) }
+    &quot;null&quot; : &quot;true&quot;
+    &quot;set&quot; : {
+       l := sort(maplist(<a href="#NWD1">expps</a>, sort(e)))
+       s := l[1]
+       every s ||:= &quot; &quot; || l[2 to *l] || &quot; and&quot;
+       if *l = 0 then &quot;true&quot; else s
+    }
+    default : <a href="#NWD1">expps</a>(e)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-psguard"><code>psguard</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp8-casJ-H" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-G">&lt;-</a>D<a href="#NWexp8-casJ-I">-&gt;</a>]</b>
+&quot;Stagcase&quot; : { s := &quot;[&quot;
+              every c := kept_constructors(e.type) do
+                s ||:= &quot;\n/&quot; || c.name || &quot; {&quot; || <a href="#NWD1">expps</a>(e.arms[c]) || &quot;}&quot;
+              s ||:= &quot;\n]&quot; || <a href="#NWD1">expps</a>(e.x) || &quot; tag-case&quot;
+            }
+</pre><pre><a name="NWexp8-casJ-I" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-H">&lt;-</a>D<a href="#NWexp8-casJ-J">-&gt;</a>]</b>
+&quot;Sfail&quot;    : { s := image(e.fmt) || &quot; [&quot;
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= &quot; &quot; || <a href="#NWD1">expps</a>(\a)
+               s := s || &quot; ] failmsg&quot; 
+             }
+&quot;Sepsilon&quot; : &quot;&quot;
+</pre><pre><a name="NWexp8-casJ-J" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-I">&lt;-</a>D<a href="#NWexp8-casJ-K">-&gt;</a>]</b>
+&quot;Efail&quot;    : &amp;fail
+</pre><pre><a name="NWexp8-casJ-K" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-J">&lt;-</a>D<a href="#NWexp8-casJ-L">-&gt;</a>]</b>
+&quot;Glines&quot;    : commaseparate(maplist2(<a href="#NWD1">expps</a>, e.x), &quot;\n&quot;)
+&quot;Gresynch&quot;  : &quot;&quot;
+&quot;Gblock&quot;    : { s := &quot;enterscope &quot; 
+                every s ||:= <a href="#NWD1">expps</a>(!e.decls) || &quot;\n&quot;
+                every s ||:= <a href="#NWD1">expps</a>(!e.stmts) || &quot;\n&quot;
+                s || &quot;exitscope&quot;
+              }
+&quot;Gdecl&quot;     : { s := &quot;/&quot; || e.name || &quot; &quot; || <a href="#NWD1">expps</a>(e.type) 
+                s ||:= <a href="#NWD1">expps</a>(\e.init) | &quot;&amp;uninitialized&quot; 
+                s || &quot; decl&quot;
+              }
+</pre><pre><a name="NWexp8-casJ-L" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-K">&lt;-</a>D<a href="#NWexp8-casJ-M">-&gt;</a>]</b>
+&quot;Gcase&quot;     : &amp;fail
+&quot;Gcasearm&quot;  : &amp;fail
+&quot;Ginrange&quot;  : &amp;fail
+</pre><pre><a name="NWexp8-casJ-M" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-L">&lt;-</a>D<a href="#NWexp8-casJ-N">-&gt;</a>]</b>
+&quot;Gasgn&quot;     : &amp;fail
+&quot;Gsetname&quot;  : &amp;fail
+&quot;Gnomatch&quot;  : &amp;fail
+&quot;Tunsigned&quot; : (\e.width | &quot;wordsize&quot;) || &quot; unsigned&quot;
+</pre><pre><a name="NWexp8-casJ-N" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-M">&lt;-</a>D<a href="#NWexp8-casJ-O">-&gt;</a>]</b>
+&quot;Eapp&quot; : <a href="#NWD1">expps</a>(e.args) || &quot; &quot; || image(e.f) || &quot; apply&quot;
+</pre><pre><a name="NWexp8-casJ-O" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-N">&lt;-</a>D<a href="#NWexp8-casJ-P">-&gt;</a>]</b>
+&quot;Eclosure_loc&quot;  : &quot;cl-loc&quot;
+&quot;Eclosure_addr&quot; : e.n || &quot; cla&quot;
+&quot;Eclosure_val&quot;  : e.n || &quot; clv&quot;
+</pre><pre><a name="NWexp8-casJ-P" href="#NWexp8-casJ-1"><dfn>&lt;cases for <code>expps</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexp8-casJ-O">&lt;-</a>D]</b>
+&quot;Eclosure&quot; : &amp;fail
+&quot;Elambda&quot; :  {
+  s := &quot;[&quot;
+  every s ||:= &quot; /&quot; || !e.formals
+  s ||:= &quot; ] { &quot; || <a href="#NWD1">expps</a>(e.body) || &quot; } fn&quot; 
+}
+</pre>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWexp8-*-2">D2</a>, <a href="#NWexp8-*-3">D3</a>
+<li><a href="#NWexp8-casJ-1"><i>&lt;cases for <code>expps</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexp8-casJ-1">D2</a>, <a href="#NWexp8-casJ-2">D3</a>, <a href="#NWexp8-casJ-3">D4</a>, <a href="#NWexp8-casJ-4">D5</a>, <a href="#NWexp8-casJ-5">D6</a>, <a href="#NWexp8-casJ-6">D7</a>, <a href="#NWexp8-casJ-7">D8</a>, <a href="#NWexp8-casJ-8">D9</a>, <a href="#NWexp8-casJ-9">D10</a>, <a href="#NWexp8-casJ-A">D11</a>, <a href="#NWexp8-casJ-B">D12</a>, <a href="#NWexp8-casJ-C">D13</a>, <a href="#NWexp8-casJ-D">D14</a>, <a href="#NWexp8-casJ-E">D15</a>, <a href="#NWexp8-casJ-F">D16</a>, <a href="#NWexp8-casJ-G">D17</a>, <a href="#NWexp8-casJ-H">D18</a>, <a href="#NWexp8-casJ-I">D19</a>, <a href="#NWexp8-casJ-J">D20</a>, <a href="#NWexp8-casJ-K">D21</a>, <a href="#NWexp8-casJ-L">D22</a>, <a href="#NWexp8-casJ-M">D23</a>, <a href="#NWexp8-casJ-N">D24</a>, <a href="#NWexp8-casJ-O">D25</a>, <a href="#NWexp8-casJ-P">D26</a>
+<li><a href="#NWexp8-ini4-1"><i>&lt;init&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexp8-ini4-1">D2</a>
+<li><a href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>&gt;</i></a>: <a href="#NWexp8-casJ-2">U1</a>, <a href="#NWD2">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-expps" href="#NWD1">expps</a>: <a href="#NWD1">D1</a>, <a href="#NWexp8-casJ-1">U2</a>, <a href="#NWD2">U3</a>, <a href="#NWexp8-casJ-3">U4</a>, <a href="#NWexp8-casJ-4">U5</a>, <a href="#NWexp8-casJ-5">U6</a>, <a href="#NWexp8-casJ-6">U7</a>, <a href="#NWexp8-casJ-7">U8</a>, <a href="#NWexp8-casJ-8">U9</a>, <a href="#NWexp8-casJ-A">U10</a>, <a href="#NWexp8-casJ-C">U11</a>, <a href="#NWexp8-casJ-D">U12</a>, <a href="#NWexp8-casJ-E">U13</a>, <a href="#NWexp8-casJ-F">U14</a>, <a href="#NWexp8-casJ-G">U15</a>, <a href="#NWexp8-*-3">U16</a>, <a href="#NWexp8-casJ-H">U17</a>, <a href="#NWexp8-casJ-I">U18</a>, <a href="#NWexp8-casJ-K">U19</a>, <a href="#NWexp8-casJ-N">U20</a>, <a href="#NWexp8-casJ-P">U21</a>
+<li><a name="NWI-psabs" href="#NWexp8-*-2">psabs</a>: <a href="#NWD2">U1</a>, <a href="#NWexp8-*-2">D2</a>
+<li><a name="NWI-psguard" href="#NWexp8-*-3">psguard</a>: <a href="#NWexp8-casJ-G">U1</a>, <a href="#NWexp8-*-3">D2</a>
+<li><a name="NWI-psx" href="#NWexp8-*-2">psx</a>: <a href="#NWD2">U1</a>, <a href="#NWexp8-*-2">D2</a>
+</ul>
+</body></html>
+

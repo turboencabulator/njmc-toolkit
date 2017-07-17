@@ -1,0 +1,407 @@
+<html><head><title> solve.nw</title></head><body>
+
+
+
+
+<h1><a name="NWD1">Solving</a></h1>
+<p>
+<h2>Basic linear solving</h2>
+Variables may be <em>unknown</em>, <em>dependent</em>, <em>known</em>,  or <em>inputs</em>.
+A value is <em>computable</em> if it is a function of inputs, 
+which appear in the set <code>inputs</code>.
+Both dependent variables and inputs appear as keys in the table <code><a href="#NWD2">value</a></code>.
+Known variables are dependent variables whose values are computable.
+Unknown variables appear in neither <code><a href="#NWD2">value</a></code> nor <code>inputs</code>.
+
+<a name="NWD2">The new solve works in two steps, first finding a solution in the form</a>
+of a <code><a href="#NWD2">value</a></code> table, then applying it.
+<pre><a name="NWsol8-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">solve</a>(be, inputspec)
+  local <a href="#NWD2">value</a>, <a href="#NWD2">constraints</a>, <a href="#NWD2">fieldsknown</a>, <a href="#NWD2">zeroes</a>, balances
+  if *be.eqns = 0 then <a name="NWsol8-*-1-u1" href="#NWsol8-retN-1"><i>&lt;return vacuous solution&gt;</i></a> # common short cut
+
+  <a href="#NWD2">value</a>  := table()     # values of dependent variables
+  <a href="#NWD2">constraints</a> := []     # <a href="#NWD2">constraints</a> to check
+  <a href="#NWD2">zeroes</a>      := []     # expressions equal to zero
+  pending     := []     # pending equations we couldn't <a href="#NWD2">solve</a> earlier
+  every <a href="#NWD2">defined</a> | <a href="#NWD2">used</a> := set()         # sets of idents <a href="#NWD2">defined</a> and <a href="#NWD2">used</a>
+
+  debugs(&quot;# Inputs:&quot;); every debugs(&quot; &quot;, expimage(!inputspec)); debug()
+  inputs := copy(inputspec)
+  insert(inputs, 1)     # 1 is hack for finding dependent vars
+  every x := !inputs do <a href="#NWD2">value</a>[x] := term2table(x)
+  every eq := !be.eqns do
+    if eq.op == &quot;=&quot; then put(<a href="#NWD2">zeroes</a>, <a href="#NWDD">subtract</a>(eq.left, eq.right))
+    else put(<a href="#NWD2">constraints</a>, eq)
+  <a name="NWsol8-*-1-u2" href="#NWDA"><i>&lt;initialize balance machinery and balance out inputs&gt;</i></a>
+  <a name="NWsol8-*-1-u3" href="#NWD4"><i>&lt;empty <code>zeroes</code>&gt;</i></a>
+  <a name="NWsol8-*-1-u4" href="#NWsol8-dumY-1"><i>&lt;dump <code>value</code> and <code>constraints</code>&gt;</i></a>
+  <a name="NWsol8-*-1-u5" href="#NWsol8-makh-1"><i>&lt;make sure all dependent variables are known&gt;</i></a>
+  <a name="NWsol8-*-1-u6" href="#NWsol8-buiP-1"><i>&lt;build and return solution&gt;</i></a>
+end
+</pre><blockquote>Defines <a href="#NWI-constraints"><code>constraints</code></a>, <a href="#NWI-defined"><code>defined</code></a>, <a href="#NWI-fieldsknown"><code>fieldsknown</code></a>, <a href="#NWI-solve"><code>solve</code></a>, <a href="#NWI-used"><code>used</code></a>, <a href="#NWI-value"><code>value</code></a>, <a href="#NWI-zeroes"><code>zeroes</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">In a solution the </a><code><a href="#NWD2">defined</a></code> and <code><a href="#NWD2">used</a></code> fields are sets of
+strings, which may name variables or fields.
+<code>answers</code> is a table mapping string variables to expression values.
+<pre><a name="NWsol8-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+record <a href="#NWD3">solution</a>(answers, <a href="#NWD2">constraints</a>, <a href="#NWD2">defined</a>, <a href="#NWD2">used</a>)
+</pre><blockquote>Defines <a href="#NWI-solution"><code>solution</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWsol8-buiP-1" href="#NWsol8-buiP-1"><dfn>&lt;build and return solution&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+answers := table()
+non_answer := inputs ## ++ fresh_vars (delete! matcher uses these!)
+every ident := key(<a href="#NWD2">value</a>) &amp; type(ident) == &quot;string&quot; &amp; not member(non_answer, ident) do
+  answers[ident] := simplify(<a href="#NWD2">value</a>[ident]) 
+    # we think simplify is OK -- super definitely not OK!
+every insert(<a href="#NWD2">used</a>, free_variables(!answers | !<a href="#NWD2">constraints</a>))
+every debug(&quot;# ===&gt; answers[&quot;, expimage(k := key(answers)), &quot;] = &quot;, expimage(answers[k]))
+<a name="NWsol8-buiP-1-u1" href="#NWsol8-dumH-1"><i>&lt;dump def-use info&gt;</i></a>
+return <a href="#NWD3">solution</a>(answers, simplify(<a href="#NWD2">constraints</a>), <a href="#NWD2">defined</a>, <a href="#NWD2">used</a>)
+</pre><pre><a name="NWsol8-retN-1" href="#NWsol8-retN-1"><dfn>&lt;return vacuous solution&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+return <a href="#NWD3">solution</a>(table(), [], emptyset, emptyset)
+</pre><p>
+Invariants:
+<ol>
+<li><a name="NWD4">If variable </a><code>v</code> is known, than all of its ranges and extensions are
+known.  <em>what has this to do with balances?</em>
+<li>Ranges and extensions of expressions (as opposed to variables or fields)
+appear only when the expressions are computable.
+<li>No key in <code><a href="#NWD2">zeroes</a></code>, <code>pending</code>, or <code><a href="#NWD2">constraints</a></code> is dependent.
+<li>Nothing in the range of <code><a href="#NWD2">value</a></code> is dependent.
+<li>Values in <code><a href="#NWD2">zeroes</a></code>, <code>pending</code>, <code><a href="#NWD2">constraints</a></code>, and <code><a href="#NWD2">value</a></code> are
+all in table form (so destructive substitution works).
+</ol>
+<pre><a name="NWsol8-empG-1" href="#NWD4"><dfn>&lt;empty <code>zeroes</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+pending := []           # equations with unknowns but no unit coefficients
+while *<a href="#NWD2">zeroes</a> &gt; 0 do {
+  while z := get(<a href="#NWD2">zeroes</a>) do {
+    every v := key(z) &amp; z[v] = 0 do delete(z, v)
+    debug(&quot;# new equation: &quot;, expimage(z), &quot; = 0&quot;)
+    <a name="NWsol8-empG-1-u1" href="#NWsol8-norx-1"><i>&lt;normalize <code>z</code> by dividing out the greatest common divisor&gt;</i></a>
+    if v := key(z) &amp; type(v) == &quot;string&quot; &amp; not member(inputs, v) &amp; z[v] = (1 | -1) then {
+      <a name="NWsol8-empG-1-u2" href="#NWD6"><i>&lt;make <code>v</code> in <code>z</code> a new dependent variable&gt;</i></a>
+      if <a href="#NWD5">computable</a>(inputs, <a href="#NWD2">value</a>[v]) then push(newlyknown, v)
+      <a name="NWsol8-empG-1-u3" href="#NWsol8-usel-1"><i>&lt;use <code>newlyknown</code> to make more variables known&gt;</i></a>
+      while put(<a href="#NWD2">zeroes</a>, get(pending))
+    } else if v := key(z) &amp; not <a href="#NWD5">computable</a>(inputs, v) then {
+      debug(&quot;# no new dependent variable in &quot;, expimage(z), &quot; = 0&quot;)
+      put(pending, z)
+    } else if not <a href="#NWDC">values_known_equal</a>(z, 0) then {
+      debug(&quot;# new constraint &quot;, expimage(z), &quot; = 0&quot;)
+      <a name="NWsol8-empG-1-u4" href="#NWsol8-makU-1"><i>&lt;make sure <code>z</code> is satisfiable&gt;</i></a>
+      put(<a href="#NWD2">constraints</a>, <a href="#NWDE">zero_to_constraint</a>(z))
+    }
+  }
+  <a name="NWsol8-empG-1-u5" href="#NWsol8-if*1J-1"><i>&lt;if a <code>pending</code> equation can be fixed with <code>div</code> or <code>mod</code>, drain <code>pending</code>&gt;</i></a>
+}
+<a name="NWsol8-empG-1-u6" href="#NWsol8-maki.2-1"><i>&lt;make sure there are no <code>pending</code> equations&gt;</i></a>
+</pre><pre><a name="NWsol8-if*1J-1" href="#NWsol8-if*1J-1"><dfn>&lt;if a <code>pending</code> equation can be fixed with <code>div</code> or <code>mod</code>, drain <code>pending</code>&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+pendingpending := []
+while z := get(pending) do 
+  if v := key(z) &amp; type(v) == &quot;string&quot; &amp; not member(inputs, v) then {
+    m := -z[v]
+    delete(z, v)
+    if m &lt; 0 then { m := -m; z := <a href="#NWDD">subtract</a>(0, z) }      # make m positive
+    m ~= 1 | impossible(&quot;coefficient&quot;)
+    <a name="NWsol8-if*1J-1-u1" href="#NWsol8-cre10-1"><i>&lt;create fresh variables <code>x</code>, <code>q = x div m</code>, <code>r = x mod m</code>&gt;</i></a>
+    # now force x = z, v = q, r = 0 
+    every put(<a href="#NWD2">zeroes</a>, <a href="#NWDD">subtract</a>(x, z) | <a href="#NWDD">subtract</a>(v, q) | <a href="#NWDD">subtract</a>(r, 0))
+    while put(<a href="#NWD2">zeroes</a>, get(pendingpending) | get(pending))
+  } else 
+    put(pendingpending, z)
+</pre><pre><a name="NWsol8-cre10-1" href="#NWsol8-cre10-1"><dfn>&lt;create fresh variables <code>x</code>, <code>q = x div m</code>, <code>r = x mod m</code>&gt;=</dfn></a> <b>(<a href="#NWsol8-if*1J-1">&lt;-U</a>)</b>
+every x | q | r := fresh_variable(v)
+put(balances, b := <a href="#NWD7">balance</a>([<a href="#NWD7">balitem</a>(x, n_times_q_plus_r(m, q, r))],
+                           [<a href="#NWD7">balitem</a>(q, Ediv(x, m)), <a href="#NWD7">balitem</a>(r, Emod(x, m))]))
+every /baltab[x | q | r] := []; every put(baltab[x | q | r], b)
+debug(&quot;New <a href="#NWD7">balance</a>: &quot;, balimage(b))
+</pre><p>
+<a name="NWD5">Fundamental concept: computability.</a>
+<pre><a name="NWsol8-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD5">computable</a>(inputs, val)
+  if member(inputs, val) then return
+  else if v := free_variables(val) &amp; not member(inputs, v) then fail
+  else return
+end
+</pre><blockquote>Defines <a href="#NWI-computable"><code>computable</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">By (2), </a><code>v</code> must be a variable, field, or range or extension thereof.
+By (3), (4) is maintained.
+(2) is maintained because <code>subst</code> substitutes for terms only, not inside
+of ranges or extensions.
+<pre><a name="NWsol8-maki-1" href="#NWD6"><dfn>&lt;make <code>v</code> in <code>z</code> a new dependent variable&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+debug(&quot;# new dependent variable: &quot;, expimage(v))
+m := - z[v]             # multiplier of 1 or -1
+delete(z, v)
+every !z *:= m
+<a href="#NWD2">value</a>[v] := z
+<a name="NWsol8-maki-1-u1" href="#NWsol8-updT-1"><i>&lt;update def-use info for <code>v</code>&gt;</i></a>
+every dsubst(!<a href="#NWD2">zeroes</a> | !pending | !<a href="#NWD2">value</a> | !<a href="#NWD2">constraints</a>, v, z)
+debug(&quot;# <a href="#NWD2">value</a>[&quot;, expimage(v), &quot;] := &quot;, expimage(z))
+</pre><pre><a name="NWsol8-updT-1" href="#NWsol8-updT-1"><dfn>&lt;update def-use info for <code>v</code>&gt;=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b>
+insert(<a href="#NWD2">defined</a>, v)
+if v  == free_variables(!<a href="#NWD2">zeroes</a> | !pending | !<a href="#NWD2">value</a>) then
+  insert(<a href="#NWD2">used</a>, v)
+</pre><pre><a name="NWsol8-updU-1" href="#NWsol8-updU-1"><dfn>&lt;update def-use info for <code>vv</code>&gt;=</dfn></a> <b>(<a href="#NWsol8-i**17-1">U-&gt;</a>)</b>
+insert(<a href="#NWD2">defined</a>, vv)
+if vv == free_variables(!<a href="#NWD2">zeroes</a> | !pending | !<a href="#NWD2">value</a>) then
+  insert(<a href="#NWD2">used</a>, vv)
+</pre><p>
+<h2>Balances</h2>
+Balances are a hack to deal with sign extension, slicing, DIV and MOD, and other
+computations that don't fit the simple linear-equation model.
+The idea is to put a set of variables on each side of the balance, such that
+each variable on one side is a function of all the variables on the other side,
+and vice versa.
+If all the variables on one side become known, the ones on the other side are also known.
+The reason this is useful is that we can substitute such variables in for slices,
+extensions, and other computations.
+For example, the slices of a variable balance that variable: 
+
+
+
+<blockquote><i><blockquote>
+<blockquote>
+a --- = --- x[0:9]<br>b --- = --- x[10:15]<br>c --- = --- x[16:31]
+</blockquote>
+ <a name="NWD7">--- &lt;===&gt; --- </a>
+<blockquote>
+x --- = --- a |b &lt;&lt;10 |c &lt;&lt;16
+</blockquote>
+</blockquote></i></blockquote>
+
+
+The representation of a balance is:
+<pre><a name="NWsol8-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+record <a href="#NWD7">balance</a>(left, right)     # lists of <a href="#NWD7">balitem</a>
+record <a href="#NWD7">balitem</a>(v, <a href="#NWD2">value</a>)        # v is string, <a href="#NWD2">value</a> is exp
+</pre><blockquote>Defines <a href="#NWI-balance"><code>balance</code></a>, <a href="#NWI-balitem"><code>balitem</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD8">where the only free variables in the </a><code><a href="#NWD2">value</a></code> fields are the
+variables listed on the opposite side of the balance.
+<p>
+The solver assumes that variable names used in balances don't collide
+with other names; it's the responsibility of whatever agent provides
+the balances to make it so.
+
+<a name="NWD9">Once a balance becomes known, it's useful to identify the side on</a>
+which all variables are known:
+<pre><a name="NWsol8-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+record <a href="#NWD9">kbalance</a>(known, unknown) # lists of <a href="#NWD7">balitem</a>
+</pre><blockquote>Defines <a href="#NWI-kbalance"><code>kbalance</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDA">To discover when a variable completes a balance, I create a table that</a>
+lists the balances associated with each variable.
+<code>balsused</code> ensures I don't use the same balance more than once.
+<pre><a name="NWsol8-inip-1" href="#NWDA"><dfn>&lt;initialize balance machinery and balance out inputs&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+balances := copy(be.balances)
+baltab := table()
+every b := !balances &amp; v := (!b.left | !b.right).v do {
+  /baltab[v] := []
+  put(baltab[v], b)
+}
+balsused := set()
+newlyknown := sort(inputs)
+oldknown := set()
+<a name="NWsol8-inip-1-u1" href="#NWsol8-usel-1"><i>&lt;use <code>newlyknown</code> to make more variables known&gt;</i></a>
+</pre><p><!-- def balances-->
+
+<a name="NWDB">*</a>
+<pre><a name="NWsol8-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDB">balance_completed</a>(bal, <a href="#NWD2">value</a>, inputs)
+  local vl, vr
+  if vl := (!bal.left).v &amp; not <a href="#NWD5">computable</a>(inputs, \<a href="#NWD2">value</a>[vl]) then 
+    if vr := (!bal.right).v &amp; not <a href="#NWD5">computable</a>(inputs, \<a href="#NWD2">value</a>[vr]) then 
+{
+debug(&quot;Balance not completed; &quot;, 
+        vl, &quot; = &quot;, expimage(\<a href="#NWD2">value</a>[vl]) | &quot;???&quot;, &quot; unknown on left and &quot;, 
+        vr, &quot; = &quot;, expimage(\<a href="#NWD2">value</a>[vr]) | &quot;???&quot;, &quot; unknown on right&quot;)
+      fail
+}
+    else 
+      return <a href="#NWD9">kbalance</a>(bal.right, bal.left)
+  else
+    return <a href="#NWD9">kbalance</a>(bal.left, bal.right)
+end
+</pre><blockquote>Defines <a href="#NWI-balance_completed"><code>balance_completed</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWsol8-usel-1" href="#NWsol8-usel-1"><dfn>&lt;use <code>newlyknown</code> to make more variables known&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a> <a href="#NWDA">&lt;-U</a>)</b>
+while v := get(newlyknown) do
+  if not member(oldknown, v) then {
+    insert(oldknown, v)
+    <a name="NWsol8-usel-1-u1" href="#NWsol8-debJ-1"><i>&lt;debug balancing act&gt;</i></a>
+    <a name="NWsol8-usel-1-u2" href="#NWsol8-if*11-1"><i>&lt;if <code>v</code> completes half of a balance, make the other half known&gt;</i></a>
+    every v := key(<a href="#NWD2">value</a>) &amp; <a href="#NWD5">computable</a>(inputs, <a href="#NWD2">value</a>[v]) do
+      push(newlyknown, v)
+  }
+</pre><pre><a name="NWsol8-debJ-1" href="#NWsol8-debJ-1"><dfn>&lt;debug balancing act&gt;=</dfn></a> <b>(<a href="#NWsol8-usel-1">&lt;-U</a>)</b>
+debug(image(v), &quot; is newly known &quot;)
+every vb := !\baltab[v] do 
+  if member(balsused, vb) then
+    debug(&quot;%%%%% appears in (already <a href="#NWD2">used</a>) <a href="#NWD7">balance</a> &quot;, balimage(vb))
+  else
+    debug(&quot;!!!!! appears in another <a href="#NWD7">balance</a> &quot;, balimage(vb))
+if not !\baltab[v] then
+  debug (&quot;:-( doesn't appear in any balances&quot;)
+</pre><pre><a name="NWsol8-if*11-1" href="#NWsol8-if*11-1"><dfn>&lt;if <code>v</code> completes half of a balance, make the other half known&gt;=</dfn></a> <b>(<a href="#NWsol8-usel-1">&lt;-U</a>)</b>
+every vb := !\baltab[v] &amp; not member(balsused, vb) &amp;
+      b := <a href="#NWDB">balance_completed</a>(vb, <a href="#NWD2">value</a>, inputs) do {
+  insert(balsused, vb)
+  tt := table() # <a href="#NWD2">used</a> to substitute all balanced goodies at once
+  every vv := (ii := !b.unknown).v &amp; zz := term2table(subst_tab(ii.<a href="#NWD2">value</a>, <a href="#NWD2">value</a>, 1)) do
+{ debug(&quot;=&gt; balancing tells us &quot;, vv, &quot; = &quot;, expimage(zz))
+    if <a href="#NWD5">computable</a>(inputs, \<a href="#NWD2">value</a>[vv]) then {
+      <a name="NWsol8-if*11-1-u1" href="#NWsol8-i**q-1"><i>&lt;make new constraint from <code>value[vv]</code><i>=</i><code>zz</code>&gt;</i></a>
+    } else {
+      if \<a href="#NWD2">value</a>[vv] then
+        {<a name="NWsol8-if*11-1-u2" href="#NWsol8-i**1A-1"><i>&lt;make new equation <code>value[vv]</code><i>=</i><code>zz</code>, then update <code>value[vv]</code>&gt;</i></a>}
+      else
+        {<a name="NWsol8-if*11-1-u3" href="#NWsol8-i**17-1"><i>&lt;make <code>vv</code> a new dependent variable with <code>value[vv]</code><i>=</i><code>zz</code>&gt;</i></a>}
+      tt[vv] := zz
+      if <a href="#NWD5">computable</a>(inputs, zz) then push(newlyknown, vv)
+    }
+}
+  every dsubst_tab(!<a href="#NWD2">zeroes</a> | !pending | !<a href="#NWD2">value</a> | !<a href="#NWD2">constraints</a>, tt)
+}
+</pre><pre><a name="NWsol8-i**q-1" href="#NWsol8-i**q-1"><dfn>&lt;make new constraint from <code>value[vv]</code><i>=</i><code>zz</code>&gt;=</dfn></a> <b>(<a href="#NWsol8-if*11-1">&lt;-U</a>)</b>
+if not <a href="#NWDC">values_known_equal</a>(<a href="#NWD2">value</a>[vv], zz) then {
+  put(<a href="#NWD2">constraints</a>, eqn(<a href="#NWD2">value</a>[vv], &quot;=&quot;, zz))
+  debug(&quot;# new constraint &quot;, expimage(<a href="#NWD2">constraints</a>[-1]))
+}
+</pre><pre><a name="NWsol8-i**1A-1" href="#NWsol8-i**1A-1"><dfn>&lt;make new equation <code>value[vv]</code><i>=</i><code>zz</code>, then update <code>value[vv]</code>&gt;=</dfn></a> <b>(<a href="#NWsol8-if*11-1">&lt;-U</a>)</b>
+put(<a href="#NWD2">zeroes</a>, <a href="#NWDD">subtract</a>(<a href="#NWD2">value</a>[vv], zz))
+<a href="#NWD2">value</a>[vv] := zz
+</pre><pre><a name="NWsol8-i**17-1" href="#NWsol8-i**17-1"><dfn>&lt;make <code>vv</code> a new dependent variable with <code>value[vv]</code><i>=</i><code>zz</code>&gt;=</dfn></a> <b>(<a href="#NWsol8-if*11-1">&lt;-U</a>)</b>
+<a href="#NWD2">value</a>[vv] := zz
+<a name="NWsol8-i**17-1-u1" href="#NWsol8-updU-1"><i>&lt;update def-use info for <code>vv</code>&gt;</i></a>
+</pre><p>
+<h2><a name="NWDC">Utility goo</a></h2>
+This hack is just a heuristic that tries to avoid creating unnecessary constraints,
+so false negatives are OK.
+<pre><a name="NWsol8-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWDC">values_known_equal</a>(e1, e2)
+  if e1 === e2 then return e1
+  e1 := untable(e1)
+  e2 := untable(e2)
+debug(&quot;vals &quot;, expimage(e1), &quot; ?= &quot;, expimage(e2))
+  return case type(e1) == type(e2) of {
+    &quot;Ewiden&quot;   : e1.n = e2.n &amp; exps_eq(e1.x, e2.x)
+    &quot;Eslice&quot;   : e1.n == e2.n &amp; e1.lo == e2.lo &amp; exps_eq(e1.x, e2.x)
+    &quot;table&quot;    : constant(<a href="#NWDD">subtract</a>(e1, e2)) = 0
+    &quot;integer&quot;  : e1 = e2
+    &quot;string&quot;   : e1 == e2
+    default    : e1 === e2
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-values_known_equal"><code>values_known_equal</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDD">Unlike </a><code>binop</code>, <code><a href="#NWDD">subtract</a></code> is non-destructive.  It would not be safe to use 
+<code>binop</code> within the solver.
+<pre><a name="NWsol8-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+procedure <a href="#NWDD">subtract</a>(l, r)
+  z := table(0)
+  l := term2table(l)
+  r := term2table(r)
+  every v := key(l) do z[v]  := l[v]
+  every v := key(r) do z[v] -:= r[v]
+  return z
+end
+</pre><blockquote>Defines <a href="#NWI-subtract"><code>subtract</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDE">When converting a redundent zero to a constraint, I make all coefficients</a>
+positive.  It's not necessary for correctness, but it leads to more readable
+constraints (and therefore to more readable code).
+<pre><a name="NWsol8-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWsol8-*-A">-&gt;</a>]</b>
+procedure <a href="#NWDE">zero_to_constraint</a>(z)
+  e := eqn(table(0), &quot;=&quot;, table(0))
+  every k := key(z) do
+    if      z[k] &gt; 0 then e.left[k]  +:= z[k]
+    else if z[k] &lt; 0 then e.right[k] -:= z[k]
+  return e
+end
+</pre><blockquote>Defines <a href="#NWI-zero_to_constraint"><code>zero_to_constraint</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWsol8-makU-1" href="#NWsol8-makU-1"><dfn>&lt;make sure <code>z</code> is satisfiable&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+debug(&quot;#### sure hope &quot;, expimage(z), &quot; is satisfiable!!!&quot;)
+</pre><pre><a name="NWsol8-makh-1" href="#NWsol8-makh-1"><dfn>&lt;make sure all dependent variables are known&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+if v := key(<a href="#NWD2">value</a>) &amp; not <a href="#NWD5">computable</a>(inputs, <a href="#NWD2">value</a>[v]) then {
+  write(&amp;errout, &quot;Error! Incomplete <a href="#NWD3">solution</a> for <a href="#NWD2">value</a>[&quot;, expimage(v), &quot;] = &quot;,
+                  expimage(<a href="#NWD2">value</a>[v]))
+  every write(&amp;errout, &quot;  <a href="#NWD2">value</a>[&quot;, expimage(k := key(<a href="#NWD2">value</a>)), &quot;] = &quot;, expimage(<a href="#NWD2">value</a>[k]))
+  error()
+}
+if v := key(<a href="#NWD2">value</a>) &amp; type(v) == &quot;Eslice&quot; &amp; not member(<a href="#NWD2">value</a>, v.x) then
+  error(&quot;Solved for &quot;, expimage(v), &quot; but not for &quot;, expimage(v.x))
+if v := key(<a href="#NWD2">value</a>) &amp; type(v) == &quot;Ewiden&quot; &amp; type(v.x) == &quot;Eslice&quot; &amp;
+   not member(<a href="#NWD2">value</a>, v.x.x) then
+  error(&quot;Solved for &quot;, expimage(v), &quot; but not for &quot;, expimage(v.x.x))
+</pre><pre><a name="NWsol8-dumY-1" href="#NWsol8-dumY-1"><dfn>&lt;dump <code>value</code> and <code>constraints</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every debug(&quot;# ===&gt; <a href="#NWD2">value</a>[&quot;, expimage(k := key(<a href="#NWD2">value</a>)), &quot;] = &quot;, expimage(<a href="#NWD2">value</a>[k]))
+every debug(&quot;# ===&gt; constrain  &quot;, expimage(!<a href="#NWD2">constraints</a>))
+</pre><pre><a name="NWsol8-dumH-1" href="#NWsol8-dumH-1"><dfn>&lt;dump def-use info&gt;=</dfn></a> <b>(<a href="#NWsol8-buiP-1">&lt;-U</a>)</b>
+debugs(&quot;# <a href="#NWD2">defined</a>:&quot;); every debugs(&quot; &quot;, !<a href="#NWD2">defined</a>); debug()
+debugs(&quot;# <a href="#NWD2">used</a>:&quot;);    every debugs(&quot; &quot;, !<a href="#NWD2">used</a>);    debug()
+</pre><pre><a name="NWsol8-maki.2-1" href="#NWsol8-maki.2-1"><dfn>&lt;make sure there are no <code>pending</code> equations&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+if *pending &gt; 0 then {
+  every write(&amp;errout, &quot;error: equation &quot;, expimage(!pending), &quot; = 0  is unusable&quot;)
+  error(&quot;Can't <a href="#NWD2">solve</a> equations; some are useless&quot;)
+}
+</pre><pre><a name="NWsol8-norx-1" href="#NWsol8-norx-1"><dfn>&lt;normalize <code>z</code> by dividing out the greatest common divisor&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+g := &amp;null
+every g := <a href="#NWsol8-*-A">gcd</a>(g, !z)
+if \g &gt; 1 then every !z /:= g
+</pre><pre><a name="NWsol8-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDE">&lt;-</a>D]</b>
+procedure <a href="#NWsol8-*-A">gcd</a>(m, n) # Knuth vol 1, p 4
+  if n &lt; 0 then n := -n
+  if /m then return n
+  if m &lt; n then m :=: n
+  while r := 0 &lt; (m % n) do {m := n; n := r}
+  return n
+end
+</pre><blockquote>Defines <a href="#NWI-gcd"><code>gcd</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWD5">D3</a>, <a href="#NWD7">D4</a>, <a href="#NWD9">D5</a>, <a href="#NWDB">D6</a>, <a href="#NWDC">D7</a>, <a href="#NWDD">D8</a>, <a href="#NWDE">D9</a>, <a href="#NWsol8-*-A">D10</a>
+<li><a href="#NWsol8-buiP-1"><i>&lt;build and return solution&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWsol8-buiP-1">D2</a>
+<li><a href="#NWsol8-cre10-1"><i>&lt;create fresh variables <code>x</code>, <code>q = x div m</code>, <code>r = x mod m</code>&gt;</i></a>: <a href="#NWsol8-if*1J-1">U1</a>, <a href="#NWsol8-cre10-1">D2</a>
+<li><a href="#NWsol8-debJ-1"><i>&lt;debug balancing act&gt;</i></a>: <a href="#NWsol8-usel-1">U1</a>, <a href="#NWsol8-debJ-1">D2</a>
+<li><a href="#NWsol8-dumH-1"><i>&lt;dump def-use info&gt;</i></a>: <a href="#NWsol8-buiP-1">U1</a>, <a href="#NWsol8-dumH-1">D2</a>
+<li><a href="#NWsol8-dumY-1"><i>&lt;dump <code>value</code> and <code>constraints</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWsol8-dumY-1">D2</a>
+<li><a href="#NWD4"><i>&lt;empty <code>zeroes</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWD4">D2</a>
+<li><a href="#NWsol8-if*1J-1"><i>&lt;if a <code>pending</code> equation can be fixed with <code>div</code> or <code>mod</code>, drain <code>pending</code>&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWsol8-if*1J-1">D2</a>
+<li><a href="#NWsol8-if*11-1"><i>&lt;if <code>v</code> completes half of a balance, make the other half known&gt;</i></a>: <a href="#NWsol8-usel-1">U1</a>, <a href="#NWsol8-if*11-1">D2</a>
+<li><a href="#NWDA"><i>&lt;initialize balance machinery and balance out inputs&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWDA">D2</a>
+<li><a href="#NWsol8-i**q-1"><i>&lt;make new constraint from <code>value[vv]</code><i>=</i><code>zz</code>&gt;</i></a>: <a href="#NWsol8-if*11-1">U1</a>, <a href="#NWsol8-i**q-1">D2</a>
+<li><a href="#NWsol8-i**1A-1"><i>&lt;make new equation <code>value[vv]</code><i>=</i><code>zz</code>, then update <code>value[vv]</code>&gt;</i></a>: <a href="#NWsol8-if*11-1">U1</a>, <a href="#NWsol8-i**1A-1">D2</a>
+<li><a href="#NWsol8-makh-1"><i>&lt;make sure all dependent variables are known&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWsol8-makh-1">D2</a>
+<li><a href="#NWsol8-maki.2-1"><i>&lt;make sure there are no <code>pending</code> equations&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWsol8-maki.2-1">D2</a>
+<li><a href="#NWsol8-makU-1"><i>&lt;make sure <code>z</code> is satisfiable&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWsol8-makU-1">D2</a>
+<li><a href="#NWD6"><i>&lt;make <code>v</code> in <code>z</code> a new dependent variable&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWD6">D2</a>
+<li><a href="#NWsol8-i**17-1"><i>&lt;make <code>vv</code> a new dependent variable with <code>value[vv]</code><i>=</i><code>zz</code>&gt;</i></a>: <a href="#NWsol8-if*11-1">U1</a>, <a href="#NWsol8-i**17-1">D2</a>
+<li><a href="#NWsol8-norx-1"><i>&lt;normalize <code>z</code> by dividing out the greatest common divisor&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWsol8-norx-1">D2</a>
+<li><a href="#NWsol8-retN-1"><i>&lt;return vacuous solution&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWsol8-retN-1">D2</a>
+<li><a href="#NWsol8-updT-1"><i>&lt;update def-use info for <code>v</code>&gt;</i></a>: <a href="#NWD6">U1</a>, <a href="#NWsol8-updT-1">D2</a>
+<li><a href="#NWsol8-updU-1"><i>&lt;update def-use info for <code>vv</code>&gt;</i></a>: <a href="#NWsol8-updU-1">D1</a>, <a href="#NWsol8-i**17-1">U2</a>
+<li><a href="#NWsol8-usel-1"><i>&lt;use <code>newlyknown</code> to make more variables known&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWsol8-usel-1">D3</a>
+</ul>
+<ul>
+<li><a name="NWI-balance" href="#NWD7">balance</a>: <a href="#NWsol8-cre10-1">U1</a>, <a href="#NWD7">D2</a>, <a href="#NWsol8-debJ-1">U3</a>
+<li><a name="NWI-balance_completed" href="#NWDB">balance_completed</a>: <a href="#NWDB">D1</a>, <a href="#NWsol8-if*11-1">U2</a>
+<li><a name="NWI-balitem" href="#NWD7">balitem</a>: <a href="#NWsol8-cre10-1">U1</a>, <a href="#NWD7">D2</a>, <a href="#NWD9">U3</a>
+<li><a name="NWI-computable" href="#NWD5">computable</a>: <a href="#NWD4">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWDB">U3</a>, <a href="#NWsol8-usel-1">U4</a>, <a href="#NWsol8-if*11-1">U5</a>, <a href="#NWsol8-makh-1">U6</a>
+<li><a name="NWI-constraints" href="#NWD2">constraints</a>: <a href="#NWD2">D1</a>, <a href="#NWD3">U2</a>, <a href="#NWsol8-buiP-1">U3</a>, <a href="#NWD4">U4</a>, <a href="#NWD6">U5</a>, <a href="#NWsol8-if*11-1">U6</a>, <a href="#NWsol8-i**q-1">U7</a>, <a href="#NWsol8-dumY-1">U8</a>
+<li><a name="NWI-defined" href="#NWD2">defined</a>: <a href="#NWD2">D1</a>, <a href="#NWD3">U2</a>, <a href="#NWsol8-buiP-1">U3</a>, <a href="#NWsol8-updT-1">U4</a>, <a href="#NWsol8-updU-1">U5</a>, <a href="#NWsol8-dumH-1">U6</a>
+<li><a name="NWI-fieldsknown" href="#NWD2">fieldsknown</a>: <a href="#NWD2">D1</a>
+<li><a name="NWI-gcd" href="#NWsol8-*-A">gcd</a>: <a href="#NWsol8-norx-1">U1</a>, <a href="#NWsol8-*-A">D2</a>
+<li><a name="NWI-kbalance" href="#NWD9">kbalance</a>: <a href="#NWD9">D1</a>, <a href="#NWDB">U2</a>
+<li><a name="NWI-solution" href="#NWD3">solution</a>: <a href="#NWD3">D1</a>, <a href="#NWsol8-buiP-1">U2</a>, <a href="#NWsol8-retN-1">U3</a>, <a href="#NWsol8-makh-1">U4</a>
+<li><a name="NWI-solve" href="#NWD2">solve</a>: <a href="#NWD2">D1</a>, <a href="#NWsol8-maki.2-1">U2</a>
+<li><a name="NWI-subtract" href="#NWDD">subtract</a>: <a href="#NWD2">U1</a>, <a href="#NWsol8-if*1J-1">U2</a>, <a href="#NWsol8-i**1A-1">U3</a>, <a href="#NWDC">U4</a>, <a href="#NWDD">D5</a>
+<li><a name="NWI-used" href="#NWD2">used</a>: <a href="#NWD2">D1</a>, <a href="#NWD3">U2</a>, <a href="#NWsol8-buiP-1">U3</a>, <a href="#NWsol8-updT-1">U4</a>, <a href="#NWsol8-updU-1">U5</a>, <a href="#NWsol8-debJ-1">U6</a>, <a href="#NWsol8-if*11-1">U7</a>, <a href="#NWsol8-dumH-1">U8</a>
+<li><a name="NWI-value" href="#NWD2">value</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWsol8-buiP-1">U3</a>, <a href="#NWD4">U4</a>, <a href="#NWD6">U5</a>, <a href="#NWsol8-updT-1">U6</a>, <a href="#NWsol8-updU-1">U7</a>, <a href="#NWD7">U8</a>, <a href="#NWDB">U9</a>, <a href="#NWsol8-usel-1">U10</a>, <a href="#NWsol8-if*11-1">U11</a>, <a href="#NWsol8-i**q-1">U12</a>, <a href="#NWsol8-i**1A-1">U13</a>, <a href="#NWsol8-i**17-1">U14</a>, <a href="#NWsol8-makh-1">U15</a>, <a href="#NWsol8-dumY-1">U16</a>
+<li><a name="NWI-values_known_equal" href="#NWDC">values_known_equal</a>: <a href="#NWD4">U1</a>, <a href="#NWsol8-i**q-1">U2</a>, <a href="#NWDC">D3</a>
+<li><a name="NWI-zeroes" href="#NWD2">zeroes</a>: <a href="#NWD2">D1</a>, <a href="#NWD4">U2</a>, <a href="#NWsol8-if*1J-1">U3</a>, <a href="#NWD6">U4</a>, <a href="#NWsol8-updT-1">U5</a>, <a href="#NWsol8-updU-1">U6</a>, <a href="#NWsol8-if*11-1">U7</a>, <a href="#NWsol8-i**1A-1">U8</a>
+<li><a name="NWI-zero_to_constraint" href="#NWDE">zero_to_constraint</a>: <a href="#NWD4">U1</a>, <a href="#NWDE">D2</a>
+</ul>
+</body></html>
+

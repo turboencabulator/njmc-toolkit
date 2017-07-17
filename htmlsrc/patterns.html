@@ -1,0 +1,990 @@
+<html><head><title> patterns.nw</title></head><body>
+<h1>Patterns</h1>
+<p>
+<h2>Semantics, constructors, and mutators</h2>
+Patterns are built up from <em>constraints</em> by applying <code>;</code>, <code>&amp;</code> and <code>|</code>
+(sequence, conjunction and disjunction), and are represented in disjunctive normal form.  
+A constraint restricts a field's value
+to be within a certain interval: <i>lo &lt;=f &lt; hi</i>.
+Patterns consisting solely of constraints are created with <code><a href="#NWpatB-*-A">conspat</a></code>,
+which relates a field to a value.  The only relational operators now
+supported are equality and inequality, but others could easily be
+<a name="NWD1">added by adding cases to </a><code><a href="#NWpatB-*-A">conspat</a></code>.
+<p>
+A field <code>f</code> is that part of a word from bits <code>f.lo</code> through bits <code>f.hi-1</code>
+inclusive.  Notice that this is <em>not</em> the syntax used in the input, which is 
+like what's used in architecture manuals.
+<p>
+If a pattern contains field bindings with free variables, it may have
+conditions attached to its disjuncts.  A condition is an expression over those same
+free variables.
+<pre><a name="NWpatB-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+record <a href="#NWD1">field</a>(name, lo, hi, class)       # <a href="#NWD1">field</a> is bits lo..hi-1 (note NOT like input)
+record <a href="#NWD1">equivclass</a>(name, fields, size, holder)   # equivalence class of fields
+
+record <a href="#NWD1">pattern</a>(disjuncts, name)              # list of disjuncts, name of <a href="#NWD1">pattern</a>
+record <a href="#NWD1">disjunct</a>(sequents, name, conditions)  # list of sequents, name of <a href="#NWD1">disjunct</a>, 
+                                             #          set of expressions
+record <a href="#NWD1">sequent</a>(constraints, class)           # list of contraints, class
+record <a href="#NWD1">patlabel</a>(name, original_name, offset) # marks a location in a sequence
+record <a href="#NWD1">latent_patlabel</a>(instance)             # could become a <a href="#NWD1">patlabel</a> or vanish
+record <a href="#NWD1">constraint</a>(<a href="#NWD1">field</a>, lo, hi)             # constrain lo &lt;= <a href="#NWD1">field</a>.value &lt; hi
+record <a href="#NWD1">fieldbinding</a>(<a href="#NWD1">field</a>, code)             # code to compute <a href="#NWD1">field</a> 
+
+# invariant: constraints of the same <a href="#NWD1">sequent</a> have distinct fields
+</pre><blockquote>Defines <a href="#NWI-constraint"><code>constraint</code></a>, <a href="#NWI-disjunct"><code>disjunct</code></a>, <a href="#NWI-equivclass"><code>equivclass</code></a>, <a href="#NWI-field"><code>field</code></a>, <a href="#NWI-fieldbinding"><code>fieldbinding</code></a>, <a href="#NWI-latent_patlabel"><code>latent_patlabel</code></a>, <a href="#NWI-patlabel"><code>patlabel</code></a>, <a href="#NWI-pattern"><code>pattern</code></a>, <a href="#NWI-sequent"><code>sequent</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD2">N.B. </a><code><a href="#NWD1">patlabel</a></code> offsets are in PC units, not in bits.
+
+<a name="NWD3">During the specification process, names may be bound to a particular pattern.</a>
+In that way, a pattern and its disjuncts are associated with a name.
+The name information is saved so it can be referred to by code that appears in
+case statements.
+The procedure <code><a href="#NWD3">patbind</a></code> also saves the pattern and name in the current 
+environment.
+<pre><a name="NWpatB-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWD3">patbind</a>(name, p, env)
+    if name == &quot;_&quot; then return
+    if *p.disjuncts = 1 &amp; \p.disjuncts[1].name then
+        p := <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>(p.disjuncts[1].sequents)])       # copy w/o names
+    add_to_rho(name, p, env)
+    /p.name := name
+    every d := !p.disjuncts &amp; /d.name &amp; d.name := name
+   return
+end
+</pre><blockquote>Defines <a href="#NWI-patbind"><code>patbind</code></a> (links are to index).<p>
+</blockquote><p>
+<h3>Explanation of pattern labels</h3>
+A label <code>L:</code> in any sequence makes <code>L</code> available for use in field
+bindings throughout that sequence.  However, we wish to limit the
+scope of <code>L</code> to the literal sequence in which it appears; when we
+reuse a pattern by using a name bound with <code>patterns</code> or 
+by applying a constructor, labels in the pattern so denoted should not
+be visible.
+In other words, the scope of a label <code>L</code> is the enclosing pattern or
+constructor definition.
+<p>
+Conjoining two sequences preserves labels.
+This is a pain to implement (see <code><a href="#NWpatB-*-M">merge_sequences</a></code>, especially the chunk
+<code><a href="#NWpatB-sucU-1"><i>&lt;suck initial labels into <code>l</code>&gt;</i></a></code>).
+<p>
+
+
+In a single <code>when</code> clause of a constructor definition, a label <code>L</code>
+can be used as inputs to the set of equations as long as it appears in
+all disjuncts of the associated pattern.  (This is, of course, one way
+of propagating the label into field bindings.)
+<p>
+We enforce the scoping of labels by substituting <code>Epatlabel</code>
+expressions for variables that refer to labels.
+(We do this after running the solver, when binding patterns into what
+we might call ``top-level normal form.''  Of course this has nothing
+to do with patterns themselves; it's a property of the expressions in
+field bindings, but we do null out the <code>name</code> field of a
+<code><a href="#NWD1">patlabel</a></code> so it can mark the location without interfering with
+other labels that are differently scoped but identically named.)
+At the emission level (untyped constructor), 
+we'll rewrite <code><a href="#NWD1">patlabel</a></code> expressions into the form <code>Epc() + offset</code>.
+At the recognition level, we'll insert a binding of the name of the
+label to an expression of the same form.
+<p>
+
+The invariant on <code><a href="#NWD1">patlabel</a></code>s is that the <code>name</code> field is non-null
+during parsing and conversion to normal form, but the <code>name</code> field
+must be null in any pattern that results from a <code>lookup</code> or a
+<code>crhs</code> call.
+We might actually be able to do something with this in ML by
+parameterising the type by <code>unit</code> or <code>string</code>.
+<p>
+Another invariant we want to maintain is that no <code><a href="#NWD1">patlabel</a></code> should
+appear in more than one sequence.  Conjunction can't do it, because it
+destroys all labels.  Disjunction can't do it, because collecting a
+larger group of sequences together can't violate the invariant.
+But concatentation can do it, because we replicate sequences to get an
+outer product.  So we have to be careful in <code><a href="#NWD9">seqpx</a></code>.
+We exploit the invariant by setting <code>name</code> fields null 
+when binding label names.
+<p>
+A <code><a href="#NWD1">latent_patlabel</a></code> is used to implement label binding of free
+constructor-typed arguments in matching statements.
+<a name="NWD4">The label has to be associated with the constructor-input pattern, but</a>
+making it a label at constructor-input time will just put it in the
+wrong scope.
+Instead, we keep the latent pattern label around until we know whether
+it will refer to a real instance <code>Einstance(name)</code> or a binding
+instance <code>Ebinding_instance(name)</code>.  In the former case it
+vanishes; in the latter, it turns into a real label.
+<code>eliminate_instances</code> does the work.
+<p>
+<pre><a name="NWpatB-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWpatB-*-4">-&gt;</a>]</b>
+procedure <a href="#NWD4">bind_and_remove_patlabel_names</a>(p, keepname, free_vars_ok)
+  if type(!(!p.disjuncts).sequents) == &quot;<a href="#NWD1">patlabel</a>&quot; then &amp;null else return p  # prem opt
+  q := <a href="#NWD1">pattern</a>([], p.name)
+  every put(q.disjuncts, <a href="#NWD4">barpm_d</a>(!p.disjuncts, keepname, free_vars_ok))
+  return q
+end
+
+procedure <a href="#NWD4">barpm_d</a>(d, keepname, free_vars_ok)
+  t := table()
+  every s := !d.sequents &amp; type(s) == &quot;<a href="#NWD1">patlabel</a>&quot; &amp; \s.name do {
+    (/t[s.name] := Epatlabel(s)) |
+      error(&quot;Duplicate labels &quot;, s.name, &quot; in <a href="#NWD1">disjunct</a> &quot;, expimage(d))
+    if s.name == free_variables(d) then &amp;null
+    else \free_vars_ok | 
+         warning(&quot;Label &quot;, s.name, &quot; not used in <a href="#NWD1">disjunct</a> &quot;, expimage(d))
+    if /keepname then s.name := &amp;null
+  } 
+  return subst_tab(d, t)
+end
+
+procedure <a href="#NWD4">bind_patlabel_names</a>(p, free_vars_ok)
+  return <a href="#NWD4">bind_and_remove_patlabel_names</a>(p, 1, free_vars_ok)
+end
+</pre><blockquote>Defines <a href="#NWI-barpm_d"><code>barpm_d</code></a>, <a href="#NWI-bind_and_remove_patlabel_names"><code>bind_and_remove_patlabel_names</code></a>, <a href="#NWI-bind_patlabel_names"><code>bind_patlabel_names</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWpatB-*-5">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-4">all_disjuncts_ids</a>(p, idgen, warningmsg, warning2)
+  local alld
+  alld := set()
+  every insert(alld, idgen(p.disjuncts[1]))
+  every d := p.disjuncts[2 to *p.disjuncts] do {
+    s := set()
+    every i := idgen(d) do
+      if member(alld, i) then
+        insert(s, i)
+      else 
+        <a name="NWpatB-*-4-u1" href="#NWpatB-warO-1"><i>&lt;warn of discarding <code>i</code>&gt;</i></a>
+    if *s &lt; *alld then
+      every i := !alld &amp; not member(s, i) do
+        <a name="NWpatB-*-4-u2" href="#NWpatB-warO-1"><i>&lt;warn of discarding <code>i</code>&gt;</i></a>
+    alld := s
+  } 
+  return alld
+end
+</pre><blockquote>Defines <a href="#NWI-all_disjuncts_ids"><code>all_disjuncts_ids</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-warO-1" href="#NWpatB-warO-1"><dfn>&lt;warn of discarding <code>i</code>&gt;=</dfn></a> <b>(<a href="#NWpatB-*-4">&lt;-U</a>)</b>
+if \warningmsg then
+  verbose(warningmsg, image(i), warning2)
+</pre><pre><a name="NWpatB-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-4">&lt;-</a>D<a href="#NWpatB-*-6">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-5">patlabels_defined_in_all_disjuncts_of</a>(p)
+  s := <a href="#NWpatB-*-4">all_disjuncts_ids</a>(p, <a href="#NWpatB-*-5">patlabels_defined_in</a>)
+  suspend !s
+end
+
+procedure <a href="#NWpatB-*-5">patlabels_defined_in</a>(d)
+  suspend (seq := !d.sequents, type(seq) == &quot;<a href="#NWD1">patlabel</a>&quot;, seq.name)
+end  
+</pre><blockquote>Defines <a href="#NWI-patlabels_defined_in"><code>patlabels_defined_in</code></a>, <a href="#NWI-patlabels_defined_in_all_disjuncts_of"><code>patlabels_defined_in_all_disjuncts_of</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-5">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-6">set_patlabel_offsets</a>(d)
+  local offset
+  offset := 0
+  every i := 1 to *d.sequents do
+    case type (s := d.sequents[i]) of {
+      &quot;<a href="#NWD1">patlabel</a>&quot; : s.offset := <a href="#NWpatB-*-I">bits_to_pcunits</a>(offset)
+      &quot;<a href="#NWD1">sequent</a>&quot;  : offset +:= s.class.size
+      &quot;<a href="#NWD7">dots_sequent</a>&quot; | &quot;<a href="#NWD1">latent_patlabel</a>&quot; : &amp;null
+      default                            : impossible(&quot;<a href="#NWD1">sequent</a> type&quot;)
+    }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-set_patlabel_offsets"><code>set_patlabel_offsets</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">We sometimes have to make fresh pattern labels (as with constructor application).</a>
+<pre><a name="NWpatB-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-6">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">freshen_patlabels</a>(p)
+  t := table()
+  every l := subterms_matching(p, &quot;<a href="#NWD1">patlabel</a>&quot;) do
+    /t[l] := copy(l)
+  return if *t = 0 then p else subst_table_elements(p, t)
+end
+</pre><blockquote>Defines <a href="#NWI-freshen_patlabels"><code>freshen_patlabels</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWD6">Pattern constructor functions</a></h3>
+The constructors build the basic patterns.
+<pre><a name="NWpatB-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWpatB-*-9">-&gt;</a>]</b>
+procedure <a href="#NWD6">label2pattern</a>(name)
+    return <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>([<a href="#NWD1">patlabel</a>(name, name)])])
+end
+</pre><blockquote>Defines <a href="#NWI-label2pattern"><code>label2pattern</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWpatB-*-A">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-9">latent_label2pattern</a>(name)
+    return <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>([<a href="#NWD1">latent_patlabel</a>(name)])])
+end
+</pre><blockquote>Defines <a href="#NWI-latent_label2pattern"><code>latent_label2pattern</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-9">&lt;-</a>D<a href="#NWpatB-*-B">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-A">constraints2pattern</a>(L[])
+    return <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>([<a href="#NWD1">sequent</a>(L, L[1].<a href="#NWD1">field</a>.class)])])
+end
+procedure <a href="#NWpatB-*-A">conspat</a>(f, op, val)
+    local max, p, q
+    type(val) == &quot;integer&quot; | impossible(&quot;non-integer <a href="#NWD1">constraint</a>&quot;)
+    max := 2 ^ fwidth(f)
+    return case op of {
+        &quot;=&quot;  : <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, val, val+1))
+        &quot;&lt;&quot;  : { if val &lt;= 0 then warning(&quot;Impossible <a href="#NWD1">constraint</a> &quot;, f.name, &quot; &lt; &quot;, val)
+                 if val &gt; max then
+                   error(&quot;Constraint value too large in &quot;, f.name, &quot; &lt; &quot;,val)
+                 <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, 0, val))
+               }
+        &quot;&lt;=&quot; : { if val &gt;= max then
+                   error(&quot;Constraint value too large in &quot;, f.name, &quot; &lt;= &quot;, val)
+                 <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, 0, val+1))
+               }
+        &quot;&gt;&quot;  : { if val &gt;= max-1 then
+                   warning(&quot;Impossible <a href="#NWD1">constraint</a> &quot;, f.name, &quot; &gt; &quot;, val)
+                 if val &lt; 0 then
+                   error(&quot;Constraint value too small in &quot;, f.name, &quot; &gt; &quot;,val)
+                 <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, val+1, max))
+               }
+        &quot;&gt;=&quot;  : { if val &gt;= max then
+                   warning(&quot;Impossible <a href="#NWD1">constraint</a> &quot;, f.name, &quot; &gt;= &quot;, val)
+                 if val &lt; 0 then
+                   error(&quot;Constraint value too small in &quot;, f.name, &quot; &gt;= &quot;,val)
+                 <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, val, max))
+               }
+        &quot;!=&quot; : {
+            if val &gt; 0       then p := <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, 0, val))
+            if val + 1 &lt; max then q := <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f, val+1, max))
+            <a href="#NWpatB-*-G">orpx</a>(\p, \q) | \p | \q | impossible(&quot;lost inequality&quot;)
+        }
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-conspat"><code>conspat</code></a>, <a href="#NWI-constraints2pattern"><code>constraints2pattern</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-A">&lt;-</a>D<a href="#NWpatB-*-C">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-B">wildcard</a>(class)    # return a <a href="#NWD1">pattern</a> that matches anything in class
+    return <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">constraint</a>(f := class.fields[1], 0, 2^fwidth(f)))
+end
+</pre><blockquote>Defines <a href="#NWI-wildcard"><code>wildcard</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-B">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-C">epsilon</a>()     # <a href="#NWD1">pattern</a> with shape of length 0
+    static e
+    initial e := <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>([], &quot;<a href="#NWpatB-*-C">epsilon</a>&quot;)], &quot;<a href="#NWpatB-*-C">epsilon</a>&quot;)
+    return e
+end
+</pre><blockquote>Defines <a href="#NWI-epsilon"><code>epsilon</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">A special kind of sequent, ``</a><code><a href="#NWD7">dots</a></code>,'' is used to implement the ellipsis.
+Only one instance is ever used.  
+An invariant property is that <code><a href="#NWD7">dots</a></code> may appear only at the ends of a sequence.
+The invariant is maintained by the concatenation mutator, which forces <code><a href="#NWD7">dots</a></code> to 
+disappear ``in the middle.''
+The purpose of dots is to relax the shape-matching rules used in conjunction (q.v.).
+<pre><a name="NWpatB-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-C">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+record <a href="#NWD7">dots_sequent</a>()           # a very special <a href="#NWD1">sequent</a>
+global <a href="#NWD7">dots</a>
+procedure <a href="#NWD7">dots_pattern</a>()
+    static d
+    initial d := <a href="#NWD1">pattern</a>([<a href="#NWD1">disjunct</a>([<a href="#NWD7">dots</a> := <a href="#NWD7">dots_sequent</a>()], &quot;...&quot;)], &quot;...&quot;)
+    return d
+end  
+</pre><blockquote>Defines <a href="#NWI-dots"><code>dots</code></a>, <a href="#NWI-dots_pattern"><code>dots_pattern</code></a>, <a href="#NWI-dots_sequent"><code>dots_sequent</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWD8">Pattern mutator functions</a></h3>
+The mutators <code>&amp;</code>, <code>|</code>, and <code>;</code>, combine patterns.
+When generators are used in the specification, they are represented
+as lists of patterns.  It is therefore necessary to be able to combine
+(with <code><a href="#NWD8">andp</a></code>, <code><a href="#NWD8">orp</a></code>, and <code><a href="#NWD8">seqp</a></code>) not just two patterns, but a pattern
+and a list.  <code><a href="#NWpatB-*-F">mix</a></code> does the job.
+<pre><a name="NWpatB-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWpatB-*-F">-&gt;</a>]</b>
+procedure <a href="#NWD8">andp</a>(p1, p2)
+    return <a href="#NWpatB-*-F">mix</a>(<a href="#NWDB">andpx</a>, p1, p2) 
+end
+
+procedure <a href="#NWD8">orp</a>(p1, p2) 
+    return <a href="#NWpatB-*-F">mix</a>(<a href="#NWpatB-*-G">orpx</a>, p1, p2) 
+end
+
+procedure <a href="#NWD8">seqp</a>(p1, p2)
+    return <a href="#NWpatB-*-F">mix</a>(<a href="#NWD9">seqpx</a>, p1, p2)
+end
+</pre><blockquote>Defines <a href="#NWI-andp"><code>andp</code></a>, <a href="#NWI-orp"><code>orp</code></a>, <a href="#NWI-seqp"><code>seqp</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWpatB-*-G">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-F">mix</a>(op, p1, p2) # can destroy its list argument because
+                          # lists are never saved or bound to names
+    return case type(p1) || &quot;,&quot; || type(p2) of {
+        &quot;<a href="#NWD1">pattern</a>,<a href="#NWD1">pattern</a>&quot; : op(p1, p2)
+        &quot;list,<a href="#NWD1">pattern</a>&quot;    : { every i := 1 to *p1 do p1[i] := op(p1[i], p2) ; p1 }
+        &quot;<a href="#NWD1">pattern</a>,list&quot;    : { every i := 1 to *p2 do p2[i] := op(p1, p2[i]) ; p2 }
+        &quot;list,list&quot;       : { l := []; every put(l, op(!p1, !p2)); l }
+        default           : error(&quot;Invalid combination of patterns.&quot;)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-mix"><code>mix</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-F">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-G">orpx</a>(p1, p2)
+    return <a href="#NWD1">pattern</a>(p1.disjuncts ||| p2.disjuncts)
+end
+</pre><blockquote>Defines <a href="#NWI-orpx"><code>orpx</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD9">The responsibility for maintaining the no-multiple-appearance</a>
+invariant over <code><a href="#NWD1">patlabel</a></code>s is here.
+The key features is that, by the invariant, we can count on the same
+label not appearing in both <code>d1</code> and <code>d2</code>.
+Therefore, when we combine them, we can get away with simply
+freshening the pattern labels.  And if there's only one disjunct on
+each side, we don't even have to do that.
+<pre><a name="NWpatB-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-G">&lt;-</a>D<a href="#NWpatB-*-I">-&gt;</a>]</b>
+procedure <a href="#NWD9">seqpx</a>(p1, p2)
+    local p, count1, count2
+    p := <a href="#NWD1">pattern</a>([])
+    count1 := *p1.disjuncts
+    count2 := *p2.disjuncts
+    every d1 := !p1.disjuncts &amp; d2 := !p2.disjuncts do {
+      d := <a href="#NWD1">disjunct</a>(<a href="#NWDA">concat_sequences</a>(d1.sequents, d2.sequents), &amp;null, 
+                    <a href="#NWpatB-*-J">conjoin_conditions</a>(d1.conditions, d2.conditions))
+      if count1 &gt; 1 | count2 &gt; 1 then # d1 or d2 will be reused
+        d := <a href="#NWD5">freshen_patlabels</a>(d)
+      put(p.disjuncts, d)
+    }
+    return p
+end
+</pre><blockquote>Defines <a href="#NWI-seqpx"><code>seqpx</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWpatB-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWpatB-*-J">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-I">bits_to_pcunits</a>(n)
+  if n % pc_unit_bits ~= 0 then
+    error(&quot;pc is incremented in units of &quot;, pc_unit_bits, &quot;, but some <a href="#NWD1">pattern</a> is &quot;, n,
+          &quot; bits wide&quot;)
+  else
+     return n / pc_unit_bits
+end
+</pre><blockquote>Defines <a href="#NWI-bits_to_pcunits"><code>bits_to_pcunits</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-J" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-I">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-J">conjoin_conditions</a>(c1, c2)
+  return if /c1 then c2 
+         else if /c2 then c1
+         else c1 ++ c2
+end
+</pre><blockquote>Defines <a href="#NWI-conjoin_conditions"><code>conjoin_conditions</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDA" href="#NWDA">concat_sequences</a></code> maintains the invariant on <code><a href="#NWD7">dots</a></code>.
+<pre><a name="NWpatB-*-K" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-J">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+procedure <a href="#NWDA">concat_sequences</a>(s1, s2)
+  local seq
+  seq := if s1[-1] === <a href="#NWD7">dots</a> &amp; *s1 &gt; 1 then
+           if s2[1] === <a href="#NWD7">dots</a> &amp; *s2 &gt; 1 then 
+             s1[1:-1] ||| s2[2:0]
+           else
+             s1[1:-1] ||| s2
+         else 
+           if s2[1] === <a href="#NWD7">dots</a> &amp; *s2 &gt; 1 then 
+             s1       ||| s2[2:0]
+           else
+             s1       ||| s2
+  return seq
+end
+</pre><blockquote>Defines <a href="#NWI-concat_sequences"><code>concat_sequences</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDB">It is desirable to preserve names when patterns are combined with field bindings</a>
+in pattern-matching statements.  Because it's late at night and I'm lazy, I'm making
+this work only when field bindings are anded in on the right.
+<pre><a name="NWpatB-*-L" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWpatB-*-M">-&gt;</a>]</b>
+procedure <a href="#NWDB">andpx</a>(p1, p2)
+    local keepname
+    <a name="NWpatB-*-L-u1" href="#NWpatB-mak1D-1"><i>&lt;make <code>keepname</code> name of <code>p1</code> if <code>p2</code> is field binding, null otherwise&gt;</i></a>
+    p := <a href="#NWD1">pattern</a>([], keepname)
+    every d1 := !p1.disjuncts &amp; d2 := !p2.disjuncts do {
+        put(p.disjuncts, 
+            d := <a href="#NWDG">not_contradictory</a>(
+                     <a href="#NWD1">disjunct</a>(<a href="#NWpatB-*-M">merge_sequences</a>(d1.sequents, d2.sequents), &amp;null,
+                              <a href="#NWpatB-*-J">conjoin_conditions</a>(d1.conditions, d2.conditions))))
+        if \keepname then d.name := d1.name
+    }
+    return p
+end
+</pre><blockquote>Defines <a href="#NWI-andpx"><code>andpx</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-mak1D-1" href="#NWpatB-mak1D-1"><dfn>&lt;make <code>keepname</code> name of <code>p1</code> if <code>p2</code> is field binding, null otherwise&gt;=</dfn></a> <b>(<a href="#NWDB">&lt;-U</a>)</b>
+if *p2.disjuncts  = 1 &amp; d := p2.disjuncts[1] &amp; 
+   *d.sequents    = 1 &amp; s := d.sequents[1]   &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; &amp;
+   *s.constraints = 1 &amp; type(s.constraints[1]) == &quot;<a href="#NWD1">fieldbinding</a>&quot; then
+  keepname := p1.name
+</pre><p>
+<code><a name="NWDC" href="#NWpatB-*-M">merge_sequences</a></code> merges from the left if neither sequence has a <code><a href="#NWD7">dots</a></code> there;
+otherwise it merges from the right.  Direction is determined by <code>inc</code>, which is
+added to a list index, and by <code>add</code>, which is used to add a sequent to the result.
+<pre><a name="NWpatB-setr-1" href="#NWDC"><dfn>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for right-to-left&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">U-&gt;</a>)</b>
+grab := pull
+add := push
+first := -1
+</pre><pre><a name="NWpatB-setr.2-1" href="#NWpatB-setr.2-1"><dfn>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for left-to-right&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">U-&gt;</a>)</b>
+grab := get
+add := put
+first := 1
+</pre><pre><a name="NWpatB-*-M" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-M">merge_sequences</a>(l1, l2)
+    local grab, first, add
+    l1 := copy(l1)
+    l2 := copy(l2)
+    if (l1|l2)[1] === <a href="#NWD7">dots</a> then
+      if (l1|l2)[-1] === <a href="#NWD7">dots</a> then
+        <a name="NWpatB-*-M-u1" href="#NWpatB-comJ-1"><i>&lt;complain about dots&gt;</i></a>
+      else {<a name="NWpatB-*-M-u2" href="#NWDC"><i>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for right-to-left&gt;</i></a>}
+    else {<a name="NWpatB-*-M-u3" href="#NWpatB-setr.2-1"><i>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for left-to-right&gt;</i></a>}
+
+    l := []
+    <a name="NWpatB-*-M-u4" href="#NWpatB-sucU-1"><i>&lt;suck initial labels into <code>l</code>&gt;</i></a>
+    # invariant: initial elements, if present, are not labels
+    while l1[first] ~=== <a href="#NWD7">dots</a> &amp; l2[first] ~=== <a href="#NWD7">dots</a> do {
+      s1 := grab(l1)
+      s2 := grab(l2)
+      if s1.class ~=== s2.class then 
+        <a name="NWpatB-*-M-u5" href="#NWpatB-comT-1"><i>&lt;complain about class mismatch&gt;</i></a>
+      else add(l, x := <a href="#NWD1">sequent</a>(<a href="#NWDD">merge_constraints</a>(s1.constraints, s2.constraints), 
+                          s1.class))
+      <a name="NWpatB-*-M-u6" href="#NWpatB-sucU-1"><i>&lt;suck initial labels into <code>l</code>&gt;</i></a>
+    }
+    # invariant: initial elements, if present, are not labels
+    if l1[first] === <a href="#NWD7">dots</a> then
+      while add(l, <a href="#NWD7">dots</a> ~=== grab(l2))
+    else if l2[first] === <a href="#NWD7">dots</a> then
+      while add(l, <a href="#NWD7">dots</a> ~=== grab(l1))
+    else if l1[first] then 
+      <a name="NWpatB-*-M-u7" href="#NWpatB-coma-1"><i>&lt;complain of right sequence too short&gt;</i></a>
+    else if l2[first] then
+      <a name="NWpatB-*-M-u8" href="#NWpatB-comZ-1"><i>&lt;complain of left sequence too short&gt;</i></a>
+    # else they're an exact match; do nothing
+    return l
+end
+</pre><blockquote>Defines <a href="#NWI-merge_sequences"><code>merge_sequences</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-sucU-1" href="#NWpatB-sucU-1"><dfn>&lt;suck initial labels into <code>l</code>&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">&lt;-U</a>)</b>
+every ll := l1 | l2 do
+  while type(ll[first]) == (&quot;<a href="#NWD1">patlabel</a>&quot; | &quot;<a href="#NWD1">latent_patlabel</a>&quot;) do
+    add(l, grab(ll))
+</pre><pre><a name="NWpatB-coma-1" href="#NWpatB-coma-1"><dfn>&lt;complain of right sequence too short&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">&lt;-U</a>)</b>
+error(&quot;Shapes differ for &amp;; right-hand sequence (&quot;,
+       sequenceimage(l2), &quot;) too short to conjoin with (&quot;, sequenceimage(l1), &quot;)&quot;)
+</pre><pre><a name="NWpatB-comZ-1" href="#NWpatB-comZ-1"><dfn>&lt;complain of left sequence too short&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">&lt;-U</a>)</b>
+error(&quot;Shapes differ for &amp;; left-hand sequence (&quot;,
+       sequenceimage(l1), &quot;) too short to conjoin with (&quot;, sequenceimage(l2), &quot;)&quot;)
+</pre><pre><a name="NWpatB-comJ-1" href="#NWpatB-comJ-1"><dfn>&lt;complain about dots&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">&lt;-U</a>)</b>
+error(&quot;Illegal conjunction; <a href="#NWD7">dots</a> on both left and right of (&quot;,
+       sequenceimage(l1), &quot;) &amp; (&quot;, sequenceimage(l2), &quot;)&quot;) 
+</pre><pre><a name="NWpatB-comT-1" href="#NWpatB-comT-1"><dfn>&lt;complain about class mismatch&gt;=</dfn></a> <b>(<a href="#NWpatB-*-M">&lt;-U</a>)</b>
+error(&quot;Shapes differ for &amp;; left <a href="#NWD1">sequent</a> from class `&quot;, s1.class.name,
+      &quot;'; right <a href="#NWD1">sequent</a> from class `&quot;, s2.class.name, &quot;', in\n\t(&quot;,
+      expimage(s1), &quot;) &amp; (&quot;, expimage(s2), &quot;)&quot;) 
+</pre><p>
+<code><a name="NWDD" href="#NWDD">merge_constraints</a></code> merges two sets of constraints, preserving the invariant
+that a field may appear at most once on any list of constraints.
+<pre><a name="NWpatB-*-N" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-M">&lt;-</a>D<a href="#NWpatB-*-O">-&gt;</a>]</b>
+procedure <a href="#NWDD">merge_constraints</a>(l1, l2)
+    local c1, c2, S1, S2, maxlo, minhi
+    S1 := set(l1)
+    S2 := set()
+    every c2 := !l2 do
+      if c1 := !S1 &amp; c1.<a href="#NWD1">field</a> === c2.<a href="#NWD1">field</a> then { # doubly-constrained <a href="#NWD1">field</a>
+          if type(c1) == type(c2) == &quot;<a href="#NWD1">constraint</a>&quot; then {
+              delete(S1, c1)
+              <a name="NWpatB-*-N-u1" href="#NWpatB-merp-1"><i>&lt;merge <code>c1</code> and <code>c2</code>, inserting result in <code>S2</code>&gt;</i></a>
+          } else 
+             <a name="NWpatB-*-N-u2" href="#NWpatB-comV-1"><i>&lt;complain of constraint conflict&gt;</i></a>
+      } else 
+          insert(S2, c2)
+    return sort(S1 ++ S2)
+end
+</pre><blockquote>Defines <a href="#NWI-merge_constraints"><code>merge_constraints</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-merp-1" href="#NWpatB-merp-1"><dfn>&lt;merge <code>c1</code> and <code>c2</code>, inserting result in <code>S2</code>&gt;=</dfn></a> <b>(<a href="#NWDD">U-&gt;</a>)</b>
+maxlo := c1.lo &lt; c2.lo | c1.lo
+minhi := c1.hi &gt; c2.hi | c1.hi
+if maxlo &gt;= minhi then maxlo := minhi := 0      # canonical impossible <a href="#NWD1">constraint</a>
+insert(S2, <a href="#NWD1">constraint</a>(c1.<a href="#NWD1">field</a>, maxlo, minhi))
+</pre><pre><a name="NWpatB-comV-1" href="#NWpatB-comV-1"><dfn>&lt;complain of constraint conflict&gt;=</dfn></a> <b>(<a href="#NWDD">U-&gt;</a>)</b>
+error(&quot;Code and <a href="#NWD1">constraint</a> (or inconsistent code) for <a href="#NWD1">field</a> `&quot;, c1.<a href="#NWD1">field</a>.name,
+      &quot;\n\t&quot;, constraintimage(c1), &quot;\n\t&quot;, constraintimage(c2))
+</pre><pre><a name="NWpatB-*-O" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-O">strip_patlabels</a>(s)
+  if type(!s) == &quot;<a href="#NWD1">patlabel</a>&quot; then &amp;null else return s
+  l := []
+  every put(l, 1(x := !s, type(x) ~== &quot;<a href="#NWD1">patlabel</a>&quot;))
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-strip_patlabels"><code>strip_patlabels</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Preparing patterns for emission</h2>
+Fields within a sequent can be constrained either by field bindings or by range 
+constraints. 
+Given a sequent <i>S</i> and a field <i>F</i>, <i>S</i> may contain at most one
+field binding of <i>F</i> and at most one constraint on <i>F</i>.
+(The old invariant didn't permit both.)  Here are the semantics:
+<ul>
+<li>on output (encoding), a field binding is a string that is an rvalue
+in the target language (e.g. C).  The rvalue will be assigned
+to the field f in the output pattern
+<li>on input (decoding), a field binding must be an identifier.  that
+identifier will be declared as a readonly variable in an inner
+scope, and it will be initialized to the value of the field
+<li>on output, a constraint may determine the value of a field uniquely,
+in which case that value is assigned to the field.  if the
+constraint doesn't determine the value uniquely, there must be
+a field binding that does.
+on input, a constraint limits the number of word sequences that can match.
+</ul>
+Priority:
+<ul>
+<li>on input, there can never be a conflict between a constraint and a
+field binding; they can be handled independently.
+<li>on output, the conflict should be handled as follows: before handing
+the pattern to an emit procedure, we run a transformation over
+it that removes the constraint and turns it into a target-code
+constraint which guarantees that the value in the binding
+satisfies the constraint.
+That transformation is <code><a href="#NWDF">sanitize_for_output</a></code>.
+</ul>
+<p>
+<!--  These target-code constraints are-->
+<!--        similar to constraints generated in the equation solved (as-->
+<!--        opposed to the pattern constraints we are discussing here,-->
+<!--        which are the components of sequents).  Note that the-->
+<!--        transformation doesn't really add extra conceptual overhead;-->
+<!--        we already need some sort of sanitize-before-emitting-->
+<!--        procedure to make sure the output pattern has exactly one-->
+<!--        disjunct.-->
+
+
+<a name="NWDE">*</a>
+
+<code><a name="NWDF" href="#NWDF">sanitize_for_output</a></code> accepts a sequent and returns a smaller
+sequent in which at most one constraint is present for each field.
+Superfluous range constraints are transformed into conditions and
+bound to the disjunct <code>d</code>.
+<pre><a name="NWpatB-*-P" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-O">&lt;-</a>D<a href="#NWpatB-*-Q">-&gt;</a>]</b>
+procedure <a href="#NWDF">sanitize_for_output</a>(seq, conditions)
+    local fields, outconstraints
+    <a name="NWpatB-*-P-u1" href="#NWpatB-if*k-1"><i>&lt;if no field is overconstrained, <code>return seq</code>&gt;</i></a>
+    warning(&quot;Sanitizing &quot;, expimage(seq))
+    fields := set()
+    outconstraints := []        # will be constraints of new <a href="#NWD1">sequent</a>
+    every insert(fields, (!seq.constraints).<a href="#NWD1">field</a>)
+    every f := !fields do {
+       ((fb := !seq.constraints).<a href="#NWD1">field</a> == f, type(fb) == &quot;<a href="#NWD1">fieldbinding</a>&quot;) | (fb := &amp;null)
+       ((rc := !seq.constraints).<a href="#NWD1">field</a> == f, type(rc) == &quot;<a href="#NWD1">constraint</a>&quot;)   | (rc := &amp;null)
+       if \fb &amp; \rc then {
+         put(outconstraints, fb)
+         <a href="#NWpatB-*-Q">insert_constraint_conditions</a>(conditions, rc, fb.code)
+       } else {
+         put(outconstraints, \fb | \rc)
+       }
+    }
+    return <a href="#NWD1">sequent</a>(outconstraints, seq.class)
+end
+</pre><blockquote>Defines <a href="#NWI-sanitize_for_output"><code>sanitize_for_output</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-if*k-1" href="#NWpatB-if*k-1"><dfn>&lt;if no field is overconstrained, <code>return seq</code>&gt;=</dfn></a> <b>(<a href="#NWDF">U-&gt;</a>)</b>
+if type(seq) == &quot;<a href="#NWD1">sequent</a>&quot; &amp;
+   c1 := !seq.constraints &amp; c2 := !seq.constraints &amp; 
+   c1 ~=== c2 &amp; c1.<a href="#NWD1">field</a> === c2.<a href="#NWD1">field</a> &amp; type(c1) ~== type(c2) then &amp;null 
+else 
+   return seq
+</pre><pre><a name="NWpatB-*-Q" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-Q">insert_constraint_conditions</a>(conditions, rc, code)
+  every insert_condition(conditions, eqn(                 0 &lt; rc.lo, &quot;&lt;=&quot;, code) | 
+                                     eqn(2^fwidth(rc.<a href="#NWD1">field</a>) &gt; rc.hi, &quot;&gt;&quot;,  code))
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-insert_constraint_conditions"><code>insert_constraint_conditions</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDG">Eliminating contradictions</a></h2>
+On the Intel 486, some modifiers may be used only with certain opcodes,
+e.g., <code>grp3.Eb | grp3.Ev</code>.  When such a disjunction is conjoined with a
+particular opcode, the result contains contradictions, e.g.
+<blockquote><i><code>(grp3.Eb | grp3.Ev) &amp; grp3.Eb</code> ===<code>grp3.Eb | </code><i>impossible</i>.</i></blockquote>
+<code><a href="#NWDG">not_contradictory</a></code> can be applied to a disjunct; it succeeds if and
+only if the disjunct contains no impossible constraints.
+We might one day decide to use it to eliminate disjuncts with
+conditions that are evidently always false.
+<pre><a name="NWpatB-*-R" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-Q">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+procedure <a href="#NWDG">not_contradictory</a>(d)
+ if s := !d.sequents    &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; &amp; 
+    c := !s.constraints &amp; type(c) == &quot;<a href="#NWD1">constraint</a>&quot; &amp; c.lo &gt;= c.hi then fail
+ else return d
+end
+</pre><blockquote>Defines <a href="#NWI-not_contradictory"><code>not_contradictory</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDH" href="#NWDH">eliminate_contradictions</a></code> returns a pattern without any impossible
+disjuncts
+<pre><a name="NWpatB-*-S" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+procedure <a href="#NWDH">eliminate_contradictions</a>(p)
+  return if d := !p.disjuncts   &amp; 
+            s := !d.sequents    &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; &amp; 
+            c := !s.constraints &amp; type(c) == &quot;<a href="#NWD1">constraint</a>&quot; &amp; c.lo &gt;= c.hi then
+    {impossible(&quot;contradiction now eliminated at conjunction&quot;)
+     <a name="NWpatB-*-S-u1" href="#NWpatB-newg-1"><i>&lt;new pattern with contradictions eliminated&gt;</i></a>}
+  else p
+end
+</pre><blockquote>Defines <a href="#NWI-eliminate_contradictions"><code>eliminate_contradictions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-newg-1" href="#NWpatB-newg-1"><dfn>&lt;new pattern with contradictions eliminated&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+l := []
+every d := !p.disjuncts do 
+  if s := !d.sequents    &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; &amp;
+     c := !s.constraints &amp; type(c) == &quot;<a href="#NWD1">constraint</a>&quot; &amp; c.lo &gt;= c.hi then
+    &amp;null
+  else 
+    put(l, d)
+<a href="#NWD1">pattern</a>(l, p.name)
+</pre><p>
+<h2><a name="NWDI">Functions on patterns</a></h2>
+<code><a href="#NWDI">place_holder</a></code> takes a disjunct and returns a disjunct that 
+may be used as a place holder for it.
+<pre><a name="NWpatB-*-T" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+procedure <a href="#NWDI">place_holder</a>(d)
+  local shape, class
+  shape := <a href="#NWpatB-*-W">shapeof</a>(d)
+  <a name="NWpatB-*-T-u1" href="#NWpatB-coms-1"><i>&lt;complain if some class in <code>shape</code> has no placeholder&gt;</i></a>
+  p := <a href="#NWpatB-*-C">epsilon</a>()
+  every class := !shape do p := <a href="#NWD8">seqp</a>(p, class.holder)
+  *p.disjuncts = 1 | impossible(&quot;Some placeholder has multiple disjuncts&quot;)
+  return p.disjuncts[1]
+end
+</pre><blockquote>Defines <a href="#NWI-place_holder"><code>place_holder</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-coms-1" href="#NWpatB-coms-1"><dfn>&lt;complain if some class in <code>shape</code> has no placeholder&gt;=</dfn></a> <b>(<a href="#NWDI">&lt;-U</a>)</b>
+if /(class := !shape).holder then
+    error(&quot;No placeholder is defined for class &quot;, class.name)
+</pre><p><code><a name="NWDJ" href="#NWDJ">pattern_length</a></code> computes the length in bits of a pattern in normal form.
+<pre><a name="NWpatB-*-U" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWpatB-*-V">-&gt;</a>]</b>
+procedure <a href="#NWDJ">pattern_length</a>(p)
+  local shapes, class
+  shapes := maplist(<a href="#NWpatB-*-V">disjunct_length</a>, p.disjuncts)
+  *shapes &gt; 0 | error(&quot;length of impossible <a href="#NWD1">pattern</a>&quot;)
+  if !shapes ~= shapes[1] then error(&quot;Length of <a href="#NWD1">pattern</a> &quot;, patimage(p), &quot; is not fixed&quot;)
+  return shapes[1]
+end
+</pre><blockquote>Defines <a href="#NWI-pattern_length"><code>pattern_length</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-V" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWpatB-*-W">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-V">disjunct_length</a>(d)
+  n := 0
+  every s := !d.sequents &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; do
+    n +:= s.class.size
+  return n
+end
+</pre><blockquote>Defines <a href="#NWI-disjunct_length"><code>disjunct_length</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-W" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-V">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-W">shapeof</a>(d)
+  l := []
+  every s := !d.sequents &amp; type(s) == &quot;<a href="#NWD1">sequent</a>&quot; do
+    put(l, s.class)
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-shapeof"><code>shapeof</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDK">A pattern is a legitimate global pattern if it has no conditions and</a>
+no field bindings and if no labels are named.
+<pre><a name="NWpatB-*-X" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-W">&lt;-</a>D<a href="#NWDL">-&gt;</a>]</b>
+procedure <a href="#NWDK">insist_global_pattern</a>(p)
+  if d := !p.disjuncts &amp; *\d.conditions &gt; 0 then
+    error(patimage(p), &quot; cannot be used on the right-hand side; there are conditions&quot;)
+  else if d := !p.disjuncts &amp; type(s := !d.sequents) == &quot;<a href="#NWD1">sequent</a>&quot; &amp;
+       type(!s.constraints) == &quot;<a href="#NWD1">fieldbinding</a>&quot; then
+    error(patimage(p), &quot; cannot be used on the right-hand side; there are inputs&quot;)
+  else if d := !p.disjuncts &amp; type(s := !d.sequents) == &quot;<a href="#NWD1">patlabel</a>&quot; &amp; \s.name then
+    error(patimage(p), &quot; cannot be used on the right-hand side; there's a loose label&quot;)
+  else
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-insist_global_pattern"><code>insist_global_pattern</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Interpreting abstract syntax into normal form</h2>
+<p>
+<h3>Tree walking with free variables</h3>
+This code is used on the decoding end, where free variables in
+patterns are OK---they become binding instances.
+<code><a href="#NWDM">pnf_recurse</a></code> produces a pattern in normal form.
+<a name="NWDL">If the </a><code>free_env</code> argument is non-null, then certain free variables
+are permitted, and the bindings of the free variables are planted in
+<code>free_env</code>. 
+In fact, only bindings of  constructor-typed constructor arguments
+really go into this environment---bindings of free variables in field
+bindings are handled by the equation-solving mechanism, and pattern
+identifiers are never permitted to be free variables (how could they
+be binding instances).
+What about labels????
+<pre><a name="NWpatB-*-Y" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWDM">-&gt;</a>]</b>
+procedure <a href="#NWDL">pnf</a>(p, rho, free_env)
+  return eliminate_instances(<a href="#NWDM">pnf_recurse</a>(p, rho, free_env))
+end
+</pre><blockquote>Defines <a href="#NWI-pnf"><code>pnf</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDM" href="#NWDM">pnf_recurse</a></code> converts a pattern in abstract syntax into its normal
+form.  The meaning of an applied constructor depends on the environment 
+in which it is evaluated;  we use <code>explode_apps</code> to produce
+the application(s) denoted by a constructor application.
+<pre><a name="NWpatB-*-Z" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+procedure <a href="#NWDM">pnf_recurse</a>(p, rho, free_env)
+  x := case type(p) of {
+    &quot;<a href="#NWD1">pattern</a>&quot; : p
+    &quot;Pident&quot;  : project(x := lookup(p.name, rho), &quot;<a href="#NWD1">pattern</a>&quot;) |
+                   typeerror(x, &quot;<a href="#NWD1">pattern</a> or <a href="#NWD1">field</a> operand&quot;, p.name, rho)
+                # can never be a free identifier
+    &quot;Plabel&quot;  : <a href="#NWD6">label2pattern</a>(p.name)
+    &quot;Pcon&quot;    : { f := lookuptype(p.name, &quot;<a href="#NWD1">field</a>&quot;, rho)
+                  # free identifiers in <a href="#NWD1">constraint</a> are always OK
+                  <a name="NWpatB-*-Z-u1" href="#NWDN"><i>&lt;constraint or field binding, depending on the type of <code>p.value</code>&gt;</i></a>
+                }
+    &quot;Pand&quot;    : <a href="#NWDR">pnfreduce</a>(<a href="#NWD8">andp</a>,  p.patterns, rho, free_env)
+    &quot;Por&quot;     : <a href="#NWDR">pnfreduce</a>(<a href="#NWD8">orp</a>,   p.patterns, rho, free_env)
+    &quot;Pseq&quot;    : <a href="#NWDR">pnfreduce</a>(<a href="#NWD8">seqp</a>,  p.patterns, rho, free_env)
+    &quot;Papp&quot;    : if (type(p.cons) == &quot;list&quot;) then
+                  <a href="#NWDM">pnf_recurse</a>(explode_apps(p.cons, p.args, rho), rho, free_env)
+                else apply_constructor(p.cons, p.args, rho, free_env)
+    &quot;Plist&quot;   : maplist3(<a href="#NWDM">pnf_recurse</a>, p.patterns, rho, free_env)
+     default  : impossible(&quot;<a href="#NWDM">pnf_recurse</a>&quot;)
+  }
+  if \showpnf then PPxwrite(PPnew(&amp;output),
+     &quot;<a href="#NWDM">pnf_recurse</a>(&quot;, image(if type(p) == &quot;Pident&quot; then p.name else p),
+     &quot;) returns: $t${ $o&quot;, ppexpimage(x), &quot;$b$}&quot;)
+  return x
+end
+</pre><blockquote>Defines <a href="#NWI-pnf_recurse"><code>pnf_recurse</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDN">Before trying to differentiate a field binding from a constraint, </a>
+we perform the appropriate mapping on lists of constraints (which we get when
+generators are used).
+We can take a short cut for the case of a list, because we know the suckers 
+are always integers---generators can't be used with expressions.
+<pre><a name="NWpatB-con13-1" href="#NWDN"><dfn>&lt;constraint or field binding, depending on the type of <code>p.value</code>&gt;=</dfn></a> <b>(<a href="#NWDM">U-&gt;</a>)</b>
+case type(p.value) of {
+  &quot;Glist&quot;   : { l := []
+                every put(l, <a href="#NWpatB-*-A">conspat</a>(f, p.relop, !p.value.values))
+                l
+              }
+  default   : <a href="#NWDP">constraint_or_binding</a>(f, p.relop, p.value, rho, free_env)
+}
+</pre><p>
+<a name="NWDO">Now we have to deal with an expression on the right-hand side of a binding.</a>
+The distinction between a constraint and a binding hinges on whether the expression 
+is constant.
+Since identifiers in bindings could be free variables, field names, or `other',
+we begin with a substitution.
+<pre><a name="NWpatB-*-a" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDM">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+procedure <a href="#NWDO">binding_subst_f</a>(e, rho, free_env)
+  return if type(e) == &quot;string&quot; then
+    (if is_defined(e, rho) then
+       project(lookup(e, rho), &quot;integer&quot;)
+     else 
+       <a href="#NWDQ">new_binding_instance</a>(e, e, &quot;integer&quot;, \free_env)
+    ) | typeerror(lookup(e, rho), &quot;integer&quot;, e, rho)
+end
+</pre><blockquote>Defines <a href="#NWI-binding_subst_f"><code>binding_subst_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDP">Now we can make the distinction:</a>
+<pre><a name="NWpatB-*-b" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWDQ">-&gt;</a>]</b>
+procedure <a href="#NWDP">constraint_or_binding</a>(f, relop, val, rho, free_env)
+  val := super_simplify(gsubst(val, <a href="#NWDO">binding_subst_f</a>, fieldname_env_for(f) ||| rho, 
+                               free_env))
+  val := constant(val) # might fail if expression not constant
+  if type(val) == &quot;integer&quot; then 
+    return <a href="#NWpatB-*-A">conspat</a>(f, relop, val)
+  else if relop == &quot;=&quot; then
+    return <a href="#NWpatB-*-A">constraints2pattern</a>(<a href="#NWD1">fieldbinding</a>(f, val))
+  else 
+    error(&quot;`&quot;, expimage(val), &quot;' has free variables, &quot;,
+          &quot;so the only permissible <a href="#NWD1">constraint</a> is equality&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-constraint_or_binding"><code>constraint_or_binding</code></a> (links are to index).<p>
+</blockquote><p><a name="NWDQ">Note that the error message lies; it might be possible to write a constraint in with </a>
+a pattern, because constraints are now part of patterns.  Must look into it.
+<pre><a name="NWpatB-*-c" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWDR">-&gt;</a>]</b>
+record <a href="#NWDQ">binding_instance</a>(val, type)
+procedure <a href="#NWDQ">new_binding_instance</a>(name, val, type, env)
+  if (/env[name] := <a href="#NWDQ">binding_instance</a>(val, type)) | env[name].type === type then
+    return val
+  else 
+    error(name, &quot; was bound earlier as type &quot;, expimage(env[name].type), 
+          &quot; but it's used here as type &quot;, expimage(type))
+end
+</pre><blockquote>Defines <a href="#NWI-binding_instance"><code>binding_instance</code></a>, <a href="#NWI-new_binding_instance"><code>new_binding_instance</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDR" href="#NWDR">pnfreduce</a>(op, l, rho)</code> applies <code><a href="#NWDM">pnf_recurse</a></code> to each member of <code>l</code> 
+then reduces the list (in the APL sense) by applying <code>op</code>.
+A special version is used when <code>op === <a href="#NWD8">seqp</a></code>, because that requires
+updating the program counter.
+<pre><a name="NWpatB-*-d" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDQ">&lt;-</a>D<a href="#NWpatB-*-e">-&gt;</a>]</b>
+procedure <a href="#NWDR">pnfreduce</a>(op, l, rho, free_env)
+  r := &amp;null
+  every p := <a href="#NWDM">pnf_recurse</a>(!l, rho, free_env) do
+     r := op(\r, p) | p
+  return r
+end
+</pre><blockquote>Defines <a href="#NWI-pnfreduce"><code>pnfreduce</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-e" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDR">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+procedure <a href="#NWpatB-*-e">equals_pc</a>(e)
+  return e === the_global_pc
+end
+</pre><blockquote>Defines <a href="#NWI-equals_pc"><code>equals_pc</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDS">Finding free variables in abstract syntax</a></h3>
+As far as I know, this code is used only for def-use checking.
+<pre><a name="NWpatB-*-f" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWpatB-*-e">&lt;-</a>D<a href="#NWDT">-&gt;</a>]</b>
+procedure <a href="#NWDS">pattern_free_variables</a>(p)
+    case type(p) of {
+        &quot;<a href="#NWD1">pattern</a>&quot; : fail        # note free var of Pcon is <a href="#NWD1">field</a>, not <a href="#NWD1">pattern</a>
+        &quot;Pident&quot;  : return p.name
+        &quot;Plabel&quot;  : fail # name is a binding instance
+        &quot;Pcon&quot;    : suspend free_variables(p.value)
+        &quot;Pand&quot; | &quot;Por&quot; | &quot;Pseq&quot;  : 
+                    suspend <a href="#NWDS">pattern_free_variables</a>(!p.patterns)
+        &quot;Papp&quot;    : suspend free_variables(!p.args)
+        &quot;string&quot;  : return p
+        &quot;integer&quot; : fail
+        &quot;literal&quot; : fail
+        default : impossible(&quot;<a href="#NWD1">pattern</a> free variables&quot;)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-pattern_free_variables"><code>pattern_free_variables</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDT">Here we need label names for entry into the environment.</a>
+<pre><a name="NWpatB-*-g" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDS">&lt;-</a>D<a href="#NWDU">-&gt;</a>]</b>
+procedure <a href="#NWDT">pattern_label_names</a>(p)
+    case type(p) of {
+        &quot;<a href="#NWD1">pattern</a>&quot; : fail
+        &quot;Pident&quot;  : fail
+        &quot;Plabel&quot;  : return p.name
+        &quot;Pcon&quot;    : fail
+        &quot;Pand&quot; | &quot;Por&quot; | &quot;Pseq&quot; : suspend <a href="#NWDT">pattern_label_names</a>(!p.patterns)
+        &quot;Papp&quot;    : fail
+        &quot;string&quot;  : fail
+        &quot;integer&quot; : fail
+        &quot;literal&quot; : fail
+        default : impossible(&quot;<a href="#NWD1">pattern</a> label names&quot;)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-pattern_label_names"><code>pattern_label_names</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDU">The tricky part of computing the constructors applied in a</a>
+pattern is that the exact set is not known until <code><a href="#NWDL">pnf</a></code> is applied to
+the pattern. 
+We make a conservative estimate by generating all possible
+applications using <code>explode_apps</code>.
+We also have to handle nested stuff with <code>Eapp</code>.
+I'm sure this is bogus and there are plenty of examples that will send
+it to left field.
+<pre><a name="NWpatB-*-h" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDT">&lt;-</a>D<a href="#NWDV">-&gt;</a>]</b>
+procedure <a href="#NWDU">constructors_applied_in</a>(p)
+    case type(p) of {
+        &quot;<a href="#NWD1">pattern</a>&quot; | &quot;Pident&quot; | &quot;Plabel&quot; | &quot;Pcon&quot; | &quot;string&quot; | &quot;integer&quot; | &quot;literal&quot; :
+                 fail
+        &quot;Pand&quot; | &quot;Por&quot; | &quot;Pseq&quot;  : suspend <a href="#NWDU">constructors_applied_in</a>(!p.patterns)
+        &quot;Papp&quot; : suspend (if type(p.cons) == &quot;list&quot; then
+                            <a href="#NWDU">constructors_applied_in</a>(explode_apps(p.cons,p.args))
+                          else p.cons) |
+                          <a href="#NWDU">constructors_applied_in</a>(!p.args)
+        &quot;Eapp&quot; : suspend cons_named(p.f) | 
+                    (a := !p.args, type(a) == &quot;Eapp&quot;, <a href="#NWDU">constructors_applied_in</a>(a))
+        default : impossible(&quot;<a href="#NWD1">pattern</a> AST&quot;)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-constructors_applied_in"><code>constructors_applied_in</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDV">Manipulations of conditions</a></h2>
+I use a destructive <code><a href="#NWDV">bind_condition</a></code> to add conditions.
+When I need something non-destructive, I use <code><a href="#NWpatB-*-j">freshen_disjuncts</a></code> to
+get a pattern with fresh disjuncts and conditions.
+<pre><a name="NWpatB-*-i" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDU">&lt;-</a>D<a href="#NWpatB-*-j">-&gt;</a>]</b>
+procedure <a href="#NWDV">bind_condition</a>(p, condition)
+  every <a href="#NWDV">bind_condition_d</a>(!p.disjuncts, condition)
+  return p
+end
+
+procedure <a href="#NWDV">bind_condition_d</a>(d, condition)
+  /d.conditions := set()
+  insert_condition(d.conditions, condition)
+  return d
+end
+</pre><blockquote>Defines <a href="#NWI-bind_condition"><code>bind_condition</code></a>, <a href="#NWI-bind_condition_d"><code>bind_condition_d</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWpatB-*-j" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDV">&lt;-</a>D]</b>
+procedure <a href="#NWpatB-*-j">freshen_disjuncts</a>(p) 
+  return <a href="#NWD1">pattern</a>(maplist(<a href="#NWpatB-*-j">freshen_disjunct</a>, p.disjuncts), p.name)
+end
+link maplist
+
+procedure <a href="#NWpatB-*-j">freshen_disjunct</a>(d)
+  d := copy(d)
+  d.conditions := copy(d.conditions)
+  return d
+end
+</pre><blockquote>Defines <a href="#NWI-freshen_disjunct"><code>freshen_disjunct</code></a>, <a href="#NWI-freshen_disjuncts"><code>freshen_disjuncts</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWD4">D3</a>, <a href="#NWpatB-*-4">D4</a>, <a href="#NWpatB-*-5">D5</a>, <a href="#NWpatB-*-6">D6</a>, <a href="#NWD5">D7</a>, <a href="#NWD6">D8</a>, <a href="#NWpatB-*-9">D9</a>, <a href="#NWpatB-*-A">D10</a>, <a href="#NWpatB-*-B">D11</a>, <a href="#NWpatB-*-C">D12</a>, <a href="#NWD7">D13</a>, <a href="#NWD8">D14</a>, <a href="#NWpatB-*-F">D15</a>, <a href="#NWpatB-*-G">D16</a>, <a href="#NWD9">D17</a>, <a href="#NWpatB-*-I">D18</a>, <a href="#NWpatB-*-J">D19</a>, <a href="#NWDA">D20</a>, <a href="#NWDB">D21</a>, <a href="#NWpatB-*-M">D22</a>, <a href="#NWDD">D23</a>, <a href="#NWpatB-*-O">D24</a>, <a href="#NWDF">D25</a>, <a href="#NWpatB-*-Q">D26</a>, <a href="#NWDG">D27</a>, <a href="#NWDH">D28</a>, <a href="#NWDI">D29</a>, <a href="#NWDJ">D30</a>, <a href="#NWpatB-*-V">D31</a>, <a href="#NWpatB-*-W">D32</a>, <a href="#NWDK">D33</a>, <a href="#NWDL">D34</a>, <a href="#NWDM">D35</a>, <a href="#NWDO">D36</a>, <a href="#NWDP">D37</a>, <a href="#NWDQ">D38</a>, <a href="#NWDR">D39</a>, <a href="#NWpatB-*-e">D40</a>, <a href="#NWDS">D41</a>, <a href="#NWDT">D42</a>, <a href="#NWDU">D43</a>, <a href="#NWDV">D44</a>, <a href="#NWpatB-*-j">D45</a>
+<li><a href="#NWpatB-comT-1"><i>&lt;complain about class mismatch&gt;</i></a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWpatB-comT-1">D2</a>
+<li><a href="#NWpatB-comJ-1"><i>&lt;complain about dots&gt;</i></a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWpatB-comJ-1">D2</a>
+<li><a href="#NWpatB-coms-1"><i>&lt;complain if some class in <code>shape</code> has no placeholder&gt;</i></a>: <a href="#NWDI">U1</a>, <a href="#NWpatB-coms-1">D2</a>
+<li><a href="#NWpatB-comV-1"><i>&lt;complain of constraint conflict&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWpatB-comV-1">D2</a>
+<li><a href="#NWpatB-comZ-1"><i>&lt;complain of left sequence too short&gt;</i></a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWpatB-comZ-1">D2</a>
+<li><a href="#NWpatB-coma-1"><i>&lt;complain of right sequence too short&gt;</i></a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWpatB-coma-1">D2</a>
+<li><a href="#NWDN"><i>&lt;constraint or field binding, depending on the type of <code>p.value</code>&gt;</i></a>: <a href="#NWDM">U1</a>, <a href="#NWDN">D2</a>
+<li><a href="#NWpatB-if*k-1"><i>&lt;if no field is overconstrained, <code>return seq</code>&gt;</i></a>: <a href="#NWDF">U1</a>, <a href="#NWpatB-if*k-1">D2</a>
+<li><a href="#NWpatB-mak1D-1"><i>&lt;make <code>keepname</code> name of <code>p1</code> if <code>p2</code> is field binding, null otherwise&gt;</i></a>: <a href="#NWDB">U1</a>, <a href="#NWpatB-mak1D-1">D2</a>
+<li><a href="#NWpatB-merp-1"><i>&lt;merge <code>c1</code> and <code>c2</code>, inserting result in <code>S2</code>&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWpatB-merp-1">D2</a>
+<li><a href="#NWpatB-newg-1"><i>&lt;new pattern with contradictions eliminated&gt;</i></a>: <a href="#NWDH">U1</a>, <a href="#NWpatB-newg-1">D2</a>
+<li><a href="#NWpatB-setr.2-1"><i>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for left-to-right&gt;</i></a>: <a href="#NWpatB-setr.2-1">D1</a>, <a href="#NWpatB-*-M">U2</a>
+<li><a href="#NWDC"><i>&lt;set <code>grab</code>, <code>add</code> and <code>first</code> for right-to-left&gt;</i></a>: <a href="#NWDC">D1</a>, <a href="#NWpatB-*-M">U2</a>
+<li><a href="#NWpatB-sucU-1"><i>&lt;suck initial labels into <code>l</code>&gt;</i></a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWpatB-sucU-1">D2</a>
+<li><a href="#NWpatB-warO-1"><i>&lt;warn of discarding <code>i</code>&gt;</i></a>: <a href="#NWpatB-*-4">U1</a>, <a href="#NWpatB-warO-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-all_disjuncts_ids" href="#NWpatB-*-4">all_disjuncts_ids</a>: <a href="#NWpatB-*-4">D1</a>, <a href="#NWpatB-*-5">U2</a>
+<li><a name="NWI-andp" href="#NWD8">andp</a>: <a href="#NWD8">D1</a>, <a href="#NWDM">U2</a>
+<li><a name="NWI-andpx" href="#NWDB">andpx</a>: <a href="#NWD8">U1</a>, <a href="#NWDB">D2</a>
+<li><a name="NWI-barpm_d" href="#NWD4">barpm_d</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-bind_and_remove_patlabel_names" href="#NWD4">bind_and_remove_patlabel_names</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-bind_condition" href="#NWDV">bind_condition</a>: <a href="#NWDV">D1</a>
+<li><a name="NWI-bind_condition_d" href="#NWDV">bind_condition_d</a>: <a href="#NWDV">D1</a>
+<li><a name="NWI-binding_instance" href="#NWDQ">binding_instance</a>: <a href="#NWDQ">D1</a>
+<li><a name="NWI-binding_subst_f" href="#NWDO">binding_subst_f</a>: <a href="#NWDO">D1</a>, <a href="#NWDP">U2</a>
+<li><a name="NWI-bind_patlabel_names" href="#NWD4">bind_patlabel_names</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-bits_to_pcunits" href="#NWpatB-*-I">bits_to_pcunits</a>: <a href="#NWpatB-*-6">U1</a>, <a href="#NWpatB-*-I">D2</a>
+<li><a name="NWI-concat_sequences" href="#NWDA">concat_sequences</a>: <a href="#NWD9">U1</a>, <a href="#NWDA">D2</a>
+<li><a name="NWI-conjoin_conditions" href="#NWpatB-*-J">conjoin_conditions</a>: <a href="#NWD9">U1</a>, <a href="#NWpatB-*-J">D2</a>, <a href="#NWDB">U3</a>
+<li><a name="NWI-conspat" href="#NWpatB-*-A">conspat</a>: <a href="#NWpatB-*-A">D1</a>, <a href="#NWDN">U2</a>, <a href="#NWDP">U3</a>
+<li><a name="NWI-constraint" href="#NWD1">constraint</a>: <a href="#NWD1">D1</a>, <a href="#NWpatB-*-A">U2</a>, <a href="#NWpatB-*-B">U3</a>, <a href="#NWDD">U4</a>, <a href="#NWpatB-merp-1">U5</a>, <a href="#NWpatB-comV-1">U6</a>, <a href="#NWDF">U7</a>, <a href="#NWDG">U8</a>, <a href="#NWDH">U9</a>, <a href="#NWpatB-newg-1">U10</a>, <a href="#NWDM">U11</a>, <a href="#NWDP">U12</a>
+<li><a name="NWI-constraint_or_binding" href="#NWDP">constraint_or_binding</a>: <a href="#NWDN">U1</a>, <a href="#NWDP">D2</a>
+<li><a name="NWI-constraints2pattern" href="#NWpatB-*-A">constraints2pattern</a>: <a href="#NWpatB-*-A">D1</a>, <a href="#NWpatB-*-B">U2</a>, <a href="#NWDP">U3</a>
+<li><a name="NWI-constructors_applied_in" href="#NWDU">constructors_applied_in</a>: <a href="#NWDU">D1</a>
+<li><a name="NWI-disjunct" href="#NWD1">disjunct</a>: <a href="#NWD1">D1</a>, <a href="#NWD3">U2</a>, <a href="#NWD4">U3</a>, <a href="#NWD6">U4</a>, <a href="#NWpatB-*-9">U5</a>, <a href="#NWpatB-*-A">U6</a>, <a href="#NWpatB-*-C">U7</a>, <a href="#NWD7">U8</a>, <a href="#NWD9">U9</a>, <a href="#NWDB">U10</a>
+<li><a name="NWI-disjunct_length" href="#NWpatB-*-V">disjunct_length</a>: <a href="#NWDJ">U1</a>, <a href="#NWpatB-*-V">D2</a>
+<li><a name="NWI-dots" href="#NWD7">dots</a>: <a href="#NWD7">D1</a>, <a href="#NWDA">U2</a>, <a href="#NWpatB-*-M">U3</a>, <a href="#NWpatB-comJ-1">U4</a>
+<li><a name="NWI-dots_pattern" href="#NWD7">dots_pattern</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-dots_sequent" href="#NWD7">dots_sequent</a>: <a href="#NWpatB-*-6">U1</a>, <a href="#NWD7">D2</a>
+<li><a name="NWI-eliminate_contradictions" href="#NWDH">eliminate_contradictions</a>: <a href="#NWDH">D1</a>
+<li><a name="NWI-epsilon" href="#NWpatB-*-C">epsilon</a>: <a href="#NWpatB-*-C">D1</a>, <a href="#NWDI">U2</a>
+<li><a name="NWI-equals_pc" href="#NWpatB-*-e">equals_pc</a>: <a href="#NWpatB-*-e">D1</a>
+<li><a name="NWI-equivclass" href="#NWD1">equivclass</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-field" href="#NWD1">field</a>: <a href="#NWD1">D1</a>, <a href="#NWpatB-*-A">U2</a>, <a href="#NWDD">U3</a>, <a href="#NWpatB-merp-1">U4</a>, <a href="#NWpatB-comV-1">U5</a>, <a href="#NWDF">U6</a>, <a href="#NWpatB-if*k-1">U7</a>, <a href="#NWpatB-*-Q">U8</a>, <a href="#NWDM">U9</a>, <a href="#NWDS">U10</a>
+<li><a name="NWI-fieldbinding" href="#NWD1">fieldbinding</a>: <a href="#NWD1">D1</a>, <a href="#NWpatB-mak1D-1">U2</a>, <a href="#NWDF">U3</a>, <a href="#NWDK">U4</a>, <a href="#NWDP">U5</a>
+<li><a name="NWI-freshen_disjunct" href="#NWpatB-*-j">freshen_disjunct</a>: <a href="#NWpatB-*-j">D1</a>
+<li><a name="NWI-freshen_disjuncts" href="#NWpatB-*-j">freshen_disjuncts</a>: <a href="#NWpatB-*-j">D1</a>
+<li><a name="NWI-freshen_patlabels" href="#NWD5">freshen_patlabels</a>: <a href="#NWD5">D1</a>, <a href="#NWD9">U2</a>
+<li><a name="NWI-insert_constraint_conditions" href="#NWpatB-*-Q">insert_constraint_conditions</a>: <a href="#NWDF">U1</a>, <a href="#NWpatB-*-Q">D2</a>
+<li><a name="NWI-insist_global_pattern" href="#NWDK">insist_global_pattern</a>: <a href="#NWDK">D1</a>
+<li><a name="NWI-label2pattern" href="#NWD6">label2pattern</a>: <a href="#NWD6">D1</a>, <a href="#NWDM">U2</a>
+<li><a name="NWI-latent_label2pattern" href="#NWpatB-*-9">latent_label2pattern</a>: <a href="#NWpatB-*-9">D1</a>
+<li><a name="NWI-latent_patlabel" href="#NWD1">latent_patlabel</a>: <a href="#NWD1">D1</a>, <a href="#NWpatB-*-6">U2</a>, <a href="#NWpatB-*-9">U3</a>, <a href="#NWpatB-sucU-1">U4</a>
+<li><a name="NWI-merge_constraints" href="#NWDD">merge_constraints</a>: <a href="#NWpatB-*-M">U1</a>, <a href="#NWDD">D2</a>
+<li><a name="NWI-merge_sequences" href="#NWpatB-*-M">merge_sequences</a>: <a href="#NWDB">U1</a>, <a href="#NWpatB-*-M">D2</a>
+<li><a name="NWI-mix" href="#NWpatB-*-F">mix</a>: <a href="#NWD8">U1</a>, <a href="#NWpatB-*-F">D2</a>
+<li><a name="NWI-new_binding_instance" href="#NWDQ">new_binding_instance</a>: <a href="#NWDO">U1</a>, <a href="#NWDQ">D2</a>
+<li><a name="NWI-not_contradictory" href="#NWDG">not_contradictory</a>: <a href="#NWDB">U1</a>, <a href="#NWDG">D2</a>
+<li><a name="NWI-orp" href="#NWD8">orp</a>: <a href="#NWD8">D1</a>, <a href="#NWDM">U2</a>
+<li><a name="NWI-orpx" href="#NWpatB-*-G">orpx</a>: <a href="#NWpatB-*-A">U1</a>, <a href="#NWD8">U2</a>, <a href="#NWpatB-*-G">D3</a>
+<li><a name="NWI-patbind" href="#NWD3">patbind</a>: <a href="#NWD2">U1</a>, <a href="#NWD3">D2</a>
+<li><a name="NWI-patlabel" href="#NWD1">patlabel</a>: <a href="#NWD1">D1</a>, <a href="#NWD4">U2</a>, <a href="#NWpatB-*-5">U3</a>, <a href="#NWpatB-*-6">U4</a>, <a href="#NWD5">U5</a>, <a href="#NWD6">U6</a>, <a href="#NWpatB-sucU-1">U7</a>, <a href="#NWpatB-*-O">U8</a>, <a href="#NWDK">U9</a>
+<li><a name="NWI-patlabels_defined_in" href="#NWpatB-*-5">patlabels_defined_in</a>: <a href="#NWpatB-*-5">D1</a>
+<li><a name="NWI-patlabels_defined_in_all_disjuncts_of" href="#NWpatB-*-5">patlabels_defined_in_all_disjuncts_of</a>: <a href="#NWpatB-*-5">D1</a>
+<li><a name="NWI-pattern" href="#NWD1">pattern</a>: <a href="#NWD1">D1</a>, <a href="#NWD3">U2</a>, <a href="#NWD4">U3</a>, <a href="#NWD6">U4</a>, <a href="#NWpatB-*-9">U5</a>, <a href="#NWpatB-*-A">U6</a>, <a href="#NWpatB-*-B">U7</a>, <a href="#NWpatB-*-C">U8</a>, <a href="#NWD7">U9</a>, <a href="#NWpatB-*-F">U10</a>, <a href="#NWpatB-*-G">U11</a>, <a href="#NWD9">U12</a>, <a href="#NWpatB-*-I">U13</a>, <a href="#NWDB">U14</a>, <a href="#NWpatB-newg-1">U15</a>, <a href="#NWDJ">U16</a>, <a href="#NWDM">U17</a>, <a href="#NWDS">U18</a>, <a href="#NWDT">U19</a>, <a href="#NWDU">U20</a>, <a href="#NWpatB-*-j">U21</a>
+<li><a name="NWI-pattern_free_variables" href="#NWDS">pattern_free_variables</a>: <a href="#NWDS">D1</a>
+<li><a name="NWI-pattern_label_names" href="#NWDT">pattern_label_names</a>: <a href="#NWDT">D1</a>
+<li><a name="NWI-pattern_length" href="#NWDJ">pattern_length</a>: <a href="#NWDJ">D1</a>
+<li><a name="NWI-place_holder" href="#NWDI">place_holder</a>: <a href="#NWDI">D1</a>
+<li><a name="NWI-pnf" href="#NWDL">pnf</a>: <a href="#NWDL">D1</a>
+<li><a name="NWI-pnf_recurse" href="#NWDM">pnf_recurse</a>: <a href="#NWDL">U1</a>, <a href="#NWDM">D2</a>, <a href="#NWDR">U3</a>
+<li><a name="NWI-pnfreduce" href="#NWDR">pnfreduce</a>: <a href="#NWDM">U1</a>, <a href="#NWDR">D2</a>
+<li><a name="NWI-sanitize_for_output" href="#NWDF">sanitize_for_output</a>: <a href="#NWDE">U1</a>, <a href="#NWDF">D2</a>
+<li><a name="NWI-seqp" href="#NWD8">seqp</a>: <a href="#NWD8">D1</a>, <a href="#NWDI">U2</a>, <a href="#NWDM">U3</a>
+<li><a name="NWI-seqpx" href="#NWD9">seqpx</a>: <a href="#NWD8">U1</a>, <a href="#NWD9">D2</a>
+<li><a name="NWI-sequent" href="#NWD1">sequent</a>: <a href="#NWD1">D1</a>, <a href="#NWpatB-*-6">U2</a>, <a href="#NWpatB-*-A">U3</a>, <a href="#NWD7">U4</a>, <a href="#NWpatB-mak1D-1">U5</a>, <a href="#NWpatB-*-M">U6</a>, <a href="#NWpatB-comT-1">U7</a>, <a href="#NWDF">U8</a>, <a href="#NWpatB-if*k-1">U9</a>, <a href="#NWDG">U10</a>, <a href="#NWDH">U11</a>, <a href="#NWpatB-newg-1">U12</a>, <a href="#NWpatB-*-V">U13</a>, <a href="#NWpatB-*-W">U14</a>, <a href="#NWDK">U15</a>
+<li><a name="NWI-set_patlabel_offsets" href="#NWpatB-*-6">set_patlabel_offsets</a>: <a href="#NWpatB-*-6">D1</a>
+<li><a name="NWI-shapeof" href="#NWpatB-*-W">shapeof</a>: <a href="#NWDI">U1</a>, <a href="#NWpatB-*-W">D2</a>
+<li><a name="NWI-strip_patlabels" href="#NWpatB-*-O">strip_patlabels</a>: <a href="#NWpatB-*-O">D1</a>
+<li><a name="NWI-wildcard" href="#NWpatB-*-B">wildcard</a>: <a href="#NWpatB-*-B">D1</a>
+</ul>
+</body></html>
+

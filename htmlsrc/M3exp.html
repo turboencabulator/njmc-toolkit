@@ -1,0 +1,346 @@
+<html><head><title> M3exp.nw</title></head><body>
+<h1><a name="NWD1">Converting Expressions to Modula-3</a></h1>
+<code><a href="#NWD1">prettyM3</a></code> returns Modula-3 code for an expression (or statement)
+with embedded prettyprinting escapes.
+<code>nohex</code> is a purely internal flag.
+If it is non-null, constants are in hex; otherwise they're in decimal.
+<pre><a name="NWM3e8-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWM3e8-*-2">-&gt;</a>]</b>
+procedure <a href="#NWD1">prettyM3</a>(e, precedence, associativity, nohex)
+  <a name="NWM3e8-*-1-u1" href="#NWM3e8-locZ-1"><i>&lt;local declarations for <code>prettyM3</code>&gt;</i></a>
+  initial {<a name="NWM3e8-*-1-u2" href="#NWM3e8-inib-1"><i>&lt;initialize <code>M3prec</code> and <code>M3assoc</code>&gt;</i></a>}
+  /precedence := 0
+  /associativity := &quot;L&quot;
+  return case type(e) of {
+    <a name="NWM3e8-*-1-u3" href="#NWM3e8-casM-1"><i>&lt;cases for <code>prettyM3</code>&gt;</i></a>
+    default    : impossible(&quot;Bad code to <a href="#NWD1">prettyM3</a>&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-prettyM3"><code>prettyM3</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWM3e8-casM-1" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWM3e8-casM-2">-&gt;</a>]</b>
+</pre><pre><a name="NWM3e8-casM-2" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-1">&lt;-</a>D<a href="#NWM3e8-casM-3">-&gt;</a>]</b>
+&quot;list&quot;     : commaseparate(maplist2(<a href="#NWD1">prettyM3</a>, e, <a href="#NWM3e8-*-3">M3prec</a>[&quot;,&quot;]), &quot;, $o&quot;)
+&quot;set&quot;      : commaseparate(maplist2(<a href="#NWD1">prettyM3</a>, sort(e), <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;]), &quot; AND $o&quot;)
+&quot;eqn&quot;      : { o := <a href="#NWM3e8-*-4">M3op</a>(e.op)
+               <a href="#NWM3e8-*-3">M3bracket</a>(<a href="#NWD1">prettyM3</a>(e.left,  <a href="#NWM3e8-*-3">M3prec</a>[o]) || &quot; &quot; || o || &quot; $o&quot; ||
+                         <a href="#NWD1">prettyM3</a>(e.right, <a href="#NWM3e8-*-3">M3prec</a>[o]), &quot;=&quot;, precedence)
+             }
+&quot;table&quot;    : {                      # standard normal form
+    <a name="NWM3e8-casM-2-u1" href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>
+    &quot;$t${&quot; || s || &quot;$}$b&quot;
+  }
+&quot;string&quot;   : if e == &quot;$pc&quot; then &quot;$$pc&quot; else e
+&quot;literal&quot;  : list_to_string(e.s)
+&quot;integer&quot;  : string(e)
+</pre><p><a name="NWD2">The old version printed in any old order, but the new version prints</a>
+positive terms first, then negative terms, with the constant term last in its group.
+
+<pre><a name="NWM3e8-mak1F-1" href="#NWD2"><dfn>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a> <b>(<a href="#NWM3e8-casM-2">&lt;-U</a>)</b>
+{
+  s := &quot;&quot;; leadingsign := &quot;&quot;
+  <a name="NWM3e8-mak1F-1-u1" href="#NWM3e8-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>
+  leadingsign := &quot; - $o&quot;
+  <a name="NWM3e8-mak1F-1-u2" href="#NWM3e8-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWM3e8-addR-1" href="#NWM3e8-addR-1"><dfn>&lt;add positive terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &gt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWD1">prettyM3</a>(k, <a href="#NWM3e8-*-3">M3prec</a>[&quot;*&quot;])
+    leadingsign := &quot; + $o&quot;
+}
+if e[1] &gt; 0 then s ||:= leadingsign || string(e[1])
+</pre><pre><a name="NWM3e8-addR.2-1" href="#NWM3e8-addR.2-1"><dfn>&lt;add negative terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &lt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWD1">prettyM3</a>(k, <a href="#NWM3e8-*-3">M3prec</a>[&quot;*&quot;])
+}
+if e[1] &lt; 0 then s ||:= leadingsign || string(-e[1])
+</pre><pre><a name="NWM3e8-old1J-1" href="#NWM3e8-old1J-1"><dfn>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a>
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := &quot; + $o&quot; }
+  else s := leadingsign := &quot;&quot;
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] &lt; 0 then &quot; - &quot; else leadingsign
+      leadingsign := &quot; + $o&quot;
+      s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+      s ||:= <a href="#NWD1">prettyM3</a>(k, <a href="#NWM3e8-*-3">M3prec</a>[&quot;*&quot;])
+  }
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWM3e8-locZ-1" href="#NWM3e8-locZ-1"><dfn>&lt;local declarations for <code>prettyM3</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWM3e8-locZ-2">-&gt;</a>]</b>
+local leadingsign
+</pre><pre><a name="NWM3e8-casM-3" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-2">&lt;-</a>D<a href="#NWM3e8-casM-4">-&gt;</a>]</b>
+&quot;Eorb&quot;     : &quot;Word.Or(${$t$c&quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;, $c&quot; || <a href="#NWD1">prettyM3</a>(e.y) || &quot;$b$})&quot;
+&quot;Eand&quot;     : { s := <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;], &quot;L&quot;)
+               t := <a href="#NWD1">prettyM3</a>(e.y, <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;], &quot;R&quot;)
+               <a href="#NWM3e8-*-3">M3bracket</a>(s || &quot; AND $o&quot; || t, &quot;AND&quot;, precedence)
+             }
+</pre><pre><a name="NWM3e8-casM-4" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-3">&lt;-</a>D<a href="#NWM3e8-casM-5">-&gt;</a>]</b>
+&quot;Eslice&quot;   : &quot;Word.Extract(${$t$c&quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;, $c&quot; || e.lo || &quot;, &quot; || 
+                                                                       e.n || &quot;$b$})&quot;
+&quot;Eshift&quot;   : &quot;Word.Shift(${$t$c&quot;   || <a href="#NWD1">prettyM3</a>(e.x) || &quot;, $c&quot; || e.n || &quot;$b$})&quot;
+</pre><pre><a name="NWM3e8-casM-5" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-4">&lt;-</a>D<a href="#NWM3e8-casM-6">-&gt;</a>]</b>
+&quot;Enarrowu&quot; : <a href="#NWD1">prettyM3</a>(e.x, precedence, associativity) # checked, so must be identity
+&quot;Enarrows&quot; : <a href="#NWD1">prettyM3</a>(super_simplify(Eslice(e.x, 0, e.n)), precedence, associativity)
+&quot;Ewiden&quot;   : &quot;Word.Insert(${$t$c&quot; || <a href="#NWD1">prettyM3</a>(e.x) || 
+                        &quot;, $cMATCH_bits[&quot; ||
+                        <a href="#NWD1">prettyM3</a>(super_simplify(Eslice(e.x, e.n-1, 1))) || 
+                        &quot;], $c&quot; || e.n || &quot;, $cWord.Size - &quot; || e.n || &quot;$b$})&quot;
+</pre><pre><a name="NWM3e8-casM-6" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-5">&lt;-</a>D<a href="#NWM3e8-casM-7">-&gt;</a>]</b>
+&quot;Ediv&quot;     : { s := <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;DIV&quot;]) 
+               s ||:= &quot; DIV &quot; || e.n
+               <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;DIV&quot;, precedence)
+             }
+&quot;Emod&quot;     : { s := <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;MOD&quot;]) 
+               s ||:= &quot; MOD &quot; || e.n
+               <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;MOD&quot;, precedence)
+             }
+</pre><pre><a name="NWM3e8-casM-7" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-6">&lt;-</a>D<a href="#NWM3e8-casM-8">-&gt;</a>]</b>
+&quot;Semit&quot;    : { s := emittername || &quot;$t(&quot; || <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;,&quot;]) || &quot;, $o&quot; || 
+                    e.n || &quot;);$b&quot;
+               <a href="#NWM3e8-*-3">M3bracket</a>(&quot;$c&quot; || s, &quot;app&quot;, precedence)
+             }
+</pre><pre><a name="NWM3e8-casM-8" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-7">&lt;-</a>D<a href="#NWM3e8-casM-9">-&gt;</a>]</b>
+&quot;Efitsu&quot;   : &quot;Word.LT(${$t$c&quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;, $c&quot; || (2^e.n) || &quot;$b$})&quot;
+&quot;Efitss&quot;   : &quot;Word.LT(${$t$c&quot; || <a href="#NWD1">prettyM3</a>(addconst(e.x, 2^(e.n-1))) || &quot;, $c&quot; || 
+                                                                     (2^e.n) || &quot;$b$})&quot;
+</pre><pre><a name="NWM3e8-casM-9" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-8">&lt;-</a>D<a href="#NWM3e8-casM-A">-&gt;</a>]</b>
+&quot;Eforce&quot; | &quot;Eforceable&quot;  : {
+               z := if type(e) == &quot;Eforceable&quot; then &quot;_known&quot; else &quot;&quot;
+               case s := <a href="#NWD1">prettyM3</a>(e.x) of { 
+                 &quot;$$pc&quot;    : &quot;RBlocks.cur_pc&quot; || z || &quot;()&quot;
+                 &quot;_c-&gt;loc&quot; : &quot;RBlocks.pc_location&quot; || z || &quot;(_c.loc)&quot;
+                 default   : &quot;RBlocks.location&quot; || z || &quot;$t${(&quot; || s || &quot;)$}$b&quot;
+               }
+             }
+</pre><pre><a name="NWM3e8-casM-A" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-9">&lt;-</a>D<a href="#NWM3e8-casM-B">-&gt;</a>]</b>
+&quot;Enot&quot;      : { s := &quot;NOT &quot; || <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;NOT&quot;])
+                <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;NOT&quot;, precedence)
+              }
+</pre><pre><a name="NWM3e8-casM-B" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-A">&lt;-</a>D<a href="#NWM3e8-casM-C">-&gt;</a>]</b>
+&quot;Enosimp&quot;   : <a href="#NWD1">prettyM3</a>(e.x, precedence, associativity)
+</pre><pre><a name="NWM3e8-casM-C" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-B">&lt;-</a>D<a href="#NWM3e8-casM-D">-&gt;</a>]</b>
+&quot;Sstmts&quot;    : &quot;${&quot; || commaseparate(maplist2(<a href="#NWD1">prettyM3</a>, e.x), &quot; $c&quot;) || &quot;$}&quot;
+</pre><pre><a name="NWM3e8-casM-D" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-C">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+&quot;Gcall&quot; : { l := []; every put(l, <a href="#NWD1">prettyM3</a>(!e.args))
+            <a href="#NWM3e8-*-5">M3noreserve</a>(e.name) || &quot;(&quot; || commaseparate(l) || &quot;)&quot;
+         }
+&quot;Einstance_input&quot; : { 
+               s := &quot;NARROW(&quot; || <a href="#NWD1">prettyM3</a>(e.x) || 
+                    &quot;, Encode.&quot; || e.cons.name || &quot;Instance).&quot; || e.name
+               <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;.&quot;, precedence)
+             }
+&quot;Einstance_tagged&quot; : { 
+               s := &quot;ISTYPE(&quot; || <a href="#NWD1">prettyM3</a>(e.x) || 
+                    &quot;, Encode.&quot; || e.cons.name || &quot;Instance)&quot;
+               <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;app&quot;, precedence)
+             }
+</pre><p>
+<a name="NWD3">I assume the if statement has been simplified, so there are no arms beyond</a>
+any <code>else</code> arm
+<pre><a name="NWM3e8-casM-E" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-D">&lt;-</a>D<a href="#NWM3e8-casM-F">-&gt;</a>]</b>
+&quot;Sif&quot;      : { ifword := &quot;IF &quot;
+               s := &quot;&quot;
+               every a := !e.arms do {
+                 s ||:= ifword || <a href="#NWM3e8-*-2">M3test</a>(a.guard) || &quot;$t$c&quot; || <a href="#NWD1">prettyM3</a>(a.x) || &quot;$b&quot;
+                 ifword := &quot;$cELSIF &quot;
+               }
+               &quot;${&quot; || s || &quot; $cEND;$}&quot;
+             }
+</pre><pre><a name="NWM3e8-casM-F" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWM3e8-casM-G">-&gt;</a>]</b>
+&quot;Efail&quot; : error(&quot;Generate-time operation failed: &quot;, e.msg)
+</pre><pre><a name="NWM3e8-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWM3e8-*-3">-&gt;</a>]</b>
+procedure <a href="#NWM3e8-*-2">M3test</a>(guard)
+  return if guard_always_satisfied(guard) then &quot;TRUE THEN &quot;
+         else &quot;$t${&quot; || <a href="#NWD1">prettyM3</a>(guard) || &quot;$}$b THEN &quot;
+end
+</pre><blockquote>Defines <a href="#NWI-M3test"><code>M3test</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWM3e8-casM-G" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-F">&lt;-</a>D<a href="#NWM3e8-casM-H">-&gt;</a>]</b>
+&quot;Stagcase&quot; : { s := &quot;TYPECASE &quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot; OF$t${&quot;
+              every c := kept_constructors(e.type) do
+                s ||:= &quot;$n| Encode.&quot; || c.name || &quot;Instance =&gt; $o$t${&quot; ||
+                          <a href="#NWD1">prettyM3</a>(e.arms[c]) || &quot;$}$b&quot;
+              s || &quot;$nELSE &lt;* ASSERT FALSE *&gt;$}$b$nEND; (* &quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;*)&quot;
+            }
+</pre><pre><a name="NWM3e8-casM-H" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-G">&lt;-</a>D<a href="#NWM3e8-casM-I">-&gt;</a>]</b>
+&quot;Sfail&quot;    : { s := &quot;fail($t${&quot; || image(escape_dollars(e.fmt))
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= &quot;, $o&quot; || <a href="#NWD1">prettyM3</a>(\a, <a href="#NWM3e8-*-3">M3prec</a>[&quot;,&quot;])
+               s ||:= &quot;$}$b);&quot;
+               <a href="#NWM3e8-*-3">M3bracket</a>(s, &quot;app&quot;, precedence)
+             }
+&quot;Sepsilon&quot; : &quot;(* skip *)&quot;
+</pre><pre><a name="NWM3e8-casM-I" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-H">&lt;-</a>D<a href="#NWM3e8-casM-J">-&gt;</a>]</b>
+&quot;Sclosure&quot; : <a href="#NWD1">prettyM3</a>(\e.creation) | impossible(&quot;creating closure&quot;)
+</pre><pre><a name="NWM3e8-casM-J" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-I">&lt;-</a>D<a href="#NWM3e8-casM-K">-&gt;</a>]</b>
+&quot;Glines&quot;    : { s := &quot;&quot;; every s ||:= <a href="#NWD1">prettyM3</a>(!e.x) || &quot;\n&quot;; s }
+&quot;Gresynch&quot;  : &quot;&lt;* LINE &quot; || e.line  || &quot; &quot; || image(\e.file | &quot;generated-code&quot;) || &quot;*&gt;&quot;
+</pre><pre><a name="NWM3e8-casM-K" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-J">&lt;-</a>D<a href="#NWM3e8-casM-L">-&gt;</a>]</b>
+&quot;Gblock&quot;    : { s := &quot;${&quot;
+                every s ||:= <a href="#NWD1">prettyM3</a>(!e.decls) || &quot;;$n&quot;
+                if *e.decls &gt; 0 then 
+                  s ||:= &quot;BEGIN ${$t$c&quot;
+                s ||:= commaseparate(maplist(<a href="#NWD1">prettyM3</a>, e.stmts), &quot;$c&quot;)
+                if *e.decls &gt; 0 then 
+                  s ||:= &quot;$b$cEND$}&quot;
+                s || &quot;$}&quot;
+              }
+&quot;Gdecl&quot;     : { s := &quot;VAR ${&quot; || e.name 
+                s ||:= &quot; : &quot; || <a href="#NWD1">prettyM3</a>(\e.type) 
+                s ||:= &quot; := $t$c&quot; || <a href="#NWD1">prettyM3</a>(\e.init) || &quot;$b&quot;
+                s || &quot;$}&quot;
+              }
+</pre><pre><a name="NWM3e8-casM-L" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-K">&lt;-</a>D<a href="#NWM3e8-casM-M">-&gt;</a>]</b>
+&quot;Gdeclnamearray&quot; : {
+  /na_count := 0
+  /e.na.codename := &quot;MATCH_name_&quot; || e.na.field.field.name || &quot;_&quot; || (na_count +:= 1)
+  s := &quot;CONST ${&quot; || e.na.codename || &quot; = ARRAY [0..&quot; || (e.na.hi - 1) || &quot;] OF TEXT {&quot;
+  s ||:= &quot;${$t&quot;
+  every i := 0 to e.na.hi - 1 do {
+    s ||:= &quot; $c&quot; || (image(\e.na.tbl[i])|&quot;NIL&quot;)
+    if i &lt; e.na.hi - 1 then s ||:= &quot;,&quot;
+  }
+  s || &quot;$b$c$}}&quot;
+}
+</pre><pre><a name="NWM3e8-locZ-2" href="#NWM3e8-locZ-1"><dfn>&lt;local declarations for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-locZ-1">&lt;-</a>D]</b>
+static na_count
+</pre><pre><a name="NWM3e8-casM-M" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-L">&lt;-</a>D<a href="#NWM3e8-casM-N">-&gt;</a>]</b>
+&quot;Gcase&quot;     : { s := &quot;CASE ${&quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;$} OF &quot;
+                every s ||:= <a href="#NWD1">prettyM3</a>(!e.arms)
+                &quot;${&quot; || s || &quot;$nEND; (* CASE ${&quot; || <a href="#NWD1">prettyM3</a>(e.x) || &quot;$} *)$}&quot;
+               }
+&quot;Gcasearm&quot;  : { s := &quot;$n| $t&quot;
+                every i := 1 to *e.tags by 2 do {
+                  if i &gt; 1 then s ||:= &quot;, $o&quot;
+                  s ||:= if e.tags[i] + 1 = e.tags[i+1] then e.tags[i] 
+                         else e.tags[i] || &quot;..&quot; || (e.tags[i+1]-1)
+                } 
+                s ||:= &quot; =&gt; &quot;  || &quot;$t$c&quot; || <a href="#NWD1">prettyM3</a>(e.x)
+                &quot;${&quot; || s || &quot;$b$b$}&quot;
+              }
+</pre><pre><a name="NWM3e8-casM-N" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-M">&lt;-</a>D<a href="#NWM3e8-casM-O">-&gt;</a>]</b>
+&quot;Ginrange&quot;  : { x := <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;&lt;&quot;])
+                if e.lo + 1 = e.hi then {
+                  <a href="#NWM3e8-*-3">M3bracket</a>(x || &quot; = &quot; || e.lo, &quot;=&quot;, <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;])
+                } else {
+                  c1 := <a href="#NWM3e8-*-3">M3bracket</a>(e.lo || &quot; &lt;= &quot; || x, &quot;&lt;=&quot;, <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;])
+                  c2 := <a href="#NWM3e8-*-3">M3bracket</a>(x || &quot; &lt; &quot; || e.hi, &quot;&lt;&quot;, <a href="#NWM3e8-*-3">M3prec</a>[&quot;AND&quot;])
+                  <a href="#NWM3e8-*-3">M3bracket</a>(c1 || &quot; AND &quot; || c2, &quot;AND&quot;, precedence)
+                }
+              }
+&quot;Gsetname&quot;  : &quot;${VAR &quot; || e.lhs || &quot; := $t$o&quot; || case type(e.name) of {
+                   &quot;string&quot;    : image(e.name)
+                   &quot;namearray&quot; : e.name.codename || &quot;[&quot; || <a href="#NWD1">prettyM3</a>(e.name.field) || &quot;]&quot;
+                   default     : impossible(&quot;type of node name field&quot;)
+              } || &quot;$b$}&quot;
+&quot;Gasgn&quot;  : &quot;${&quot; || e.lhs || &quot; := $t$o&quot; || <a href="#NWD1">prettyM3</a>(e.x, <a href="#NWM3e8-*-3">M3prec</a>[&quot;=&quot;]) || &quot;;$b$}&quot;
+&quot;Gcomment&quot;  : &quot;(* &quot; || e.s || &quot; *)&quot;
+&quot;Gcommented&quot; : 
+  <a href="#NWD1">prettyM3</a>(e.e, precedence, associativity, nohex) || &quot; (* &quot; || e.comment || &quot; *)&quot;
+</pre><pre><a name="NWM3e8-casM-O" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-N">&lt;-</a>D<a href="#NWM3e8-casM-P">-&gt;</a>]</b>
+&quot;Gnomatch&quot;  : &quot;&lt;* ASSERT FALSE *&gt; (* no match *)&quot;
+&quot;Tunsigned&quot; : if \e.width &lt; wordsize then 
+                 &quot;[0..&quot; || (2^e.width-1) || &quot;]&quot;
+              else
+                 &quot;Word.T&quot;
+</pre><pre><a name="NWM3e8-casM-P" href="#NWM3e8-casM-1"><dfn>&lt;cases for <code>prettyM3</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWM3e8-casM-O">&lt;-</a>D]</b>
+&quot;absolute_field&quot; :
+    <a href="#NWD1">prettyM3</a>(super_simplify(afieldexp(e)), precedence, associativity, nohex)
+</pre><pre><a name="NWM3e8-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWM3e8-*-2">&lt;-</a>D<a href="#NWM3e8-*-4">-&gt;</a>]</b>
+global <a href="#NWM3e8-*-3">M3prec</a>, <a href="#NWM3e8-*-3">M3assoc</a>
+procedure <a href="#NWM3e8-*-3">M3bracket</a>(s, op, p, a)
+  /a := &quot;L&quot;
+  return &quot;${&quot; || (if <a href="#NWM3e8-*-3">M3prec</a>[op] &gt; p | (<a href="#NWM3e8-*-3">M3prec</a>[op] = p &amp; <a href="#NWM3e8-*-3">M3assoc</a>[p] == a) then s
+                   else &quot;(&quot; || s || &quot;)&quot;) || &quot;$}&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-M3assoc"><code>M3assoc</code></a>, <a href="#NWI-M3bracket"><code>M3bracket</code></a>, <a href="#NWI-M3prec"><code>M3prec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWM3e8-inib-1" href="#NWM3e8-inib-1"><dfn>&lt;initialize <code>M3prec</code> and <code>M3assoc</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+ops := [&quot;N&quot;, [&quot;low&quot;],
+        &quot;L&quot;, [&quot;;&quot;],
+        &quot;L&quot;, [&quot;,&quot;],
+        &quot;L&quot;, [&quot;OR&quot;], 
+        &quot;L&quot;, [&quot;AND&quot;], 
+        &quot;L&quot;, [&quot;NOT&quot;], 
+        &quot;L&quot;, [&quot;&lt;=&quot;, &quot;&lt;&quot;, &quot;&gt;=&quot;, &quot;&gt;&quot;, &quot;=&quot;, &quot;#&quot;, &quot;IN&quot;],
+        &quot;L&quot;, [&quot;+&quot;, &quot;-&quot;, &quot;&amp;&quot;],
+        &quot;L&quot;, [&quot;MOD&quot;, &quot;DIV&quot;, &quot;*&quot;, &quot;/&quot;],
+        &quot;L&quot;, [&quot;^&quot;],
+        &quot;L&quot;, [&quot;app&quot;],
+        &quot;L&quot;, [&quot;.&quot;],
+        &quot;N&quot;, [&quot;high&quot;]
+       ]
+<a href="#NWM3e8-*-3">M3prec</a> := table([])  # missed lookups break arithmetic comparisons
+<a href="#NWM3e8-*-3">M3assoc</a> := table()
+every i := 1 to *ops by 2 do {
+  every <a href="#NWM3e8-*-3">M3prec</a>[!ops[i+1]] := i
+  <a href="#NWM3e8-*-3">M3assoc</a>[i] := ops[i]
+}
+</pre><p>
+<pre><a name="NWM3e8-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWM3e8-*-3">&lt;-</a>D<a href="#NWM3e8-*-5">-&gt;</a>]</b>
+procedure <a href="#NWM3e8-*-4">M3op</a>(op)
+  return if op == &quot;!=&quot; then &quot;#&quot; else op
+end
+</pre><blockquote>Defines <a href="#NWI-M3op"><code>M3op</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWM3e8-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWM3e8-*-4">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWM3e8-*-5">M3noreserve</a>(word) 
+  static reserved
+  initial reserved := set([
+       &quot;AND&quot;, &quot;ANY&quot;, &quot;ARRAY&quot;, &quot;AS&quot;, &quot;BEGIN&quot;, &quot;BITS&quot;, &quot;BRANDED&quot;, &quot;BY&quot;, &quot;CASE&quot;,
+       &quot;CONST&quot;, &quot;DIV&quot;, &quot;DO&quot;, &quot;ELSE&quot;, &quot;ELSIF&quot;, &quot;END&quot;, &quot;EVAL&quot;, &quot;EXCEPT&quot;,
+       &quot;EXCEPTION&quot;, &quot;EXIT&quot;, &quot;EXPORTS&quot;, &quot;FINALLY&quot;, &quot;FOR&quot;, &quot;FROM&quot;, &quot;GENERIC&quot;,
+       &quot;IF&quot;, &quot;IMPORT&quot;, &quot;IN&quot;, &quot;INTERFACE&quot;, &quot;LOCK&quot;, &quot;LOOP&quot;, &quot;METHODS&quot;, &quot;MOD&quot;,
+       &quot;MODULE&quot;, &quot;NOT&quot;, &quot;OBJECT&quot;, &quot;OF&quot;, &quot;OR&quot;, &quot;OVERRIDES&quot;, &quot;PROCEDURE&quot;,
+       &quot;RAISE&quot;, &quot;RAISES&quot;, &quot;READONLY&quot;, &quot;RECORD&quot;, &quot;REF&quot;, &quot;REPEAT&quot;, &quot;RETURN&quot;,
+       &quot;REVEAL&quot;, &quot;ROOT&quot;, &quot;SET&quot;, &quot;THEN&quot;, &quot;TO&quot;, &quot;TRY&quot;, &quot;TYPE&quot;, &quot;TYPECASE&quot;,
+       &quot;UNSAFE&quot;, &quot;UNTIL&quot;, &quot;UNTRACED&quot;, &quot;VALUE&quot;, &quot;VAR&quot;, &quot;WHILE&quot;, &quot;WITH&quot;])
+  return if member(reserved, word) then <a href="#NWM3e8-*-5">M3noreserve</a>(word||&quot;_&quot;) else word
+end
+</pre><blockquote>Defines <a href="#NWI-M3noreserve"><code>M3noreserve</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD4">Support for decoding code in Modula-3</a></h2>
+<pre><a name="NWM3e8-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWM3e8-*-5">&lt;-</a>D]</b>
+procedure <a href="#NWD4">Generate_M3</a>()
+  eqntoC := eqntoM3
+  pretty := <a href="#NWD1">prettyM3</a>
+  gen_outer_decls := [literal(
+       &quot;CONST MATCH_bits = ARRAY [0..1] OF Word.T {0, Word.Not(0)}&quot;)]
+  gen_file_header := &quot;&quot;
+  fetchtab[&quot;type&quot;] := &quot;ADDRESS&quot;
+  fetchtab[&quot;add&quot;] := &quot;LOOPHOLE(%a+%o, Word.T)&quot;
+  fetchtab[&quot;pc&quot;] :=  &quot;%a&quot;
+#  fetchtab[8]  := &quot;LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF [0..255])^&quot;
+#  fetchtab[16] := &quot;LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF [0..65535])^&quot;
+#  fetchtab[32] := &quot;LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF INTEGER)^&quot;
+end
+
+
+</pre><blockquote>Defines <a href="#NWI-Generate_M3"><code>Generate_M3</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWM3e8-*-2">D2</a>, <a href="#NWM3e8-*-3">D3</a>, <a href="#NWM3e8-*-4">D4</a>, <a href="#NWM3e8-*-5">D5</a>, <a href="#NWD4">D6</a>
+<li><a href="#NWM3e8-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWM3e8-addR.2-1">D2</a>
+<li><a href="#NWM3e8-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWM3e8-addR-1">D2</a>
+<li><a href="#NWM3e8-casM-1"><i>&lt;cases for <code>prettyM3</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWM3e8-casM-1">D2</a>, <a href="#NWM3e8-casM-2">D3</a>, <a href="#NWM3e8-casM-3">D4</a>, <a href="#NWM3e8-casM-4">D5</a>, <a href="#NWM3e8-casM-5">D6</a>, <a href="#NWM3e8-casM-6">D7</a>, <a href="#NWM3e8-casM-7">D8</a>, <a href="#NWM3e8-casM-8">D9</a>, <a href="#NWM3e8-casM-9">D10</a>, <a href="#NWM3e8-casM-A">D11</a>, <a href="#NWM3e8-casM-B">D12</a>, <a href="#NWM3e8-casM-C">D13</a>, <a href="#NWM3e8-casM-D">D14</a>, <a href="#NWD3">D15</a>, <a href="#NWM3e8-casM-F">D16</a>, <a href="#NWM3e8-casM-G">D17</a>, <a href="#NWM3e8-casM-H">D18</a>, <a href="#NWM3e8-casM-I">D19</a>, <a href="#NWM3e8-casM-J">D20</a>, <a href="#NWM3e8-casM-K">D21</a>, <a href="#NWM3e8-casM-L">D22</a>, <a href="#NWM3e8-casM-M">D23</a>, <a href="#NWM3e8-casM-N">D24</a>, <a href="#NWM3e8-casM-O">D25</a>, <a href="#NWM3e8-casM-P">D26</a>
+<li><a href="#NWM3e8-inib-1"><i>&lt;initialize <code>M3prec</code> and <code>M3assoc</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWM3e8-inib-1">D2</a>
+<li><a href="#NWM3e8-locZ-1"><i>&lt;local declarations for <code>prettyM3</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWM3e8-locZ-1">D2</a>, <a href="#NWM3e8-locZ-2">D3</a>
+<li><a href="#NWD2"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWM3e8-casM-2">U1</a>, <a href="#NWD2">D2</a>
+<li><a href="#NWM3e8-old1J-1"><i>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWM3e8-old1J-1">D1</a>
+</ul>
+<ul>
+<li><a name="NWI-Generate_M3" href="#NWD4">Generate_M3</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-M3assoc" href="#NWM3e8-*-3">M3assoc</a>: <a href="#NWM3e8-*-3">D1</a>, <a href="#NWM3e8-inib-1">U2</a>
+<li><a name="NWI-M3bracket" href="#NWM3e8-*-3">M3bracket</a>: <a href="#NWM3e8-casM-2">U1</a>, <a href="#NWD2">U2</a>, <a href="#NWM3e8-old1J-1">U3</a>, <a href="#NWM3e8-casM-3">U4</a>, <a href="#NWM3e8-casM-6">U5</a>, <a href="#NWM3e8-casM-7">U6</a>, <a href="#NWM3e8-casM-A">U7</a>, <a href="#NWM3e8-casM-D">U8</a>, <a href="#NWM3e8-casM-H">U9</a>, <a href="#NWM3e8-casM-N">U10</a>, <a href="#NWM3e8-*-3">D11</a>
+<li><a name="NWI-M3noreserve" href="#NWM3e8-*-5">M3noreserve</a>: <a href="#NWM3e8-casM-D">U1</a>, <a href="#NWM3e8-*-5">D2</a>
+<li><a name="NWI-M3op" href="#NWM3e8-*-4">M3op</a>: <a href="#NWM3e8-casM-2">U1</a>, <a href="#NWM3e8-*-4">D2</a>
+<li><a name="NWI-M3prec" href="#NWM3e8-*-3">M3prec</a>: <a href="#NWM3e8-casM-2">U1</a>, <a href="#NWM3e8-addR-1">U2</a>, <a href="#NWM3e8-addR.2-1">U3</a>, <a href="#NWM3e8-old1J-1">U4</a>, <a href="#NWM3e8-casM-3">U5</a>, <a href="#NWM3e8-casM-6">U6</a>, <a href="#NWM3e8-casM-7">U7</a>, <a href="#NWM3e8-casM-A">U8</a>, <a href="#NWM3e8-casM-H">U9</a>, <a href="#NWM3e8-casM-N">U10</a>, <a href="#NWM3e8-*-3">D11</a>, <a href="#NWM3e8-inib-1">U12</a>
+<li><a name="NWI-M3test" href="#NWM3e8-*-2">M3test</a>: <a href="#NWD3">U1</a>, <a href="#NWM3e8-*-2">D2</a>
+<li><a name="NWI-prettyM3" href="#NWD1">prettyM3</a>: <a href="#NWD1">D1</a>, <a href="#NWM3e8-casM-2">U2</a>, <a href="#NWM3e8-addR-1">U3</a>, <a href="#NWM3e8-addR.2-1">U4</a>, <a href="#NWM3e8-old1J-1">U5</a>, <a href="#NWM3e8-casM-3">U6</a>, <a href="#NWM3e8-casM-4">U7</a>, <a href="#NWM3e8-casM-5">U8</a>, <a href="#NWM3e8-casM-6">U9</a>, <a href="#NWM3e8-casM-7">U10</a>, <a href="#NWM3e8-casM-8">U11</a>, <a href="#NWM3e8-casM-9">U12</a>, <a href="#NWM3e8-casM-A">U13</a>, <a href="#NWM3e8-casM-B">U14</a>, <a href="#NWM3e8-casM-C">U15</a>, <a href="#NWM3e8-casM-D">U16</a>, <a href="#NWD3">U17</a>, <a href="#NWM3e8-*-2">U18</a>, <a href="#NWM3e8-casM-G">U19</a>, <a href="#NWM3e8-casM-H">U20</a>, <a href="#NWM3e8-casM-I">U21</a>, <a href="#NWM3e8-casM-J">U22</a>, <a href="#NWM3e8-casM-K">U23</a>, <a href="#NWM3e8-casM-M">U24</a>, <a href="#NWM3e8-casM-N">U25</a>, <a href="#NWM3e8-casM-P">U26</a>, <a href="#NWD4">U27</a>
+</ul>
+</body></html>
+

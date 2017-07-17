@@ -1,0 +1,357 @@
+% l2h ignore change {
+% l2h substitution Longleftrightarrow &lt;===&gt;
+% l2h ignore mathbin
+
+
+\chapter{Solving}
+
+\section{Basic linear solving}
+Variables may be {\em unknown}, {\em dependent}, {\em known},  or {\em inputs}.
+A value is {\em computable} if it is a function of inputs, 
+which appear in the set [[inputs]].
+Both dependent variables and inputs appear as keys in the table [[value]].
+Known variables are dependent variables whose values are computable.
+Unknown variables appear in neither [[value]] nor [[inputs]].
+@
+The new solve works in two steps, first finding a solution in the form
+of a [[value]] table, then applying it.
+<<*>>=
+procedure solve(be, inputspec)
+  local value, constraints, fieldsknown, zeroes, balances
+  if *be.eqns = 0 then <<return vacuous solution>> # common short cut
+
+  value  := table()     # values of dependent variables
+  constraints := []     # constraints to check
+  zeroes      := []     # expressions equal to zero
+  pending     := []	# pending equations we couldn't solve earlier
+  every defined | used := set() 	# sets of idents defined and used
+
+  debugs("# Inputs:"); every debugs(" ", expimage(!inputspec)); debug()
+  inputs := copy(inputspec)
+  insert(inputs, 1)	# 1 is hack for finding dependent vars
+  every x := !inputs do value[x] := term2table(x)
+  every eq := !be.eqns do
+    if eq.op == "=" then put(zeroes, subtract(eq.left, eq.right))
+    else put(constraints, eq)
+  <<initialize balance machinery and balance out inputs>>
+  <<empty [[zeroes]]>>
+  <<dump [[value]] and [[constraints]]>>
+  <<make sure all dependent variables are known>>
+  <<build and return solution>>
+end
+@ %def value constraints fieldsknown zeroes defined used
+
+In a solution the [[defined]] and [[used]] fields are sets of
+strings, which may name variables or fields.
+[[answers]] is a table mapping string variables to expression values.
+<<*>>=
+record solution(answers, constraints, defined, used)
+@
+<<build and return solution>>=
+answers := table()
+non_answer := inputs ## ++ fresh_vars (delete! matcher uses these!)
+every ident := key(value) & type(ident) == "string" & not member(non_answer, ident) do
+  answers[ident] := simplify(value[ident]) 
+    # we think simplify is OK -- super definitely not OK!
+every insert(used, free_variables(!answers | !constraints))
+every debug("# ===> answers[", expimage(k := key(answers)), "] = ", expimage(answers[k]))
+<<dump def-use info>>
+return solution(answers, simplify(constraints), defined, used)
+<<return vacuous solution>>=
+return solution(table(), [], emptyset, emptyset)
+@
+Invariants:
+\begin{enumerate}
+\item 
+If variable [[v]] is known, than all of its ranges and extensions are
+known.  {\em what has this to do with balances?}
+\item
+Ranges and extensions of expressions (as opposed to variables or fields)
+appear only when the expressions are computable.
+\item
+No key in [[zeroes]], [[pending]], or [[constraints]] is dependent.
+\item
+Nothing in the range of [[value]] is dependent.
+\item
+Values in [[zeroes]], [[pending]], [[constraints]], and [[value]] are
+all in table form (so destructive substitution works).
+\end{enumerate}
+<<empty [[zeroes]]>>=
+pending := []           # equations with unknowns but no unit coefficients
+while *zeroes > 0 do {
+  while z := get(zeroes) do {
+    every v := key(z) & z[v] = 0 do delete(z, v)
+    debug("# new equation: ", expimage(z), " = 0")
+    <<normalize [[z]] by dividing out the greatest common divisor>>
+    if v := key(z) & type(v) == "string" & not member(inputs, v) & z[v] = (1 | -1) then {
+      <<make [[v]] in [[z]] a new dependent variable>>
+      if computable(inputs, value[v]) then push(newlyknown, v)
+      <<use [[newlyknown]] to make more variables known>>
+      while put(zeroes, get(pending))
+    } else if v := key(z) & not computable(inputs, v) then {
+      debug("# no new dependent variable in ", expimage(z), " = 0")
+      put(pending, z)
+    } else if not values_known_equal(z, 0) then {
+      debug("# new constraint ", expimage(z), " = 0")
+      <<make sure [[z]] is satisfiable>>
+      put(constraints, zero_to_constraint(z))
+    }
+  }
+  <<if a [[pending]] equation can be fixed with [[div]] or [[mod]], drain [[pending]]>>
+}
+<<make sure there are no [[pending]] equations>>
+<<if a [[pending]] equation can be fixed with [[div]] or [[mod]], drain [[pending]]>>=
+pendingpending := []
+while z := get(pending) do 
+  if v := key(z) & type(v) == "string" & not member(inputs, v) then {
+    m := -z[v]
+    delete(z, v)
+    if m < 0 then { m := -m; z := subtract(0, z) }	# make m positive
+    m ~= 1 | impossible("coefficient")
+    <<create fresh variables [[x]], [[q = x div m]], [[r = x mod m]]>>
+    # now force x = z, v = q, r = 0 
+    every put(zeroes, subtract(x, z) | subtract(v, q) | subtract(r, 0))
+    while put(zeroes, get(pendingpending) | get(pending))
+  } else 
+    put(pendingpending, z)
+<<create fresh variables [[x]], [[q = x div m]], [[r = x mod m]]>>=
+every x | q | r := fresh_variable(v)
+put(balances, b := balance([balitem(x, n_times_q_plus_r(m, q, r))],
+                           [balitem(q, Ediv(x, m)), balitem(r, Emod(x, m))]))
+every /baltab[x | q | r] := []; every put(baltab[x | q | r], b)
+debug("New balance: ", balimage(b))
+@
+Fundamental concept: computability.
+<<*>>=
+procedure computable(inputs, val)
+  if member(inputs, val) then return
+  else if v := free_variables(val) & not member(inputs, v) then fail
+  else return
+end
+@
+By (2), [[v]] must be a variable, field, or range or extension thereof.
+By (3), (4) is maintained.
+(2) is maintained because [[subst]] substitutes for terms only, not inside
+of ranges or extensions.
+<<make [[v]] in [[z]] a new dependent variable>>=
+debug("# new dependent variable: ", expimage(v))
+m := - z[v]             # multiplier of 1 or -1
+delete(z, v)
+every !z *:= m
+value[v] := z
+<<update def-use info for [[v]]>>
+every dsubst(!zeroes | !pending | !value | !constraints, v, z)
+debug("# value[", expimage(v), "] := ", expimage(z))
+<<update def-use info for [[v]]>>=
+insert(defined, v)
+if v  == free_variables(!zeroes | !pending | !value) then
+  insert(used, v)
+<<update def-use info for [[vv]]>>=
+insert(defined, vv)
+if vv == free_variables(!zeroes | !pending | !value) then
+  insert(used, vv)
+@
+\section{Balances}
+Balances are a hack to deal with sign extension, slicing, DIV and MOD, and other
+computations that don't fit the simple linear-equation model.
+The idea is to put a set of variables on each side of the balance, such that
+each variable on one side is a function of all the variables on the other side,
+and vice versa.
+If all the variables on one side become known, the ones on the other side are also known.
+The reason this is useful is that we can substitute such variables in for slices,
+extensions, and other computations.
+For example, the slices of a variable balance that variable: 
+{\def\shl{\mathbin{<\!\!<}}%
+% l2h substitution shl &lt;&lt;
+% l2h substitution mid |
+$$\begin{array}{lcl}
+\begin{array}{rcl}
+a&=&x[0\mathbin{:}9]\\
+b&=&x[10\mathbin{:}15]\\
+c&=&x[16\mathbin{:}31]
+\end{array}
+&\Longleftrightarrow&
+\begin{array}{rcl}
+x&=&a \mid b \shl 10 \mid c \shl 16
+\end{array}
+\end{array}$$
+}
+
+The representation of a balance is:
+<<*>>=
+record balance(left, right)	# lists of balitem
+record balitem(v, value)	# v is string, value is exp
+@ where the only free variables in the [[value]] fields are the
+variables listed on the opposite side of the balance.
+
+The solver assumes that variable names used in balances don't collide
+with other names; it's the responsibility of whatever agent provides
+the balances to make it so.
+@
+Once a balance becomes known, it's useful to identify the side on
+which all variables are known:
+<<*>>=
+record kbalance(known, unknown)	# lists of balitem
+@
+To discover when a variable completes a balance, I create a table that
+lists the balances associated with each variable.
+[[balsused]] ensures I don't use the same balance more than once.
+<<initialize balance machinery and balance out inputs>>=
+balances := copy(be.balances)
+baltab := table()
+every b := !balances & v := (!b.left | !b.right).v do {
+  /baltab[v] := []
+  put(baltab[v], b)
+}
+balsused := set()
+newlyknown := sort(inputs)
+oldknown := set()
+<<use [[newlyknown]] to make more variables known>>
+@ % def balances
+
+<<*>>=
+procedure balance_completed(bal, value, inputs)
+  local vl, vr
+  if vl := (!bal.left).v & not computable(inputs, \value[vl]) then 
+    if vr := (!bal.right).v & not computable(inputs, \value[vr]) then 
+{
+debug("Balance not completed; ", 
+        vl, " = ", expimage(\value[vl]) | "???", " unknown on left and ", 
+        vr, " = ", expimage(\value[vr]) | "???", " unknown on right")
+      fail
+}
+    else 
+      return kbalance(bal.right, bal.left)
+  else
+    return kbalance(bal.left, bal.right)
+end
+<<use [[newlyknown]] to make more variables known>>=
+while v := get(newlyknown) do
+  if not member(oldknown, v) then {
+    insert(oldknown, v)
+    <<debug balancing act>>
+    <<if [[v]] completes half of a balance, make the other half known>>
+    every v := key(value) & computable(inputs, value[v]) do
+      push(newlyknown, v)
+  }
+<<debug balancing act>>=
+debug(image(v), " is newly known ")
+every vb := !\baltab[v] do 
+  if member(balsused, vb) then
+    debug("%%%%% appears in (already used) balance ", balimage(vb))
+  else
+    debug("!!!!! appears in another balance ", balimage(vb))
+if not !\baltab[v] then
+  debug (":-( doesn't appear in any balances")
+<<if [[v]] completes half of a balance, make the other half known>>=
+every vb := !\baltab[v] & not member(balsused, vb) &
+      b := balance_completed(vb, value, inputs) do {
+  insert(balsused, vb)
+  tt := table()	# used to substitute all balanced goodies at once
+  every vv := (ii := !b.unknown).v & zz := term2table(subst_tab(ii.value, value, 1)) do
+{ debug("=> balancing tells us ", vv, " = ", expimage(zz))
+    if computable(inputs, \value[vv]) then {
+      <<make new constraint from [[value[vv]]]$=$[[zz]]>>
+    } else {
+      if \value[vv] then
+        {<<make new equation [[value[vv]]]$=$[[zz]], then update [[value[vv]]]>>}
+      else
+        {<<make [[vv]] a new dependent variable with [[value[vv]]]$=$[[zz]]>>}
+      tt[vv] := zz
+      if computable(inputs, zz) then push(newlyknown, vv)
+    }
+}
+  every dsubst_tab(!zeroes | !pending | !value | !constraints, tt)
+}
+<<make new constraint from [[value[vv]]]$=$[[zz]]>>=
+if not values_known_equal(value[vv], zz) then {
+  put(constraints, eqn(value[vv], "=", zz))
+  debug("# new constraint ", expimage(constraints[-1]))
+}
+<<make new equation [[value[vv]]]$=$[[zz]], then update [[value[vv]]]>>=
+put(zeroes, subtract(value[vv], zz))
+value[vv] := zz
+<<make [[vv]] a new dependent variable with [[value[vv]]]$=$[[zz]]>>=
+value[vv] := zz
+<<update def-use info for [[vv]]>>
+@
+\section{Utility goo}
+This hack is just a heuristic that tries to avoid creating unnecessary constraints,
+so false negatives are OK.
+<<*>>=
+procedure values_known_equal(e1, e2)
+  if e1 === e2 then return e1
+  e1 := untable(e1)
+  e2 := untable(e2)
+debug("vals ", expimage(e1), " ?= ", expimage(e2))
+  return case type(e1) == type(e2) of {
+    "Ewiden"   : e1.n = e2.n & exps_eq(e1.x, e2.x)
+    "Eslice"   : e1.n == e2.n & e1.lo == e2.lo & exps_eq(e1.x, e2.x)
+    "table"    : constant(subtract(e1, e2)) = 0
+    "integer"  : e1 = e2
+    "string"   : e1 == e2
+    default    : e1 === e2
+  }
+end
+@
+Unlike [[binop]], [[subtract]] is non-destructive.  It would not be safe to use 
+[[binop]] within the solver.
+<<*>>=
+procedure subtract(l, r)
+  z := table(0)
+  l := term2table(l)
+  r := term2table(r)
+  every v := key(l) do z[v]  := l[v]
+  every v := key(r) do z[v] -:= r[v]
+  return z
+end
+@
+When converting a redundent zero to a constraint, I make all coefficients
+positive.  It's not necessary for correctness, but it leads to more readable
+constraints (and therefore to more readable code).
+<<*>>=
+procedure zero_to_constraint(z)
+  e := eqn(table(0), "=", table(0))
+  every k := key(z) do
+    if      z[k] > 0 then e.left[k]  +:= z[k]
+    else if z[k] < 0 then e.right[k] -:= z[k]
+  return e
+end
+@
+<<make sure [[z]] is satisfiable>>=
+debug("#### sure hope ", expimage(z), " is satisfiable!!!")
+<<make sure all dependent variables are known>>=
+if v := key(value) & not computable(inputs, value[v]) then {
+  write(&errout, "Error! Incomplete solution for value[", expimage(v), "] = ",
+                  expimage(value[v]))
+  every write(&errout, "  value[", expimage(k := key(value)), "] = ", expimage(value[k]))
+  error()
+}
+if v := key(value) & type(v) == "Eslice" & not member(value, v.x) then
+  error("Solved for ", expimage(v), " but not for ", expimage(v.x))
+if v := key(value) & type(v) == "Ewiden" & type(v.x) == "Eslice" &
+   not member(value, v.x.x) then
+  error("Solved for ", expimage(v), " but not for ", expimage(v.x.x))
+<<dump [[value]] and [[constraints]]>>=
+every debug("# ===> value[", expimage(k := key(value)), "] = ", expimage(value[k]))
+every debug("# ===> constrain  ", expimage(!constraints))
+<<dump def-use info>>=
+debugs("# defined:"); every debugs(" ", !defined); debug()
+debugs("# used:");    every debugs(" ", !used);    debug()
+<<make sure there are no [[pending]] equations>>=
+if *pending > 0 then {
+  every write(&errout, "error: equation ", expimage(!pending), " = 0  is unusable")
+  error("Can't solve equations; some are useless")
+}
+<<normalize [[z]] by dividing out the greatest common divisor>>=
+g := &null
+every g := gcd(g, !z)
+if \g > 1 then every !z /:= g
+<<*>>=
+procedure gcd(m, n) # Knuth vol 1, p 4
+  if n < 0 then n := -n
+  if /m then return n
+  if m < n then m :=: n
+  while r := 0 < (m % n) do {m := n; n := r}
+  return n
+end

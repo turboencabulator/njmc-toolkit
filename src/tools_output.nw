@@ -1,0 +1,43 @@
+% l2h ignore change {
+<<refman: tools examples>>=
+
+\section{Example execution of {\tt tools}}
+The {\tt tools} program is a prototype and has been
+used by few people other than its authors.
+We believe we have excised all uninteresting diagnostic messages; 
+let us know if you think otherwise.
+The line numbers used in error messages reflect the state of the
+parser when the error is detected, not where the error actually
+occurred. 
+In particular, many semantic errors are not detected until the whole
+specification is parsed, in which case the line number is worse than
+meaningless; it is misleading.
+We apologize for this behavior, which we hope to correct in a future
+release.\index{error messages!apology for}
+
+\subsection{Running the generator}
+The following command uses the specification in {\tt mips.spec}.
+Because the \verb+-m3+ option is not used, the toolkit generates C code;
+it writes an encoder to the file {\tt mipstk.c}, and
+it writes a header file to {\tt mipstk.h}.
+Commands typed by the user are shown in \texttt{\textit{typewriter
+italic}}; the toolkit's responses are shown in \texttt{typewriter}.
+Wide lines have been broken by hand.
+\begin{alltt}
+% \textit{tools -byteorder X -encoder mipstk mips.spec}
+Parsing...
+Done parsing.
+\end{alltt}
+
+\subsection{Running the translator}
+To generate a decoder, we use two specifications:
+{\tt mips.spec}, as in the generator command, and {\tt fetch.spec},
+which specifies how to fetch words from an instruction stream.
+{\tt dis.m} includes the matching statement for the decoding
+application; the decoding code is emitted in C to {\tt dis.c}.
+\begin{alltt}
+% \textit{tools -c -decoder dis.c -matcher dis.m mips.spec fetch.spec}
+Parsing...
+Done parsing.
+\end{alltt}
+

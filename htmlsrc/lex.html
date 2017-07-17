@@ -1,0 +1,335 @@
+<html><head><title> lex.nw</title></head><body>
+
+<h1><a name="NWD1">Lexical analysis</a></h1>
+<p>
+<code><a href="#NWD1">token</a></code> describes the category of the token, and <code><a href="#NWD1">tval</a></code> is its value.
+<code><a href="#NWD1">token</a> == <a href="#NWD1">tval</a></code> except for integers and identifiers.
+<code><a href="#NWD1">file</a></code> and <code><a href="#NWD1">line</a></code> describe the source file and line number from which 
+the token came.
+<pre><a name="NWlex6-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+global <a href="#NWD1">token</a>, <a href="#NWD1">tval</a>, <a href="#NWD1">file</a>, <a href="#NWD1">line</a>
+</pre><blockquote>Defines <a href="#NWI-file"><code>file</code></a>, <a href="#NWI-line"><code>line</code></a>, <a href="#NWI-token"><code>token</code></a>, <a href="#NWI-tval"><code>tval</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">There are three special tokens.</a>
+<pre><a name="NWlex6-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWlex6-*-3">-&gt;</a>]</b>
+global <a href="#NWD2">EOF</a>, <a href="#NWD2">IDENT</a>, <a href="#NWD2">INT</a>, <a href="#NWD2">CODELINE</a>, <a href="#NWD2">CASELINE</a>, <a href="#NWD2">NEWLINE</a>, <a href="#NWD2">WHITESPACE</a>, <a href="#NWD2">lexstate</a>
+</pre><blockquote>Defines <a href="#NWI-CASELINE"><code>CASELINE</code></a>, <a href="#NWI-CODELINE"><code>CODELINE</code></a>, <a href="#NWI-EOF"><code>EOF</code></a>, <a href="#NWI-IDENT"><code>IDENT</code></a>, <a href="#NWI-INT"><code>INT</code></a>, <a href="#NWI-lexstate"><code>lexstate</code></a>, <a href="#NWI-NEWLINE"><code>NEWLINE</code></a>, <a href="#NWI-WHITESPACE"><code>WHITESPACE</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-iniL-1" href="#NWlex6-iniL-1"><dfn>&lt;initialize <code>tokens</code>&gt;=</dfn></a> <b>(<a href="#NWlex6-*-3">U-&gt;</a>)</b>
+<a href="#NWD2">CASELINE</a>   := &quot; case ... of &quot;
+<a href="#NWD2">CODELINE</a>   := &quot; code <a href="#NWD1">line</a> &quot;
+<a href="#NWD2">EOF</a>        := &quot; end of <a href="#NWD1">file</a> &quot;
+<a href="#NWD2">IDENT</a>      := &quot; identifier &quot;
+<a href="#NWD2">INT</a>        := &quot; integer &quot;
+<a href="#NWD2">NEWLINE</a>    := &quot; newline &quot;
+<a href="#NWD2">WHITESPACE</a> := &quot; <a href="#NWlex6-*-6">white</a> space &quot;
+</pre><pre><a name="NWlex6-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+global <a href="#NWlex6-*-3">SEMANTICS</a>, <a href="#NWD2">IDENT</a>, <a href="#NWlex6-*-3">STARTSEM</a>, <a href="#NWlex6-*-3">ENDSEM</a>, <a href="#NWlex6-*-3">succptr</a>
+procedure <a href="#NWlex6-*-3">scantokens</a>(eol)
+  static alpha, alphanum, multichar
+  initial { 
+    alpha      := &amp;letters ++ '_.'
+    alphanum   := alpha ++ &amp;digits
+    multichar  := set([&quot;&lt;=&quot;, &quot;&gt;=&quot;, &quot;!=&quot;, &quot;&gt;&gt;&quot;, &quot;&lt;&lt;&quot;, &quot;=&gt;&quot;, &quot;...&quot;])
+    /<a href="#NWD2">lexstate</a>  := &quot;INITIAL&quot;
+    <a name="NWlex6-*-3-u1" href="#NWlex6-iniL-1"><i>&lt;initialize <code>tokens</code>&gt;</i></a>
+  }
+  if \eol then return <a href="#NWD3">possible_newline</a>()
+  case <a href="#NWD2">lexstate</a> of {
+    &quot;INITIAL&quot; | &quot;CASEPAT&quot; : {<a name="NWlex6-*-3-u2" href="#NWlex6-lexT-1"><i>&lt;lexer for INITIAL and CASEPAT&gt;</i></a>}
+    <a name="NWlex6-*-3-u3" href="#NWlex6-casU-1"><i>&lt;cases for other lexical states&gt;</i></a>
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-ENDSEM"><code>ENDSEM</code></a>, <a href="#NWI-IDENT"><code>IDENT</code></a>, <a href="#NWI-scantokens"><code>scantokens</code></a>, <a href="#NWI-SEMANTICS"><code>SEMANTICS</code></a>, <a href="#NWI-STARTSEM"><code>STARTSEM</code></a>, <a href="#NWI-succptr"><code>succptr</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-refP-1" href="#NWlex6-refP-1"><dfn>&lt;refman: lexical structure&gt;=</dfn></a>
+The lexical structure used in specifications is similar to that of C,
+except that dots as well as underscores are treated as letters for
+purposes of finding identifiers.
+In particular, all names are case-sensitive; for example,
+{\tt Address} is not the same as {\tt address}. 
+Strings are delimited with double quotes, but the C ``backslash
+escapes'' aren't used---instead, a double quote within a string is
+represented by two consecutive double quotes, as in Pascal.
+The toolkit supports the C-style
+\lit{0x} and ``leading zero'' notations used to give integer literals in
+hexadecimal or octal bases.
+It also provides a \lit{0b} notation, analogous to \lit{0x}, for specifying 
+integer literals in binary.
+Integer literals may also be specified as C-style character constants.
+For reasons that make no sense whatever, these constants {\em do} use
+the C ``backslash escapes.''
+
+The toolkit reserves the following words as keywords:
+\begin{center}
+<a name="NWlex6-refP-1-u1" href="#nw@notdef"><i>&lt;refman: reserved-word table&gt;</i></a>
+\end{center}
+These words cannot be used to name constructors, fields, patterns, etc.
+</pre><pre><a name="NWlex6-casU-1" href="#NWlex6-casU-1"><dfn>&lt;cases for other lexical states&gt;=</dfn></a> <b>(<a href="#NWlex6-*-3">&lt;-U</a>)</b> <b>[D<a href="#NWlex6-casU-2">-&gt;</a>]</b>
+&quot;CODE&quot;: {
+  if (<a href="#NWlex6-*-6">optwhite</a>(), =&quot;match &quot;, <a href="#NWlex6-*-6">optwhite</a>(), 
+             (=&quot;[&quot;, <a href="#NWlex6-*-6">optwhite</a>(), any(&amp;letters), 
+                 <a href="#NWlex6-*-3">succptr</a> := tab(many(alphanum)), <a href="#NWlex6-*-6">optwhite</a>(), =&quot;]&quot;, <a href="#NWlex6-*-6">optwhite</a>()) | 
+         (<a href="#NWlex6-*-3">succptr</a> := &amp;null),
+      <a href="#NWD1">tval</a> := tab(find(&quot; to&quot;)), =&quot; to&quot;, <a href="#NWlex6-*-6">optwhite</a>(), pos(0)) then {
+    <a href="#NWD2">lexstate</a> := &quot;CASEPAT&quot;
+    return <a href="#NWD2">CASELINE</a>
+  } else if <a href="#NWlex6-*-6">optwhite</a>() &amp; =&quot;match &quot; &amp; <a href="#NWD1">tval</a> := tab(find(&quot; to&quot;)) &amp; =&quot; to&quot; &amp; 
+                                              <a href="#NWlex6-*-6">optwhite</a>() &amp; pos(0) then {
+    impossible(&quot;bogus code in lex&quot;)
+    <a href="#NWD2">lexstate</a> := &quot;CASEPAT&quot;
+    return <a href="#NWD2">CASELINE</a>
+  } else {    # warning message for ill-formed case?
+    <a href="#NWD1">tval</a> := tab(0)
+    return <a href="#NWD2">CODELINE</a>
+  }
+}
+</pre><pre><a name="NWlex6-refb-1" href="#NWlex6-refb-1"><dfn>&lt;refman: how matching statements begin&gt;=</dfn></a>
+A matching statement begins with
+\begin{quote}
+\lit{match} \term{code} \lit{to}
+\end{quote}
+on a <a href="#NWD1">line</a> by itself.
+The \term{code} is an expression that computes a value of type
+``address,'' as specified by the \lit{address type} template.
+This address points into an instruction stream at the point where
+decoding is done.
+</pre><pre><a name="NWlex6-casU-2" href="#NWlex6-casU-1"><dfn>&lt;cases for other lexical states&gt;+=</dfn></a> <b>(<a href="#NWlex6-*-3">&lt;-U</a>)</b> <b>[<a href="#NWlex6-casU-1">&lt;-</a>D]</b>
+&quot;CASEARM&quot;: {
+  if <a href="#NWlex6-*-6">optwhite</a>() &amp; <a href="#NWD1">tval</a> := (=&quot;|&quot; | 1(=(&quot;else&quot; | &quot;endmatch&quot;), <a href="#NWlex6-*-6">white</a>() | pos(0))) then {
+    <a href="#NWD2">lexstate</a> := 
+        case <a href="#NWD1">tval</a> of { &quot;|&quot; : &quot;CASEPAT&quot; ; &quot;else&quot; : &quot;CASEARM&quot; ; &quot;endmatch&quot; : &quot;CODE&quot; }
+    return <a href="#NWD1">token</a> := <a href="#NWD1">tval</a>
+  } else {
+    <a href="#NWD1">tval</a> := tab(0)
+    return <a href="#NWD2">CODELINE</a>
+  }
+}
+</pre><p>
+<a name="NWD3">There's a ghastly hack that makes exactly one newline visible after every </a>
+opcode of a constructor spec.
+What we do is, before parsing a constructor spec, we turn ``newline-vision''
+on if the next token is an identifier.
+Encountering a newline or reserved word or <code>{</code> or other stuff turns it off again.
+<pre><a name="NWlex6-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-3">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+global <a href="#NWD3">NEWLINEVISION</a>
+procedure <a href="#NWD3">see_newline</a>()
+  if <a href="#NWD1">token</a> == <a href="#NWD2">IDENT</a> then <a href="#NWD3">NEWLINEVISION</a> := 1
+  return <a href="#NWD3">NEWLINEVISION</a>
+end
+procedure <a href="#NWD3">ignore_newlines</a>()
+  return <a href="#NWD3">NEWLINEVISION</a> := &amp;null
+end
+procedure <a href="#NWD3">possible_newline</a>()
+  if \<a href="#NWD3">NEWLINEVISION</a> then {
+    <a href="#NWD3">NEWLINEVISION</a> := &amp;null
+    return <a href="#NWD2">NEWLINE</a>
+  }
+  return <a href="#NWD4">possible_whitespace</a>()
+end
+</pre><blockquote>Defines <a href="#NWI-ignore_newlines"><code>ignore_newlines</code></a>, <a href="#NWI-NEWLINEVISION"><code>NEWLINEVISION</code></a>, <a href="#NWI-possible_newline"><code>possible_newline</code></a>, <a href="#NWI-see_newline"><code>see_newline</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD4">There's an equally ghastly hack that makes one unit of white space visible.</a>
+Note that we don't require an identifier.
+<pre><a name="NWlex6-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWlex6-*-6">-&gt;</a>]</b>
+global <a href="#NWD4">WHITESPACEVISION</a>
+procedure <a href="#NWD4">see_whitespace</a>()
+  <a href="#NWD4">WHITESPACEVISION</a> := 1
+  return <a href="#NWD4">WHITESPACEVISION</a>
+end
+procedure <a href="#NWD4">ignore_whitespace</a>()
+  return <a href="#NWD4">WHITESPACEVISION</a> := &amp;null
+end
+procedure <a href="#NWD4">possible_whitespace</a>()
+  if \<a href="#NWD4">WHITESPACEVISION</a> then {
+    return <a href="#NWD2">WHITESPACE</a>
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-ignore_whitespace"><code>ignore_whitespace</code></a>, <a href="#NWI-possible_whitespace"><code>possible_whitespace</code></a>, <a href="#NWI-see_whitespace"><code>see_whitespace</code></a>, <a href="#NWI-WHITESPACEVISION"><code>WHITESPACEVISION</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWlex6-lexT-1" href="#NWlex6-lexT-1"><dfn>&lt;lexer for INITIAL and CASEPAT&gt;=</dfn></a> <b>(<a href="#NWlex6-*-3">&lt;-U</a>)</b>
+if <a href="#NWD1">tval</a> := <a href="#NWlex6-*-6">white</a>() then  # don't backtrack past <a href="#NWlex6-*-6">white</a>()
+  if <a href="#NWD1">token</a> := <a href="#NWD4">possible_whitespace</a>() then
+    return <a href="#NWD1">token</a>
+if {not pos(0)} then {
+  thispos := &amp;pos
+  if =&quot;#&quot; then {
+    tab(0) &amp; (<a href="#NWD1">token</a> := <a href="#NWD3">possible_newline</a>() | fail)
+  } else if <a href="#NWD1">tval</a> := (<a href="#NWlex6-*-7">hexint</a>() | <a href="#NWlex6-*-8">octalint</a>() | <a href="#NWlex6-*-9">binaryint</a>() | <a href="#NWlex6-*-A">decimalint</a>()) then {
+    <a href="#NWD1">token</a> := <a href="#NWD2">INT</a>
+  } else if <a href="#NWD1">tval</a> := (any(alpha), tab(many(alphanum))) then {
+    <a href="#NWD1">token</a> := 1(reserved(<a href="#NWD1">tval</a>), <a href="#NWD3">ignore_newlines</a>()) | <a href="#NWD2">IDENT</a>
+  } else if <a href="#NWD1">tval</a> := =!multichar then {
+    <a href="#NWD1">token</a> := <a href="#NWD1">tval</a>
+    <a name="NWlex6-lexT-1-u1" href="#NWlex6-cha1C-1"><i>&lt;change lexer state from <code>CASEPAT</code> to <code>CASEARM</code> if <code>tval</code> is <code>"=>"</code>&gt;</i></a>
+  } else if <a href="#NWD1">token</a> := =&quot;\&quot;&quot; then {
+    delim := move(-1) # recover quote
+    <a href="#NWD1">tval</a> := &quot;&quot;
+    while =delim do {  # turn 'don''t into &quot;don't&quot;
+      <a href="#NWD1">tval</a> ||:= tab(upto(delim) | 0)
+      =delim | error(&quot;unclosed &quot;, delim)
+    }
+  } else if <a href="#NWD1">token</a> := =&quot;'&quot; then { # character constant
+      <a href="#NWD1">tval</a> := <a href="#NWD5">charconst</a>()
+      =&quot;'&quot; | error(&quot;character constant too large (or unclosed single quote)&quot;)
+  } else {
+    <a href="#NWD1">token</a> := <a href="#NWD1">tval</a> := move(1)
+    if <a href="#NWD1">token</a> == (&quot;{&quot;|&quot;.&quot;) then <a href="#NWD3">ignore_newlines</a>()
+  }
+  return <a href="#NWD1">token</a>
+}
+return <a href="#NWD3">possible_newline</a>()
+</pre><pre><a name="NWlex6-cha1C-1" href="#NWlex6-cha1C-1"><dfn>&lt;change lexer state from <code>CASEPAT</code> to <code>CASEARM</code> if <code>tval</code> is <code>"=>"</code>&gt;=</dfn></a> <b>(<a href="#NWlex6-lexT-1">&lt;-U</a>)</b>
+case <a href="#NWD1">tval</a> of {
+  &quot;=&gt;&quot; : if <a href="#NWD2">lexstate</a> == &quot;CASEPAT&quot; then <a href="#NWD2">lexstate</a> := &quot;CASEARM&quot;
+}
+</pre><pre><a name="NWlex6-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWlex6-*-7">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-6">optwhite</a>()
+  suspend <a href="#NWlex6-*-6">white</a>() | &quot;&quot;
+end
+
+procedure <a href="#NWlex6-*-6">white</a>()
+  suspend tab(many(' \t'))
+end
+</pre><blockquote>Defines <a href="#NWI-optwhite"><code>optwhite</code></a>, <a href="#NWI-white"><code>white</code></a> (links are to index).<p>
+</blockquote><p>
+
+<pre><a name="NWlex6-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-6">&lt;-</a>D<a href="#NWlex6-*-8">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-7">hexint</a>()
+  static hexdigits
+  initial hexdigits  := &amp;digits ++ 'abcdefABCDEF'
+  suspend =&quot;0x&quot; &amp; integer(&quot;16r&quot; || tab(many(hexdigits)))
+end
+</pre><blockquote>Defines <a href="#NWI-hexint"><code>hexint</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-7">&lt;-</a>D<a href="#NWlex6-*-9">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-8">octalint</a>()
+  static octaldigits
+  initial octaldigits  := '01234567'
+  suspend =&quot;0&quot; &amp; integer(&quot;8r&quot; || tab(many(octaldigits)))
+end
+</pre><blockquote>Defines <a href="#NWI-octalint"><code>octalint</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-8">&lt;-</a>D<a href="#NWlex6-*-A">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-9">binaryint</a>()
+  static binarydigits
+  initial binarydigits  := '01'
+  suspend =&quot;0b&quot; &amp; integer(&quot;2r&quot; || tab(many(binarydigits)))
+end
+</pre><blockquote>Defines <a href="#NWI-binaryint"><code>binaryint</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-9">&lt;-</a>D<a href="#NWlex6-*-B">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-A">decimalint</a>()
+  static decimaldigits
+  initial decimaldigits  := &amp;digits
+  suspend integer(tab(many(&amp;digits)))
+end
+</pre><blockquote>Defines <a href="#NWI-decimalint"><code>decimalint</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-A">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-B">codelex</a>(in)
+  <a href="#NWD2">lexstate</a> := &quot;CODE&quot;
+  return lex(in)
+end
+</pre><blockquote>Defines <a href="#NWI-codelex"><code>codelex</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD5">Support for character constants</a></h2>
+<pre><a name="NWlex6-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-B">&lt;-</a>D<a href="#NWlex6-*-D">-&gt;</a>]</b>
+procedure <a href="#NWD5">charconst</a>()
+   local ns, c
+
+   return if =&quot;\\&quot; then {<a name="NWlex6-*-C-u1" href="#NWlex6-bacG-1"><i>&lt;backslash escape&gt;</i></a>} else move(1)
+end
+</pre><blockquote>Defines <a href="#NWI-charconst"><code>charconst</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-bacG-1" href="#NWlex6-bacG-1"><dfn>&lt;backslash escape&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+c := map(move(1)) | fail # backslash newline fails
+case c of {
+   &quot;b&quot;:  &quot;\b&quot;
+   &quot;d&quot;:  &quot;\d&quot;
+   &quot;e&quot;:  &quot;\e&quot;
+   &quot;f&quot;:  &quot;\f&quot;
+   &quot;l&quot;:  &quot;\n&quot;
+   &quot;n&quot;:  &quot;\n&quot;
+   &quot;r&quot;:  &quot;\r&quot;
+   &quot;t&quot;:  &quot;\t&quot;
+   &quot;v&quot;:  &quot;\v&quot;
+   &quot;'&quot;:  &quot;'&quot;
+   &quot;\&quot;&quot;:  &quot;\&quot;&quot;
+   &quot;\\&quot; : &quot;\\&quot;
+   &quot;x&quot;:  hexchar()
+   !&quot;01234567&quot;:  <a href="#NWlex6-*-E">octcode</a>()
+   default:  error(&quot;bad backslash escape \\&quot;, c, tab(0))
+}
+</pre><pre><a name="NWlex6-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWlex6-*-E">-&gt;</a>]</b>
+procedure <a href="#NWlex6-*-D">hexcode</a>()
+   local i, s
+   static hdigits
+   initial hdigits := ~'0123456789ABCDEFabcdef'
+   
+   move(i := 2 | 1) ? s := tab(upto(hdigits) | 0)
+   move(*s - i)
+   return char(&quot;16r&quot; || s)
+end
+</pre><blockquote>Defines <a href="#NWI-hexcode"><code>hexcode</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWlex6-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWlex6-*-D">&lt;-</a>D]</b>
+procedure <a href="#NWlex6-*-E">octcode</a>()
+   local i, s
+   static odigits
+   initial odigits := ~'01234567'
+   
+   move(-1)
+   move(i := 3 | 2 | 1) ? s := tab(upto(odigits) | 0)
+   move(*s - i)
+   if s &gt; 377 then {    # back off if too large
+      s := s[1:3]
+      move(-1)
+      }
+   return char(&quot;8r&quot; || s)
+end
+</pre><blockquote>Defines <a href="#NWI-octcode"><code>octcode</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>, <a href="#NWlex6-*-3">D3</a>, <a href="#NWD3">D4</a>, <a href="#NWD4">D5</a>, <a href="#NWlex6-*-6">D6</a>, <a href="#NWlex6-*-7">D7</a>, <a href="#NWlex6-*-8">D8</a>, <a href="#NWlex6-*-9">D9</a>, <a href="#NWlex6-*-A">D10</a>, <a href="#NWlex6-*-B">D11</a>, <a href="#NWD5">D12</a>, <a href="#NWlex6-*-D">D13</a>, <a href="#NWlex6-*-E">D14</a>
+<li><a href="#NWlex6-bacG-1"><i>&lt;backslash escape&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWlex6-bacG-1">D2</a>
+<li><a href="#NWlex6-casU-1"><i>&lt;cases for other lexical states&gt;</i></a>: <a href="#NWlex6-*-3">U1</a>, <a href="#NWlex6-casU-1">D2</a>, <a href="#NWlex6-casU-2">D3</a>
+<li><a href="#NWlex6-cha1C-1"><i>&lt;change lexer state from <code>CASEPAT</code> to <code>CASEARM</code> if <code>tval</code> is <code>"=>"</code>&gt;</i></a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWlex6-cha1C-1">D2</a>
+<li><a href="#NWlex6-iniL-1"><i>&lt;initialize <code>tokens</code>&gt;</i></a>: <a href="#NWlex6-iniL-1">D1</a>, <a href="#NWlex6-*-3">U2</a>
+<li><a href="#NWlex6-lexT-1"><i>&lt;lexer for INITIAL and CASEPAT&gt;</i></a>: <a href="#NWlex6-*-3">U1</a>, <a href="#NWlex6-lexT-1">D2</a>
+<li><a href="#NWlex6-refb-1"><i>&lt;refman: how matching statements begin&gt;</i></a>: <a href="#NWlex6-refb-1">D1</a>
+<li><a href="#NWlex6-refP-1"><i>&lt;refman: lexical structure&gt;</i></a>: <a href="#NWlex6-refP-1">D1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: reserved-word table&gt;</i></a>: <a href="#NWlex6-refP-1">U1</a>
+</ul>
+<ul>
+<li><a name="NWI-binaryint" href="#NWlex6-*-9">binaryint</a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWlex6-*-9">D2</a>
+<li><a name="NWI-CASELINE" href="#NWD2">CASELINE</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWlex6-casU-1">U3</a>
+<li><a name="NWI-charconst" href="#NWD5">charconst</a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWD5">D2</a>
+<li><a name="NWI-codelex" href="#NWlex6-*-B">codelex</a>: <a href="#NWlex6-*-B">D1</a>
+<li><a name="NWI-CODELINE" href="#NWD2">CODELINE</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWlex6-casU-1">U3</a>, <a href="#NWlex6-casU-2">U4</a>
+<li><a name="NWI-decimalint" href="#NWlex6-*-A">decimalint</a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWlex6-*-A">D2</a>
+<li><a name="NWI-ENDSEM" href="#NWlex6-*-3">ENDSEM</a>: <a href="#NWlex6-*-3">D1</a>
+<li><a name="NWI-EOF" href="#NWD2">EOF</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>
+<li><a name="NWI-file" href="#NWD1">file</a>: <a href="#NWD1">D1</a>, <a href="#NWlex6-iniL-1">U2</a>
+<li><a name="NWI-hexcode" href="#NWlex6-*-D">hexcode</a>: <a href="#NWlex6-*-D">D1</a>
+<li><a name="NWI-hexint" href="#NWlex6-*-7">hexint</a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWlex6-*-7">D2</a>
+<li><a name="NWI-IDENT" href="#NWD2">IDENT</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWlex6-*-3">D3</a>, <a href="#NWD3">U4</a>, <a href="#NWlex6-lexT-1">U5</a>
+<li><a name="NWI-ignore_newlines" href="#NWD3">ignore_newlines</a>: <a href="#NWD3">D1</a>, <a href="#NWlex6-lexT-1">U2</a>
+<li><a name="NWI-ignore_whitespace" href="#NWD4">ignore_whitespace</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-INT" href="#NWD2">INT</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWlex6-lexT-1">U3</a>
+<li><a name="NWI-lexstate" href="#NWD2">lexstate</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-*-3">U2</a>, <a href="#NWlex6-casU-1">U3</a>, <a href="#NWlex6-casU-2">U4</a>, <a href="#NWlex6-cha1C-1">U5</a>, <a href="#NWlex6-*-B">U6</a>
+<li><a name="NWI-line" href="#NWD1">line</a>: <a href="#NWD1">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWlex6-refb-1">U3</a>
+<li><a name="NWI-NEWLINE" href="#NWD2">NEWLINE</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWD3">U3</a>
+<li><a name="NWI-NEWLINEVISION" href="#NWD3">NEWLINEVISION</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-octalint" href="#NWlex6-*-8">octalint</a>: <a href="#NWlex6-lexT-1">U1</a>, <a href="#NWlex6-*-8">D2</a>
+<li><a name="NWI-octcode" href="#NWlex6-*-E">octcode</a>: <a href="#NWlex6-bacG-1">U1</a>, <a href="#NWlex6-*-E">D2</a>
+<li><a name="NWI-optwhite" href="#NWlex6-*-6">optwhite</a>: <a href="#NWlex6-casU-1">U1</a>, <a href="#NWlex6-casU-2">U2</a>, <a href="#NWlex6-*-6">D3</a>
+<li><a name="NWI-possible_newline" href="#NWD3">possible_newline</a>: <a href="#NWlex6-*-3">U1</a>, <a href="#NWD3">D2</a>, <a href="#NWlex6-lexT-1">U3</a>
+<li><a name="NWI-possible_whitespace" href="#NWD4">possible_whitespace</a>: <a href="#NWD3">U1</a>, <a href="#NWD4">D2</a>, <a href="#NWlex6-lexT-1">U3</a>
+<li><a name="NWI-scantokens" href="#NWlex6-*-3">scantokens</a>: <a href="#NWlex6-*-3">D1</a>
+<li><a name="NWI-see_newline" href="#NWD3">see_newline</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-see_whitespace" href="#NWD4">see_whitespace</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-SEMANTICS" href="#NWlex6-*-3">SEMANTICS</a>: <a href="#NWlex6-*-3">D1</a>
+<li><a name="NWI-STARTSEM" href="#NWlex6-*-3">STARTSEM</a>: <a href="#NWlex6-*-3">D1</a>
+<li><a name="NWI-succptr" href="#NWlex6-*-3">succptr</a>: <a href="#NWlex6-*-3">D1</a>, <a href="#NWlex6-casU-1">U2</a>
+<li><a name="NWI-token" href="#NWD1">token</a>: <a href="#NWD1">D1</a>, <a href="#NWlex6-casU-2">U2</a>, <a href="#NWD3">U3</a>, <a href="#NWlex6-lexT-1">U4</a>
+<li><a name="NWI-tval" href="#NWD1">tval</a>: <a href="#NWD1">D1</a>, <a href="#NWlex6-casU-1">U2</a>, <a href="#NWlex6-casU-2">U3</a>, <a href="#NWlex6-lexT-1">U4</a>, <a href="#NWlex6-cha1C-1">U5</a>
+<li><a name="NWI-white" href="#NWlex6-*-6">white</a>: <a href="#NWlex6-iniL-1">U1</a>, <a href="#NWlex6-casU-2">U2</a>, <a href="#NWlex6-lexT-1">U3</a>, <a href="#NWlex6-*-6">D4</a>
+<li><a name="NWI-WHITESPACE" href="#NWD2">WHITESPACE</a>: <a href="#NWD2">D1</a>, <a href="#NWlex6-iniL-1">U2</a>, <a href="#NWD4">U3</a>
+<li><a name="NWI-WHITESPACEVISION" href="#NWD4">WHITESPACEVISION</a>: <a href="#NWD4">D1</a>
+</ul>
+</body></html>
+

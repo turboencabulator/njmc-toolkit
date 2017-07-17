@@ -1,0 +1,47 @@
+<html><head><title>Toolkit News for July, 1997</title></head><body>
+
+
+<h2>Toolkit news for July, 1997</h2>
+
+Although I have made great strides in re-implementation, the toolkit
+is not where I had hoped it would be.
+The good news is:
+<ul>
+<li>The bulk of the toolkit's functionality has been re-implemented in
+Standard&nbsp;ML.
+Performance is good.
+<li>Translation of matching statements works, and I've implemented a
+couple of new optimizations so the toolkit generates much smaller
+C&nbsp;files for some matching statements.
+Problems that formerly required an hour to solve and generated
+megabytes of code can now be solved in under a minute, and code
+generated is a fraction of its former size.
+Still, some performance problems remain.
+<li>I can generate encoding procedures, although not yet with the
+flexibility of the old toolkit.
+<li>The rudiments of multiple-language support are there, and it should be
+straightforward to support different implementation languages and
+idioms. 
+</ul>
+Now the bad news:
+<ul>
+<li>Some matching statements are still costly to process.
+Building a full Pentium disassembler takes 10&nbsp;minutes on a
+Pentium&nbsp;133, and it requires <em>lots</em> of virtual memory.
+There's an exponential algorithm that can't be avoided, but I have an
+idea or two that might shrink the search space.
+<li>There's no support for relocatable addresses in encoding procedures
+yet.
+<li>Lots of little features are missing.
+<li>There's no command-line interface---you have to have full SML/NJ to do
+anything.
+</ul>
+These flaws are all correctable, but I'm not sure when I'll have time
+to address them.
+Meanwhile, I'm sending out this notice, so if you've been having
+performance problems with the toolkit, or if it doesn't support your
+favorite programming language, you can let me know early.
+When I do find time, I want to fix what's most pressing.
+<p>
+Thanks for your interest in the toolkit.
+</body></html>

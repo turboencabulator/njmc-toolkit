@@ -1,0 +1,198 @@
+ <html><head><title>NJ Machine-Code Toolkit</title></head><body>
+
+<h1>The New Jersey Machine-Code Toolkit</h1>
+
+The New Jersey Machine-Code Toolkit
+helps programmers write
+applications that
+process machine code---assemblers, disassemblers, 
+code generators, tracers, profilers, and debuggers.
+The toolkit lets programmers encode and decode machine instructions
+symbolically.
+Encoding and decoding are automated based on compact specifications.
+The toolkit is a joint project of 
+<a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a>
+and 
+<a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a>.
+<p>
+You can take a shortcut <a href=readme.html>straight to the source distribution</a>.
+
+ <p>
+There is (old) <a href=news/98-11.html>news for November 1998</a>, as well as <a
+href=news>really old news</a>.
+The main news is that you can now <a href=ml.html>download the ML
+version of the toolkit</a>.
+
+ <p>
+I've started a <a href=faq.html>Toolkit FAQ</a>
+
+<p>
+<b>News flash!</b>
+You can now <a href=trees.html>browse generated decoders on the
+web</a>!
+
+
+<h2>Mailing lists</h2>
+
+To keep up to date with the toolkit, you can send messages to the
+authors at 
+<tt><a href=mailto:toolkit@eecs.harvard.edu>toolkit@eecs.harvard.edu</a></tt>.
+We also have two mailing lists about the toolkit;
+<tt><a href=mailto:toolkit-interest@lists.eecs.harvard.edu>toolkit-interest@lists.eecs.harvard.edu</a></tt>
+goes to people who have expressed some interest 
+in the toolkit, and it carries most general announcements about the toolkit.
+<tt><a href=mailto:toolkit-users@lists.eecs.harvard.edu>toolkit-users@lists.eecs.harvard.edu</a></tt>
+goes to people who  are actually
+using the toolkit, 
+and it carries discussion among users, as well as all the traffic from
+<tt>toolkit-interest</tt>.
+You can subscribe or unsubscribe by putting your email address in this
+form.
+<center>
+<form method="POST"
+action="http://www.cs.tufts.edu/~nr/cgi-bin/tk-ezmlm.cgi">
+<b><SELECT NAME=action><OPTION VALUE=subscribe SELECTED>Subscribe<OPTION
+VALUE=unsubscribe >Unsubscribe</SELECT> <input text name="address"> to </b>
+ <tt><SELECT NAME=list><OPTION VALUE="toolkit-interest" SELECTED>toolkit-interest<OPTION VALUE="toolkit-users">toolkit-users</SELECT></tt>
+<INPUT TYPE=submit VALUE="Send request">
+</center>
+</form>
+<p>
+It's still a good idea to report problems to  
+<tt><a href=mailto:toolkit@eecs.harvard.edu>toolkit@eecs.harvard.edu</a></tt>.
+
+
+
+<h2>Version 0.5 (November 1996)</h2>
+
+The toolkit is now in version&nbsp;0.5.
+This release is a bugfix release, timed to coincide with the
+acceptance of our <a href=http://www.cs.tufts.edu/~nr/pubs/specifying.ps>TOPLAS paper</a>.
+The release fixes many bugs, especially in generated decoders.
+<ul>
+<li>We have added and validated an Alpha specification.
+</ul>
+We save
+<a href=news>release notes from previous versions of the
+toolkit</a>.
+ <p>
+There is no ``upgrade path'' from earlier versions to 0.5.
+Get new everything.
+
+<h2>ML Version (November 1998)</h2>
+The <a href=ml.html>ML implementation</a> of the toolkit
+is distributed ``as is,'' for experimental
+purposes only.
+
+
+
+<h2>Distribution</h2>
+
+If you think you might want to use the toolkit, 
+a <a href=base/refman.ps>reference
+manual</a> and <a href=readme.html>source distribution</a> are available.
+There are <a href=specs/index.html>annotated specifications</a>
+(read the 
+<a href=specs/specs.ps>report</a>
+or browse the <a href=specs>source directory</a>
+ for the <a href=specs/mips.nw>MIPS</a>, <a href=specs/sparc.nw>SPARC</a>, 
+<a href=specs/pentium.nw>Intel Pentium</a>, 
+and <a href=specs/alpha.nw>Alpha</a>, which
+show how to use the toolkit to describe real machines.
+There is also an unannotated specification for the <a
+href=specs/ppc.nw>PowerPC 604</a>.
+Finally there is a <a href=examples/xs/xs.html>toy example</a> that
+will give you more ideas about how to build applications, and there is
+a <a href=examples/sparc/index.html>rudimentary disassembler for the
+SPARC</a> that you may find useful.
+
+
+
+<h2>Papers</h2>
+
+There are two papers describing the main ideas:
+<ul>
+<li><a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a> and
+<a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a>.
+   <A HREF=http://www.cs.tufts.edu/~nr/pubs/tk-usenix.ps>The New Jersey Machine-Code Toolkit</a>.
+ <i>Proceedings of the 1995 USENIX Technical Conference</i>, New Orleans, LA,
+  January 1995, pp 289-302.
+<a href=http://www.cs.tufts.edu/~nr/pubs/tk-usenix-abstract.html>[Abstract]</a>
+<a href=http://www.cs.tufts.edu/~nr/pubs/tk-usenix.html>[HTML version]</a>.<br>
+An overview, and the place to begin.
+
+<li><a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a> and
+<a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a>.
+   <A
+href="http://www.cs.tufts.edu/~nr/pubs/specifying.ps">Specifying
+Representations of Machine Instructions</a>.
+To appear in <i>ACM Transactions on Programming Languages and Systems</i>.
+<a href="http://www.cs.tufts.edu/~nr/pubs/specifying-abstract.html">[Abstract]</a>
+<a href="http://www.cs.tufts.edu/~nr/pubs/specifying.html">[HTML version]</a>
+<br>
+This is a comprehensive journal paper that focuses on SLED, the
+toolkit's specification language.
+</ul>
+This paper describes how to test SLED specifications:
+<ul>
+<li><a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a> and
+<a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a>.
+<a href="http://www.cs.tufts.edu/~nr/pubs/checker.ps">Automatic
+Checking of Instruction Specifications.</a> 
+To appear in the <a href="http://www.ics.uci.edu/pub/icse97"><em>1997 International
+Conference on Software Engineering</em></a>.
+<a href="http://www.cs.tufts.edu/~nr/pubs/checker-abstract.html">
+[Abstract]</a>
+</ul>
+Those who actually want to use the toolkit will probably find the
+following technical reports useful:
+<ul>
+<li><a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a> and
+<a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a>.
+<a href=specs/specs.ps>New   
+Jersey Machine-Code Toolkit architecture specifications.</a>
+Originally <A HREF=http://www.cs.princeton.edu/Document/PRINCETONCS:TR-470-94>
+Technical Report TR-470-94</a>, Department of Computer Science, Princeton
+University, October 1994.
+<br>
+These annotated descriptions of the MIPS, SPARC, and Intel Pentium
+show the toolkit's specification language in action.
+Highly recommended for anyone planning to write machine descriptions
+for the toolkit.
+<li><a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a> and
+<a href=http://www.research.att.com/~mff/>Mary Fern&aacute;ndez</a>.
+<a href=base/refman.ps>New Jersey Machine-Code Toolkit reference manual</a>.
+Originally
+<A HREF=http://www.cs.princeton.edu/Document/PRINCETONCS:TR-471-94>Technical
+Report TR-471-94</a>, Department of Computer Science, Princeton 
+  University, October 1994.
+<br>
+The manual describes the complete specification language and explains
+how to use version 0.5.
+</ul>
+The toolkit project has also led to a machine-independent method of
+relocating instructions, described in
+<blockquote>
+<a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a>.
+   <a
+href=http://www.cs.tufts.edu/~nr/pubs/relocating.ps>Relocating
+machine instructions by currying</a>, 
+<em>Proceedings of the ACM SIGPLAN '96 Conference on Programming Language
+Design and Implementation</em>, in <em>SIGPLAN Notices</em> <b>31</b>,
+5 (May 1996), 226-236.
+<a href=http://www.cs.tufts.edu/~nr/pubs/relocating-abstract.html>[Abstract]</a>
+</blockquote>
+The toolkit's equation solver is described in
+<blockquote>
+<a href=http://www.cs.tufts.edu/~nr>Norman Ramsey</a>.
+A simple solver for linear equations containing nonlinear operators.
+<i>Software---Practice &amp; Experience</i>, 26(4):467--487, April 1996.
+An earlier version appeared as
+<a href="/~nr/pubs/solver.ps">Technical Report 95-068</a>, Purdue
+University, Dept of Computer 
+Sciences, November 1995.
+</blockquote>
+
+<hr>
+Back to <a href=../>Norman Ramsey's home page</a>.
+</body></html>

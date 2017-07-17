@@ -1,0 +1,157 @@
+<html><head><title> environment.nw</title></head><body>
+<h1>Environments and environment errors</h1>
+An environment is a stack of symbol tables.
+<a name="NWD1">The default environment is the top-level environment, </a><code>globals</code>.
+<code><a href="#NWenvE-*-3">newscope</a></code> creates a copy of an environment that can be added to
+without having a side effect on the original.
+<code><a href="#NWenvE-*-2">add_to_rho</a></code> does the adding.
+<p>
+<code><a href="#NWD1">lookup</a></code> searches for the first binding of string <code>val</code> in 
+the environment. 
+<code><a href="#NWD1">lookuptype</a></code> searches for <code>val</code> in the environment and if
+it exists, checks that its type is <code>ty</code>.
+<pre><a name="NWenvE-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWenvE-*-2">-&gt;</a>]</b>
+procedure <a href="#NWD1">is_defined</a>(ident, rho)
+  return (<a name="NWenvE-*-1-u1" href="#NWenvE-valT-1"><i>&lt;value of <code>ident</code> in <code>rho</code>&gt;</i></a>)   # parens handle newline from -L
+end
+procedure <a href="#NWD1">lookup</a>(ident, rho)
+  return  (<a name="NWenvE-*-1-u2" href="#NWenvE-valT-1"><i>&lt;value of <code>ident</code> in <code>rho</code>&gt;</i></a>) | error(&quot;`&quot;, ident, &quot;' is undefined&quot;)
+end
+procedure <a href="#NWD1">lookuptype</a>(ident, ty, rho)
+  type(v := <a name="NWenvE-*-1-u3" href="#NWenvE-valT-1"><i>&lt;value of <code>ident</code> in <code>rho</code>&gt;</i></a>) == ty | <a href="#NWenvE-*-8">typeerror</a>(v, ty, ident, rho)
+  return v
+end
+</pre><blockquote>Defines <a href="#NWI-is_defined"><code>is_defined</code></a>, <a href="#NWI-lookup"><code>lookup</code></a>, <a href="#NWI-lookuptype"><code>lookuptype</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-valT-1" href="#NWenvE-valT-1"><dfn>&lt;value of <code>ident</code> in <code>rho</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+{ /rho := globals; \(!rho)[ident] }
+</pre><pre><a name="NWenvE-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWenvE-*-3">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-2">add_to_rho</a>(name, val, rho)
+#write(&quot;rho &quot;, *rho, &quot; &quot;, name, &quot; &quot;, expimage(val))
+    <a href="#NWenvE-*-2">add_to_frame</a>(name, val, rho[1]) | impossible(&quot;bogus environment&quot;)
+    return rho
+end
+
+procedure <a href="#NWenvE-*-2">add_to_frame</a>(name, val, frame)
+    (/frame[name] := val) | <a href="#NWenvE-*-7">deferror</a>(name)
+    return frame
+end
+</pre><blockquote>Defines <a href="#NWI-add_to_frame"><code>add_to_frame</code></a>, <a href="#NWI-add_to_rho"><code>add_to_rho</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-2">&lt;-</a>D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-3">newscope</a>(rho)
+    return push(copy(rho), table())
+end
+</pre><blockquote>Defines <a href="#NWI-newscope"><code>newscope</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">Here we extend an environment with a new frame.</a>
+I take care not to modify the environment.
+<pre><a name="NWenvE-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-3">&lt;-</a>D<a href="#NWenvE-*-5">-&gt;</a>]</b>
+procedure <a href="#NWD2">extendscope</a>(rho, frame)
+  (type(frame) == &quot;table&quot; &amp; type(rho) == &quot;list&quot;) | impossible(&quot;rho extension&quot;)
+  return push(copy(rho), frame)
+end
+</pre><blockquote>Defines <a href="#NWI-extendscope"><code>extendscope</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWenvE-*-6">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-5">envimage</a>(env, envname)
+    local hidden
+    /envname := &quot;env&quot;
+    s := &quot;&quot;
+    <a name="NWenvE-*-5-u1" href="#NWenvE-if*17-1"><i>&lt;if <code>env</code> is a list, convert to a table and create string <code>hidden</code>&gt;</i></a>
+    if *env = 0 then s ||:= &quot;\nEnvironment &quot; || envname || &quot; is empty&quot;
+    every p := !sort(env) do s ||:= <a href="#NWenvE-*-6">pairimage</a>(envname, p[1], p[2])
+    if \hidden then {
+       s ||:= &quot;  -------- hidden --------\n&quot;
+       return s || hidden
+    } else
+       return s
+end
+</pre><blockquote>Defines <a href="#NWI-envimage"><code>envimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-if*17-1" href="#NWenvE-if*17-1"><dfn>&lt;if <code>env</code> is a list, convert to a table and create string <code>hidden</code>&gt;=</dfn></a> <b>(<a href="#NWenvE-*-5">&lt;-U</a>)</b>
+if type(env) == &quot;list&quot; then {
+  t := table()
+  every e := !env &amp; ident := key(e) do
+    (/t[ident] := e[ident]) | 
+    { /hidden := &quot;&quot; ; hidden ||:= <a href="#NWenvE-*-6">pairimage</a>(envname, ident, e[ident]) }
+  env := t
+}
+</pre><pre><a name="NWenvE-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-5">&lt;-</a>D<a href="#NWenvE-*-7">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-6">pairimage</a>(envname, ident, v)
+  return &quot;\n  &quot; || envname || &quot;[&quot; || expimage(ident) ||&quot;]&quot; || &quot; = &quot; || 
+    case type(v) of {
+#      &quot;pattern&quot; : &quot;&lt;pattern&gt; &quot; || patternimage(v)
+#      &quot;field&quot;   : &quot;&lt;field&gt; &quot;   || fieldimage(v)
+      &quot;string&quot;  : image(v)
+      default   : expimage(v)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-pairimage"><code>pairimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-6">&lt;-</a>D<a href="#NWenvE-*-8">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-7">deferror</a>(t, v)
+    error(t, &quot; &quot;, v,&quot; is already defined.&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-deferror"><code>deferror</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-7">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWenvE-*-8">typeerror</a>(x, typename, ident, rho)
+    error(&quot;Expected &quot;, (\ident || &quot; to be a &quot; | &quot;&quot;), typename, 
+          &quot;; found &quot;, type(x), &quot; &quot;, expimage(x))
+end
+</pre><blockquote>Defines <a href="#NWI-typeerror"><code>typeerror</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWenvE-namF-1" href="#NWenvE-namF-1"><dfn>&lt;name of <code>rho</code>&gt;=</dfn></a>
+if rho === globals then &quot;globals&quot; else &quot;rho&quot;
+</pre><p>
+<h2>Injection and projection</h2>
+Sometimes an identifier could have more than one meaning, depending on
+<a name="NWD3">the precise context in which it is used.  For example, the name of a</a>
+constructor operand denotes an instance when it is used in an
+application, but a pattern when it is used as a pattern identifier.
+We use ``injection'' to define the meaning of such an identifier; the
+meaning will be ``projected'' when the identifier is actually looked
+up.  Meanings can be projected into three spaces: patterns, integers,
+and constructor operands.  
+Projection never produces a null value; null values are used to
+indicate inability to project, and <code><a href="#NWD3">project</a></code> fails.
+<pre><a name="NWenvE-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWenvE-*-8">&lt;-</a>D]</b>
+record <a href="#NWD3">inject</a>(pattern, integer, consop)
+
+procedure <a href="#NWD3">project</a>(x, ty)
+  return if type(x) == ty then x
+         else if type(x) == &quot;<a href="#NWD3">inject</a>&quot; then case ty of {
+           &quot;pattern&quot; : \x.pattern
+           &quot;integer&quot; : \x.integer
+           &quot;consop&quot;  : \x.consop
+         } else if ty == &quot;integer&quot; then case type(x) of {
+           &quot;pattern&quot; | &quot;input&quot; : fail
+           exptypes() : x
+           default    : 
+             impossible(&quot;Bug in toolkit---can't use relocatable name&quot;,
+                        &quot; in matching statement (was `rethink projection')&quot;)
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-inject"><code>inject</code></a>, <a href="#NWI-project"><code>project</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD4">I don't really know if the last clause here is right, but it was better than</a>
+simply allowing anything to be projected into an integer, which I think would be
+unwarranted optimism.
+
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWenvE-*-2">D2</a>, <a href="#NWenvE-*-3">D3</a>, <a href="#NWD2">D4</a>, <a href="#NWenvE-*-5">D5</a>, <a href="#NWenvE-*-6">D6</a>, <a href="#NWenvE-*-7">D7</a>, <a href="#NWenvE-*-8">D8</a>, <a href="#NWD3">D9</a>
+<li><a href="#NWenvE-if*17-1"><i>&lt;if <code>env</code> is a list, convert to a table and create string <code>hidden</code>&gt;</i></a>: <a href="#NWenvE-*-5">U1</a>, <a href="#NWenvE-if*17-1">D2</a>
+<li><a href="#NWenvE-namF-1"><i>&lt;name of <code>rho</code>&gt;</i></a>: <a href="#NWenvE-namF-1">D1</a>
+<li><a href="#NWenvE-valT-1"><i>&lt;value of <code>ident</code> in <code>rho</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWenvE-valT-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-add_to_frame" href="#NWenvE-*-2">add_to_frame</a>: <a href="#NWenvE-*-2">D1</a>
+<li><a name="NWI-add_to_rho" href="#NWenvE-*-2">add_to_rho</a>: <a href="#NWenvE-*-2">D1</a>
+<li><a name="NWI-deferror" href="#NWenvE-*-7">deferror</a>: <a href="#NWenvE-*-2">U1</a>, <a href="#NWenvE-*-7">D2</a>
+<li><a name="NWI-envimage" href="#NWenvE-*-5">envimage</a>: <a href="#NWenvE-*-5">D1</a>
+<li><a name="NWI-extendscope" href="#NWD2">extendscope</a>: <a href="#NWD2">D1</a>
+<li><a name="NWI-inject" href="#NWD3">inject</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-is_defined" href="#NWD1">is_defined</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-lookup" href="#NWD1">lookup</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-lookuptype" href="#NWD1">lookuptype</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-newscope" href="#NWenvE-*-3">newscope</a>: <a href="#NWenvE-*-3">D1</a>
+<li><a name="NWI-pairimage" href="#NWenvE-*-6">pairimage</a>: <a href="#NWenvE-*-5">U1</a>, <a href="#NWenvE-if*17-1">U2</a>, <a href="#NWenvE-*-6">D3</a>
+<li><a name="NWI-project" href="#NWD3">project</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-typeerror" href="#NWenvE-*-8">typeerror</a>: <a href="#NWD1">U1</a>, <a href="#NWenvE-*-8">D2</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,60 @@
+<html><head><title>NJ Machine-Code Toolkit FAQ</title></head><body>
+
+<h1>The New Jersey Machine-Code Toolkit FAQ</h1>
+
+<b>Q.</b>
+I want to know exactly how long each instruction is, but that's a lot
+of bookkeeping.
+Can the toolkit do it?
+<p><blockquote><b>A.</b> 
+Yes.  On page 25 of the verion 0.5 manual, it describes the construct
+<pre>
+match [succ] pc-expression to
+| ...
+endmatch
+</pre>
+This will cause the toolkit to assign to <tt>succ</tt> the address of
+the first byte not matched.
+You can then subtract the starting PC to find the size of the instruction.
+</blockquote><p>
+<b>Q.</b>
+I don't want to be limited to encoding one procedure at a time.
+What do I do?
+<p><blockquote><b>A.</b> 
+The toolkit's relocatable blocks aren't restricted to procedures,
+segments, or any other unit of granularity.
+A relocatable block can represent <em>anything</em> you want it to
+represent (e.g., basic blocks).
+</blockquote><p>
+
+<b>Q.</b>
+When the toolkit decodes instructions, it doesn't properly sign-extend
+my displacements.  What's wrong?
+<p><blockquote><b>A.</b> 
+If your displacements are relocatable addresses, things get tricky.
+(The whole business of non-field operands requires more thought than I
+have really given it.)
+If, for example, you write
+<pre>
+  fields of op (8)  reg 0:2
+  fields of imm8 (8) i8 0:7
+  relocatable d
+  constructors Disp d![reg] is reg; i8 = d
+</pre>
+there are two reasonable interpretations: <tt>d</tt>&nbsp;holds a <em>signed</em> value
+that should fit in
+8&nbsp;bits, or <tt>d</tt>&nbsp;holds an <em>unsigned</em> value
+that should fit in
+8&nbsp;bits.
+As it turns out, the latter interpretation is the default.
+To get a signed interpretation, write
+<pre>
+  constructors Disp d![reg] is { i8! = d } reg; i8
+</pre>
+Your decoders should then sign-extend properly.
+</blockquote><p>
+
+
+
+
+</body></html>

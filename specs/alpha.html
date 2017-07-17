@@ -1,0 +1,377 @@
+<!-- this file was generated automatically by noweave --- better not edit it-->
+<h2><a name="conten00">Contents</a></h2>
+<p>
+<tableofcontents>
+<ul compact>
+<li><a href="#conten00">Contents</a>
+<li><a href="#alphai00">Alpha instruction-set specification</a>
+<ul compact>
+<li><a href="#fields00">Fields</a>
+<li><a href="#NWD6">Integer opcodes</a>
+<li><a href="#NWDA">Structured operands</a>
+<li><a href="#NWDB">Integer instructions</a>
+<li><a href="#floati00">Floating-point opcodes</a>
+<li><a href="#NWDJ">Floating-point instructions</a>
+<li><a href="#NWDL">PAL instructions</a>
+<li><a href="#NWDM">Synthetics</a>
+<li><a href="#NWDN">Checking against the Digital OSF/1 Assembler</a>
+<li><a href="#NWDS">Guaranteeing registers</a>
+</ul>
+</ul>
+</tableofcontents>
+<p>
+<h2><a name="alphai00">Alpha instruction-set specification</a></h2>
+The Alpha lies somewhere between the MIPS and SPARC in complexity.
+It has one structured operand, which
+can be either an immediate or register value.
+The Alpha is a 64-bit architecture, but
+all instructions are 32 bits wide.
+<p>
+Readers shouldn't rely completely on this specification, because
+validation identified discrepancies in the assembler's treatment of the
+following instructions:
+<blockquote>
+<tt><a name="NWD1">jmp jsr ldf ldg lds</a>
+</blockquote></tt>
+The hint seems off in the jump instructions, and the assembler is
+expanding these floating-point loads into two-instruction sequences.
+We haven't yet resolved these discrepancies.
+<p>
+<h3><a name="fields00">Fields</a></h3>
+As usual for RISC, we have a single token, and the core specification
+has the normal structure.
+<p><pre><a name="NWalp8-alpF-1" href="#NWD1"><dfn>&lt;alpha-core.spec&gt;=</dfn></a>
+fields of instruction (32) <a name="NWalp8-alpF-1-u1" href="#NWD2"><i>&lt;field specifications&gt;</i></a>
+<a name="NWalp8-alpF-1-u2" href="#NWD5"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>
+<a name="NWalp8-alpF-1-u3" href="#NWD6"><i>&lt;pattern and constructor specifications&gt;</i></a>
+</pre><p>
+According to page 1-4 of the manual <b>[cite&nbsp;<a href="#NWcite-sites:alpha">sites:alpha</a>]</b>,
+ <b>[</b>References to the manual are a bit confused because MFF had
+the second edition and NR had the first edition<b>]</b> 
+the Alpha has four basic formats, which we show here in the order
+opposite to that in the manual: 
+<blockquote>
+
+
+
+<table border><!-- alignment is |c|c|c|c|c|l--><!-- 6 columns--><tr><td align=center><a name="NWD2">3126</a></td><td align=center>2521</td><td align=center>2016</td><td align=center>155</td><td align=center>40<tr><td align=center>Opcode</td><td align=center>RA</td><td align=center>RB</td><td align=center>Function</td><td align=center>RC</td><td align=left valign=top>Operate format<tr><td align=center>Opcode</td><td align=center>RA</td><td align=center>RB</td><td align=center colspan=2>Memory displacement</td><td align=left valign=top>Memory format<tr><td align=center>Opcode</td><td align=center>RA</td><td align=center colspan=3>Branch displacement</td><td align=left valign=top>Branch format<tr><td align=center>Opcode</td><td align=center colspan=4>Number or PAL function</td><td align=left valign=top>PALcode format</table>
+</blockquote>
+The operate format comes in both integer and floating-point flavors,
+and the two flavors use different register sets.
+We use one token to specify all formats, and as usual, the real story
+is a bit more complicated---in particular, the area from
+bits&nbsp;0--20 can be broken up in a variety of ways.
+These field specifications should be suggestive:
+<p><pre><a name="NWalp8-fieK-1" href="#NWD2"><dfn>&lt;field specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWD4">-&gt;</a>]</b>
+opcode_ 26:31   ra 21:25 rb 16:20 sbz 13:15 opfmt 12:12 func 5:11   rc 0:4
+                         imm 13:20
+                fa 21:25 fb 16:20 fpfunc 5:15                       fc 0:4
+                                  mdisp 0:15 
+                                  mop 14:15 mhint 0:13 
+                         bdisp 0:20
+                palfunc 0:25
+                    
+</pre><p>Our spec
+ <b><a name="NWD3">[</a></b>Unfortunately <code>opcode</code> is a reserved word, so we use
+``<code>opcode_</code>''.<b>]</b> 
+uses a couple of combinations not shown in the table.
+The ``function'' code for integers is split into <code>func</code> for
+functions, and <code>opfmt</code> to distinguish register from immediate
+operands.
+Immediate operands live in <code>imm</code>, and when register operands are
+used <code>sbz</code> Should Be Zero.
+The jump instructions split <code>mdisp</code> into an operation code and a hint.
+<p>
+<a name="NWD4">It's easier to specify the integer and floating-point function</a>
+codes by splitting them into two parts.
+<p><pre><a name="NWalp8-fieK-2" href="#NWD2"><dfn>&lt;field specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD2">&lt;-</a>D]</b>
+flo 5:8 fhi 9:11 fplo 5:10 fphi 11:15
+</pre><p>
+<a name="NWD5">The registers have two sets of names; we've chosen the ones that</a>
+obviously correspond to register numbers.
+<p><pre><a name="NWalp8-**fS-1" href="#NWD5"><dfn>&lt;<code>fieldinfo</code> specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWDL">-&gt;</a>]</b>
+fieldinfo
+  [ ra rb rc ] is [ <a name="NWalp8-**fS-1-u1" href="#NWalp8-prob-1"><i>&lt;properties of integer-register fields&gt;</i></a> ]
+  [ fa fb fc ] is [ <a name="NWalp8-**fS-1-u2" href="#NWalp8-proZ-1"><i>&lt;properties of floating-point fields&gt;</i></a> ]
+</pre><pre><a name="NWalp8-prob-1" href="#NWalp8-prob-1"><dfn>&lt;properties of integer-register fields&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+names [ r0  r1  r2  r3  r4  r5  r6  r7
+        r8  r9  r10 r11 r12 r13 r14 r15
+        r16 r17 r18 r19 r20 r21 r22 r23
+        r24 r25 r26 r27 r28 r29 r30 r31 ]
+</pre><pre><a name="NWalp8-proZ-1" href="#NWalp8-proZ-1"><dfn>&lt;properties of floating-point fields&gt;=</dfn></a> <b>(<a href="#NWD5">&lt;-U</a>)</b>
+names [ f0  f1  f2  f3  f4  f5  f6  f7
+        f8  f9  f10 f11 f12 f13 f14 f15
+        f16 f17 f18 f19 f20 f21 f22 f23
+        f24 f25 f26 f27 f28 f29 f30 f31 ]
+</pre><p>
+<h3><a name="NWD6">Integer opcodes</a></h3>
+The opcodes are specified in in Appendix&nbsp;C <b>[cite&nbsp;<a href="#NWcite-sites:alpha">sites:alpha</a>]</b>.
+Table C-5 includes all the load, store and branch opcodes.
+<p><pre><a name="NWalp8-patc-1" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWD8">-&gt;</a>]</b>
+patterns 
+  [ call_pal  _      _     _      _    _      _     _
+    lda       ldah   _     ldq_u  _    _      _     stq_u
+    inta      intl   ints  intm   _    fltv   flti  fltl
+    misc      pal19  jsrs  pal1b  _    pal1d  pal1e pal1f
+    ldf       ldg    lds   ldt    stf  stg    sts   stt
+    ldl       ldq    ldl_l ldq_l  stl  stq    stl_c stq_c
+    br        fbeq   fblt  fble   bsr  fbne   fbge  fbgt
+    blbc      beq    blt   ble    blbs bne    bge   bgt  ] 
+  is opcode_ = { 0 to 63 }
+</pre><p><a name="NWD7">(In NR's edition, the transpose of this table appears as C-9.)</a>
+<p>
+<a name="NWD8">We group by assembly syntax and encoding semantics.</a>
+<p><pre><a name="NWalp8-patc-2" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+patterns
+  ldst    is lda | ldah | ldl | ldq | ldq_u | ldl_l | ldq_l 
+                        | stl | stq | stl_c | stq_c | stq_u 
+  fldst   is ldf | ldg | lds | ldt | stf | stg | sts | stt  
+  branch  is br | bsr | blbc | beq | blt | ble | blbs | bne | bge | bgt
+  fbranch is fbeq | fblt | fble | fbne | fbge | fbgt
+  [ jmp jsr ret jsr_co ] is jsrs &amp; mop = {0 to 3} 
+  jump_hint    is jmp | jsr
+  jump_predict is ret | jsr_co
+</pre><p>
+<a name="NWD9">If transcribed directly, the opcode table C-7 (C-5 in NR's edition)</a>
+is sparse and confusing, 
+so we separate it into sub-tables of related opcodes and use the
+<code>flo</code>/<code>fhi</code> trick.
+<p><pre><a name="NWalp8-patc-3" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+patterns
+  arith is any of 
+    [ addl   s4addl subl   s4subl _      cmpbge 
+      _      s8addl _      s8subl cmpult _ 
+      addq   s4addq subq   s4subq cmpeq  _
+      _      s8addq _      s8subq cmpule _ 
+      addlv  _      sublv  _      cmplt  _ 
+      addqv  _      subqv  _      cmple  _  ], 
+  which is opcode_ = 0x10 &amp; 
+           fhi = [ 0 1 2 3 4 6 ] &amp; flo = [ 0x0 0x2 0x9 0xb 0xd 0xf ]
+
+  logical is any of 
+    [ and _       _       bic 
+      _   cmovlbs cmovlbc _ 
+      bis cmoveq  cmovne  ornot 
+      xor cmovlt  cmovge  eqv 
+      _   cmovle  cmovgt  _ ], 
+  which is opcode_ = 0x11 &amp; 
+           fhi = [ 0 1 2 4 6 ] &amp; flo = [ 0x0 0x4 0x6 0x8 ] 
+
+  byteops is any of
+    [ _   _      mskbl _    extbl  _     _   _     insbl _ 
+      _   _      mskwl _    extwl  _     _   _     inswl _ 
+      _   _      mskll _    extll  _     _   _     insll _ 
+      zap zapnot mskql srl  extql  _     sll _   insql sra 
+      _   _      mskwh _    _      inswh _   extwh _     _ 
+      _   _      msklh _    _      inslh _   extlh _     _ 
+      _   _      mskqh _    _      insqh _   extqh _     _  ], 
+  which is opcode_ = 0x12 &amp; 
+           fhi = [ 0 1 2 3 5 6 7 ] &amp; flo = [ 0 1 2 4 6 7 9 10 11 12 ]
+ 
+  mulops is any of [ mull mullv mulq mulqv umulh ], 
+    which is intm &amp; func = [ 0x00 0x40 0x20 0x60 0x30 ]
+</pre><p>
+<h3><a name="NWDA">Structured operands</a></h3>
+Integer register-to-register instructions have two operand formats,
+in which one of the source operands is an integer literal or
+a register.
+The encoding is very much like the SPARC, except instead of unused
+bits the Alpha has an <code>sbz</code> field, which should be zero.
+Since the Alpha doesn't seem to have a special terminology for these
+operands, we reuse the SPARC terminology.
+<p><pre><a name="NWalp8-patc-4" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+constructors
+  imode imm : reg_or_imm  is  opfmt = 1 &amp; imm
+  rmode rb  : reg_or_imm  is  opfmt = 0 &amp; sbz = 0 &amp; rb 
+</pre><p>
+<h3><a name="NWDB">Integer instructions</a></h3>
+The integer load/store instructions appear first&nbsp;<b>[cite&nbsp;<a href="#NWcite-sites:alpha">sites:alpha</a>, <i>p4-4</i>]</b>.
+<p><pre><a name="NWalp8-patc-5" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+constructors
+  ldst  ra, mdisp!(rb)
+</pre><p>
+The control instructions begin on page&nbsp;4-16&nbsp;<b>[cite&nbsp;<a href="#NWcite-sites:alpha">sites:alpha</a>]</b>.
+The <code>branch</code> instructions are simliar 
+to the MIPS branch instructions.
+The <code>jmp</code> and <code>jsr</code> instructions take a 14-bit ``hint
+ <b>[</b>We're having a problem with the coding of these hints, as
+noted above.<b>]</b> '', 
+which is used
+<a name="NWDC">to compute the predicted target of the jump as </a><i><i>PC</i> +
+4&times;<i>hint</i></i>.
+ <b>[</b>The <i><i>PC</i></i> is the updated <i><i>PC</i></i>.<b>]</b> 
+The <code>ret</code> and <code>jsr_co</code> instructions ignore the hint and
+use a prediction implementation stack, if there is one.
+In that case the hint is reserved for use by software and is required
+to be 0&nbsp;or&nbsp;1 (page 4-21).
+We could specify these two pairs separately, but we follow
+the manual, which defines them together. 
+<p><pre><a name="NWalp8-patc-6" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+relocatable target
+placeholder for instruction is call_pal &amp; palfunc = 0  # halt (privileged)
+constructors
+  branch ra, target { target = L + 4 * bdisp! } is branch &amp; ra &amp; bdisp; L: epsilon
+  jump_hint ra, (rb), mhint 
+  proc    &quot;0&quot; : Return is mhint = 0
+  nonproc &quot;1&quot; : Return is mhint = 1
+  jump_predict ra, (rb), Return
+</pre><p><a name="NWDD">We provide alternate versions that take an address and encode the hint:</a>
+<p><pre><a name="NWalp8-patc-7" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+constructors
+  jump_hint^&quot;*&quot; ra, (rb), target { target = L + 4 * mhint } 
+        is  L: jump_hint &amp; ra &amp; rb &amp; mhint
+</pre><p><a name="NWDE">It's not clear whether these are useful.</a>
+<p>
+<a name="NWDF">The integer arithmetic instructions begin on page 4-24 (4-22 in NR's edition)</a>
+and can be specified in one line.  Hurray for orthogonality!
+<p><pre><a name="NWalp8-patc-8" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+patterns alu is arith | logical | byteops | mulops 
+constructors
+  alu ra, reg_or_imm, rc 
+</pre><p>
+<h3><a name="floati00">Floating-point opcodes</a></h3>
+The floating-point opcodes are specified in Table
+C-7 of NR's edition.
+Many floating point instructions take suffixes, 
+called ``qualifiers'', which specify a variety of
+rounding and exception modes.  
+<a name="NWDG">The suffixes are described beginning on page&nbsp;4-61.</a>
+We've aggressively factored the table on page&nbsp;C-4.
+<p>
+First we attack the row labels, then the column labels.
+For the row labels, we look at column /C, where the column code is
+zero, and for the row labels, we look at row ADDS, where the row code
+is zero.
+For the row labels, we have to slice manually (or shift right 6 bits).
+In a better world, that operation would be in our specification language.
+<p><pre><a name="NWalp8-patc-9" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+patterns           [ adds addt cmpteq cmptlt cmptle cmptun 
+                     cvtqs cvtqt cvtts divs divt muls mult subs subt cvttq ] 
+  is flti &amp; fplo = [ 0x00 0x20 0x25 0x26 0x27 0x24
+                     0x3c 0x3e 0x2c 0x03 0x23 0x02 0x22 0x01 0x21 0x2f ]
+  fpqual is any of
+  [ none c m d u uc um ud 
+    su suc sum sud sui suic suim suid ], 
+  which is flti &amp; fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
+                           0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
+</pre><p><a name="NWDH">Having done this, we now group both qualifiers and opcodes according</a>
+to the rows of the tables that have the same columns filled in.
+<p><pre><a name="NWalp8-patc-A" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+patterns
+  cmpqual is none | su
+  cvtqual is none | c | m | d | sui | suic | suim | suid
+  fpop  is adds | addt | divs | divt | muls | mult | subs | subt
+  cmpop is cmpteq | cmptlt | cmptle | cmptun
+  cvtop is cvtqs | cvtqt
+  qqqual is any of [ qq qqc qqm qqd v vc vm vd 
+                     sv svc svm svd svi svic svim svid ],
+  which is flti &amp; fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
+                           0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
+</pre><p><a name="NWDI">The qualifiers for </a><code>cvttq</code> mostly have different names.
+The <code>qq</code> trick enables us to avoid collisions with names of
+qualifiers used in <code>fpqual</code>. 
+<p>
+<h3><a name="NWDJ">Floating-point instructions</a></h3>
+The floating-point load/store and branch instructions are 
+similar to the integer instructions. 
+<p><pre><a name="NWalp8-patc-B" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+constructors
+  fldst         fa, mdisp(rb)
+  fbranch       fa, target { target = L + 4 * bdisp! } 
+                        is fbranch &amp; fa &amp; bdisp; L: epsilon
+</pre><p>
+<a name="NWDK">We use compound opcodes to define instructions that take qualifiers.</a>
+<p><pre><a name="NWalp8-patc-C" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWalp8-patc-D">-&gt;</a>]</b>
+constructors
+  fpop^fpqual    fa, fb, fc
+  cvtts^fpqual       fb, fc
+  cvtop^cvtqual      fb, fc
+  cmpop^cmpqual  fa, fb, fc
+  cvttq^qqqual       fb, fc 
+</pre><p>
+<h3><a name="NWDL">PAL instructions</a></h3>
+The Privileged Access Library provides a large set of 
+hardware and firmware control functions that can be used under 
+the OpenVMS, DEC OSF/1, and Windows NT operating systems.
+We define only those PAL functions that must be recognized
+by all implementations.
+<p><pre><a name="NWalp8-**fS-2" href="#NWD5"><dfn>&lt;<code>fieldinfo</code> specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD5">&lt;-</a>D]</b>
+fieldinfo palfunc is 
+  [ sparse 
+    [ halt = 0, draina = 2, cserve = 0xa, swppal = 0xb,
+      bpt = 0x80, bugchk = 0x81, imb = 0x86,
+      rdunique = 0x9e, wrunique = 0x9f, gentrap = 0xaa ] ]
+</pre><pre><a name="NWalp8-patc-D" href="#NWD6"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDK">&lt;-</a>D]</b>
+constructors 
+ call_pal palfunc 
+</pre><p>
+<h3><a name="NWDM">Synthetics</a></h3>
+Section C.7 of the DEC OSF/1 Assembly Language Programmer's Guide
+lists some of the expansions of synthetic instructions, but not all of
+them.  Being lazy, we define just a handful.
+<p><pre><a name="NWalp8-alpG-1" href="#NWDM"><dfn>&lt;alpha-synth.spec&gt;=</dfn></a>
+constructors
+  andnot ra, rb, rc          is  bic(ra, rmode(rb), rc)
+  clr    rc                  is  bis(r31, rmode(r31), rc)
+  mov    reg_or_imm, rc      is  bis(r31, reg_or_imm, rc)
+  nop                        is  bis(r31, rmode(r31), r31)
+  not    rb, rc              is  ornot(r31, rmode(rb), rc)
+  or     ra, reg_or_imm, rc  is  bis(ra, reg_or_imm, rc)
+</pre><p>
+<h3><a name="NWDN">Checking against the Digital OSF/1 Assembler</a></h3>
+Apparently, unlike in the manual, qualifiers in OSF/1 assembler are not
+preceded by a slash, so all we need to do is fix a couple of names.
+<p><pre><a name="NWalp8-alpG.2-1" href="#NWDN"><dfn>&lt;alpha-names.spec&gt;=</dfn></a> <b>[D<a href="#NWDO">-&gt;</a>]</b>
+assembly component
+  none*  is &quot;&quot;
+  qq{*} is $1
+  jsr_co is &quot;jsr_coroutine&quot;
+</pre><p><a name="NWDO">The OSF assembler uses the usual DEC conventions about register</a>
+names:
+<p><pre><a name="NWalp8-alpG.2-2" href="#NWDN"><dfn>&lt;alpha-names.spec&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D]</b>
+assembly operand
+  [ ra rb rc ] is &quot;$%d&quot;
+  [ fa fb fc ] is &quot;$%s&quot; 
+</pre><p>
+<a name="NWDP">There's a bug in the toolkit that prevents us from checking </a><code>call_pal</code>.
+<p><pre><a name="NWalp8-alpG.3-1" href="#NWDP"><dfn>&lt;alpha-check.spec&gt;=</dfn></a>
+discard call_pal
+discard jump_hint^&quot;*&quot;           # not really in the assembly language
+discard mov nop                 # OSF/1 assembler uses different synthetics
+</pre><p>
+<a name="NWDQ">When assembling code for checking,</a>
+we might use <code>$at</code>, we don't want instructions out of
+order, and we want screaming and shouting when the assembler expands
+something into a multi-instruction sequence.
+<p><pre><a name="NWalp8-alpF.2-1" href="#NWDQ"><dfn>&lt;alpha-checker.s&gt;=</dfn></a>
+.set noat
+.set noreorder
+.set nomacro
+</pre><p>
+<a name="NWDR">The result of the checking is OK except for the discrepancies noted</a>
+above.
+The other oddity is that the assembler expands multiplication by
+constants into a sequence of add and subtract operations.
+<p>
+<h3><a name="NWDS">Guaranteeing registers</a></h3>
+Most applications will want to make the usual assumptions about the
+values of register operands.
+<p><pre><a name="NWalp8-alpF.3-1" href="#NWDS"><dfn>&lt;alpha-regs.spec&gt;=</dfn></a>
+fieldinfo [ra rb rc fa fb fc] is [guaranteed]
+
+</pre>
+
+<ul>
+<li><a href="#NWDQ"><i>&lt;alpha-checker.s&gt;</i></a>: <a href="#NWDQ">D1</a>
+<li><a href="#NWDP"><i>&lt;alpha-check.spec&gt;</i></a>: <a href="#NWDP">D1</a>
+<li><a href="#NWD1"><i>&lt;alpha-core.spec&gt;</i></a>: <a href="#NWD1">D1</a>
+<li><a href="#NWDN"><i>&lt;alpha-names.spec&gt;</i></a>: <a href="#NWDN">D1</a>, <a href="#NWDO">D2</a>
+<li><a href="#NWDS"><i>&lt;alpha-regs.spec&gt;</i></a>: <a href="#NWDS">D1</a>
+<li><a href="#NWDM"><i>&lt;alpha-synth.spec&gt;</i></a>: <a href="#NWDM">D1</a>
+<li><a href="#NWD2"><i>&lt;field specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWD4">D3</a>
+<li><a href="#NWD5"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWDL">D3</a>
+<li><a href="#NWD6"><i>&lt;pattern and constructor specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD6">D2</a>, <a href="#NWD8">D3</a>, <a href="#NWD9">D4</a>, <a href="#NWDA">D5</a>, <a href="#NWDB">D6</a>, <a href="#NWDC">D7</a>, <a href="#NWDD">D8</a>, <a href="#NWDF">D9</a>, <a href="#NWDG">D10</a>, <a href="#NWDH">D11</a>, <a href="#NWDJ">D12</a>, <a href="#NWDK">D13</a>, <a href="#NWalp8-patc-D">D14</a>
+<li><a href="#NWalp8-proZ-1"><i>&lt;properties of floating-point fields&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWalp8-proZ-1">D2</a>
+<li><a href="#NWalp8-prob-1"><i>&lt;properties of integer-register fields&gt;</i></a>: <a href="#NWD5">U1</a>, <a href="#NWalp8-prob-1">D2</a>
+</ul>
+

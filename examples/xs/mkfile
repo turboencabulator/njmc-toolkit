@@ -1,0 +1,40 @@
+%:V:
+	make $target
+
+all:V: Makefile
+	echo 'Nothing to mk; perhaps you want make?'
+
+Makefile: xs.nw
+	noweb -t xs.nw
+
+################################################################
+#
+#	making a distribution
+
+distfiles:V: Makefile
+	make distfiles
+dist:V: distfiles
+	mk distclean
+distclean:V:
+	mk clean cleanaux
+
+
+
+################################################################
+#
+#	cleanup
+
+clean:V:
+	/bin/rm -f *.u[12] *.icn *~ *.g *.ll *.dvi *.log *.t *.[cho]
+	/bin/rm -f *.tex *.defs *.sml *.out *.blg
+	/bin/rm -f xs.spec xs.decode xs.m
+	if [ -r Makefile ]; then make clean; fi
+
+cleanaux:V:
+	/bin/rm -f *.aux *.bbl *.ind *.idx *.ilg *.nwi *.toc
+
+clobber:V: clean
+	/bin/rm -f *.ps xs.html Makefile
+
+minimal:V: clobber cleanaux
+	: all done above, but do not want to match metarule

@@ -1,0 +1,539 @@
+% l2h ignore change {
+\chapter{Greedy Constructors}
+@
+\section{Support for encoding procedures (in C)}
+<<*>>=
+procedure greedy_emitter_body(cons)
+  s := []
+  every f := inputs_of(cons, "field").meaning & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitsu(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " unsigned bits")))
+  every f := symtab[inputs_of(cons, "integer").name] & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitss(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " signed bits")))
+  put(s, Sguarded(1, greedy_pattern_to_emitter(
+		subst_tab(crhs(cons), parmtab(cons), 1)), cons)))
+  return super_simplify(Sif(s))
+end
+We're going to destroy the pattern, so we use a fresh one.
+<<*>>=
+procedure greedy_pattern_to_emitter(p)
+  return do_pattern_to_emitter(freshen_disjuncts(p))
+end
+@ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+<<*>>=
+procedure greedy_do_pattern_to_case(p)
+  local rep		# representative tag condition
+  if rep := tag_test_in_every_disjunct(p) then {
+    s := Stagcase(rep.x, rep.cons.type, table())
+    every s.arms[kept_constructors(s.type)] := pattern([])
+    every d := !p.disjuncts do {
+      if type(c := !d.conditions) == "Einstance_tagged" & c.uid = rep.uid &
+         exps_eq(rep.x, c.x) 
+      then {
+        delete(d.conditions, c)
+        put((\s.arms[c.cons]).disjuncts, d)
+      } else
+	impossible("Mislaid a tag condition on ", expimage(rep.x))
+    }
+    every c := key(s.arms) do s.arms[c] := do_pattern_to_case(s.arms[c])
+    return s
+  } else if rep := tag_test_in_any_disjunct(p) then {
+     PPxwrite(PPnew(&errout), "Can't eliminate tag condition on ", ppexpimage(rep.x), 
+                       " $t$ofrom pattern $c", ppexpimage(p))
+     impossible("Report a bug in the toolkit")
+  } else
+    return simplify(p)
+end
+<<*>>=
+procedure greedy_tag_test_in_any_disjunct(p)
+  suspend type(rep := !\(!p.disjuncts).conditions) == "Einstance_tagged" & rep
+end
+<<*>>=
+procedure greedy_tag_test_in_every_disjunct(p)
+  every type(rep := !\p.disjuncts[1].conditions) == "Einstance_tagged" do
+    if tag_test_not_in_disjunct(rep, !p.disjuncts) then &null else return rep
+  fail
+end
+
+procedure greedy_tag_test_not_in_disjunct(rep, d)
+  if type(c := !\d.conditions) == "Einstance_tagged" & c.uid = rep.uid &
+     exps_eq(rep.x, c.x) then fail
+  else return
+end
+@
+The structure of an encoding procedure greedy_is complex because of the number of 
+conditions to be checked.  Here is a sketch of the conditions:
+\begin{fields*}{iwidth}
+iwidth&input-width conditions for the constructor\\
+conds&conditions for a branch to be taken\\
+cknown&conditions that must hold before [[conds]] can be evaluated
+(e.g., relocatable addresses are known)\\
+fits&field-width conditions for fields to be emitted, and conditions that
+	attempts to narrow actually fit\\
+fknown&conditions that must hold before fields can be emitted or
+[[fits]] can be evaluated (again, relocatable addresses).
+[[fknown]] never repeats any conditions already in [[cknown]],
+because its use is always guarded by [[cknown]]\\
+\end{fields*}
+The [[*known]] conditions influence closure creation, the [[*width]]
+conditions are error checks only, and [[conds]] is used for branch selection.
+
+Rather than use C templates, we use a language-independent
+representation of control flow.
+<<*>>=
+record Sstms(stmts)			# statement sequence
+@
+
+A constructor branch is chosen conservatively, except for the last
+branch, which gets special treatment.
+While an early branch is taken iff its conditions are known to be
+true, a late branch is taken iff its conditions are not known to be
+false.
+<<early-branch.s>>=
+if (cknown && conds) {
+  if (fknown) {
+    fits_aborts;  	# abort if fits not satisfied
+    emit_fields;
+  } else
+    create_closure;
+}
+@
+The Icon branch procedures add their branches to a list of arms.
+<<*>>=
+procedure greedy_early_branch(arms, cknown, conds, fknown, fits_and_emit, closure)
+  return put(arms, Sguarded(Eand(cknown, conds), 
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, closure)])))
+end
+<<late-branch.s>>=
+if (cknown) {
+  if (conds) {
+    if (fknown) {
+      fits_aborts;
+      emit_fields;
+    } else {
+      unchecked_closure;
+    }
+  } else {
+    condition_failure;
+  }
+} else {
+  checked_closure;
+}
+<<*>>=
+procedure greedy_last_branch(arms, cknown, conds, fknown, fits_and_emit, uclosure, 
+		      condfail, cclosure)
+  every put(arms, 
+            Sguarded(cknown, Sif(
+                [Sguarded(conds,
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, uclosure)])),
+                 Sguarded(1, condfail)])) |
+            Sguarded(1, cclosure))
+  return arms
+end
+<<*>>=
+procedure greedy_emitter_body(cons)
+  s := []
+  every f := inputs_of(cons, "field").meaning & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitsu(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " unsigned bits")))
+  every f := symtab[inputs_of(cons, "integer").name] & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitss(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " signed bits")))
+  put(s, Sguarded(1, case_to_emitter(pattern_to_case(
+		subst_tab(crhs(cons), parmtab(cons), 1)), cons)))
+  return super_simplify(Sif(s))
+end
+@
+[[Sfail]] is like [[printf]]
+<<*>>=
+record Sfail(fmt, a1, a2, a3)
+@
+[[parmtab]] produces a substitution table that does the right thing with 
+the parameters to a C emission procedure.
+<<*>>=
+procedure greedy_parmtab(cons)
+  t := table()
+  every ipt := inputs_of(cons) do
+    t[ipt.name] := case type(ipt.meaning) of { 
+      "constype" : ipt.name # name stands for an instance
+      "field"    : ipt.name
+      "integer"  : Enarrows(ipt.name, ipt.meaning)
+      "string"   : Eforce(ipt.name)
+      "null"     : ipt.name
+      default    : impossible("input type")
+    }
+  return t
+end
+@
+\subsection{Emission}
+<<*>>=
+procedure greedy_case_to_emitter(p, cons)
+  local cknown, conds, fknown, fits, condition_failure_msg
+  case type(p) of {
+    "Stagcase"   : {
+       every c := kept_constructors(p.type) do
+         p.arms[c] := case_to_emitter(p.arms[c], cons)
+       return p
+    }
+    "pattern" : {<<turn pattern [[p]] into emitter and return it>>}
+  }
+end
+@ 
+Note that we just set the [[patlabel]] offsets, not worrying about
+whether they're shared (although by the invariant they shouldn't be).
+It shouldn't matter because the offsets are then used immediately.
+<<turn pattern [[p]] into emitter and return it>>=
+<<delete [[p]]'s disjuncts with duplicate conditions, issuing suitable warnings>>
+<<error if [[p]] has no disjuncts>>
+s := Sif([])
+<<make [[condition_failure_msg]] complain of undecided branch or unsatisfied conditions>>
+while d := get(p.disjuncts) do {
+  set_patlabel_offsets(d)
+  d := gsubst(d, Epatlabel_to_Epc)
+  <<from [[d]], compute [[cknown]], [[conds]], [[fknown]], and [[fits]]>>
+  <<sanitize [[d]]'s sequents, possibly adding conditions to [[fits]]>>
+  fwe := Sif([])
+  every c := !\fits do 
+    put(fwe.arms, Sguarded(Enot(c), widthfailure(c)))
+  put(fwe.arms, Sguarded(1, disjunct_to_emission(d)))
+  if *p.disjuncts > 0 then
+    early_branch(s.arms, cknown, conds, fknown, fwe, Sclosure(d))
+  else
+    last_branch (s.arms, cknown, conds, fknown, fwe, Sclosure(d),
+                 Sfail(condition_failure_msg || " for constructor " || cons.name), 
+                 Sclosure(d, conds))
+}
+return s
+<<*>>=
+procedure greedy_Epatlabel_to_Epc(x)
+  if type(x) == "Epatlabel" then
+    return binop(the_global_pc, "+", x.l.offset)
+end
+<<make [[condition_failure_msg]] complain of undecided branch or unsatisfied conditions>>=
+condition_failure_msg := 
+  if *p.disjuncts > 1 then "Can't decide on branch"
+  else "Conditions not satisfied"
+<<error if [[p]] has no disjuncts>>=
+if *p.disjuncts = 0 then 
+  error("Output pattern for constructor ", cons.name, " can never match anything.\n",
+	"\tCould you have written a bad conjunction?")
+<<*>>=
+record Sclosure(disjunct, conditions, creation)
+<<argument descriptions>>=
+expargs disjunct conditions creation.
+@
+<<sanitize [[d]]'s sequents, possibly adding conditions to [[fits]]>>=
+l := []
+every put(l, sanitize_for_output(!d.sequents, fits))
+d.sequents := l
+@
+[[sequent_to_stoken]] can't know the offsets, so [[disjunct_to_emission]] 
+fills them in.
+<<*>>=
+procedure greedy_disjunct_to_emission(d)
+  s := Semit([])
+  every seq := !d.sequents & type(seq) == "sequent" do
+    put(s.x, sequent_to_Stoken(seq))
+  <<fill in offsets in [[s]]>>
+  return s
+end
+<<fill in offsets in [[s]]>>=
+n := 0
+every ss := !s.x do { ss.offset := n; n +:= ss.n }
+<<*>>=
+procedure greedy_sequent_to_Stoken(s)
+  v := &null
+  o := start_overlap_check()
+  every c := !s.constraints & x := case type(c) of {
+    "constraint": 
+        if c.lo + 1 = c.hi then {
+            add_overlap_field(o, c.field)
+            if 0 <= c.lo < 2^fwidth(c.field) then
+               c.lo
+            else {
+               warning("Field value ", c.lo, " exceeds width of field ", c.field.name);
+               Eslice(c.lo, 0, fwidth(c.field))
+            }
+	} else if c.lo < c.hi then {
+              warning("Field ", c.field.name, " is underconstrained by ", 
+                     constraintimage(c), "; no value output") 
+              &fail
+        }
+    "fieldbinding": {
+       add_overlap_field(o, c.field)
+       if member(guaranteed_fields, c.field) # | not member(unchecked_fields, c.field)
+       then
+         c.code
+       else 
+         Eslice(c.code, 0, fwidth(c.field))
+    }
+  } & y := emitshift(x, c.field.lo) do
+    v := Eorb(\v, y) | y
+  return Stoken(\v | 0, 
+     if s.class.size % emit_unit_bits = 0 then s.class.size / emit_unit_bits 
+     else error("tokens are emitted in units of ", token_unit_bits, 
+                ", but some pattern is ", s.class.size, " bits wide"))
+end
+<<*>>=
+record overlap_check(fields, loset, hiset)
+procedure greedy_start_overlap_check()
+  return overlap_check(set(), set(), set())
+end
+
+procedure greedy_add_overlap_field(o, f)
+  if overlaps(o.loset, o.hiset, f.lo, f.hi) then {
+    <<issue error message about overlapping fields>>
+  } else {
+    insert(o.fields, f)
+    addinterval(o.loset, o.hiset, f.lo, f.hi) 
+  }
+  return o
+end
+<<issue error message about overlapping fields>>=
+every g := !o.fields do
+  if f.hi <= g.lo | g.hi <= f.lo then
+    &null
+  else
+    error("Cannot use overlapping fields ", f.name, " and ", g.name, " in the same token")
+impossible("some fields overlap, but I can't tell which ones")
+<<*>>=
+procedure greedy_emitshift(x, n)
+  return if n = 0 then x
+         else if \simplify_emits then Eshift(x, n)
+         else Eshift(Enosimp(super_simplify(x)), n)
+end
+<<delete [[p]]'s disjuncts with duplicate conditions, issuing suitable warnings>>=
+l := []
+every i := *p.disjuncts to 1 by -1 do
+  if j := 1 to i-1 &
+     same_conditions(p.disjuncts[i].conditions, p.disjuncts[j].conditions) then
+    <<warn of redundant disjunct>>
+  else
+    push(l, p.disjuncts[i])
+if *l < *p.disjuncts then p.disjuncts := l
+<<warn of redundant disjunct>>=
+warning("Pattern on right-hand side of constructor ", cons.name, 
+        " has redundant disjuncts ", expimage(p.disjuncts[j]), " and ",
+        expimage(p.disjuncts[i]), ".\tI'll use the first one for encoding")
+<<*>>=
+procedure greedy_same_conditions(c1, c2)
+  if /c1 & /c2 then return
+  else if /c1 | /c2 then fail
+  else if *c1 = *c2 then {
+    c := copy(c1)
+    every insert_condition(c, !c2)
+    if *c > *c1 then fail
+    else return
+  } else fail
+end
+@
+<<*>>=
+procedure greedy_widthfailure(c)
+  c.n < wordsize | impossible("test to fit in word: ", expimage(c))
+  case type(c) of {
+    "Efitsu" : {f := "0x%x"; s := "unsigned"}
+    "Efitss" : {f := "%d"; s := "signed"}
+    default  : impossible("width condition")
+  }
+  return Sfail("`" || expimage(c.x) || "' = " || f || " won't fit in " || 
+               c.n || " " || s || " bits.", c.x)
+end
+@
+\subsection{Conditions}
+<<from [[d]], compute [[cknown]], [[conds]], [[fknown]], and [[fits]]>>=
+if *\d.conditions > 0 then {
+  conds := d.conditions
+  <<from [[conds]], compute [[conds_narrows_ok]]>>
+  if *conds_narrows_ok > 0 then
+    conds ++:= conds_narrows_ok
+  cknown := known_conditions(d.conditions)
+} else 
+  conds := cknown := 1
+fknown := known_conditions(d.sequents)
+<<strip [[fknown]] of conditions already in [[cknown]]>>
+<<from [[d]], compute [[fits]]>>
+<<*>>=
+procedure greedy_known_conditions(e)
+  local known
+  known := set()
+  every ff := subterms_matching(e, "Eforce") &
+        cc := super_simplify(Eforceable(ff.x)) do
+    insert_condition(known, cc)
+  if subterms_matching(e, "Epc") then
+    insert_condition(known, Epc_known())
+  delete(known, 1)
+  return if *known = 0 then 1 else known 
+end
+@
+<<strip [[fknown]] of conditions already in [[cknown]]>>=
+if type(cknown) == "set" then
+  every ff := !fknown do
+    if exps_eq(ff, !cknown) then
+      delete(fknown, ff)
+if *fknown = 0 then fknown := 1
+@
+At this point, we know that field and extended inputs satisfy the appropriate width
+conditions.
+<<from [[d]], compute [[fits]]>>=
+fits := set()
+every ff := subterms_matching(d.sequents, "fieldbinding") &
+      not member(unchecked_fields, ff.field) do
+  if not known_to_fit(input_fitsu, ff.code, cons, fwidth(ff.field)) then
+    insert_width_condition(fits, Efitsu(ff.code, fwidth(ff.field)))
+every ee := subterms_matching(d.sequents, "Enarrowu") do
+  if not known_to_fit(input_fitsu, ee.x, cons, ee.n) then
+    insert_width_condition(fits, Efitsu(ee.x, ee.n))
+every ee := subterms_matching(d.sequents, "Enarrows") do
+  if not known_to_fit(input_fitss, ee.x, cons, ee.n) then
+    insert_width_condition(fits, Efitss(ee.x, ee.n))
+@
+We lost earlier because the solver converted the condition
+\mbox{[[v = v[0:15]!]]} to
+\begin{quote}
+Enarrows(v, 16) = v[0:15].
+\end{quote}
+Without a check for the success of the narrow, this condition becomes
+a tautology, with the result that we were always taking an incorrect
+branch of the SPARC [[set]] constructor.
+By seeking out narrows in conditions, we make sure to include the
+correct check (although we continue to emit C~code for the tautology,
+which is annoying).
+<<from [[conds]], compute [[conds_narrows_ok]]>>=
+conds_narrows_ok := set()
+every ee := subterms_matching(conds, "Enarrowu") do
+  if not known_to_fit(input_fitsu, ee.x, cons, ee.n) then
+    insert_width_condition(conds_narrows_ok, Efitsu(ee.x, ee.n))
+every ee := subterms_matching(conds, "Enarrows") do
+  if not known_to_fit(input_fitss, ee.x, cons, ee.n) then
+    insert_width_condition(conds_narrows_ok, Efitss(ee.x, ee.n))
+<<*>>=
+procedure greedy_insert_width_condition(fits, c)
+  if (x := super_simplify(c)) === 0 then
+    error(widthfailure(c).fmt)
+  else
+    insert_condition(fits, x)
+  return
+end
+@
+Either inputs or instances can be known to fit.
+The test on strings is valid {\em only when all free variables represent inputs of
+constructor [[cons]]}.
+In particular, it is valid when patterns are prepared for emission.
+The test on instance inputs is, of course, always valid.
+[[test]] is [[input_fitsu]] or [[input_fitss]].
+<<*>>=
+procedure greedy_known_to_fit(test, code, cons, width)
+  return case type(code) of {
+    "string"          : test(code, cons, width)
+    "Einstance_input" : known_to_fit(test, code.name, code.cons, width)
+  }
+end
+<<*>>=
+procedure greedy_input_fitsu(name, cons, width)
+  return width >= wordsize | 
+    ((ipt := inputs_of(cons)).name == name & case type(ipt.meaning) of {
+      "field"   : fwidth(ipt.meaning) <= width
+      "integer" : ipt.meaning <= width
+    })
+end
+
+procedure greedy_input_fitss(name, cons, width)
+  return width >= wordsize | 
+    ((ipt := inputs_of(cons)).name == name & case type(ipt.meaning) of {
+      "integer" : ipt.meaning <= width
+      "field"   : fwidth(ipt.meaning) < width
+    })
+end
+@
+\section{Support for encoding procedures (in C)}
+\subsection{C type declarations for instances}
+
+A user-defined constructor type is represented by $T$[[Instance]], a
+C type that stores an instance of a constructor type $T$.
+It contains a union of all possible constructors of type $T$;
+for each one it stores the instance.
+The header [[h]] points to a statically allocated record that contains,
+among other information, a tag that identifies not just the constructor,
+but its branch.
+Here's the template:
+<<instance-type.t>>=
+typedef struct %{name}_instance {$t
+int tag;
+union {$t%constructors$b
+} u;$b
+} %{name}_Instance;
+@ And here's the code the does the emission.
+<<*>>=
+procedure greedy_emit_instance_type(pp, ct)
+  local constructors
+  enforce_instance(ct)
+  constructors := []
+  every put(constructors, input_record_for(kept_constructors(ct)))
+  emit_template(pp, "instance-type.t", "name", ct.name, "constructors", constructors)
+  return
+end
+@
+There's a trick to the layout of  an input record; we
+use bit fields to hold field inputs, and we want to make them consecutive so
+they have a decent chance of packing.
+To achieve this effect, we run through the inputs twice.
+<<*>>=
+procedure greedy_input_record_for(cons, struct_name)
+  local pp, ipt
+  pp := []
+  put(pp, "$nstruct {$t");
+  every ipt := inputs_of(cons) do	## emit bit fields
+    case type(ipt.meaning) of {
+      "field"   : put(pp, "$nunsigned " || ipt.name || ":" || fwidth(ipt.meaning)||";")
+      "integer" : put(pp, "$nint "      || ipt.name || ":" || ipt.meaning        ||";")
+    }
+  every ipt := inputs_of(cons) do	## emit other inputs
+    case type(ipt.meaning) of {
+      "null"     : put(pp, "$nint "   ||                                ipt.name ||";")
+      "string"   : put(pp, "$nRAddr " ||                                ipt.name ||";")
+      "constype" : put(pp, "$n" || ipt.meaning.name || "_Instance  " || ipt.name ||";")
+      "field" | "integer" : &fail
+      default : impossible("input meaning")
+    }
+  put(pp, "$b$n} " || (\struct_name | cons.name) || ";")
+  return pp
+end
+@
+While we're playing the input game, we use a similar technique to
+compute a list of argument declarations.
+<<*>>=
+procedure greedy_arg_decls(cons)
+  l := []
+  every ipt := inputs_of(cons) do
+    put(l, case type(ipt.meaning) of {
+            "null"     : "int"
+            "string"   : "RAddr"
+            "constype" : ipt.meaning.name || "_Instance"
+            "field"    : unsigned_type(fwidth(ipt.meaning))
+            "integer"  : "int"
+            default    : impossible("arg_decls input")
+          } || " " || ipt.name)
+  return if *l = 0 then "void" else commaseparate(l)
+end
+@
+\section{C support for closures}
+Closures are numbered within a particular constructor, except for the first.
+<<*>>=
+procedure greedy_emit_original_closure_functions(pp, cons, b)
+  local suffix   
+  every cl := subterms_matching(b, "Sclosure") do
+    emit_original_closure_function(pp, cons, cons.name || <<suffix with update>>, cl) 
+  return
+end
+<<suffix with update>>=
+(if /suffix then (suffix := 1, "") else "_" || (suffix +:= 1))
+@

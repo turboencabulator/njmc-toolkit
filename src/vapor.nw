@@ -1,0 +1,238 @@
+% l2h ignore change {
+\chapter{Vaporware}
+This appendix describes procedures that we would like to have in the library 
+but that  we haven't had time to implement.
+These procedures are geared to supporting {\em toolkit object code},
+viz., a disk-based representation of the data structures used in
+encoding applications.
+We intend to use {\em tables} from \citeN{hanson:interfaces}
+so that labels and such can be referred to
+by name, and we need to implement {\em pickles} to be able to read and write relocatable
+blocks, relocation closures, and so on.
+
+
+
+\section{Tables}
+Applications will need tables for binding names of objects
+to their values.
+The library provides two predefined, global tables:
+\begin{fields*}
+labeltab&Binds the names of global labels to the labels themselves\\
+sectiontab&Binds the names of sections to lists of relocatable blocks\\
+\end{fields*}
+An assembler may use [[labeltab]] to store
+labels defined in assembly text and [[sectiontab]] to store relocatable blocks that represent
+data sections or procedure text. 
+The application  create more tables.
+
+The application must tell the library what section names it understands.
+[[newsection]] creates a new section if it has not already been created.
+An assembler, for example, might call [[newsection]] when assembling
+a pseudo-op such as ``.data'' for the first time. 
+
+<<library>>=
+procedure newsection(char *name)
+    /sectiontab[name] := [] | fail(multiply defined sections)
+@ %def newsection
+
+Each entry of [[sectiontab]] is a list.  Relocatable blocks are added
+to a section by simply concatenating the block on the appropriate list.
+A C implementation of the library will provide the C equivalents of the
+Icon code
+[[l := [], put(l,x), every x := !l do ...]].  
+@
+\section{Pickling and Unpickling}
+The application can externalize and internalize all of the data structures
+provided by the library using the following ``pickling''
+and ``unpickling'' interface.  
+
+The following EBNF grammar specifies the layout of pickled objects on disk.%
+\footnote{In EBNF, [[|]] denotes alternation, [[[...]]] optional fields, and
+[[{...}]] Kleene closure.}
+The smallest unit of reading and writing is a word.  
+Within the grammar, four-letter strings, integer literals, and symbols in all caps 
+are terminal symbols standing for single words.
+Symbols in mixed case are nonterminals.
+
+The word represented by a four-character string is computed by putting the first
+character of the string in the most significant byte, and so on.
+For example, the string [["tabl"]], used to tag tables, forms the 
+type tag 
+\begin{quote}
+[['t' @<< 24 + 'a' @<< 16 + 'b' @<< 8 + 'l']].
+\end{quote} 
+This type tag {\em cannot} always be formed by casting the string 
+[["tabl"]] to an integer using the native byte order of the machine.
+
+The first word
+in a pickle is always [["picl"]].
+By checking this word, a program reading the pickle can tell whether
+the words in the pickle were written in the native or swapped byte
+order.
+A pickle always represents a single object.
+To provide a modicum of error checking, the object is always tagged.
+Most applications pickle their own data structures, which may point to more than
+one object of the kind defined in this library.
+<<pickle grammar>>=
+Pickle	=> "picl" Tagged
+@
+Every object within a pickle is identified by a unique signed integer or {\em UID}; 
+UIDs make it possible to represent cycles and pointer sharing.
+The UID~0 always represents the [[NULL]] or [[NIL]] pointer.
+
+Under some circumstances, a UID may be followed by a {\em type tag},
+which identifies the type of the object.
+For example, every element of a heterogeneous list must carry a type tag.
+This library reserves the type tags in the range 0--32767 for use by applications.
+
+The following productions show the type tags reserved for use with the toolkit types.
+The library supports only homogeneous and lists, and homogeneous
+tables keyed by strings.
+<<pickle grammar>>=
+Any    => [ Table | List | RLabel | RAddr | RBlock 
+          | RClosure | INTEGER | UserDef
+          ]
+Tagged => [ "tabl" Table | "list" List | "rlbl" Rlabel 
+          | "radr" RAddr | "rblk" RBlock | "rclo" RClosure 
+          | "chrs" String | "int\0" INTEGER | TAG UserDef 
+          ]
+@ 
+A pickled table includes a [[TAG]] 
+denoting the type of the table's elements,
+a [[Count]] denoting the 
+total number of table elements, and a sequence of key-value pairs.
+The values are untagged because the single [[TAG]] at the beginning describes 
+all of the values.
+<<pickle grammar>>=
+Table => UID [TAG Count {String Any}]
+@ A [[List]] is just like a table but does not include any keys.
+<<pickle grammar>>=
+List 	   => UID [TAG Count {Any}]
+@ 
+Of the four basic data types provided by the library, 
+[[RAddr]], [[RLabel]], [[RBlock]], and [[RClosure]], the first two
+are completely straightforward:
+<<pickle grammar>>=
+RAddr 	=> UID [OFFSET RLabel]
+RLabel 	=> UID [OFFSET RBlock]
+@ An [[RBlock]] contains two optional fields [[ADDRESS]] and [[REG OFFSET]].
+The value of the [[Flags]] determines the presence of these fields.
+If [[Flags & 1]], [[ADDRESS]] is the value of [[rb.address]]; otherwise,
+[[ADDRESS]] is omitted and [[rb.address]] is null.
+{\em and similarly for other fields\ldots}
+% }]] is emitted; if [[Flags[1]]] is set, [[{ Reg Offset }]]
+%is emitted.
+[[String]] denotes [[rb.contents]].
+<<pickle grammar>>=
+RBlock 	=> UID [LOW RLabel FLAGS [ADDRESS] [REG OFFSET] String]
+@ 
+An [[RClosure]] includes a [[Function]], which represents the closure's
+[[apply]] method.
+[[COUNT]] denotes the number of relocatable addresses in the closure.
+Since a closure is created only when a relocatable address is unknown, there
+must be at least one [[RAddr]] in the closure.
+<<pickle grammar>>=
+RClosure => UID [OFFSET Function RBlock COUNT {RAddr}]
+@ 
+A function is represented by bytecodes.
+So far, the only defined ``bytecode'' is actually a PostScript-like
+``string code''
+described in \citeN{ramsey:relocating}.
+The toolkit generates these codes when it generates closure functions.
+This code is indicated by the tag [["tkps"]].
+<<pickle grammar>>=
+Function => "tkps" String
+@
+Strings are an exception to the rule that all reading and writing is word-oriented.
+The disk representation of a string is a word indicating the number of bytes in the
+string, followed by the bytes themselves.
+The bytes are followed by zero or more zero bytes, used to pad the string so its length
+is a multiple of the word length.
+This representation is {\em not} equivalent to the C representation; for example,
+strings may contain embedded null characters.  The C version of the library provides a 
+procedure that pickles and unpickles strings in this format.
+<<pickle grammar>>=
+String => UID [COUNT bytes padding]
+@
+\section{C language support for pickles}
+@
+To pickle and unpickle a type, the library needs a tag, a pickling procedure,
+and an unpickling procedure:
+<<C library>>=
+typedef struct pklstream *PklStream;
+unsigned getword(PklStream s);			/* probably a macro */
+procedure putword(PklStream s, unsigned n);	/* probably a macro */
+procedure read_bytes(char *buf, int size, PklStream s);
+
+typedef struct pkltag {
+    unsigned tagword;	/* TAG */
+    void (*write)(PklStream s, void *data, ...);
+    void *(*read)(PklStream s);
+} *PklTag;
+@ All calls to write procedures must be bracketed between [[pickleBegin]] and
+[[pickleEnd]].
+
+A [[PklTag]] is provided for each library data structure.
+The write procedures for homogeneous tables and lists take an extra argument,
+which is a tag describing the element type.%
+\footnote{This admittedly ugly scheme is a poor man's substitute for real closures.}
+Pickling procedures that are part of the application may use this extra argument to
+pickle
+tables and lists of the application's own data structures.
+This library provides no support
+for pickling and unpickling heterogeneous tables and lists.
+<<C library>>= 
+PklTag pickleTab, pickleList, pickleRAddr, pickleRBlock, 
+       pickleRClosure, pickleRLabel;
+@ As an example, here is the code used to pickle a table [[d]] in which the
+elements are labels:
+<<example use>>=
+pickleTab->write(s, d, pickleRLabel);
+@ 
+[[pickleRBlockList]] is provided as a tag that simplifies pickling of [[sectiontab]].
+To pickle [[sectiontab]], the application would call
+\begin{quote} 
+[[pickleTab(sectiontab, pickleRBlockList)]].
+\end{quote} 
+<<library>>=	
+PklTag pickleRBlockList;
+    pickleRBlockList->write(s, l) == pickleList->write(s, l, pickleRBlock)
+@
+
+Applications use the tags to write and read pickles.
+\iffalse
+{\em Guidlines for application writers wanting to create their own tags and pickling
+procedures appear where?}
+\fi
+[[pickleWrite(fd, p, tag)]] pickles the object pointed to by [[p]],
+pointers within the object are followed and their referents pickled, 
+and so on transitively.
+Pointer cycles and sharing are correctly represented.
+{\em flag for tagging every single object?}
+{\hfuzz=11pt\par}
+<<C library>>=
+procedure pickleWrite(int fd, void *p, PklTag tag);
+    write disk representation of p to descriptor fd.
+@ The library uses [[int fd]] instead of [[FILE *fp]] for input and output because
+some applications (like {\tt lcc} and {\tt mld}) don't tolerate [[FILE *]].
+
+@
+[[pickleRead]] reads a pickled object from disk.
+{\em Support for pickles in which all objects are tagged?}
+<<library>>=
+procedure *pickleRead(int fd, PklTag type_expected, Arena *p,
+                 (char *)(*pickleGetmem)(int size), int initialSize);
+    return pointer to object in pickle
+@ {\em Allocation of pickles is arena-based,} and all objects in a pickle are allocated
+in the same arena.
+If [[*p]] is nonzero, it is used as the arena; otherwise a new
+arena is created and *p is set to it.
+If [[getmem]] is nonzero, it is used to add space to the arena.
+If [[pickleSizeHint]] is nonzero, it is used as the initial size of the arena when
+an arena must be created.
+@
+\iffalse
+\section{What's missing?}
+
+Floating-point encoding, which is a separable issue.
+@ \fi

@@ -1,0 +1,1927 @@
+<html><head><title> grammar.nw</title></head><body>
+<h1><a name="NWD1">Grammar for the specification language</a></h1>
+<pre><a name="NWgraA-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWgraA-*-2">-&gt;</a>]</b>
+<a name="NWgraA-*-1-u1" href="#NWDj"><i>&lt;terminal symbols&gt;</i></a>
+%%
+# EBNF grammar for toolkit specification language
+<a name="NWgraA-*-1-u2" href="#NWD5"><i>&lt;grammar&gt;</i></a>
+%%
+<a name="NWgraA-*-1-u3" href="#NWD2"><i>&lt;toplevel&gt;</i></a>
+</pre><p>
+<a name="NWD2">Step one is to initialize the globals</a>
+<pre><a name="NWgraA-top8-1" href="#NWD2"><dfn>&lt;toplevel&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWgraA-top8-2">-&gt;</a>]</b>
+global <a href="#NWD2">symtab</a>           # table of top-level symbols
+global <a href="#NWD2">globals</a>          # top-level environment
+global <a href="#NWD2">equivclasses</a>     # list of equivalence classes of fields
+global <a href="#NWD2">constructors</a>     # table mapping constructor name to Stype
+global <a href="#NWD2">conslist</a>         # list of all <a href="#NWD2">constructors</a> ever defined
+global <a href="#NWD2">instructionctype</a> # the type of instruction <a href="#NWD2">constructors</a>
+global <a href="#NWD2">bit_zero_is_lsb</a>  # non-null if bits are numbered with 0 == least significant
+global <a href="#NWD2">vanishing_latent_patlabel</a>  # should vanish
+global <a href="#NWD2">fieldname_literals</a>, <a href="#NWD2">operands_and_ids</a>, <a href="#NWD2">warned_literals</a> # find conflicts
+</pre><blockquote>Defines <a href="#NWI-bit_zero_is_lsb"><code>bit_zero_is_lsb</code></a>, <a href="#NWI-conslist"><code>conslist</code></a>, <a href="#NWI-constructors"><code>constructors</code></a>, <a href="#NWI-equivclasses"><code>equivclasses</code></a>, <a href="#NWI-fieldname_literals"><code>fieldname_literals</code></a>, <a href="#NWI-globals"><code>globals</code></a>, <a href="#NWI-instructionctype"><code>instructionctype</code></a>, <a href="#NWI-operands_and_ids"><code>operands_and_ids</code></a>, <a href="#NWI-symtab"><code>symtab</code></a>, <a href="#NWI-vanishing_latent_patlabel"><code>vanishing_latent_patlabel</code></a>, <a href="#NWI-warned_literals"><code>warned_literals</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-top8-2" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWgraA-top8-2">init_parser</a>()
+    every <a href="#NWD2">symtab</a> | <a href="#NWD2">constructors</a> := table()
+    <a href="#NWD2">globals</a> := [<a href="#NWD2">symtab</a>]
+    every unchecked_fields | guaranteed_fields := set()
+    every <a href="#NWD2">fieldname_literals</a> | <a href="#NWD2">operands_and_ids</a> | <a href="#NWD2">warned_literals</a> := set()
+    every <a href="#NWD2">conslist</a> | <a href="#NWD2">equivclasses</a> := []
+    <a href="#NWD2">instructionctype</a> := constype(&quot;(anonymous constructor type)&quot;, set())
+    <a href="#NWD2">bit_zero_is_lsb</a> := 1
+    <a href="#NWD2">vanishing_latent_patlabel</a> := latent_patlabel()
+    <a name="NWgraA-top8-2-u1" href="#NWgraA-iniE-1"><i>&lt;initialization&gt;</i></a>
+end
+</pre><blockquote>Defines <a href="#NWI-init_parser"><code>init_parser</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD3">Because of the strange way we allow users to specify field-name</a>
+literals in field bindings, we want to make sure there's never a clash
+between the names used in fieldinfo statements and the names used in
+operands and equations.
+<pre><a name="NWgraA-notR-1" href="#NWD3"><dfn>&lt;note new field name <code>ii1</code>&gt;=</dfn></a> <b>(<a href="#NWDC">U-&gt;</a>)</b>
+if member(<a href="#NWD2">operands_and_ids</a>, ii1) then {
+  <a name="NWgraA-notR-1-u1" href="#NWgraA-warR-1"><i>&lt;warn about clash in <code>ii1</code>&gt;</i></a>
+} else
+  insert(<a href="#NWD2">fieldname_literals</a>, ii1)
+</pre><pre><a name="NWgraA-notU-1" href="#NWgraA-notU-1"><dfn>&lt;note new operand or id <code>ii1</code>&gt;=</dfn></a> <b>(<a href="#NWgraA-gra7-H">U-&gt;</a> <a href="#NWDc">U-&gt;</a>)</b>
+if member(<a href="#NWD2">fieldname_literals</a>, ii1) then {
+  <a name="NWgraA-notU-1-u1" href="#NWgraA-warR-1"><i>&lt;warn about clash in <code>ii1</code>&gt;</i></a>
+} else
+  insert(<a href="#NWD2">operands_and_ids</a>, ii1)
+</pre><pre><a name="NWgraA-warR-1" href="#NWgraA-warR-1"><dfn>&lt;warn about clash in <code>ii1</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a> <a href="#NWgraA-notU-1">&lt;-U</a>)</b>
+every (if not member(<a href="#NWD2">warned_literals</a>, ii1) then warning else verbose)(
+  ii1 || &quot; is used as a field-name <a href="#NWDS">literal</a> and an operand or id...&quot; |
+  &quot;  the <a href="#NWDS">literal</a> takes priority in field bindings&quot;
+)
+insert(<a href="#NWD2">warned_literals</a>, ii1)
+</pre><p>
+<code><a name="NWD4" href="#NWD2">conslist</a></code> contains a list of all constructors ever defined, even those
+that were later removed from the <code><a href="#NWD2">constructors</a></code> table.  Clients that use
+<code><a href="#NWD2">conslist</a></code> are therefore obligated to check that <code><a href="#NWD2">constructors</a>[x.name] === x</code> 
+before using a constructor <code>x</code> found in <code><a href="#NWD2">conslist</a></code>.  
+Similar checking is required before using the members of a constructor type.
+The easy way to do this
+is to use the <code><a href="#NWD4">kept_constructors</a></code> generator, which provides the
+retained constructors of a given type, or the retained untyped
+constructors if no type is given.
+<pre><a name="NWgraA-top8-3" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-top8-2">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+procedure <a href="#NWD4">kept_constructors</a>(constype)
+  local thelist 
+  thelist := (\constype).members | <a href="#NWD2">conslist</a>
+  suspend 1(c := !thelist, <a href="#NWD2">constructors</a>[c.name] === c)
+end
+</pre><blockquote>Defines <a href="#NWI-kept_constructors"><code>kept_constructors</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">Two parsers are generated from this grammar: that for a specification,</a>
+and that for a code file containing pattern-matching statements.
+No client ever uses <code><a href="#NWD5">Parsers</a></code> directly; they use <code>P_Spec</code> or <code>P_CodeFile</code>,
+but the union makes it possible for both parsers to handle end-of-file properly.
+The silly tokens avoid parsing conflicts.
+(Incidentally, the lexer for a <code>CodeFile</code> starts out in a different state, but
+that shouldn't matter to the parser generator.)
+<pre><a name="NWgraA-gra7-1" href="#NWD5"><dfn>&lt;grammar&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWD6">-&gt;</a>]</b>
+<a href="#NWD5">Parsers</a>   : &quot;bogus spec marker&quot; <a href="#NWD6">Spec</a> | &quot;bogus code marker&quot; CodeFile;
+</pre><blockquote>Defines <a href="#NWI-Parsers"><code>Parsers</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">The parts of a specification may appear in any order.</a>
+<pre><a name="NWgraA-gra7-2" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWgraA-gra7-3">-&gt;</a>]</b>
+<a href="#NWD6">Spec</a>      : { <a href="#NWD7">Fieldspec</a> | Patterns | Constructors | <a href="#NWDB">Placeholder</a> 
+            | FetchSpec | PCSpec   | RelocSpec    | AsmSpec 
+            | BitSpec   
+            } ;
+</pre><blockquote>Defines <a href="#NWI-Spec"><code>Spec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refC-1" href="#NWgraA-refC-1"><dfn>&lt;refman: spec&gt;=</dfn></a>
+The start symbol for the grammar describing a specification is
+\nt{Specification}.
+Definitions must appear before uses, but otherwise
+the parts of a specification may appear in any order.
+The grammar for a complete specification is therefore
+\begin{production}{Specification}\sequence{\nt{spec}}\end{production}
+</pre><pre><a name="NWgraA-gra7-3" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+PCSpec : &quot;pc_unit_bits&quot; <a href="#NWDj">INT</a> /* if ii2 &gt; 0 then pc_unit_bits := ii2 
+                               else error(&quot;pc_unit_bits must be positive&quot;) */;
+</pre><pre><a name="NWgraA-refI-1" href="#NWgraA-refI-1"><dfn>&lt;refman: spec: misc&gt;=</dfn></a> <b>[D<a href="#NWgraA-refI-2">-&gt;</a>]</b>
+\nextsection{Addressing units for the program counter}
+The specification\indexlit{pc_unit_bits}
+\begin{production}{spec}
+\lit{pc\_unit\_bits} \nt{width}
+\end{production}
+says that the program counter measures units of \nt{width} bits.
+For example, if \verb+pc_unit_bits+ is 8 (the default), a 16-bit token
+in a sequence causes the program counter to be advanced by~2.
+The mechanism of the advance is the second argument to \verb+emit+
+(when encoding) or the offset passed to the template for address
+arithmetic (when decoding).
+We also use these units when converting labels to integers. (We use the
+difference, in increments of \verb+pc_unit_bits+, between the label
+and the program counter).
+The size of any token that appears in a sequence must be exactly
+divisible by \verb+pc_unit_bits+.
+
+</pre><p>
+<h2>Fields and field information</h2>
+Fields declared in the same <code>fields</code> declaration are members of the same equivalence class.
+Fields in the same equivalence class share the same <em>shape</em>, i.e., 
+the width of the unit in which they are defined.
+Constraints on fields with different classes may not be combined with <code>&amp;</code>, even
+if the classes have the same shape.
+<!-- Equivalence classes are an effective way of specifying the names of fields-->
+<!-- that appear in the same instructions, e.g. <code><a name="NWD7">rd</a></code>, <code>rs</code>, and <code>rt</code> or -->
+<!-- <code>fd</code>, <code>fs</code>, and <code>ft</code>.-->
+<!-- false, not so!-->
+Equivalence classes are useful for distinguishing CISC instruction fragments that 
+must be combined to form a complete instruction.
+<p>
+Internally, the toolkit uses little-endian bit numbering---that is,
+bit&nbsp;0 is always the least significant bit.
+<p>
+<pre><a name="NWgraA-gra7-4" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-3">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+<a href="#NWD7">Fieldspec</a> : &quot;fields&quot; &quot;of&quot; <a href="#NWgraA-gra7-V">Ident</a> &quot;(&quot; <a href="#NWDj">INT</a> &quot;)&quot; 
+            { <a href="#NWgraA-gra7-V">Ident</a> <a href="#NWDj">INT</a> [&quot;:&quot; <a href="#NWDj">INT</a> /*ii2*/]  /* <a href="#NWD8">newfield</a>(ii1, ii2, (\ii3 | ii2)+1) */ }
+            /* if ii5 % 8 ~= 0 then
+                  error(&quot;element size &quot;, ii5, &quot; is not a multiple of 8 bits.&quot;)
+               <a name="NWgraA-gra7-4-u1" href="#NWD9"><i>&lt;if needed, flip bit numbering of fields <code>ii7</code> using size <code>ii5</code>&gt;</i></a>
+               (/<a href="#NWD2">symtab</a>[ii3] := equivclass(ii3, ii7, ii5)) | 
+                         deferror(type(<a href="#NWD2">symtab</a>[ii3]) || &quot; &quot;, image(ii3))
+               put(<a href="#NWD2">equivclasses</a>, <a href="#NWD2">symtab</a>[ii3])
+               every (!ii7).class := <a href="#NWD2">symtab</a>[ii3] */
+          ;
+</pre><blockquote>Defines <a href="#NWI-Fieldspec"><code>Fieldspec</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD8">We now permit one-integer specifications of one-bit fields, by analogy</a>
+with one-integer specifications of one-bit slices.
+<pre><a name="NWgraA-top8-4" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWgraA-top8-5">-&gt;</a>]</b>
+procedure <a href="#NWD8">newfield</a>(name, lo, hi)
+  return (/<a href="#NWD2">symtab</a>[name] := field(name, lo, hi)) | deferror(&quot;Field&quot;, image(name))
+end
+</pre><blockquote>Defines <a href="#NWI-newfield"><code>newfield</code></a> (links are to index).<p>
+</blockquote><p>
+
+<a name="NWD9">To number bits, we need both to change numbering and exchange.</a>
+I had tried to do both in two assignments, but that's a botch.
+<pre><a name="NWgraA-if*14-1" href="#NWD9"><dfn>&lt;if needed, flip bit numbering of fields <code>ii7</code> using size <code>ii5</code>&gt;=</dfn></a> <b>(<a href="#NWD7">U-&gt;</a>)</b>
+if /<a href="#NWD2">bit_zero_is_lsb</a> then {
+  if !ii7 then <a href="#NWgraA-*-2">bit_numbering_used</a> := 1
+  every f := !ii7 do {
+    f.hi := ii5 - f.hi
+    f.lo := ii5 - f.lo
+    f.lo :=: f.hi
+  }
+}
+</pre><pre><a name="NWgraA-refK-1" href="#NWgraA-refK-1"><dfn>&lt;refman: spec: fields&gt;=</dfn></a> <b>[D<a href="#NWgraA-refK-2">-&gt;</a>]</b>
+The specification\indexlit{fields}
+\begin{production}{spec}
+\lit{fields of} \term{token-name} \lit( \term{width} \lit) \nt{field-specs}
+\end{production}
+\productionglue
+\begin{production}{field-specs} 
+\sequence{\term{field-name} \term{low-bit}:\term{high-bit}}
+\end{production}
+defines a token named \term{token-name} that is \term{width} bits
+wide, as well as all the fields that may be used to refer to parts of
+that token.
+Bits are numbered from~0.
+By default, bit~0 is the least significant bit, but the significance of bit~0 
+can be changed with the \lit{bit 0} directive (Section~\ref{section:bit-0}).
+</pre><p>
+<h2><a name="NWDA">Bit numbering</a></h2>
+<pre><a name="NWgraA-gra7-5" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+BitSpec      : &quot;bit&quot; Zero &quot;is&quot; Significance Significant
+                 /* xxx := if ii4 == &quot;least&quot; then 1 else &amp;null 
+                    if xxx ~=== <a href="#NWD2">bit_zero_is_lsb</a> then 
+                      <a name="NWgraA-gra7-5-u1" href="#NWgraA-poso-1"><i>&lt;possible warnings around changes in bit numberings&gt;</i></a>
+                    <a href="#NWD2">bit_zero_is_lsb</a> := xxx
+                    <a href="#NWgraA-*-2">bit_numbering_set</a> := 1
+                  */
+             ;
+Zero         : <a href="#NWDj">INT</a> /* ii1 = 0 | error(&quot;expected `0'&quot;) */;
+Significance : <a href="#NWgraA-gra7-V">Ident</a> 
+                /* ii1 == (&quot;most&quot;|&quot;least&quot;) | error(&quot;expected `most' or `least'&quot;) */;
+Significant  : <a href="#NWgraA-gra7-V">Ident</a> /* ii1 == &quot;significant&quot; | error(&quot;expected `significant'&quot;) */;
+</pre><pre><a name="NWgraA-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWDQ">-&gt;</a>]</b>
+global <a href="#NWgraA-*-2">bit_numbering_set</a>, <a href="#NWgraA-*-2">bit_numbering_used</a>
+</pre><blockquote>Defines <a href="#NWI-bit_numbering_set"><code>bit_numbering_set</code></a>, <a href="#NWI-bit_numbering_used"><code>bit_numbering_used</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-poso-1" href="#NWgraA-poso-1"><dfn>&lt;possible warnings around changes in bit numberings&gt;=</dfn></a> <b>(<a href="#NWDA">&lt;-U</a>)</b>
+if \<a href="#NWgraA-*-2">bit_numbering_set</a> then
+  warning(&quot;Multiple inconsistent bit numberings --- hope you really mean it!&quot;)
+if \<a href="#NWgraA-*-2">bit_numbering_used</a> then
+  warning(&quot;You change the bit numbering, but you've already used the old numbering&quot; ||
+          &quot;... seems like a crazy idea, but I'll do it&quot;)
+</pre><pre><a name="NWgraA-refI-2" href="#NWgraA-refI-1"><dfn>&lt;refman: spec: misc&gt;+=</dfn></a> <b>[<a href="#NWgraA-refI-1">&lt;-</a>D<a href="#NWgraA-refI-3">-&gt;</a>]</b>
+\nextsection{Bit numbering}
+\label{section:bit-0}
+By default, bits used to specify fields and bit-slices are numbered with bit~0
+as the least significant bit.
+This choice can be awkward for machines that number the bits starting with
+bit~0 as the most significant bit.
+The \lit{bit 0} directive sets the bit numbering:
+\begin{production}{spec}
+\lit{bit 0 is} \alternate{\lit{most} | \lit{least}} \lit{significant}
+\end{production}
+This declaration changes the bit numbering used to interpret 
+any \lit{fields} declarations and bit slices that follow it.
+We recommend against changing bit numberings in mid-specification.
+
+Only the default bit numbering has been tested.
+</pre><p>
+<h2>Placeholders</h2>
+Placeholders are emitted for instructions that refer to unresolved 
+relocatable addresses.
+They are associated with the equivalence class of the fields used in 
+the instruction.
+<a name="NWDB">A placeholder is defined by a pattern with the same</a>
+length (but not necessarily the same shape) as the equivalence class
+for which it is a placeholder.
+By construction, a placeholder can't refer to constructors that might use it,
+because no such constructor can have been defined yet.
+In other words,
+the definitions of placeholders must precede the definition of
+an instruction that outputs a pattern with fields in the associated
+equivalence classes.
+<pre><a name="NWgraA-gra7-6" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+<a href="#NWDB">Placeholder</a> : &quot;placeholder&quot; &quot;for&quot; <a href="#NWgraA-gra7-V">Ident</a> &quot;is&quot; Pattern 
+              /* class := lookuptype(ii3, &quot;equivclass&quot;)
+                 (/class.holder := pnf(ii5, <a href="#NWD2">globals</a>)) |
+                 error(&quot;<a href="#NWDB">Placeholder</a> for &quot;, ii3, &quot; is already defined&quot;) 
+                 <a name="NWgraA-gra7-6-u1" href="#NWgraA-maks-1"><i>&lt;make sure placeholder of <code>class</code> is the right length&gt;</i></a>
+               */;
+</pre><blockquote>Defines <a href="#NWI-Placeholder"><code>Placeholder</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-maks-1" href="#NWgraA-maks-1"><dfn>&lt;make sure placeholder of <code>class</code> is the right length&gt;=</dfn></a> <b>(<a href="#NWDB">&lt;-U</a>)</b>
+if pattern_length(class.holder) ~= class.size then
+  error(&quot;Length of placeholder `&quot;, patimage(class.holder), 
+    &quot;' \nfor &quot;, class.name, &quot; does not match class size &quot;, class.size)
+</pre><pre><a name="NWgraA-refI-3" href="#NWgraA-refI-1"><dfn>&lt;refman: spec: misc&gt;+=</dfn></a> <b>[<a href="#NWgraA-refI-2">&lt;-</a>D<a href="#NWgraA-refI-4">-&gt;</a>]</b>
+\nextsection{Placeholders}
+The specification\indexlit{placeholder}
+\begin{production}{spec}
+\lit{placeholder for} \term{token-name} \lit{is} \nt{pattern}
+\end{production}
+Tells the toolkit's generator to use \nt{pattern} when it needs to
+emit a placeholder for the named token.
+Placeholders are emitted whenever a <a href="#NWDW">relocatable</a> address is
+needed but not yet known.
+
+</pre><p>
+<code><a name="NWDC">fieldinfo</a></code> associates <em>name, value</em> pairs with one or more fields.
+The values of <code>checked</code>(<code>unchecked</code>) fields are (are not) checked at
+run time.
+A <code>sparse</code> binding of field names is used to specify that only a small
+set of values of the field are meaningful.  The bindings associate a 
+string name with a field value.
+The <code>names</code> construct binds string names to each possible value of a field.
+In both cases we return a table mapping names to values.
+<pre><a name="NWgraA-gra7-7" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+<a href="#NWD7">Fieldspec</a>         : &quot;fieldinfo&quot; { <a href="#NWDC">Fieldinfo</a> } ;
+<a href="#NWDC">Fieldinfo</a>         : <a href="#NWDC">IdentBinding</a> &quot;is&quot; &quot;[&quot; { <a href="#NWDC">Fielditem</a> } &quot;]&quot; 
+                    /*  every fieldinfo(lookuptype(!ii1, &quot;field&quot;), !ii4) */;
+<a href="#NWDC">IdentBinding</a>      : <a href="#NWgraA-gra7-V">Ident</a> /* [ii1] */ | &quot;[&quot; { <a href="#NWgraA-gra7-V">Ident</a> } &quot;]&quot;;
+<a href="#NWDC">Fielditem</a>         : <a href="#NWgraA-gra7-V">Ident</a>  | SparseFieldNames | <a href="#NWDC">FieldNameList</a> ;
+SparseFieldNames  : &quot;sparse&quot; &quot;[&quot; <a href="#NWDC">FieldNameBindings</a> &quot;]&quot; /* sparse_name_table(ii3) */ ;
+<a href="#NWDC">FieldNameBindings</a> : FieldNameBinding {&quot;,&quot; FieldNameBinding}  /* push(ii2, ii1) */;
+FieldNameBinding  : <a href="#NWDC">FieldName</a> &quot;=&quot; Integer /* enumbinding(ii1, ii3) */ ;
+<a href="#NWDC">FieldNameList</a>     : &quot;names&quot; &quot;[&quot; {<a href="#NWDC">FieldName</a>} &quot;]&quot; /* full_name_table(ii3) */ ;
+<a href="#NWDC">FieldName</a>         : (<a href="#NWgraA-gra7-V">String</a> | <a href="#NWgraA-gra7-V">Ident</a>) /* {<a name="NWgraA-gra7-7-u1" href="#NWD3"><i>&lt;note new field name <code>ii1</code>&gt;</i></a>}; ii1 */;
+</pre><blockquote>Defines <a href="#NWI-Bindlist"><code>Bindlist</code></a>, <a href="#NWI-Fieldinfo"><code>Fieldinfo</code></a>, <a href="#NWI-Fielditem"><code>Fielditem</code></a>, <a href="#NWI-FieldName"><code>FieldName</code></a>, <a href="#NWI-FieldNameBindings"><code>FieldNameBindings</code></a>, <a href="#NWI-FieldNameList"><code>FieldNameList</code></a>, <a href="#NWI-IdentBinding"><code>IdentBinding</code></a> (links are to index).<p>
+</blockquote><p><a name="NWDD">We reserve the following similar syntax for places where we aren't</a>
+referring to field names:
+<pre><a name="NWgraA-gra7-8" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+SparseNames : &quot;sparse&quot; &quot;[&quot; Bindings &quot;]&quot; /* sparse_name_table(ii3) */ ;
+Bindings    : Binding {&quot;,&quot; Binding}  /* push(ii2, ii1) */;
+Binding     : (<a href="#NWgraA-gra7-V">String</a>|<a href="#NWgraA-gra7-V">Ident</a>) &quot;=&quot; Integer /* enumbinding(ii1, ii3) */ ;
+DenseNames  : &quot;names&quot; &quot;[&quot; {<a href="#NWgraA-gra7-V">String</a>|<a href="#NWgraA-gra7-V">Ident</a>} &quot;]&quot; /* full_name_table(ii3) */ ;
+NameTable   : SparseNames | DenseNames;
+</pre><p>
+<pre><a name="NWgraA-refK-2" href="#NWgraA-refK-1"><dfn>&lt;refman: spec: fields&gt;+=</dfn></a> <b>[<a href="#NWgraA-refK-1">&lt;-</a>D]</b>
+
+A \lit{fieldinfo}\indexlit{fieldinfo} specification gives auxiliary
+information about a field or list of fields.
+(It is useful to describe several fields simultaneously
+when, for example, they all refer to the
+same set of registers.)
+Such auxiliary information might include special names used to refer
+to values of the fields (as when they describe data formats or
+registers) or information about what kind of checking should be done
+when an application supplies a putative value for a field.
+
+The syntax of \lit{fieldinfo} specifications is:
+\begin{production}{spec}
+\lit{fieldinfo} \sequence{\nt{fieldinfo-spec}}
+\end{production}
+\productionglue
+\begin{production} {fieldinfo-spec} 
+  \nt{field-specifier} \lit{is} \lit[ \sequence{\nt{field-item}} \lit]
+\end{production}
+\productionglue
+\begin{production} {field-specifier}
+\term{field-name} \vbar\ \lit[ \sequence{\term{field-name}} \lit]
+\end{production}
+\productionglue
+\begin{production} {field-item}
+ \lit{checked}
+|       \lit{unchecked}
+|       \lit{guaranteed}
+|         \lit{sparse [} \nt{binding} \sequence{\lit, \nt{binding}}
+                                \lit]
+|         \lit{names [} \sequence{\term{<a href="#NWgraA-gra7-V">Ident</a>} | \term{<a href="#NWgraA-gra7-V">String</a>}} \lit]
+\end{production}
+\productionglue
+\begin{production} {binding}
+ \alternate{\term{<a href="#NWgraA-gra7-V">Ident</a>} | \term{<a href="#NWgraA-gra7-V">String</a>}} \lit= \term{integer}
+\end{production}
+The terms \lit{checked}, \lit{unchecked}, and \lit{guaranteed} denote
+three possible levels of checking in generated encoding procedures:
+\begin{itemize}
+\item 
+If $f$ is a checked field, the encoding procedure checks to make sure
+its value falls within range.  If not, it calls an error handler.\indexlit{checked}
+\item
+If $f$ is an unchecked field, the encoding procedure does not check its
+value, but it does mask out high bits, ensuring that other parts of
+the token can't be corrupted by a bad value of~$f$.\indexlit{unchecked}
+\item
+If $f$ is a guaranteed field, the encoding procedure simply uses its
+value without any checking or masking at all.%
+\indexlit{guaranteed}%
+\footnote{Signed field parameters must always be masked, but most
+field parameters are unsigned.}
+This option is useful mainly for situations in which $f$ denotes a
+register, and the register allocator promises never to use a bogus
+register.
+\end{itemize}
+
+\lit{sparse}\indexlit{sparse} and \lit{names}\indexlit{names} are both
+ways of specifying names of fields.
+\lit{names} is used when all the names are known; 
+\lit{sparse} is used otherwise.
+Identifiers can be used to specify names on most targets, but names containing
+special characters can only be specified using string literals.
+Note that the toolkit accepts the C <a href="#NWDS">literal</a> syntax for characters in
+place of integer literals; this property may be useful when writing
+\lit{sparse} bindings.
+The use of commas to separate lists of bindings is not
+consistent with our other representations of lists, but they look
+funny without the commas.
+
+</pre><p>
+<a name="NWDE">I lump the word size of the target machine into the field specs, not because it</a>
+makes all that much sense, but because I didn't know where else to put it.
+<pre><a name="NWgraA-gra7-9" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWgraA-gra7-A">-&gt;</a>]</b>
+<a href="#NWD7">Fieldspec</a> : &quot;<a href="#NWgraA-top8-5">wordsize</a>&quot; <a href="#NWDj">INT</a> /* <a href="#NWgraA-top8-5">wordsize</a> := ii2 */;
+</pre><pre><a name="NWgraA-top8-5" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+global <a href="#NWgraA-top8-5">wordsize</a>         # word size of the machine the application runs on
+</pre><blockquote>Defines <a href="#NWI-wordsize"><code>wordsize</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-iniE-1" href="#NWgraA-iniE-1"><dfn>&lt;initialization&gt;=</dfn></a> <b>(<a href="#NWgraA-top8-2">&lt;-U</a>)</b> <b>[D<a href="#NWgraA-iniE-2">-&gt;</a>]</b>
+<a href="#NWgraA-top8-5">wordsize</a> := 32
+</pre><pre><a name="NWgraA-refI-4" href="#NWgraA-refI-1"><dfn>&lt;refman: spec: misc&gt;+=</dfn></a> <b>[<a href="#NWgraA-refI-3">&lt;-</a>D]</b>
+\nextsection{Word size}
+There are a few situations in which we use the word size of the
+machine for which we are generating code---mostly to see whether
+certain values will fit.
+It defaults to 32~bits, but it can be specified by
+\begin{production}{spec}
+\lit{<a href="#NWgraA-top8-5">wordsize</a>}\indexlit{<a href="#NWgraA-top8-5">wordsize</a>} \term{width}
+\end{production}
+where \term{width} is the width in bits.
+
+</pre><p>
+<h2><a name="NWDF">Pattern definitions</a></h2>
+Patterns parse into abstract syntax; patbinding makes them concrete and binds them
+to identifiers.
+<pre><a name="NWgraA-top8-6" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-top8-5">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+global <a href="#NWDF">patlhs</a>           # hold lhs for later action
+</pre><blockquote>Defines <a href="#NWI-patlhs"><code>patlhs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-gra7-A" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDE">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+Patterns  : &quot;patterns&quot; { PatBinding };
+PatBinding: (<a href="#NWgraA-gra7-V">Ident</a> /* <a href="#NWDF">patlhs</a> := ii1 */) &quot;is&quot; BindingRHS
+          | &quot;[&quot; {<a href="#NWgraA-gra7-V">Ident</a>} &quot;]&quot; &quot;is&quot; Pattern /* <a href="#NWDO">patbinding</a>(ii2, ii5) */
+          ;
+BindingRHS: Pattern /* <a href="#NWDO">patbinding</a>(<a href="#NWDF">patlhs</a>, ii1) */
+          | &quot;any&quot; &quot;of&quot; &quot;[&quot; {<a href="#NWgraA-gra7-V">Ident</a>} &quot;]&quot; &quot;,&quot; &quot;which&quot; &quot;is&quot; Pattern
+              /* <a href="#NWDO">patbinding</a>(copy(ii4), ii9)
+                 l := []
+                 every put(l, <a href="#NWDK">Pident</a>(&quot;_&quot; ~== !ii4))
+                 <a href="#NWDO">patbinding</a>(<a href="#NWDF">patlhs</a>, <a href="#NWDK">Por</a>(l)) */
+          ;
+</pre><pre><a name="NWgraA-refU-1" href="#NWgraA-refU-1"><dfn>&lt;refman: spec: pattern bindings&gt;=</dfn></a>
+Patterns can be named using pattern-binding
+declarations:\index{pattern bindings}
+\begin{production}{spec}\lit{patterns} \sequence{\nt{pattern-binding}}\end{production}
+\productionglue
+\begin{production}{pattern-binding}
+  \term{pattern-name} \lit{is} \nt{pattern}
+| \lit[ \sequence{\term{pattern-name}} \lit] \lit{is} \nt{pattern}
+| \term{pattern-name} \lit{is any of [} \sequence{\term{pattern-name}}
+                                \rlap{\lit{], which is} \nt{pattern}}
+\end{production}
+The first form names a single pattern.
+
+The second,  most common form binds a list of names on the left to a
+list of patterns on the right.
+The number of names must match the number of patterns; the special
+name ``\verb+_+'' can be used to match uninteresting patterns on the
+right.
+This form requires the use of generating expressions (or an explicit list of
+patterns) to produce a list of patterns.
+It is typically used to create opcode tables.
+In this situation, the name ``\verb+_+'' simply indicates an unused opcode.
+
+The third form extends the second to handle a common idiom.
+The sequence of pattern names and the pattern on the far right act
+just as they do in the second form, but in addition, the single name
+on the left is bound to the disjunction of all the patterns on the
+right that are bound to names other than ``\verb+_+''.
+Examples can be found in the SPARC and 486 specifications given by
+\authorcite{ramsey:tk-architecture}.
+
+The name to which a pattern is bound remains associated with that
+pattern, and that name may be used in the formation of opcode names.
+When a disjunction is bound, the individual disjuncts retain their
+names, if any.
+This behavior can be exploited when writing 
+constructor specifications, in which 
+disjuncts are enumerated when patterns appear in opcodes.
+</pre><p>
+<a name="NWDG">Parsing labels relies on a grotesque hack to keep things LL(1); we</a>
+allow an arbitrary sequent to precede colon, then patch things up
+semantically afterwards.
+<pre><a name="NWgraA-gra7-B" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-A">&lt;-</a>D<a href="#NWgraA-gra7-C">-&gt;</a>]</b>
+Pattern   : Disjunct      { &quot;|&quot; Disjunct }      /* <a href="#NWDK">Por</a>(push(ii2, ii1))   */ ;
+Disjunct  : Sequent       { &quot;;&quot; Sequent 
+                          | &quot;:&quot; Sequent /* <a href="#NWDI">colon_mark</a>(ii2) */
+                          }      /* <a href="#NWDK">Pseq</a>(<a href="#NWDI">colons_to_labels</a>(push(ii2, ii1)))  */ ;
+Sequent   : Conjunct      { &quot;&amp;&quot; Conjunct }      /* <a href="#NWDK">Pand</a>(push(ii2, ii1))  */ ;
+
+Conjunct  : [&quot;...&quot;] DotsR    /* if \ii1 then <a href="#NWDK">Pseq</a>([dots_pattern(),ii2]) else ii2 */;
+DotsR     : Atomic [&quot;...&quot;]   /* if \ii2 then <a href="#NWDK">Pseq</a>([ii1,dots_pattern()]) else ii1 */ ;
+
+Atomic    : (<a href="#NWgraA-gra7-V">Ident</a> /* <a href="#NWDJ">atomicid</a> := ii1 */)
+            (                                    /* <a href="#NWDK">Pident</a>(<a href="#NWDJ">atomicid</a>) */
+            | Relop (Generator | Expr)           /* <a href="#NWDK">Pcon</a>(<a href="#NWDJ">atomicid</a>, ii1, ii2) */
+            | {&quot;^&quot; Opname} &quot;(&quot; ConstructorArgs &quot;)&quot; 
+                  /* <a href="#NWDK">Papp</a>(push(ii1, \<a href="#NWD2">symtab</a>[<a href="#NWDJ">atomicid</a>] | <a href="#NWDJ">atomicid</a>), ii3) */
+            ) /* ii2 */
+          | <a href="#NWgraA-gra7-V">String</a> {&quot;^&quot; Opname} &quot;(&quot; ConstructorArgs &quot;)&quot;
+                  /* <a href="#NWDK">Papp</a>(push(ii2, ii1), ii4) */
+          | &quot;(&quot; Pattern &quot;)&quot;
+          | &quot;[&quot; {<a href="#NWgraA-gra7-V">Ident</a> /* <a href="#NWDK">Pident</a>(ii1) */} &quot;]&quot;   /* <a href="#NWDK">Plist</a>(ii2) */
+          ;
+ConstructorArgs : AppExpr {&quot;,&quot; AppExpr} /* push(ii2, ii1) */
+                | /* [] */
+                ;
+</pre><p>
+We used to ``explode'' compound constructor names at this syntactic step,
+but this turned out to be not what we wanted on the RHS of constructor
+definitions.  For example, in
+<pre> 
+<a name="NWDH">pattern load is ld | lb</a>
+constructor load^&quot;2&quot; a,b,c,d is load(a,b); load(c,d)
+</pre>
+we cannot evaluate <code><a href="#NWDK">Papp</a>(name, args)</code> for the <code>load</code>s on the
+right-hand side until we have an environment telling use whether
+<code>load</code> stands for <code>ld</code> or <code>lb</code> in this particular context.
+(The original semantics made it stand for <code>ld|lb</code>, which we decided
+was rarely what anyone wanted.)
+
+<a name="NWDI">Here's the colon fix:</a>
+<pre><a name="NWgraA-top8-7" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+record <a href="#NWDI">colon_mark</a>(x)
+
+procedure <a href="#NWDI">colons_to_labels</a>(l)
+  every i := 1 to *l &amp; type(l[i]) == &quot;<a href="#NWDI">colon_mark</a>&quot; do {
+    l[i] := l[i].x  # strip out tag
+    (l[i-1] := <a href="#NWDI">undo_identifier_syntax</a>(l[i-1])) |
+      error(&quot;Colon must be preceded by an identifier&quot;)
+  }
+  return l
+end
+
+procedure <a href="#NWDI">undo_identifier_syntax</a>(seq)
+  if type(seq) == &quot;<a href="#NWDK">Pand</a>&quot; &amp; *seq.patterns = 1 &amp; con := seq.patterns[1] &amp;
+     type(con) == &quot;<a href="#NWDK">Pident</a>&quot;
+  then
+    return <a href="#NWDK">Plabel</a>(con.name)
+end     
+</pre><blockquote>Defines <a href="#NWI-colon_mark"><code>colon_mark</code></a>, <a href="#NWI-colons_to_labels"><code>colons_to_labels</code></a>, <a href="#NWI-undo_identifier_syntax"><code>undo_identifier_syntax</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDJ" href="#NWDJ">atomicid</a></code> is an auxiliary variable.
+<pre><a name="NWgraA-top8-8" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+global <a href="#NWDJ">atomicid</a>
+</pre><blockquote>Defines <a href="#NWI-atomicid"><code>atomicid</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDK">The following records represent the nodes in a pattern's abstract syntax tree.</a>
+<pre><a name="NWgraA-top8-9" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWDL">-&gt;</a>]</b>
+record <a href="#NWDK">Por</a> (patterns)                   # disjunction
+record <a href="#NWDK">Pseq</a>(patterns)                   # sequence
+record <a href="#NWDK">Pand</a>(patterns)                   # conjunction
+record <a href="#NWDK">Pcon</a>(name, relop, value)         # constraint on field
+record <a href="#NWDK">Pident</a>(name)                     # identifier standing for a pattern
+record <a href="#NWDK">Plabel</a>(name)                     # pattern label
+record <a href="#NWDK">Papp</a>(cons, args)                 # constructor applied to arguments
+                                        #   (args are AppExprs)
+record <a href="#NWDK">Plist</a>(patterns)                  # list of patterns in square brackets
+</pre><blockquote>Defines <a href="#NWI-Pand"><code>Pand</code></a>, <a href="#NWI-Papp"><code>Papp</code></a>, <a href="#NWI-Pcon"><code>Pcon</code></a>, <a href="#NWI-Pident"><code>Pident</code></a>, <a href="#NWI-Plabel"><code>Plabel</code></a>, <a href="#NWI-Plist"><code>Plist</code></a>, <a href="#NWI-Por"><code>Por</code></a>, <a href="#NWI-Pseq"><code>Pseq</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refM-1" href="#NWgraA-refM-1"><dfn>&lt;refman: spec: patterns&gt;=</dfn></a>
+Patterns can be defined both in terms of themselves or in terms of simpler elements.
+We discuss the base cases of the recursion first.
+
+\section{Simple patterns}
+Simple patterns can be described by any of the
+following syntaxes:\index{patterns!simple} 
+\begin{production}{pattern}
+  \term{name}&amp;
+        \term{name} of \rlap{pattern, field, or constructor type}
+| \nt{opcode} \lit( \nt{arguments} \lit)&amp;
+        Constructor application
+| \nt{field-binding}&amp;
+        Binds field to variable
+| \nt{constraint}&amp;      
+        Constrains field
+<a name="NWgraA-refM-1-u1" href="#NWgraA-refT-1"><i>&lt;refman: other atomic patterns&gt;</i></a>
+| \lit[ \sequence{name} \lit]&amp;  
+        List of patterns
+\end{production}
+\productionglue
+\begin{production}{field-binding}
+\term{field-name} \lit= \nt{expr}
+\end{production}
+\productionglue
+\begin{production}{constraint}
+\term{field-name} \nt{relational-operator} 
+                \rlap{\alternate{\term{integer} | \nt{generating-expression}}}
+\end{production}
+\productionglue
+\begin{production}{relational-operator}
+\lit{&lt;} \vbar{} \lit{&lt;=} \vbar{} \lit{=} \vbar{} \lit{!=} \vbar{}
+\lit{&gt;} \vbar{} \lit{&gt;=} 
+\end{production}
+Unless a list of pattern names or a generating expression is used, the pattern
+denotes a single pattern; otherwise it denotes a list.
+Lists are ordinarily used to describe opcode tables.
+The \nt{arguments} in a constructor application may include expressions, 
+<a href="#NWDS">literal</a> strings (which must be field names), or other constructor applications.
+Section \ref{section:expr} describes the syntax of expressions (\nt{expr}).
+Expressions in a \nt{field-binding} may contain free variables.
+Such variables may be operands,  or they may 
+be computed by the solver.
+
+
+When an identifier is used as a pattern, its meaning depends on
+context.
+Pattern names defined with the \lit{patterns} pattern-binding statement can
+always be used in later patterns.
+On the right-hand side of a constructor
+definition, the names of operands that represent fields or constructor
+types may also be used as patterns.
+The name of a field operand~\lit{f} is short for
+\begin{quote}
+\lit{f =} {\em the value of the operand \lit{f}}.
+\end{quote}
+Similarly, the name of a constructor-type operand~\lit T is short for
+its value, which must be a pattern because the result of applying a
+constructor is always a pattern.
+
+<a name="NWgraA-refM-1-u2" href="#NWgraA-refW-1"><i>&lt;refman: constructor applications&gt;</i></a>
+
+<a name="NWgraA-refM-1-u3" href="#NWgraA-refa-1"><i>&lt;refman: spec: generating expressions&gt;</i></a>
+
+\section{Combining patterns}
+
+The recursive part of the definition of patterns makes it possible to
+combine patterns using the following
+operators:\index{patterns!complex}\index{pattern operators}
+\begin{production}{pattern}
+\nt{pattern} \lit{...}&amp;                Loosens rules restricting conjunction.
+| \lit{...} \nt{pattern}&amp;              Loosens rules restricting conjunction.
+| \nt{pattern} \lit{\&amp;} \nt{pattern}&amp;  Conjunction.
+| \nt{pattern} \lit; \nt{pattern}&amp;     Sequence.
+| \nt{pattern} \litbar\ \nt{pattern}&amp;     Disjunction.
+\end{production}
+Operators listed first have higher precedence.
+
+\section{Pattern labels}
+
+One can refer to a  location within a pattern by using a \emph{pattern label}.
+The syntax is
+\begin{production}{pattern}
+\term{label-name} \nt{pattern}
+\end{production}
+The appearance of \term{label-name} is a binding instance; its scope
+is the \indexedlit{patterns} declaration or the constructor branch in
+which it appears.
+Within that scope, it refers to the location in the instruction stream
+immediately preceding the pattern it labels.
+That location can be converted to an integer in the same way as a
+<a href="#NWDW">relocatable</a> address.
+Labelling has the same precedence as the sequencing operator, so, for
+example, to refer to the location at the end of an instruction, one
+can use the idiom
+\begin{quote}
+\nt{pattern}\lit{; L: epsilon}
+\end{quote}
+
+
+
+<a name="NWgraA-refM-1-u4" href="#nw@notdef"><i>&lt;refman: description of pattern operators&gt;</i></a>
+
+</pre><p>
+<a name="NWDL">The name of an applied constructor depends on the environment </a>
+in which it is evaluated.  We use <code>explode_names</code> to 
+generate all possible constructor names denoted by 
+a constructor application, then generate the applications. 
+<pre><a name="NWgraA-top8-A" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+procedure <a href="#NWDL">explode_apps</a>(opcode, args, rho)
+  l := []
+  every c := explode_names(opcode, rho) do {
+    put(l, <a href="#NWDK">Papp</a>(cons_named(c), args))
+  }
+  return if *l = 1 then l[1] else <a href="#NWDK">Por</a>(l)
+end
+</pre><blockquote>Defines <a href="#NWI-explode_apps"><code>explode_apps</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refW-1" href="#NWgraA-refW-1"><dfn>&lt;refman: constructor applications&gt;=</dfn></a> <b>(<a href="#NWgraA-refM-1">&lt;-U</a>)</b>
+The \nt{opcode} used in a constructor application may denote a single
+constructor or a group of <a href="#NWD2">constructors</a> with identical operands.
+It works the same way in a constructor specification, as described in
+Section~\ref{sec:opcode}.
+Strictly speaking, applying a constructor to create a pattern is not
+``simple,'' because patterns themselves are used to define
+<a href="#NWD2">constructors</a>.
+It is actually part of a mutual recursion between the definitions of
+patterns and <a href="#NWD2">constructors</a>.
+
+
+
+</pre><pre><a name="NWgraA-gra7-C" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWDM">-&gt;</a>]</b>
+Relop     : &quot;=&quot; | &quot;!=&quot; | &quot;&lt;=&quot; | &quot;&gt;=&quot; | &quot;&lt;&quot; | &quot;&gt;&quot; ;
+Generator : &quot;{&quot; Integer &quot;to&quot; Integer [ &quot;columns&quot; <a href="#NWDj">INT</a> /* ii2 */ ] &quot;}&quot;  
+                                /* <a href="#NWDN">Gfor</a>(ii2, ii4+1, \ii5 | 1) */
+          | &quot;[&quot; { Integer } &quot;]&quot;     /* <a href="#NWDN">Glist</a>(ii2) */
+          ;
+</pre><pre><a name="NWgraA-refa-1" href="#NWgraA-refa-1"><dfn>&lt;refman: spec: generating expressions&gt;=</dfn></a> <b>(<a href="#NWgraA-refM-1">&lt;-U</a>)</b>
+A {\em generating expression}\index{generating expression} can be used
+instead of an integer in field constraints.
+The resulting constraint denotes a list of patterns, one for each
+value of the generating expression.
+There are three forms of generating expression:
+\begin{production} {generating-expression}
+  \lit\lbr{} \term{lo} \lit{to} \term{hi} \lit\rbr
+| \lit\lbr{} \term{lo} \lit{to} \term{hi} \lit{columns} \term{n} \lit\rbr
+| \lit[ \sequence{\term{integer}} \lit]
+\end{production}
+The first form generates the integers from \term{lo} to \term{hi}
+inclusive, in order.
+The second form generates the same integers, but in an order suited to
+an \term{n}-column layout, e.g. $\term{lo}, \term{lo}+\term{n},
+\term{lo}+2\term{n}, \ldots$, wrapping around as needed.
+The third form simply lists the integers generated; it is suitable for
+sparse tables.
+
+</pre><p>
+<a name="NWDM">There are a couple of special patterns.</a>
+These alone produce patterns directly, not an AST.
+(<code>pnf</code>, for example, isn't prepared to cope with a pattern with an
+empty sequence).
+<pre><a name="NWgraA-gra7-D" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-C">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+Atomic : &quot;epsilon&quot;   /* epsilon() */
+       | &quot;some&quot; <a href="#NWgraA-gra7-V">Ident</a> /* wildcard(lookuptype(ii2, &quot;equivclass&quot;)) */
+       ;
+</pre><pre><a name="NWgraA-refT-1" href="#NWgraA-refT-1"><dfn>&lt;refman: other atomic patterns&gt;=</dfn></a> <b>(<a href="#NWgraA-refM-1">&lt;-U</a>)</b>
+| \lit{epsilon}\indexlit{epsilon}&amp;The empty sequence.
+| \lit{some}\indexlit{some} \term{token-name}&amp;
+        Matches a single token \rlap{of the class named.}
+</pre><p>
+<h3><a name="NWDN">Pattern syntax</a></h3>
+A generator is represented by a <code><a href="#NWDN">Glist</a></code>.  The list of values is either given 
+explicitly or generated on the spot by <code><a href="#NWDN">Gfor</a></code>.
+Note that <code>hi</code> is one <em>more</em> than the largest value generated.
+<pre><a name="NWgraA-top8-B" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+record <a href="#NWDN">Glist</a>(values)                    
+procedure <a href="#NWDN">Gfor</a>(lo, hi, cols)
+    local l, r
+    l := []
+    r := (hi - lo) / cols
+    every put(l, lo + (0 to r - 1) + r * (0 to cols - 1))
+    return <a href="#NWDN">Glist</a>(l)
+end
+</pre><blockquote>Defines <a href="#NWI-Gfor"><code>Gfor</code></a>, <a href="#NWI-Glist"><code>Glist</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDO">Binding a pattern requires putting it in normal form.</a>
+If there is a generator in the pattern, the normal form is a list.
+In that case, <code>id</code> must also be a list.
+<pre><a name="NWgraA-top8-C" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+procedure <a href="#NWDO">patbinding</a>(id, ast)
+    local p
+    <a name="NWgraA-top8-C-u1" href="#NWgraA-verQ-1"><i>&lt;verbosely announce binding&gt;</i></a>
+    p := pnf(ast, <a href="#NWD2">globals</a>)
+    <a name="NWgraA-top8-C-u2" href="#NWgraA-insq-1"><i>&lt;insist <code>p</code> have no conditionals nor field bindings&gt;</i></a>
+    case type(id) || &quot;,&quot; || type(p) of {
+        &quot;string,pattern&quot; : patbind(id, p, <a href="#NWD2">globals</a>)
+        &quot;list,list&quot;      : if *id = *p then
+                             while patbind(get(id), get(p), <a href="#NWD2">globals</a>)
+                           else 
+                             error(&quot;identifier list/generator length mismatch: &quot;, 
+                                   *id, &quot; vs &quot;, *p)
+        &quot;string,list&quot;    : error(&quot;generator must be bound to an identifier list&quot;)
+        &quot;list,pattern&quot;   : error(&quot;identifier list must be bound to a generator&quot;)
+        default          : impossible(&quot;pattern binding&quot;)
+    }
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-patbinding"><code>patbinding</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-insq-1" href="#NWgraA-insq-1"><dfn>&lt;insist <code>p</code> have no conditionals nor field bindings&gt;=</dfn></a> <b>(<a href="#NWDO">&lt;-U</a>)</b>
+case type(p) of {
+  &quot;pattern&quot; : insist_global_pattern(p)
+  &quot;list&quot;    : every insist_global_pattern(!p)
+}
+</pre><pre><a name="NWgraA-verQ-1" href="#NWgraA-verQ-1"><dfn>&lt;verbosely announce binding&gt;=</dfn></a> <b>(<a href="#NWDO">&lt;-U</a>)</b>
+case type(id) of {
+  &quot;string&quot; : verbose(&quot;Pattern &quot;, id)
+  &quot;list&quot;   : verbose(*id, &quot; patterns&quot;)
+}
+</pre><pre><a name="NWgraA-refK.2-1" href="#NWgraA-refK.2-1"><dfn>&lt;refman: constructors&gt;=</dfn></a>
+The constructor specifications are the most complicated in
+the toolkit; they can use compound opcodes, equations,
+assembly-language syntax, and conditional assembly.
+Constructor specifications are the only ones in which newlines are
+significant.
+We make newlines significant so that we can use them in the very
+common case in which the output pattern of the constructor is implicit.
+
+
+<a name="NWgraA-refK.2-1-u1" href="#NWgraA-refV-1"><i>&lt;refman: constructor-spec syntax&gt;</i></a>
+
+<a name="NWgraA-refK.2-1-u2" href="#NWgraA-refS-1"><i>&lt;refman: opcodes and operands&gt;</i></a>
+
+<a name="NWgraA-refK.2-1-u3" href="#NWgraA-refW.2-1"><i>&lt;refman: branches of constructors&gt;</i></a>
+</pre><p>
+<h2>Constructors</h2>
+A constructor consists of an <code>Opcode</code>, one or more <code>Operand</code>s,
+<a name="NWDP">an optional constructor type </a><code><a href="#NWDR">ConstType</a></code>, and one or more <code>Branches</code>.
+The default type of a constructor is <code>instruction</code>.
+One-branch syntax is radically different from multibranch syntax and I haven't
+the time to explain the details now.
+Each branch consists of a set of <code>Equations</code>
+followed by a required output <code>Pattern</code>.
+Branches are evaluated in order: the constructor's value
+is the output pattern of the first branch whose constraints
+are satisfied.
+<pre><a name="NWgraA-gra7-E" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDM">&lt;-</a>D<a href="#NWgraA-gra7-F">-&gt;</a>]</b>
+Constructors : &quot;<a href="#NWD2">constructors</a>&quot; (/*see_newline()*/) { Constructor /* see_newline() */} ;
+Constructor  : Opcode Operands [ &quot;:&quot; <a href="#NWDR">ConstType</a> ] NLBranches
+                 /* note_constructor(ii1, ii2, \ii3 | <a href="#NWD2">instructionctype</a>, ii4) */ 
+               ;
+Operands : SeeWhite {Operand} StopWhite /* <a href="#NWDQ">process_operands</a>(ii2) */;
+</pre><p>
+<a name="NWDQ">To process operands, we combine adjacent literals and remove trailing</a>
+white space.
+<pre><a name="NWgraA-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgraA-*-2">&lt;-</a>D<a href="#NWDV">-&gt;</a>]</b>
+procedure <a href="#NWDQ">process_operands</a>(ops)
+  if type(ops[-1]) == &quot;<a href="#NWDS">literal</a>&quot; &amp; ops[-1].s ? (white(), pos(0)) then
+    pull(ops) # discard trailing white space
+  l := []
+  every x := !ops do
+    if type(x) == &quot;<a href="#NWDS">literal</a>&quot; &amp; type(l[-1]) == &quot;<a href="#NWDS">literal</a>&quot; then
+      l[-1].s ||:= x.s
+    else
+      put(l, x)
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-process_operands"><code>process_operands</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refV-1" href="#NWgraA-refV-1"><dfn>&lt;refman: constructor-spec syntax&gt;=</dfn></a> <b>(<a href="#NWgraA-refK.2-1">&lt;-U</a>)</b>
+The syntax of constructor specifications is\indexlit{<a href="#NWD2">constructors</a>}
+\begin{production}{spec}
+\lit{<a href="#NWD2">constructors</a>} \sequence{\nt{constructor}}
+\end{production}
+\productionglue
+\begin{production}{constructor}
+  \nt{opcode} \sequence{\nt{operand}} \optional{ \lit: \term{type-name} } $\star$
+                        \optional{\nt{branches}}
+\end{production}
+Because both type and branches are optional, we use the newline to
+separate the last operand of the current constructor from the opcode
+of the following constructor.
+The newline is significant only in the position marked~$\star$, and
+only the first newline is significant.  It is OK to include the
+newline even when explicit branches are present.
+
+<a name="NWgraA-refV-1-u1" href="#NWgraA-refP-1"><i>&lt;refman: constructor types&gt;</i></a>
+</pre><pre><a name="NWgraA-gra7-F" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWgraA-gra7-G">-&gt;</a>]</b>
+NLBranches   : Branches
+             | <a href="#NWDj">NEWLINE</a> (Branches | /* [ [ [], &amp;null ] ] */)
+             ;
+Branches     : SingleBranch /* [ii1] */
+             | WhenBranch {WhenBranch | OtherwiseBranch}
+                /* push(ii2, ii1); put(ii2, \ii3); ii2 */
+             ;
+SingleBranch : &quot;{&quot; Equations &quot;}&quot; [ &quot;is&quot; Pattern ] /* [ ii2, \ii4 | &amp;null] */ 
+             | &quot;is&quot; Pattern    /* [ [] , ii2 ] */ 
+             ;
+WhenBranch      : &quot;when&quot; &quot;{&quot; Equations &quot;}&quot; &quot;is&quot; Pattern /* [ii3, ii6] */;
+OtherwiseBranch : &quot;otherwise&quot; &quot;is&quot; Pattern /* [[], ii3] */;
+</pre><pre><a name="NWgraA-refW.2-1" href="#NWgraA-refW.2-1"><dfn>&lt;refman: branches of constructors&gt;=</dfn></a> <b>(<a href="#NWgraA-refK.2-1">&lt;-U</a>)</b>
+The branches given with a constructor determine its output pattern.
+Most commonly, each constructor produces a unique sequence of tokens
+when applied, so its right-hand side is specified by one pattern
+containing a single disjunct:
+\begin{production}{branches}
+  \optional{\lit\lbr \nt{equations} \lit\rbr} 
+  \optional{\lit{is} \nt{pattern}}
+\end{production}
+The equations (Section~\ref{sec:equations}) are solved to produce a
+set of {\em conditions}, which are predicates sufficient to guarantee
+that the
+equations have a solution, and to produce {\em bindings} for
+the variables solved for.
+When encoding,
+the field- and integer-valued operands to the constructor provide the
+inputs to the equation solver; when decoding, it is the variables
+bound to fields in \nt{pattern} which perform that function.
+Equations can be omitted if not needed.
+
+The output pattern, which describes the binary representation 
+of the constructor,
+can also be omitted, in which case
+all the field names, pattern names, and
+constructor-type names in the opcode and operands are conjoined to
+produce an {\em implicit} output pattern.
+Omitting both equations and output pattern 
+yields a very concise constructor specification; 
+we use this idiom heavily in our MIPS and SPARC descriptions.
+
+The toolkit checks a constructor's output pattern for 
+consistency.  
+It generates an error if a field in a token is overconstrained
+or if fields overlap.
+For an untyped constructor, it
+generates a warning if there are
+unspecified bits in the constructor's output pattern,
+and it initializes unspecified bits to zero.
+
+Sometimes we want to choose an output pattern based on some properties
+of the operands (conditional assembly).
+In that case, we can give multiple branches, each with its own set of
+equations.
+\begin{production}{branches}
+  \sequence{\lit{when} \lit\lbr{} \nt{equations} \lit\rbr{} \lit{is} \nt{pattern} |
+            \lit{otherwise is} \nt{pattern}}
+\end{production}
+The sequence of \lit{when} branches may not be empty, 
+and output patterns cannot be omitted when multiple branches are used.
+
+When using this constructor in encoding, the toolkit chooses the first
+branch whose conditions are known to be satisfied.
+This conservative approach means that the toolkit can always produce
+correct code in a single pass, but that, for example, branches to
+unknown labels are always encoded in the most general way.
+It would be pleasant if we got around to incorporating standard
+multi-pass algorithms for conditional assembly, but don't look for it
+soon. 
+</pre><pre><a name="NWgraA-gra7-G" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-F">&lt;-</a>D<a href="#NWgraA-gra7-H">-&gt;</a>]</b>
+Opcode    : Opname { &quot;^&quot; Opname }  /* push(ii2, ii1) */ ;
+Opname    : <a href="#NWgraA-gra7-V">Ident</a> /* \<a href="#NWD2">symtab</a>[ii1] | ii1 */ | <a href="#NWgraA-gra7-V">String</a> ;
+</pre><pre><a name="NWgraA-refS-1" href="#NWgraA-refS-1"><dfn>&lt;refman: opcodes and operands&gt;=</dfn></a> <b>(<a href="#NWgraA-refK.2-1">&lt;-U</a>)</b> <b>[D<a href="#NWgraA-refS-2">-&gt;</a>]</b>
+\label{sec:opcode}
+The opcode and operand notations used in constructor specifications
+are designed to enable concise specifications that resemble assembly
+language.
+In fact, the toolkit uses these notations to infer an
+assembly-language syntax for each instruction, and the toolkit can
+generate encoding procedures which emit that assembly language.
+As noted above, the constructor specification begins with opcode and
+operands.
+The list of operands is terminated by the first newline, or by any of
+the tokens that introduce later constructs.%
+\footnote{Computers are better than I at computing follow sets, but
+certainly the colon that introduces a constructor type, the brace that
+introduces equations, and the keyword \lit{is} all terminate lists of
+operands.}
+
+Opcodes are formed from three kinds of units: <a href="#NWDS">literal</a> strings, pattern
+names, and field names.
+Literal strings simply contribute to the opcode name, but patterns and
+fields introduce an implicit iteration: patterns iterate over
+disjuncts, and fields iterate over named values.
+Each iteration results in the specification of a separate constructor.
+For a pattern, the name of the disjunct is substituted for
+the pattern name in the opcode, and the disjunct is used to stand for
+the pattern on the right-hand side.
+\bogon{At the moment, that value isn't used properly in equations.
+This is an outstanding bug; the value should be equivalent to an
+integer <a href="#NWDS">literal</a> in the equations.}
+For a field, the name of the field's value%
+\footnote{As given by  \lit{names} or \lit{sparse} in a \lit{fieldinfo}
+declaration.}
+is substituted for the 
+the field name on the opcode, and the pattern binding the field to
+that value is used to stand for
+the field on the right-hand side.
+Any pattern so introduced on the right-hand side is conjoined into the
+{\em implicit output pattern}, which is the one used in the
+constructor specification when branches are omitted.
+For examples, see \authorcite{ramsey:jersey}.
+The basic idea is for any pattern or field on the left to be re-used
+on the right --- typically it will be conjoined in, in which case it
+is used implicitly.
+
+The elements of an opcode
+are joined with a hat (\lit{\char`\^}).
+The syntax for an opcode is
+\begin{production}{opcode}
+\nt{opname} \sequence{\lit{\char`\^} \nt{opname}}
+\end{production}
+\productionglue
+\begin{production}{opname}
+\term{string} \vbar{}  \term{pattern-name} \vbar{} \term{field-name}
+\end{production}
+Most opcodes use just a single name.
+It's permissible to use an unbound identifier as an \nt{opname},
+which has the same effect as a <a href="#NWDS">literal</a> string.%
+\footnote{This is hokey language
+design, but it makes the specifications look nice.
+It's unlikely to lead to errors, because a misspelling, which would
+result in an unbound identifier, would also result in that
+identifier's being unbound on the right-hand side, which would be
+flagged as an error.
+(We don't expect users to write specifications in which pattern or
+field names are used on the left without also being used on the right,
+and we issue a warning message if they do.)}
+
+</pre><p>
+<pre><a name="NWgraA-gra7-H" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-G">&lt;-</a>D<a href="#NWDR">-&gt;</a>]</b>
+Operand      : <a href="#NWgraA-gra7-V">Ident</a> [&quot;!&quot;] /* {<a name="NWgraA-gra7-H-u1" href="#NWgraA-notU-1"><i>&lt;note new operand or id <code>ii1</code>&gt;</i></a>};
+                              <a href="#NWDV">name_to_input</a>(ii1, ii2) */
+             | (Literal | GlobOperator | White) /* <a href="#NWDS">literal</a>(ii1) */
+             ;
+Literal      : <a href="#NWgraA-gra7-V">String</a> | Integer /* string(ii1) */ | Relop | &quot;=&gt;&quot; 
+             | &quot;[&quot; | &quot;]&quot; | &quot;(&quot; | &quot;)&quot; | &quot;+&quot; | &quot;-&quot; | &quot;/&quot; 
+             | &quot;&amp;&quot; | &quot;@&quot; | &quot;#&quot; | &quot;%&quot; | &quot;;&quot; | &quot;|&quot; 
+             ;
+GlobOperator : &quot;*&quot; | &quot;$&quot; | &quot;,&quot;
+             ;
+</pre><pre><a name="NWgraA-refS-2" href="#NWgraA-refS-1"><dfn>&lt;refman: opcodes and operands&gt;+=</dfn></a> <b>(<a href="#NWgraA-refK.2-1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-refS-1">&lt;-</a>D]</b>
+Our operand syntax is unusual in that we permit arbitrary ``noise
+words'' to enable the specification writer to mimic assembly-language
+syntax.
+We call such noise words \nt{<a href="#NWDS">literal</a>}s.
+We use literals to help create encoding procedures that emit
+assembly language.
+For binary encoding and decoding, literals are ignored completely.
+We permit any integer or quoted string, plus a variety of special
+characters that are common in assembly languages but don't conflict
+with our usage in specifications:
+\begin{production}{<a href="#NWDS">literal</a>}
+\term{string} \vbar{} \term{integer}
+| any of these characters: \verb^&lt;&gt;=[]()+-/&amp;@#%;*$,^\litbar
+\end{production}
+
+<a name="NWgraA-refS-2-u1" href="#NWDU"><i>&lt;refman: constructor operands by name&gt;</i></a>
+</pre><p>
+<a name="NWDR">A </a><code><a href="#NWDR">ConstType</a></code> is defined implicitly by the first declaration of a constructor
+of that type.
+<pre><a name="NWgraA-gra7-I" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-H">&lt;-</a>D<a href="#NWgraA-gra7-J">-&gt;</a>]</b>
+<a href="#NWDR">ConstType</a> : <a href="#NWgraA-gra7-V">Ident</a> /* (/<a href="#NWD2">symtab</a>[ii1] := constype(ii1, set())) | 
+                     lookuptype(ii1, &quot;constype&quot;)  */;
+</pre><blockquote>Defines <a href="#NWI-ConstType"><code>ConstType</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refP-1" href="#NWgraA-refP-1"><dfn>&lt;refman: constructor types&gt;=</dfn></a> <b>(<a href="#NWgraA-refV-1">&lt;-U</a>)</b>
+Constructors specified by the toolkit are {\em typed} or {\em untyped\/},
+depending on whether a \term{type-name} appears.
+All <a href="#NWD2">constructors</a> are applied to operands to produce patterns, 
+but the encoding procedures that the toolkit generates for a
+constructor have different effects depending on typing.
+Untyped <a href="#NWD2">constructors</a> emit tokens into the current instruction stream,
+but typed <a href="#NWD2">constructors</a> produce opaque values encapsulating patterns.
+The values are opaque in the sense that their only use is to be passed
+as operands to other <a href="#NWD2">constructors</a>.%
+\footnote{We recognize that this restriction is a defect in the
+toolkit, and that application writers might like to match on or
+manipulate the opaque values produced by typed <a href="#NWD2">constructors</a>.
+We welcome suggestions about how such a facility should be designed,
+implemented, or made available to applications.}
+A new constructor type is defined simply by using a new \term{type-name}
+in a specification.
+All <a href="#NWD2">constructors</a> of a type must be defined before the type is used,
+for example, as an operand to another constructor.
+This restriction prevents circular definitions.%
+\footnote{It also prevents recursive constructor types.
+We avoid recursive <a href="#NWD2">constructors</a> for two reasons.
+For efficiency, the toolkit's generator ``inlines'' constructor
+operands by enumerating all possible patterns, a technique that works
+only when the enumeration is finite.
+When decoding, the toolkit can use a simple recognition algorithm
+instead of having to create a parser, which might be ambiguous.}
+</pre><p>
+<a name="NWDS">The </a><code><a href="#NWDS">literal</a></code> type serves to hold strings that are to be emitted literally.
+<pre><a name="NWgraA-top8-D" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWDT">-&gt;</a>]</b>
+record <a href="#NWDS">literal</a>(s)       # holds string or list to be emitted literally
+</pre><blockquote>Defines <a href="#NWI-literal"><code>literal</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDT">Every operand that is not of type </a><code><a href="#NWDS">literal</a></code> is of
+type <code><a href="#NWDT">input</a></code>:
+<pre><a name="NWgraA-top8-E" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDS">&lt;-</a>D<a href="#NWDY">-&gt;</a>]</b>
+record <a href="#NWDT">input</a>(name, meaning)                     # <a href="#NWDT">input</a> name and meaning
+</pre><blockquote>Defines <a href="#NWI-input"><code>input</code></a> (links are to index).<p>
+</blockquote><p><a name="NWDU">There are five legitimate types for </a><code>meaning</code>:
+<blockquote>
+constype --- Constructor of the given type.<br>field --- The given field.<br>null --- Integer.<br>string --- Relocatable address (the value of the string is always
+<code>&quot;reloc&quot;</code>).<br>integer --- Extended field; the meaning is its width in bits.
+Finding the field requires looking up the input's name
+in the global symbol table.<br></blockquote>
+<pre><a name="NWgraA-refa.2-1" href="#NWDU"><dfn>&lt;refman: constructor operands by name&gt;=</dfn></a> <b>(<a href="#NWgraA-refS-2">&lt;-U</a>)</b>
+The real operands of a constructor are all given by name.
+Constructor operands may have several different types, but we don't
+want to clutter up our notation with type information, so we use
+special names shamefully:
+\begin{production}{operand}
+\term{field-name} \optional{\lit!}&amp;
+        Field, possibly signed
+| \term{constructor-type-name}&amp;
+        Result of applying typed \rlap{constructor}
+| \term{<a href="#NWDW">relocatable</a>-name}&amp;
+        Relocatable address
+| \term{unbound-name}&amp;
+        Integer operand
+| \nt{<a href="#NWDS">literal</a>}&amp;
+        Ignored for encoding and decoding
+\end{production}
+Constructor inputs may have underscores and
+digits appended; they can be used to distinguish multiple inputs of
+the same type.
+Field and constructor inputs are available to be used as output
+patterns; fields stand for the pattern binding that field to the value
+of the operands, and constructor inputs stand for themselves---the
+result of applying a constructor is always a pattern. 
+Relocatable addresses and integers can be used in equations, in field
+constraints, or both.
+A \term{<a href="#NWDW">relocatable</a>-name} is an identifier declared with the 
+\lit{<a href="#NWDW">relocatable</a>} directive described in Section~\ref{section:<a href="#NWDW">relocatable</a>}.
+ 
+The toolkit always treats field values as unsigned.
+When a field is actually signed, specification writers must use an
+exclamation point as an explicit sign-extension operator.
+Indulging in a minor abuse of notation, we interpret
+ the exclamation point after a field name in an operand list to mean
+ that the parameter to an encoding procedure is a signed
+integer, which should be narrowed to produce the value of the field.
+</pre><p>
+<a name="NWDV">An </a><code>Operand</code> may be the name of a symbol or the name of a constructor
+type trailed by zero or more digits (e.g., <code>Address</code>, <code>Address1</code>, etc).
+Note that variables used as relocatable addresses live in the symbol table.
+Finally, if not recognized, it is treated as a variable.
+Only a field may be sign-extended with a bang.
+<pre><a name="NWgraA-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDQ">&lt;-</a>D<a href="#NWDW">-&gt;</a>]</b>
+procedure <a href="#NWDV">name_to_input</a>(name, bang)
+  i := <a href="#NWDT">input</a>(name, 
+    if name ? type(ct := <a href="#NWD2">symtab</a>[tab(<a href="#NWDY">reversetrailing</a>('0123456789_'))]) == &quot;constype&quot; then
+      <a href="#NWDX">mark_ct_as_used</a>(ct)
+    else case type(x := <a href="#NWD2">symtab</a>[name]) of {
+      &quot;field&quot;       : if /bang then x else fwidth(x)
+      &quot;null&quot;        : { <a name="NWgraA-*-4-u1" href="#NWgraA-warJ-1"><i>&lt;warn if no <code>bang</code>&gt;</i></a>; x }
+      &quot;<a href="#NWDW">relocatable</a>&quot; : &quot;reloc&quot;
+      &quot;constype&quot;    : impossible(&quot;missed first-round search for constype&quot;)
+      default       : typeerror(x, &quot;free variable, field, or constructor <a href="#NWDT">input</a>&quot;, name,
+                                <a href="#NWD2">globals</a>)
+  })
+  /bang | type(i.meaning) == (&quot;integer&quot;|&quot;null&quot;|&quot;string&quot;) |
+    typeerror(i.meaning, &quot;field or integer (to be sign-extended)&quot;, name, <a href="#NWD2">globals</a>)
+  return i
+end
+</pre><blockquote>Defines <a href="#NWI-name_to_input"><code>name_to_input</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-warJ-1" href="#NWgraA-warJ-1"><dfn>&lt;warn if no <code>bang</code>&gt;=</dfn></a> <b>(<a href="#NWDV">&lt;-U</a>)</b>
+\bang | 
+warning(&quot;Use &quot;, name, &quot;! for signed inputs --- future versions will require it&quot;)
+</pre><p>
+<a name="NWDW">Here's all the relocation goo.</a>
+<pre><a name="NWgraA-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDV">&lt;-</a>D<a href="#NWgraA-*-6">-&gt;</a>]</b>
+record <a href="#NWDW">relocatable</a>()    # type of a name that means <a href="#NWDW">relocatable</a> address
+global <a href="#NWDW">the_relocatable</a>  # we only need one...
+</pre><blockquote>Defines <a href="#NWI-relocatable"><code>relocatable</code></a>, <a href="#NWI-the_relocatable"><code>the_relocatable</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-iniE-2" href="#NWgraA-iniE-1"><dfn>&lt;initialization&gt;+=</dfn></a> <b>(<a href="#NWgraA-top8-2">&lt;-U</a>)</b> <b>[<a href="#NWgraA-iniE-1">&lt;-</a>D<a href="#NWgraA-iniE-3">-&gt;</a>]</b>
+<a href="#NWDW">the_relocatable</a> := <a href="#NWDW">relocatable</a>()
+</pre><pre><a name="NWgraA-gra7-J" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDR">&lt;-</a>D<a href="#NWDZ">-&gt;</a>]</b>
+RelocSpec : &quot;<a href="#NWDW">relocatable</a>&quot; <a href="#NWgraA-gra7-V">Ident</a> {<a href="#NWgraA-gra7-V">Ident</a>} /* every <a href="#NWgraA-*-6">make_relocatable</a>(ii2 | !ii3) */;
+</pre><pre><a name="NWgraA-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDW">&lt;-</a>D<a href="#NWDX">-&gt;</a>]</b>
+procedure <a href="#NWgraA-*-6">make_relocatable</a>(name)
+  return (/<a href="#NWD2">symtab</a>[name] := <a href="#NWDW">the_relocatable</a>) | deferror(&quot;Relocatable name&quot;, image(name))
+end
+</pre><blockquote>Defines <a href="#NWI-make_relocatable"><code>make_relocatable</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refP.2-1" href="#NWgraA-refP.2-1"><dfn>&lt;refman: misc: relocatable&gt;=</dfn></a>
+\label{section:<a href="#NWDW">relocatable</a>}.
+To write specifications that use <a href="#NWDW">relocatable</a> addresses, you must
+declare which operand names refer to <a href="#NWDW">relocatable</a> addresses.
+Write
+\begin{production}{spec}
+\indexedlit{<a href="#NWDW">relocatable</a>} \sequence{\term{identifier}}
+\end{production}
+to mark one or more identifiers as <a href="#NWDW">relocatable</a> addresses.
+In subsequent constructor definitions, such identifiers denote
+<a href="#NWDW">relocatable</a> addresses when used as operands.
+</pre><p>
+<a name="NWDX">A constructor type is marked when it is first used as an input.</a>
+<pre><a name="NWgraA-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgraA-*-6">&lt;-</a>D<a href="#NWgraA-*-8">-&gt;</a>]</b>
+procedure <a href="#NWDX">mark_ct_as_used</a>(type)
+  if /type.used := lineno then
+    {<a name="NWgraA-*-7-u1" href="#NWgraA-sorK-1"><i>&lt;sort members of type&gt;</i></a>}
+  return type
+end
+</pre><blockquote>Defines <a href="#NWI-mark_ct_as_used"><code>mark_ct_as_used</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-sorK-1" href="#NWgraA-sorK-1"><dfn>&lt;sort members of type&gt;=</dfn></a> <b>(<a href="#NWDX">&lt;-U</a>)</b>
+t := table()
+every m := !type.members do
+  t[m.name] := m
+t := sort(t)
+type.members := []
+every put(type.members, (!t)[2])
+</pre><p>
+<code><a name="NWDY" href="#NWDY">reversetrailing</a>(c)</code> generates, from right to left, the positions
+at which the rest of the subject is composed entirely of characters from <code>c</code>.
+<pre><a name="NWgraA-top8-F" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDT">&lt;-</a>D<a href="#NWgraA-top8-G">-&gt;</a>]</b>
+procedure <a href="#NWDY">reversetrailing</a>(c)
+  local i
+  suspend *&amp;subject + 1
+  i := *&amp;subject 
+  while any(c, &amp;subject, 0 &lt; i) do { suspend i; i -:= 1 }
+end
+</pre><blockquote>Defines <a href="#NWI-reversetrailing"><code>reversetrailing</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWDZ">Deleting constructors</a></h3>
+For tests, or for other purposes, we may want to delete constructors from
+a specification.  There are two ways: say what we want to keep, or say what we 
+want to throw away.
+<pre><a name="NWgraA-gra7-K" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-J">&lt;-</a>D<a href="#NWDa">-&gt;</a>]</b>
+Constructors : &quot;discard&quot; {Opcode} /* every discard_cons_named(explode_names(!ii2)) */
+             | &quot;keep&quot;    {Opcode} 
+                  /* s := set()
+                     every insert(s, is_constructor(explode_names(!ii2), warning))
+                     every k := key(<a href="#NWD2">constructors</a>) do
+                       if not member(s, <a href="#NWD2">constructors</a>[k]) then
+                         delete(<a href="#NWD2">constructors</a>, k)
+                   */
+             ;
+</pre><pre><a name="NWgraA-refU.2-1" href="#NWgraA-refU.2-1"><dfn>&lt;refman: misc: discard and keep&gt;=</dfn></a>
+You may want to delete <a href="#NWD2">constructors</a> from
+a specification, reducing the number of encoding procedures generated.
+You may say what to keep or what to throw away.
+\begin{production}{spec}
+\indexedlit{keep} \sequence{\nt{opcode}}
+| \indexedlit{discard} \sequence{\nt{opcode}}
+\end{production}
+Constructors (or groups thereof) are named by their opcode specifications.
+
+</pre><p>
+<h2><a name="NWDa">Equations</a></h2>
+Extensions and ranges are guaranteed unique within a set of equations,
+and they are reset before each set of equations.
+The grammar is bit awkward because we're trying to keep it LL(1).
+<pre><a name="NWgraA-gra7-L" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDZ">&lt;-</a>D<a href="#NWDb">-&gt;</a>]</b>
+Equations : [Equation { &quot;,&quot; Equation } /* push(ii2, ii1) */] /* \ii1 | [] */ ;
+Equation  : Expr Relop Expr /* eqn(ii1, ii2, ii3) */ ;
+</pre><pre><a name="NWgraA-refH-1" href="#NWgraA-refH-1"><dfn>&lt;refman: equations&gt;=</dfn></a>
+\label{sec:equations}
+Equations are written by relating two expressions using the relational
+operators.
+Multiple equations are separated by commas.
+\begin{production}{equations}
+\nt{equation} \sequence{\lit, \nt{equation}}
+\end{production}
+\productionglue
+\begin{production} {equation}
+\nt{expr} \nt{relational-operator} \nt{expr}
+\end{production}
+Only the \lit= operator truly contributes information to a set of
+equations to be solved.
+All inequalities in a list of equations are simply added to the list
+of {\em conditions} that must be satisfied if the equations are to
+have a solution.
+
+\iffalse
+(Labels...
+During encoding, it is a <a href="#NWDW">relocatable</a> address, which can be treated as
+an integer by the usual mechanism.
+During decoding, it has to be converted to an integer by a special
+template (see Section~\ref{sec:address-to-pc}).
+\fi
+</pre><p>
+<a name="NWDb">Applications are forbidden in expressions except in special contexts.</a>
+<pre><a name="NWgraA-gra7-M" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDa">&lt;-</a>D<a href="#NWDc">-&gt;</a>]</b>
+Expr      : AppExpr /* if <a href="#NWgraA-top8-G">has_app_or_literal</a>(ii1) then 
+                         error(&quot;Application or <a href="#NWDS">literal</a> string not legal&quot;)
+                       else ii1 */
+          ;
+</pre><pre><a name="NWgraA-top8-G" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDY">&lt;-</a>D<a href="#NWDd">-&gt;</a>]</b>
+procedure <a href="#NWgraA-top8-G">has_app_or_literal_f</a>(e)
+  return type(e) == (&quot;Eapp&quot;|&quot;<a href="#NWDS">literal</a>&quot;)
+end
+
+procedure <a href="#NWgraA-top8-G">has_app_or_literal</a>(e)
+  suspend expwalk(e, <a href="#NWgraA-top8-G">has_app_or_literal_f</a>)
+end
+</pre><blockquote>Defines <a href="#NWI-has_app_or_literal"><code>has_app_or_literal</code></a>, <a href="#NWI-has_app_or_literal_f"><code>has_app_or_literal_f</code></a> (links are to index).<p>
+</blockquote><p>
+<!--I claim we need <code><a name="NWDc" href="#NWDK">Papp</a></code> and not <code>Eapp</code> here, that <code>Eapp</code> is for-->
+<!--internally created things only.\change{45}-->
+<pre><a name="NWgraA-gra7-N" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDb">&lt;-</a>D<a href="#NWgraA-gra7-O">-&gt;</a>]</b>
+AppExpr   : Term { AOp Term }   
+            /* every t := !ii2 do ii1 := binop(ii1, t[1], t[2]); ii1 */ ; 
+Term      : Factor { Mop Factor }     
+            /* every f := !ii2 do ii1 := binop(ii1, f[1], f[2]); ii1 */ ; 
+AOp       : &quot;+&quot; | &quot;-&quot; ; 
+Mop       : &quot;*&quot; | &quot;/&quot; ; 
+Factor    : Integer
+          | <a href="#NWgraA-gra7-V">String</a> /* <a href="#NWDS">literal</a>(ii1) */   # legal only in constructor apps
+          | &quot;_&quot; /* fresh_variable(&quot;_&quot;) */
+          | <a href="#NWDj">IDENT</a> ( [ Bitrange ] [ &quot;!&quot; ]          /* <a href="#NWDd">SyntaxRange</a>(ii1, ii2) */
+                  | &quot;(&quot; Args &quot;)&quot; 
+                  ) 
+             /* <a name="NWgraA-gra7-N-u1" href="#NWgraA-notU-1"><i>&lt;note new operand or id <code>ii1</code>&gt;</i></a>
+                if type(ii2) == &quot;<a href="#NWDd">SyntaxRange</a>&quot; then <a href="#NWgraA-*-8">mkfactor</a>(ii1, ii2.bits, ii2.bang) 
+                else Eapp(ii1, ii2) */
+          | &quot;(&quot; AppExpr &quot;)&quot;        
+          | &quot;-&quot; Factor /* binop(0, ii1, ii2) */
+          ;
+Bitrange  : &quot;@&quot; &quot;[&quot; <a href="#NWDj">INT</a> [&quot;:&quot; <a href="#NWDj">INT</a> /*ii2*/] &quot;]&quot; /* [ii3, (\ii4|ii3)+1] */ ;
+Args      : AppExpr {&quot;,&quot; AppExpr} /* push(ii2, ii1) */
+          | /* [] */
+          ;
+</pre><p><a name="NWDd">Can't use a square-bracket syntax for bit ranges because it creates parsing conflict</a>
+with list of names on left-hand side of pattern binding, list of patterns in square
+brackets, and optional name in arm of case statement.
+<pre><a name="NWgraA-top8-H" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-top8-G">&lt;-</a>D<a href="#NWDe">-&gt;</a>]</b>
+record <a href="#NWDd">SyntaxRange</a>(bits, bang)
+</pre><blockquote>Defines <a href="#NWI-SyntaxRange"><code>SyntaxRange</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refJ-1" href="#NWgraA-refJ-1"><dfn>&lt;refman: expressions&gt;=</dfn></a>
+\label{section:expr}
+The expression syntax uses the standard binary operators, unary minus,
+and special
+postfix syntax for bit slicing and sign extension:
+\begin{production}{expr}
+\term{integer}
+| \term{identifier} \optional{\nt{bit-slice}} \optional{\lit!}
+| \nt{expr} \nt{binary-operator} \nt{expr}
+| \lit( \nt{expr} \lit)
+\end{production}
+\productionglue
+\begin{production}{binary-operator}
+\lit+ \vbar{} \lit- \vbar{} \lit* \vbar{} \lit/
+\end{production}
+\begin{production}{bit-slice}
+        \lit@\lit[ \term{lo-bit} \optional{\lit: \term{hi-bit}} \lit]\\
+\end{production}
+The special identifier \lit{\_} is a ``wildcard.''
+It stands for a ``don't care'' value, and every instance stands for 
+a different variable.
+
+The binary operators have the standard precedence.
+Using explicit division is almost certain to cause the solver to
+complain.
+Multiplying two unknowns will also break the solver---you should only
+multiply by integer literals.
+
+A bit slice denotes the range of bits from \term{lo-bit} to
+\term{hi-bit}, inclusive.%
+\footnote{The current syntax for bit slices differs from that used in earlier versions
+of the toolkit.  The old syntax led to parsing conflicts when restrictions on the use
+of expressions were relaxed.}
+By default, bit~0 is the least significant bit, but the significance of bit~0 
+can be changed with the \lit{bit 0} directive (Section~\ref{section:bit-0}).
+If \term{hi-bit} is omitted, it defaults to \term{lo-bit}, that is,
+the slice is one bit wide.%
+\footnote{It is a defect in the toolkit that there is no way to notate
+a slice from bit $k$ up to the most significant bit, whatever that may
+be (e.g., 31 or 64).  
+If you want this defect remedied, suggest a suitable notation.}
+Any quantity may be sliced.
+Only slices and fields may be sign-extended, because they are the only
+quantities whose widths are known.
+
+The toolkit's equation solver is simple-minded, and it gives
+terrible error messages.\index{equation solver!apology
+for}\index{error messages!quality of}
+</pre><pre><a name="NWgraA-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDX">&lt;-</a>D<a href="#NWgraA-*-9">-&gt;</a>]</b>
+procedure <a href="#NWgraA-*-8">mkfactor</a>(ident, range, ext)
+  e := ident
+  if \range then {
+    e := mkslice(e, range[1], range[2])
+    w := e.n
+  }
+  if \ext then {
+    /w := if type(f := <a href="#NWD2">symtab</a>[ident]) == &quot;field&quot; then fwidth(f)
+          else error(&quot;Can't sign-extend &quot;, ident, &quot; (not a field)&quot;)
+    e := Ewiden(e, w)
+  }
+  return e
+end
+</pre><blockquote>Defines <a href="#NWI-mkfactor"><code>mkfactor</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDe">Code containing matching statements</a></h2>
+Using the global value <code>succptr</code> is OK for now, but it will break horribly
+if we ever permit nested matching statements.
+<pre><a name="NWgraA-top8-I" href="#NWD2"><dfn>&lt;toplevel&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDd">&lt;-</a>D]</b>
+global <a href="#NWDe">matching_stmts</a>, <a href="#NWDe">codeheader</a>
+</pre><blockquote>Defines <a href="#NWI-codeheader"><code>codeheader</code></a>, <a href="#NWI-matching_stmts"><code>matching_stmts</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-gra7-O" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDc">&lt;-</a>D<a href="#NWDf">-&gt;</a>]</b>
+CodeFile      : (/*<a href="#NWDe">codeheader</a> := arm(filename, lineno)*/)
+                ({<a href="#NWDj">CODELINE</a>} /* <a href="#NWDe">codeheader</a>.code := ii1 */)
+                { Casestmt {<a href="#NWDj">CODELINE</a>} /* ii1.trailer.code := ii2 ; ii1 */ } 
+                /* <a href="#NWDe">codeheader</a>.original := <a href="#NWDe">codeheader</a>; <a href="#NWDe">matching_stmts</a> := ii3 */;
+Casestmt      : <a href="#NWDj">CASELINE</a> { Casearm } [ElseArm] &quot;endmatch&quot; 
+               /* x := matching_stmt(ii2, ii1, succptr) ; put(x.arms, \ii3)
+                  x.trailer := arm(filename, lineno); x */
+              ;
+Casearm       : (&quot;|&quot; /*arm(filename, lineno) */)
+                Pattern OptEquations OptName &quot;=&gt;&quot; {<a href="#NWDj">CODELINE</a>}
+                /* ii1.pattern := ii2; ii1.eqns := ii3; ii1.name := ii4; ii1.code := ii6
+                   ii1.original := ii1 */;   # value is ii1
+ElseArm       : (&quot;else&quot;           /* arm(filename, lineno, epsilon()) */) {<a href="#NWDj">CODELINE</a>} 
+                /* ii1.code := ii2; ii1.original := ii1 */ ;
+OptName       : [ &quot;[&quot; <a href="#NWgraA-gra7-V">Ident</a> &quot;]&quot; ];
+OptEquations  : [ &quot;{&quot; Equations &quot;}&quot; ];
+</pre><pre><a name="NWgraA-refO-1" href="#NWgraA-refO-1"><dfn>&lt;refman: matching grammar&gt;=</dfn></a>
+The toolkit's matching statements are inspired by pattern matching in
+Standard~ML \cite{milner:definition}.
+Matching statements are embedded directly in C or Modula-3 code.
+<a name="NWgraA-refO-1-u1" href="#nw@notdef"><i>&lt;refman: how matching statements begin&gt;</i></a>
+The body of a matching statement contains a series of arms,
+and the matching statement ends with \lit{endmatch} on a line by
+itself.
+
+The first line of an arm begins with a \litbar{} and has the following
+syntax:
+\begin{quote}
+\litbar\ \nt{pattern} \optional{\lit\lbr\ \nt{equations} \lit\rbr} 
+                   \optional{\lit[ \term{name} \lit]} \lit{=&gt;} \term{code}
+\end{quote}
+Free variables of \nt{pattern} or \nt{equations} are available to be
+used in the \term{code} on the right-hand side.
+Free variables from \nt{pattern} can come from field constraints or
+from constructor applications; in either case, all such variables
+represent binding instances.
+If a free variables is an integer-typed argument to a constructor or
+it  appears in  field bindings, it is an integer.
+If a free variable is a constructor-typed argument to a constructor,
+then on the right-hand side of the \lit{=&gt;} it stands for the location
+in the instruction stream where that argument matches.
+It's as if the name of the argument were written as a label preceding
+each constructor of the appropriate type.
+The location is converted to an integer by the usual mechanism
+(arithmetic from the matched address in units of
+\indexedlit{pc_unit_bits}). 
+
+The special variable \verb+_+ can be used in constructor applications
+to stand for operands whose values are uninteresting.
+The optional \term{name}, if present, is an identifier that is bound
+to the name of the \nt{pattern}.
+This name may be a name introduced by a \verb+patterns+ declaration,
+or it may be the name of a constructor that was applied to produce the
+pattern. 
+The \term{code} may occupy multiple lines; the toolkit takes all the
+text between the \lit{=&gt;} and the next initial \litbar, or the end of
+the matching statement.
+
+The last arm of a matching statement may be written
+\begin{quote}
+\lit{else} \term{code}
+\end{quote}
+which is syntactic sugar for
+\begin{quote}
+\lit{| epsilon =&gt;} \term{code}
+\end{quote}
+
+
+<a name="NWgraA-refO-1-u2" href="#nw@notdef"><i>&lt;refman: summary of matching grammar&gt;</i></a>
+
+
+The decoder generated by the toolkit has the effect of checking
+each arm of the matching statement in turn.
+As soon as it finds an arm whose pattern matches and whose equations
+have a solution,%
+\footnote{Note that patterns obtained by constructor application may
+carry along some equations implicitly.} it binds all the free
+identifiers on the left-hand side of the arm, then executes the code
+on the right-hand side.
+The decoders the toolkit generates are actually much more efficient,
+testing inputs against all arms at once, but the sequential model accurately
+describes the semantics.
+
+</pre><p>
+<h2><a name="NWDf">Specifications for fetching words</a></h2>
+I introduce the nonterminal <code>Address</code> in order to avoid making
+<code>address</code> a reserved word.
+<pre><a name="NWgraA-gra7-P" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-O">&lt;-</a>D<a href="#NWgraA-gra7-Q">-&gt;</a>]</b>
+FetchSpec : &quot;fetch&quot; ( <a href="#NWDj">INT</a>   &quot;using&quot; <a href="#NWgraA-gra7-V">String</a> /* <a href="#NWgraA-*-9">newfetch</a>(ii1, ii3, 'a') */
+                    | &quot;any&quot; &quot;using&quot; <a href="#NWgraA-gra7-V">String</a> /* <a href="#NWgraA-*-9">newfetch</a>(ii1, ii3, 'aw') */
+                    )
+          | &quot;address&quot; (Add &quot;using&quot; <a href="#NWgraA-gra7-V">String</a>          /* <a href="#NWgraA-*-9">newfetch</a>(ii1, ii3, 'ao') */
+                      | &quot;type&quot; &quot;is&quot; <a href="#NWgraA-gra7-V">String</a>         /* <a href="#NWgraA-*-9">newfetch</a>(ii1, ii3, '') */
+                      | &quot;to&quot; IntIdent &quot;using&quot; <a href="#NWgraA-gra7-V">String</a>     /* <a href="#NWgraA-*-9">newfetch</a>(ii2, ii4, 'a') */
+                      )
+          ;
+
+Add      : <a href="#NWgraA-gra7-V">Ident</a> /* (ii1 == &quot;add&quot;) | error(&quot;expected `add', `type', or `to'&quot;) */;
+IntIdent : <a href="#NWgraA-gra7-V">Ident</a> /* (ii1 == &quot;integer&quot;) | error(&quot;expected&quot;, image(&quot;integer&quot;)) */;
+</pre><pre><a name="NWgraA-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgraA-*-8">&lt;-</a>D<a href="#NWDi">-&gt;</a>]</b>
+procedure <a href="#NWgraA-*-9">newfetch</a>(k, template, expected)
+  <a name="NWgraA-*-9-u1" href="#NWDg"><i>&lt;issue warnings for chars in <code>expected</code> not in <code>template</code>&gt;</i></a>
+  return fetchtab[k] := template
+end
+</pre><blockquote>Defines <a href="#NWI-newfetch"><code>newfetch</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-refQ-1" href="#NWgraA-refQ-1"><dfn>&lt;refman: fetching templates&gt;=</dfn></a>
+\label{sec:address-to-pc}
+Decoders generated by the toolkit's translator instantiate code
+templates to get access to the tokens of the instruction stream being
+decoded.
+The toolkit treats addresses and instruction streams
+as abstract data types; these templates give the operations.
+\begin{production}{spec}
+  \indexedlit{fetch} \alternate{\term{width} | \lit{any}} \lit{using}
+                \term{template}
+| \indexedlit{address type} \lit{is} \term{template}
+| \indexedlit{address add} \lit{using} \term{template}
+| \indexedlit{address to integer} \lit{using} \term{template}
+\end{production}
+Each \term{template} is a string.
+\lit{fetch} templates are used to fetch words from an instruction
+stream.
+Some applications may be able to give a single \lit{fetch} templates
+that works with any width; others may have to give a different
+\lit{fetch} template for each width used in the specification.
+\lit{address type} identifies the type the application uses to
+represent a location in an instruction stream;
+the \lit{address add} template is used for address arithmetic, which
+moves through the stream.
+\lit{address to integer} is used to convert an address to an integer; it is
+used to assign values  to labels.\index{labels!template for conversion}
+<a name="NWgraA-refQ-1-u1" href="#nw@notdef"><i>&lt;refman: meaning of fetchtab strings&gt;</i></a>
+<a name="NWgraA-refQ-1-u2" href="#nw@notdef"><i>&lt;refman: fetch template&gt;</i></a>
+<a name="NWgraA-refQ-1-u3" href="#nw@notdef"><i>&lt;refman: address add template&gt;</i></a>
+<a name="NWgraA-refQ-1-u4" href="#nw@notdef"><i>&lt;refman: address to integer template&gt;</i></a>
+The \lit{address type} template doesn't use any escapes.
+</pre><p>
+<a name="NWDg">This warning may help people who are hung up on left-to-right.</a>
+<pre><a name="NWgraA-issy-1" href="#NWDg"><dfn>&lt;issue warnings for chars in <code>expected</code> not in <code>template</code>&gt;=</dfn></a> <b>(<a href="#NWgraA-*-9">&lt;-U</a>)</b>
+c := ''
+template ? while tab(upto('%')) &amp; =&quot;%&quot; do c := c ++ move(1)
+every x := !(expected -- c) do
+  warning(&quot;expected %&quot;, x, &quot; in template&quot;)
+</pre><p>
+<h2><a name="NWDh">Assembly syntax</a></h2>
+<pre><a name="NWgraA-refN-1" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;=</dfn></a> <b>[D<a href="#NWgraA-refN-2">-&gt;</a>]</b>
+You can write perfectly interesting encoding and decoding applications 
+without specifying an assembly-language syntax, so you may want to skip this section
+on first reading and go on to \secn{following-asm-syntax}
+
+A constructor's 
+left-hand side, i.e., the constructor's name, its operands, and
+some syntactic sugar, is often sufficient to specify the constructor's 
+syntax in the assembly language recognized by a vendor's assembler. 
+This is the case for most instructions on the MIPS and SPARC when
+assembled by Unix assemblers.
+Other architectures, like the Pentium, 
+are targets of multiple assemblers, each of
+which may recognize a distinct assembly syntax.
+Multiple syntaxes prevent the specification writer
+from using one constructor to specify all variant syntaxes.
+Moreover, some assemblers overload instruction names,
+% Some assemblers overload instruction names, 
+using context to determine which instruction is meant.  
+For example, the Pentium
+\verb|add| can mean any of five different instructions, depending on
+the sizes and locations of the operands.  The toolkit cannot do
+this kind of overloading; it must use different names for
+different instructions (<a href="#NWD2">constructors</a>).  The reason is that the
+toolkit must generate a different encoding procedure for each
+instruction, and in most programming languages, different
+procedures must have different names.  
+\iffalse
+This is untrue.  Name resolution in C++, Self, Cecil, etc.,
+is extremely powerful and completely confounding.
+
+Even in languages that do
+support overloading, we might not be able to use the same name,
+because the name-resolution mechanisms used in programming
+languages are not as powerful as what an assembler uses (LR
+parsing).
+\fi
+
+We solve this problem by requiring each constructor to have a
+different name.  Typically, the specification writer distinguishes
+variants by adding suffixes to the base name of the constructor.
+For example, the Pentium \verb|add| instructions include <a href="#NWD2">constructors</a>
+called \verb|addb|, \verb|addib|, \verb|addiowb|, \verb|addmrb|, and
+\verb|addrmb|.  To get from these names back to assembly language,
+we have to define an appropriate mapping.  
+These mappings, and others for operand syntax, are
+defined separately from the main specification, because different
+vendors use different syntaxes for their assembly languages.
+
+%To support various syntaxes and , 
+%the toolkit provides assembly specifications separate from
+%the constructor specifications.
+An assembly specification includes three parts:
+a mapping of constructor names to assembly opcodes,
+the assembly format for each constructor operand,
+and the assembly syntax for each constructor.
+We use the Pentium specification of 
+the assembly language supported by the
+GNU assembler to illustrate assembly specifications.
+First, we describe assembly name mappings, then operand format and
+constructor assembly syntax.
+\begin{production}{spec}
+  \nt{assembly-opcode-syntax}
+| \nt{assembly-operand-syntax}
+| \nt{assembly-syntax}
+\end{production}
+</pre><pre><a name="NWgraA-gra7-Q" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDf">&lt;-</a>D<a href="#NWgraA-gra7-R">-&gt;</a>]</b>
+AsmSpec : &quot;assembly&quot;
+   ( &quot;operand&quot; {<a href="#NWDC">IdentBinding</a> &quot;is&quot; OperandSyntaxSpec
+                                 /* every asmoperand(!ii1, ii3[1], ii3[2]) */}
+   | &quot;component&quot;  {Globbing &quot;is&quot; GlobTarget  /* asmopcode (ii1, ii3) */}
+   | &quot;opcode&quot;  {Globbing &quot;is&quot; GlobTarget  /* asmopcode (ii1, ii3, 1) */}
+   | &quot;syntax&quot;  (/*see_newline()*/) { AsmSyntax /* see_newline() */}
+   );
+</pre><p>
+<pre><a name="NWgraA-refN-2" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWDh">&lt;-</a>D<a href="#NWgraA-refN-3">-&gt;</a>]</b>
+\nextsection{Assembly names for opcodes}
+A constructor's name may contain multiple parts derived from pattern
+names and constant strings.
+Each part may or may not contribute to the assembly name.
+For example, the constructor name \verb|add^&quot;mrb&quot;| contains two parts, 
+the first derived from the pattern \verb|add| and the second from the
+string \verb|&quot;mrb&quot;|.  The assembly name for this constructor is
+\verb|addb|, so the pattern \verb|add| contributes its name and the suffix 
+\verb|&quot;mrb&quot;| is mapped to the string \verb|&quot;b&quot;|.
+This example illustrates how the constructor \verb|addmrb| has a more specific name to
+disambiguate it from other overloaded variants of \verb|addb|.
+
+{\hfuzz=12pt % make room for wide production
+\verb|assembly opcode| introduces mappings from complete
+constructor names (strings) to their assembly names (strings).
+\verb|assembly component| introduces mappings from parts 
+of constructor names to their assembly names.
+\begin{production}{assembly-opcode-syntax}
+\indexedlit{assembly} \indexedlit{opcode} \nt{glob-pattern} \lit{is} \nt{glob-target}
+| \indexedlit{assembly} \indexedlit{component} \nt{glob-pattern} \lit{is} \nt{glob-target}
+\end{production}
+Complete mapping simply enables a specification writer to rename entire <a href="#NWD2">constructors</a>. 
+We also provide component-wise mapping because it improves
+factoring of assembly names among <a href="#NWD2">constructors</a> that
+share common suffixes and prefixes.  For example, the suffix
+\verb|B.Eb.Ib| always maps to \verb|b| in every constructor name
+where it appears.  That mapping is specified by
+\begin{verbatim}
+  assembly component B.Eb.Ib is b
+\end{verbatim}
+\par}
+
+Here's how we disambiguate the two mapping mechanisms.
+If a complete name mapping exists for a constructor name, it is
+applied, and componentwise mappings are ignored.
+If no complete mapping exists, 
+mappings are applied individually to {\em each} part of a
+constructor's name and the resulting strings are concatenated into the
+complete assembly name.
+</pre><p>
+<pre><a name="NWgraA-refN-3" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-2">&lt;-</a>D<a href="#NWgraA-refN-4">-&gt;</a>]</b>
+\nextsection{Globbing expressions}
+There is redundancy in the mapping of constructor names, so we
+use a regular expression syntax to group related names.
+The regular expression syntax is the same as the syntax for C-shell
+``globbing'' expressions~\cite{joy:c-shell}.
+For example, the  mappings applied to the parts of the constructor
+name \verb|add^&quot;mrb&quot;| are:
+\begin{verbatim}
+assembly component
+    add     is  add
+    *b      is  b
+\end{verbatim}
+The first rule maps \verb|add| to itself 
+and the second maps any string that matches \verb|*b|
+to \verb|b|.
+The least general rule that matches a string is applied.
+\remark{What do we mean by ``least general?''}
+
+It is often useful to define a default mapping, 
+i.e., for the pattern ``\verb|*|''.
+On the supported targets, 
+most constructor names map directly to assembly names, 
+so the default maps a name to itself, i.e., 
+\verb|assembly component {*} is $1|.
+
+In globbing expressions, ``*'' matches any string.
+Any other 
+character, including the dot, matches itself.
+The concatenation operator is implicit, so adjacent characters are concatenated.
+Alternatives are comma-separated lists of strings delimited by ``\lit\lbr''
+and ``\lit\rbr''.
+
+The string on the right-hand side may contain elements of the form
+{\tt\$}$n$, where $n$ is the $n$-th braced expression on the
+left-hand side. 
+{\tt\$\$} stands for a single dollar sign.
+\begin{production}{glob-pattern}
+  \sequence{\lit{*} | \term{string} | \nt{glob-alternatives}}
+\end{production}
+\begin{production}{glob-alternatives}
+  \lit{\lbr} \nt{glob-pattern} \sequence{\lit{,} \nt{glob-pattern}} \lit{\rbr}
+\end{production}
+\begin{production}{glob-target}
+  \sequence{\term{string} | \lit{\$}\term{integer} | \lit\$\lit\$}
+\end{production}
+For example, the rules below specify that the 
+suffixes \verb|ow| and \verb|aw| map to the assembly name \verb|w|, 
+and that \verb|od| and \verb|ad| map to \verb|l|.
+\begin{verbatim}
+assembly component
+    {o,a}w   is w
+    {o,a}d   is l
+\end{verbatim}
+</pre><p>
+<pre><a name="NWgraA-refN-4" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-3">&lt;-</a>D<a href="#NWgraA-refN-5">-&gt;</a>]</b>
+\nextsection{Assembly formats for operands}
+\verb|assembly operand| introduces mappings from operands to formatted strings
+that specify how to print the operands in assembly code.
+Operands may be fields, integer inputs, <a href="#NWDW">relocatable</a> addresses, or
+constant strings. 
+We use \verb|printf|-style syntax for formatted strings.
+
+\begin{production}{assembly-operand-syntax}
+\indexedlit{assembly operand} \term{<a href="#NWgraA-gra7-V">Ident</a>} \lit{is} \nt{operandsyntax}
+\end{production}
+\begin{production}{operandsyntax}
+  \term{format-string} \lit{using} \nt{operandname}
+| \nt{operandname}
+\end{production}
+\begin{production}{operandname}
+  \lit{sparse [} \nt{binding} \sequence{\lit, \nt{binding}} \lit]
+| \lit{names [} \sequence{\term{<a href="#NWgraA-gra7-V">Ident</a>} | \term{<a href="#NWgraA-gra7-V">String</a>}} \lit]
+| \lit{field} \term{<a href="#NWgraA-gra7-V">Ident</a>}
+\end{production}
+</pre><pre><a name="NWgraA-gra7-R" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-Q">&lt;-</a>D<a href="#NWgraA-gra7-S">-&gt;</a>]</b>
+OperandSyntaxSpec : <a href="#NWgraA-gra7-V">String</a> [&quot;using&quot; OperandNameSpec ] /* [ii1, ii2] */
+                  | OperandNameSpec /* [&quot;%s&quot;, ii1] */
+                  ;
+OperandNameSpec   : NameTable
+                  | &quot;field&quot; <a href="#NWgraA-gra7-V">Ident</a> /* lookuptype(ii2, &quot;field&quot;) */
+                  ;
+</pre><p>
+<pre><a name="NWgraA-refN-5" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-4">&lt;-</a>D<a href="#NWgraA-refN-6">-&gt;</a>]</b>
+The first \verb|assembly operand| rule below specifies that immediate operands
+are prefixed by ``\$'' and are printed as integers.
+The second rule specifies that the listed field operands are prefixed by
+``\%'' and printed as strings, using the names provided in their
+\verb|fieldinfo| declarations.
+%The third rules specifies that the operands are printed as strings,
+%using the assembly names of field \verb|base|.
+\begin{verbatim}
+assembly operand
+    [count i8 i16 i32]           is &quot;$%d&quot;
+    [r32 sr16 r16 r8 base index] is &quot;%%%s&quot;
+\end{verbatim}
+
+Some inputs are not declared as fields but should be printed in the
+same format as fields.   For example, the <a href="#NWDT">input</a> \verb|reg| should be
+printed using the names associated with the field \verb|base|.  
+The following rule uses the optional \verb|using |{\em field}
+clause to specify that \verb|reg|, \verb|reg8|, etc. should
+be printed using the fieldinfo associated with \verb|base|.
+\begin{verbatim}
+assembly operand
+    [reg reg8 sreg cr dr]       is &quot;%%%s&quot; using field base
+\end{verbatim}
+</pre><p>
+<pre><a name="NWgraA-refN-6" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-5">&lt;-</a>D<a href="#NWgraA-refN-7">-&gt;</a>]</b>
+\nextsection{Assembly syntax for <a href="#NWD2">constructors</a>}
+The default assembly syntax for a constructor appears in the
+constructor's specification;
+an alternate syntax may be specified with \verb|assembly syntax|.
+Providing assembly syntax in a constructor specification can help a
+specification writer or user read and identify a constructor, and it
+is concise when only one assembly syntax is required.
+An alternate syntax may be needed, however, if more than one assembly language
+is used on the target.
+
+\verb|assembly syntax| uses the same syntax as the \verb|<a href="#NWD2">constructors</a>| directive:
+a constructor name followed by a list of operands.
+\begin{production}{assembly-syntax}
+  \indexedlit{assembly syntax} \term{opcode} \term{operands}
+\end{production}
+</pre><p>
+<pre><a name="NWgraA-gra7-S" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-R">&lt;-</a>D<a href="#NWgraA-gra7-T">-&gt;</a>]</b>
+AsmSyntax: Opcode Operands <a href="#NWDj">NEWLINE</a> 
+               /* every set_asmsyntax(is_constructor(explode_names(ii1), warning), ii2) */;
+</pre><p>
+<pre><a name="NWgraA-refN-7" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-6">&lt;-</a>D<a href="#NWgraA-refN-8">-&gt;</a>]</b>
+The assembly-syntax specification must use 
+the same set of operands that the constructor
+uses, but the operands may appear in any order and with any
+syntactic sugar.
+For example, 
+the GNU assembly language reverses the order of some 
+constructor's operands, such as \verb|arithI^&quot;d&quot;| below. 
+\begin{verbatim}
+assembly syntax
+  arithI^&quot;d&quot;     i32!, Eaddr
+  MOV.Eb.Iv^od   i32!, Eaddr
+\end{verbatim}
+Some <a href="#NWD2">constructors</a> have implicit operands, such as the floating-point stack 
+<a href="#NWD2">constructors</a>.  Assemblers require those operands to distinguish
+between overloaded floating point instructions.
+\begin{verbatim}
+assembly syntax
+  fstack^Sstack  &quot;%st&quot;, &quot;%st&quot;(idx)
+\end{verbatim}
+
+The GNU syntax for effective addresses
+bears no resemblance to the DOS syntax, but it can be specified in only a
+few lines.
+\begin{verbatim}
+assembly syntax
+  Indir       (reg)
+  Disp32      d(reg)
+  Index       (base,index,ss)
+  Index32     d(base,index,ss)
+  ShortIndex  d(,index,ss)
+\end{verbatim}
+</pre><p>
+<pre><a name="NWgraA-refN-8" href="#NWDh"><dfn>&lt;refman: assembly syntax&gt;+=</dfn></a> <b>[<a href="#NWgraA-refN-7">&lt;-</a>D]</b>
+</pre><p>
+<h3><a name="NWDi">Globbing expressions</a></h3>
+A globbing expression
+is a string, a list (concatenation), a wildcard, or a list
+of alternatives in braces.
+<pre><a name="NWgraA-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgraA-*-9">&lt;-</a>D<a href="#NWgraA-*-B">-&gt;</a>]</b>
+record <a href="#NWDi">glob_any</a>(alternatives, number)   # braced list of alternate globbing patterns
+record <a href="#NWDi">glob_wildcard</a>()
+global <a href="#NWDi">the_glob_wildcard</a>                # only need one value
+record <a href="#NWDi">glob_dollar</a>(number)              # $n on right-hand side
+</pre><blockquote>Defines <a href="#NWI-glob_any"><code>glob_any</code></a>, <a href="#NWI-glob_dollar"><code>glob_dollar</code></a>, <a href="#NWI-glob_wildcard"><code>glob_wildcard</code></a>, <a href="#NWI-the_glob_wildcard"><code>the_glob_wildcard</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-iniE-3" href="#NWgraA-iniE-1"><dfn>&lt;initialization&gt;+=</dfn></a> <b>(<a href="#NWgraA-top8-2">&lt;-U</a>)</b> <b>[<a href="#NWgraA-iniE-2">&lt;-</a>D]</b>
+<a href="#NWDi">the_glob_wildcard</a> := <a href="#NWDi">glob_wildcard</a>()
+</pre><pre><a name="NWgraA-gra7-T" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-S">&lt;-</a>D<a href="#NWgraA-gra7-U">-&gt;</a>]</b>
+Globbing         : SeeWhite GlobPattern StopWhite White /* ii2 */;
+GlobPattern      : {GlobAlternatives | Literal | <a href="#NWgraA-gra7-V">Ident</a>} 
+                          /* number_braces(<a href="#NWgraA-*-B">cat_adjacent_strings</a>(ii1)) */;
+GlobAlternatives : &quot;{&quot; GlobPattern {&quot;,&quot; GlobPattern } &quot;}&quot; /* <a href="#NWDi">glob_any</a>(push(ii3, ii2))*/
+                 | &quot;*&quot;                                    /* <a href="#NWDi">the_glob_wildcard</a> */
+                 ;
+</pre><pre><a name="NWgraA-gra7-U" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-T">&lt;-</a>D<a href="#NWgraA-gra7-V">-&gt;</a>]</b>
+GlobTarget       : SeeWhite GlobTargets StopWhite White /* ii2 */;
+GlobTargets      : {GlobTargetSpecial | GlobTargetLiteral} 
+                                                /* <a href="#NWgraA-*-B">cat_adjacent_strings</a>(ii1) */;
+GlobTargetSpecial: &quot;$&quot; (Integer /* <a href="#NWDi">glob_dollar</a>(ii1) */ | &quot;$&quot;)
+                 ;
+GlobTargetLiteral: Literal | <a href="#NWgraA-gra7-V">Ident</a> | &quot;*&quot; | &quot;{&quot; | &quot;}&quot; | &quot;,&quot; ;
+</pre><p>
+<pre><a name="NWgraA-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDi">&lt;-</a>D]</b>
+procedure <a href="#NWgraA-*-B">cat_adjacent_strings</a>(l)
+  m := []
+  every x := !l do 
+    if type(x) == &quot;string&quot; &amp; type(m[-1]) == &quot;string&quot; then
+      m[-1] ||:= x
+    else
+      put(m, x)
+  return m
+end
+</pre><blockquote>Defines <a href="#NWI-cat_adjacent_strings"><code>cat_adjacent_strings</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDj">Lexical elements</a></h2>
+<pre><a name="NWgraA-terG-1" href="#NWDj"><dfn>&lt;terminal symbols&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+%term <a href="#NWDj">IDENT</a>
+%term <a href="#NWDj">INT</a>
+%term <a href="#NWDj">CASELINE</a>
+%term <a href="#NWDj">CODELINE</a>
+%term <a href="#NWDj">NEWLINE</a>
+%term <a href="#NWDj">WHITESPACE</a>
+</pre><blockquote>Defines <a href="#NWI-CASELINE"><code>CASELINE</code></a>, <a href="#NWI-CODELINE"><code>CODELINE</code></a>, <a href="#NWI-IDENT"><code>IDENT</code></a>, <a href="#NWI-INT"><code>INT</code></a>, <a href="#NWI-NEWLINE"><code>NEWLINE</code></a>, <a href="#NWI-WHITESPACE"><code>WHITESPACE</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgraA-gra7-V" href="#NWD5"><dfn>&lt;grammar&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWgraA-gra7-U">&lt;-</a>D]</b>
+<a href="#NWgraA-gra7-V">Ident</a>     : <a href="#NWDj">IDENT</a> | &quot;_&quot; ;
+<a href="#NWgraA-gra7-V">String</a>    : '&quot;' ;
+Integer   : <a href="#NWDj">INT</a> | &quot;'&quot; /* ord(ii1) */ ;
+White     : <a href="#NWDj">WHITESPACE</a>;
+SeeWhite  : /* see_whitespace() */;
+StopWhite : /* ignore_whitespace() */;
+</pre><blockquote>Defines <a href="#NWI-Ident"><code>Ident</code></a>, <a href="#NWI-String"><code>String</code></a> (links are to index).<p>
+</blockquote><p>
+
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWgraA-*-2">D2</a>, <a href="#NWDQ">D3</a>, <a href="#NWDV">D4</a>, <a href="#NWDW">D5</a>, <a href="#NWgraA-*-6">D6</a>, <a href="#NWDX">D7</a>, <a href="#NWgraA-*-8">D8</a>, <a href="#NWgraA-*-9">D9</a>, <a href="#NWDi">D10</a>, <a href="#NWgraA-*-B">D11</a>
+<li><a href="#NWD5"><i>&lt;grammar&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWD6">D3</a>, <a href="#NWgraA-gra7-3">D4</a>, <a href="#NWD7">D5</a>, <a href="#NWDA">D6</a>, <a href="#NWDB">D7</a>, <a href="#NWDC">D8</a>, <a href="#NWDD">D9</a>, <a href="#NWDE">D10</a>, <a href="#NWgraA-gra7-A">D11</a>, <a href="#NWDG">D12</a>, <a href="#NWgraA-gra7-C">D13</a>, <a href="#NWDM">D14</a>, <a href="#NWDP">D15</a>, <a href="#NWgraA-gra7-F">D16</a>, <a href="#NWgraA-gra7-G">D17</a>, <a href="#NWgraA-gra7-H">D18</a>, <a href="#NWDR">D19</a>, <a href="#NWgraA-gra7-J">D20</a>, <a href="#NWDZ">D21</a>, <a href="#NWDa">D22</a>, <a href="#NWDb">D23</a>, <a href="#NWDc">D24</a>, <a href="#NWgraA-gra7-O">D25</a>, <a href="#NWDf">D26</a>, <a href="#NWgraA-gra7-Q">D27</a>, <a href="#NWgraA-gra7-R">D28</a>, <a href="#NWgraA-gra7-S">D29</a>, <a href="#NWgraA-gra7-T">D30</a>, <a href="#NWgraA-gra7-U">D31</a>, <a href="#NWgraA-gra7-V">D32</a>
+<li><a href="#NWD9"><i>&lt;if needed, flip bit numbering of fields <code>ii7</code> using size <code>ii5</code>&gt;</i></a>: <a href="#NWD7">U1</a>, <a href="#NWD9">D2</a>
+<li><a href="#NWgraA-iniE-1"><i>&lt;initialization&gt;</i></a>: <a href="#NWgraA-top8-2">U1</a>, <a href="#NWgraA-iniE-1">D2</a>, <a href="#NWgraA-iniE-2">D3</a>, <a href="#NWgraA-iniE-3">D4</a>
+<li><a href="#NWgraA-insq-1"><i>&lt;insist <code>p</code> have no conditionals nor field bindings&gt;</i></a>: <a href="#NWDO">U1</a>, <a href="#NWgraA-insq-1">D2</a>
+<li><a href="#NWDg"><i>&lt;issue warnings for chars in <code>expected</code> not in <code>template</code>&gt;</i></a>: <a href="#NWgraA-*-9">U1</a>, <a href="#NWDg">D2</a>
+<li><a href="#NWgraA-maks-1"><i>&lt;make sure placeholder of <code>class</code> is the right length&gt;</i></a>: <a href="#NWDB">U1</a>, <a href="#NWgraA-maks-1">D2</a>
+<li><a href="#NWD3"><i>&lt;note new field name <code>ii1</code>&gt;</i></a>: <a href="#NWD3">D1</a>, <a href="#NWDC">U2</a>
+<li><a href="#NWgraA-notU-1"><i>&lt;note new operand or id <code>ii1</code>&gt;</i></a>: <a href="#NWgraA-notU-1">D1</a>, <a href="#NWgraA-gra7-H">U2</a>, <a href="#NWDc">U3</a>
+<li><a href="#NWgraA-poso-1"><i>&lt;possible warnings around changes in bit numberings&gt;</i></a>: <a href="#NWDA">U1</a>, <a href="#NWgraA-poso-1">D2</a>
+<li><a href="#nw@notdef"><i>&lt;refman: address add template&gt;</i></a>: <a href="#NWgraA-refQ-1">U1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: address to integer template&gt;</i></a>: <a href="#NWgraA-refQ-1">U1</a>
+<li><a href="#NWDh"><i>&lt;refman: assembly syntax&gt;</i></a>: <a href="#NWDh">D1</a>, <a href="#NWgraA-refN-2">D2</a>, <a href="#NWgraA-refN-3">D3</a>, <a href="#NWgraA-refN-4">D4</a>, <a href="#NWgraA-refN-5">D5</a>, <a href="#NWgraA-refN-6">D6</a>, <a href="#NWgraA-refN-7">D7</a>, <a href="#NWgraA-refN-8">D8</a>
+<li><a href="#NWgraA-refW.2-1"><i>&lt;refman: branches of constructors&gt;</i></a>: <a href="#NWgraA-refK.2-1">U1</a>, <a href="#NWgraA-refW.2-1">D2</a>
+<li><a href="#NWgraA-refW-1"><i>&lt;refman: constructor applications&gt;</i></a>: <a href="#NWgraA-refM-1">U1</a>, <a href="#NWgraA-refW-1">D2</a>
+<li><a href="#NWDU"><i>&lt;refman: constructor operands by name&gt;</i></a>: <a href="#NWgraA-refS-2">U1</a>, <a href="#NWDU">D2</a>
+<li><a href="#NWgraA-refP-1"><i>&lt;refman: constructor types&gt;</i></a>: <a href="#NWgraA-refV-1">U1</a>, <a href="#NWgraA-refP-1">D2</a>
+<li><a href="#NWgraA-refK.2-1"><i>&lt;refman: constructors&gt;</i></a>: <a href="#NWgraA-refK.2-1">D1</a>
+<li><a href="#NWgraA-refV-1"><i>&lt;refman: constructor-spec syntax&gt;</i></a>: <a href="#NWgraA-refK.2-1">U1</a>, <a href="#NWgraA-refV-1">D2</a>
+<li><a href="#nw@notdef"><i>&lt;refman: description of pattern operators&gt;</i></a>: <a href="#NWgraA-refM-1">U1</a>
+<li><a href="#NWgraA-refH-1"><i>&lt;refman: equations&gt;</i></a>: <a href="#NWgraA-refH-1">D1</a>
+<li><a href="#NWgraA-refJ-1"><i>&lt;refman: expressions&gt;</i></a>: <a href="#NWgraA-refJ-1">D1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: fetch template&gt;</i></a>: <a href="#NWgraA-refQ-1">U1</a>
+<li><a href="#NWgraA-refQ-1"><i>&lt;refman: fetching templates&gt;</i></a>: <a href="#NWgraA-refQ-1">D1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: how matching statements begin&gt;</i></a>: <a href="#NWgraA-refO-1">U1</a>
+<li><a href="#NWgraA-refO-1"><i>&lt;refman: matching grammar&gt;</i></a>: <a href="#NWgraA-refO-1">D1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: meaning of fetchtab strings&gt;</i></a>: <a href="#NWgraA-refQ-1">U1</a>
+<li><a href="#NWgraA-refU.2-1"><i>&lt;refman: misc: discard and keep&gt;</i></a>: <a href="#NWgraA-refU.2-1">D1</a>
+<li><a href="#NWgraA-refP.2-1"><i>&lt;refman: misc: relocatable&gt;</i></a>: <a href="#NWgraA-refP.2-1">D1</a>
+<li><a href="#NWgraA-refS-1"><i>&lt;refman: opcodes and operands&gt;</i></a>: <a href="#NWgraA-refK.2-1">U1</a>, <a href="#NWgraA-refS-1">D2</a>, <a href="#NWgraA-refS-2">D3</a>
+<li><a href="#NWgraA-refT-1"><i>&lt;refman: other atomic patterns&gt;</i></a>: <a href="#NWgraA-refM-1">U1</a>, <a href="#NWgraA-refT-1">D2</a>
+<li><a href="#NWgraA-refC-1"><i>&lt;refman: spec&gt;</i></a>: <a href="#NWgraA-refC-1">D1</a>
+<li><a href="#NWgraA-refK-1"><i>&lt;refman: spec: fields&gt;</i></a>: <a href="#NWgraA-refK-1">D1</a>, <a href="#NWgraA-refK-2">D2</a>
+<li><a href="#NWgraA-refa-1"><i>&lt;refman: spec: generating expressions&gt;</i></a>: <a href="#NWgraA-refM-1">U1</a>, <a href="#NWgraA-refa-1">D2</a>
+<li><a href="#NWgraA-refI-1"><i>&lt;refman: spec: misc&gt;</i></a>: <a href="#NWgraA-refI-1">D1</a>, <a href="#NWgraA-refI-2">D2</a>, <a href="#NWgraA-refI-3">D3</a>, <a href="#NWgraA-refI-4">D4</a>
+<li><a href="#NWgraA-refU-1"><i>&lt;refman: spec: pattern bindings&gt;</i></a>: <a href="#NWgraA-refU-1">D1</a>
+<li><a href="#NWgraA-refM-1"><i>&lt;refman: spec: patterns&gt;</i></a>: <a href="#NWgraA-refM-1">D1</a>
+<li><a href="#nw@notdef"><i>&lt;refman: summary of matching grammar&gt;</i></a>: <a href="#NWgraA-refO-1">U1</a>
+<li><a href="#NWgraA-sorK-1"><i>&lt;sort members of type&gt;</i></a>: <a href="#NWDX">U1</a>, <a href="#NWgraA-sorK-1">D2</a>
+<li><a href="#NWDj"><i>&lt;terminal symbols&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWDj">D2</a>
+<li><a href="#NWD2"><i>&lt;toplevel&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWgraA-top8-2">D3</a>, <a href="#NWD4">D4</a>, <a href="#NWD8">D5</a>, <a href="#NWgraA-top8-5">D6</a>, <a href="#NWDF">D7</a>, <a href="#NWDI">D8</a>, <a href="#NWDJ">D9</a>, <a href="#NWDK">D10</a>, <a href="#NWDL">D11</a>, <a href="#NWDN">D12</a>, <a href="#NWDO">D13</a>, <a href="#NWDS">D14</a>, <a href="#NWDT">D15</a>, <a href="#NWDY">D16</a>, <a href="#NWgraA-top8-G">D17</a>, <a href="#NWDd">D18</a>, <a href="#NWDe">D19</a>
+<li><a href="#NWgraA-verQ-1"><i>&lt;verbosely announce binding&gt;</i></a>: <a href="#NWDO">U1</a>, <a href="#NWgraA-verQ-1">D2</a>
+<li><a href="#NWgraA-warR-1"><i>&lt;warn about clash in <code>ii1</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWgraA-notU-1">U2</a>, <a href="#NWgraA-warR-1">D3</a>
+<li><a href="#NWgraA-warJ-1"><i>&lt;warn if no <code>bang</code>&gt;</i></a>: <a href="#NWDV">U1</a>, <a href="#NWgraA-warJ-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-atomicid" href="#NWDJ">atomicid</a>: <a href="#NWDG">U1</a>, <a href="#NWDJ">D2</a>
+<li><a name="NWI-Bindlist" href="#NWDC">Bindlist</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-bit_numbering_set" href="#NWgraA-*-2">bit_numbering_set</a>: <a href="#NWDA">U1</a>, <a href="#NWgraA-*-2">D2</a>, <a href="#NWgraA-poso-1">U3</a>
+<li><a name="NWI-bit_numbering_used" href="#NWgraA-*-2">bit_numbering_used</a>: <a href="#NWD9">U1</a>, <a href="#NWgraA-*-2">D2</a>, <a href="#NWgraA-poso-1">U3</a>
+<li><a name="NWI-bit_zero_is_lsb" href="#NWD2">bit_zero_is_lsb</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD9">U3</a>, <a href="#NWDA">U4</a>
+<li><a name="NWI-CASELINE" href="#NWDj">CASELINE</a>: <a href="#NWgraA-gra7-O">U1</a>, <a href="#NWDj">D2</a>
+<li><a name="NWI-cat_adjacent_strings" href="#NWgraA-*-B">cat_adjacent_strings</a>: <a href="#NWgraA-gra7-T">U1</a>, <a href="#NWgraA-gra7-U">U2</a>, <a href="#NWgraA-*-B">D3</a>
+<li><a name="NWI-codeheader" href="#NWDe">codeheader</a>: <a href="#NWDe">D1</a>, <a href="#NWgraA-gra7-O">U2</a>
+<li><a name="NWI-CODELINE" href="#NWDj">CODELINE</a>: <a href="#NWgraA-gra7-O">U1</a>, <a href="#NWDj">D2</a>
+<li><a name="NWI-colon_mark" href="#NWDI">colon_mark</a>: <a href="#NWDG">U1</a>, <a href="#NWDI">D2</a>
+<li><a name="NWI-colons_to_labels" href="#NWDI">colons_to_labels</a>: <a href="#NWDG">U1</a>, <a href="#NWDI">D2</a>
+<li><a name="NWI-conslist" href="#NWD2">conslist</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD4">U3</a>
+<li><a name="NWI-constructors" href="#NWD2">constructors</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD4">U3</a>, <a href="#NWgraA-refW-1">U4</a>, <a href="#NWDP">U5</a>, <a href="#NWgraA-refV-1">U6</a>, <a href="#NWgraA-refP-1">U7</a>, <a href="#NWDZ">U8</a>, <a href="#NWgraA-refU.2-1">U9</a>, <a href="#NWDh">U10</a>, <a href="#NWgraA-refN-2">U11</a>, <a href="#NWgraA-refN-6">U12</a>, <a href="#NWgraA-refN-7">U13</a>
+<li><a name="NWI-ConstType" href="#NWDR">ConstType</a>: <a href="#NWDP">U1</a>, <a href="#NWDR">D2</a>
+<li><a name="NWI-equivclasses" href="#NWD2">equivclasses</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD7">U3</a>
+<li><a name="NWI-explode_apps" href="#NWDL">explode_apps</a>: <a href="#NWDL">D1</a>
+<li><a name="NWI-Fieldinfo" href="#NWDC">Fieldinfo</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-Fielditem" href="#NWDC">Fielditem</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-FieldName" href="#NWDC">FieldName</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-FieldNameBindings" href="#NWDC">FieldNameBindings</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-FieldNameList" href="#NWDC">FieldNameList</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-fieldname_literals" href="#NWD2">fieldname_literals</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD3">U3</a>, <a href="#NWgraA-notU-1">U4</a>
+<li><a name="NWI-Fieldspec" href="#NWD7">Fieldspec</a>: <a href="#NWD6">U1</a>, <a href="#NWD7">D2</a>, <a href="#NWDC">U3</a>, <a href="#NWDE">U4</a>
+<li><a name="NWI-Gfor" href="#NWDN">Gfor</a>: <a href="#NWgraA-gra7-C">U1</a>, <a href="#NWDN">D2</a>
+<li><a name="NWI-Glist" href="#NWDN">Glist</a>: <a href="#NWgraA-gra7-C">U1</a>, <a href="#NWDN">D2</a>
+<li><a name="NWI-globals" href="#NWD2">globals</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWDB">U3</a>, <a href="#NWDO">U4</a>, <a href="#NWDV">U5</a>
+<li><a name="NWI-glob_any" href="#NWDi">glob_any</a>: <a href="#NWDi">D1</a>, <a href="#NWgraA-gra7-T">U2</a>
+<li><a name="NWI-glob_dollar" href="#NWDi">glob_dollar</a>: <a href="#NWDi">D1</a>, <a href="#NWgraA-gra7-U">U2</a>
+<li><a name="NWI-glob_wildcard" href="#NWDi">glob_wildcard</a>: <a href="#NWDi">D1</a>, <a href="#NWgraA-iniE-3">U2</a>
+<li><a name="NWI-has_app_or_literal" href="#NWgraA-top8-G">has_app_or_literal</a>: <a href="#NWDb">U1</a>, <a href="#NWgraA-top8-G">D2</a>
+<li><a name="NWI-has_app_or_literal_f" href="#NWgraA-top8-G">has_app_or_literal_f</a>: <a href="#NWgraA-top8-G">D1</a>
+<li><a name="NWI-IDENT" href="#NWDj">IDENT</a>: <a href="#NWDc">U1</a>, <a href="#NWDj">D2</a>, <a href="#NWgraA-gra7-V">U3</a>
+<li><a name="NWI-Ident" href="#NWgraA-gra7-V">Ident</a>: <a href="#NWD7">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWDB">U3</a>, <a href="#NWDC">U4</a>, <a href="#NWDD">U5</a>, <a href="#NWgraA-refK-2">U6</a>, <a href="#NWgraA-gra7-A">U7</a>, <a href="#NWDG">U8</a>, <a href="#NWDM">U9</a>, <a href="#NWgraA-gra7-G">U10</a>, <a href="#NWgraA-gra7-H">U11</a>, <a href="#NWDR">U12</a>, <a href="#NWgraA-gra7-J">U13</a>, <a href="#NWgraA-gra7-O">U14</a>, <a href="#NWDf">U15</a>, <a href="#NWgraA-refN-4">U16</a>, <a href="#NWgraA-gra7-R">U17</a>, <a href="#NWgraA-gra7-T">U18</a>, <a href="#NWgraA-gra7-U">U19</a>, <a href="#NWgraA-gra7-V">D20</a>
+<li><a name="NWI-IdentBinding" href="#NWDC">IdentBinding</a>: <a href="#NWDC">D1</a>, <a href="#NWgraA-gra7-Q">U2</a>
+<li><a name="NWI-init_parser" href="#NWgraA-top8-2">init_parser</a>: <a href="#NWgraA-top8-2">D1</a>
+<li><a name="NWI-input" href="#NWDT">input</a>: <a href="#NWDT">D1</a>, <a href="#NWDV">U2</a>, <a href="#NWgraA-refN-5">U3</a>
+<li><a name="NWI-instructionctype" href="#NWD2">instructionctype</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWDP">U3</a>
+<li><a name="NWI-INT" href="#NWDj">INT</a>: <a href="#NWgraA-gra7-3">U1</a>, <a href="#NWD7">U2</a>, <a href="#NWDA">U3</a>, <a href="#NWDE">U4</a>, <a href="#NWgraA-gra7-C">U5</a>, <a href="#NWDc">U6</a>, <a href="#NWDf">U7</a>, <a href="#NWDj">D8</a>, <a href="#NWgraA-gra7-V">U9</a>
+<li><a name="NWI-kept_constructors" href="#NWD4">kept_constructors</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-literal" href="#NWDS">literal</a>: <a href="#NWgraA-warR-1">U1</a>, <a href="#NWgraA-refK-2">U2</a>, <a href="#NWgraA-refM-1">U3</a>, <a href="#NWDQ">U4</a>, <a href="#NWgraA-refS-1">U5</a>, <a href="#NWgraA-gra7-H">U6</a>, <a href="#NWgraA-refS-2">U7</a>, <a href="#NWDS">D8</a>, <a href="#NWDU">U9</a>, <a href="#NWDb">U10</a>, <a href="#NWgraA-top8-G">U11</a>, <a href="#NWDc">U12</a>
+<li><a name="NWI-make_relocatable" href="#NWgraA-*-6">make_relocatable</a>: <a href="#NWgraA-gra7-J">U1</a>, <a href="#NWgraA-*-6">D2</a>
+<li><a name="NWI-mark_ct_as_used" href="#NWDX">mark_ct_as_used</a>: <a href="#NWDV">U1</a>, <a href="#NWDX">D2</a>
+<li><a name="NWI-matching_stmts" href="#NWDe">matching_stmts</a>: <a href="#NWDe">D1</a>, <a href="#NWgraA-gra7-O">U2</a>
+<li><a name="NWI-mkfactor" href="#NWgraA-*-8">mkfactor</a>: <a href="#NWDc">U1</a>, <a href="#NWgraA-*-8">D2</a>
+<li><a name="NWI-name_to_input" href="#NWDV">name_to_input</a>: <a href="#NWgraA-gra7-H">U1</a>, <a href="#NWDV">D2</a>
+<li><a name="NWI-newfetch" href="#NWgraA-*-9">newfetch</a>: <a href="#NWDf">U1</a>, <a href="#NWgraA-*-9">D2</a>
+<li><a name="NWI-newfield" href="#NWD8">newfield</a>: <a href="#NWD7">U1</a>, <a href="#NWD8">D2</a>
+<li><a name="NWI-NEWLINE" href="#NWDj">NEWLINE</a>: <a href="#NWgraA-gra7-F">U1</a>, <a href="#NWgraA-gra7-S">U2</a>, <a href="#NWDj">D3</a>
+<li><a name="NWI-operands_and_ids" href="#NWD2">operands_and_ids</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD3">U3</a>, <a href="#NWgraA-notU-1">U4</a>
+<li><a name="NWI-Pand" href="#NWDK">Pand</a>: <a href="#NWDG">U1</a>, <a href="#NWDI">U2</a>, <a href="#NWDK">D3</a>
+<li><a name="NWI-Papp" href="#NWDK">Papp</a>: <a href="#NWDG">U1</a>, <a href="#NWDK">D2</a>, <a href="#NWDL">U3</a>
+<li><a name="NWI-Parsers" href="#NWD5">Parsers</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-patbinding" href="#NWDO">patbinding</a>: <a href="#NWgraA-gra7-A">U1</a>, <a href="#NWDO">D2</a>
+<li><a name="NWI-patlhs" href="#NWDF">patlhs</a>: <a href="#NWDF">D1</a>, <a href="#NWgraA-gra7-A">U2</a>
+<li><a name="NWI-Pcon" href="#NWDK">Pcon</a>: <a href="#NWDG">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-Pident" href="#NWDK">Pident</a>: <a href="#NWgraA-gra7-A">U1</a>, <a href="#NWDG">U2</a>, <a href="#NWDI">U3</a>, <a href="#NWDK">D4</a>
+<li><a name="NWI-Plabel" href="#NWDK">Plabel</a>: <a href="#NWDI">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-Placeholder" href="#NWDB">Placeholder</a>: <a href="#NWD6">U1</a>, <a href="#NWDB">D2</a>
+<li><a name="NWI-Plist" href="#NWDK">Plist</a>: <a href="#NWDG">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-Por" href="#NWDK">Por</a>: <a href="#NWgraA-gra7-A">U1</a>, <a href="#NWDG">U2</a>, <a href="#NWDK">D3</a>, <a href="#NWDL">U4</a>
+<li><a name="NWI-process_operands" href="#NWDQ">process_operands</a>: <a href="#NWDP">U1</a>, <a href="#NWDQ">D2</a>
+<li><a name="NWI-Pseq" href="#NWDK">Pseq</a>: <a href="#NWDG">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-relocatable" href="#NWDW">relocatable</a>: <a href="#NWgraA-refI-3">U1</a>, <a href="#NWgraA-refM-1">U2</a>, <a href="#NWDU">U3</a>, <a href="#NWDV">U4</a>, <a href="#NWDW">D5</a>, <a href="#NWgraA-iniE-2">U6</a>, <a href="#NWgraA-gra7-J">U7</a>, <a href="#NWgraA-refP.2-1">U8</a>, <a href="#NWgraA-refH-1">U9</a>, <a href="#NWgraA-refN-4">U10</a>
+<li><a name="NWI-reversetrailing" href="#NWDY">reversetrailing</a>: <a href="#NWDV">U1</a>, <a href="#NWDY">D2</a>
+<li><a name="NWI-Spec" href="#NWD6">Spec</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-String" href="#NWgraA-gra7-V">String</a>: <a href="#NWDC">U1</a>, <a href="#NWDD">U2</a>, <a href="#NWgraA-refK-2">U3</a>, <a href="#NWDG">U4</a>, <a href="#NWgraA-gra7-G">U5</a>, <a href="#NWgraA-gra7-H">U6</a>, <a href="#NWDc">U7</a>, <a href="#NWDf">U8</a>, <a href="#NWgraA-refN-4">U9</a>, <a href="#NWgraA-gra7-R">U10</a>, <a href="#NWgraA-gra7-V">D11</a>
+<li><a name="NWI-symtab" href="#NWD2">symtab</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWD7">U3</a>, <a href="#NWD8">U4</a>, <a href="#NWDG">U5</a>, <a href="#NWgraA-gra7-G">U6</a>, <a href="#NWDR">U7</a>, <a href="#NWDV">U8</a>, <a href="#NWgraA-*-6">U9</a>, <a href="#NWgraA-*-8">U10</a>
+<li><a name="NWI-SyntaxRange" href="#NWDd">SyntaxRange</a>: <a href="#NWDc">U1</a>, <a href="#NWDd">D2</a>
+<li><a name="NWI-the_glob_wildcard" href="#NWDi">the_glob_wildcard</a>: <a href="#NWDi">D1</a>, <a href="#NWgraA-iniE-3">U2</a>, <a href="#NWgraA-gra7-T">U3</a>
+<li><a name="NWI-the_relocatable" href="#NWDW">the_relocatable</a>: <a href="#NWDW">D1</a>, <a href="#NWgraA-iniE-2">U2</a>, <a href="#NWgraA-*-6">U3</a>
+<li><a name="NWI-undo_identifier_syntax" href="#NWDI">undo_identifier_syntax</a>: <a href="#NWDI">D1</a>
+<li><a name="NWI-vanishing_latent_patlabel" href="#NWD2">vanishing_latent_patlabel</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>
+<li><a name="NWI-warned_literals" href="#NWD2">warned_literals</a>: <a href="#NWD2">D1</a>, <a href="#NWgraA-top8-2">U2</a>, <a href="#NWgraA-warR-1">U3</a>
+<li><a name="NWI-WHITESPACE" href="#NWDj">WHITESPACE</a>: <a href="#NWDj">D1</a>, <a href="#NWgraA-gra7-V">U2</a>
+<li><a name="NWI-wordsize" href="#NWgraA-top8-5">wordsize</a>: <a href="#NWDE">U1</a>, <a href="#NWgraA-top8-5">D2</a>, <a href="#NWgraA-iniE-1">U3</a>, <a href="#NWgraA-refI-4">U4</a>
+</ul>
+</body></html>
+

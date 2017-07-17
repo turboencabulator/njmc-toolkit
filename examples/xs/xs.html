@@ -1,0 +1,327 @@
+<!-- this file was generated automatically by noweave; better not edit it-->
+<html><head><title>xs.nw</title></head><body>
+
+<p>
+<h1>XS<br>An Example Application for the Machine-Code Toolkit</h1>
+<address>Norman Ramsey</address>
+<p>
+
+
+The XS is a fictional microcomputer designed by Karl Lieberherr 
+to exhibit the essential properties of the typical microcomputer of
+the mid-70s.
+With its tiny instruction set, it is a good vehicle for demonstrating
+the toolkit; we can show a machine description and encoding and
+decoding applications, all in one document.
+<p>
+<h2>XS Architecture</h2>
+<p>
+XS consists of
+<ol>
+<li><a name="NWD1">Memory </a><code>MEM</code>, consisting of 1024 32-bit words with addresses from 0
+to 1023.
+<li>32-bit accumulator <code>AC</code>.
+<li>32-bit index register <code>XR</code>.
+<li>10-bit program counter <code>PC</code>.
+<li>1-bit flags <code>PCHI</code>.
+<li>Teletype I/O.
+</ol>
+We can represent the machine as
+<p><pre><a name="NW1fT8m4-xUksW-1" href="#NWD1"><dfn>&lt;declarations for interpreter&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+typedef struct machine {
+  unsigned MEM[1024];
+  unsigned AC, XR, PC;
+  unsigned PCHI:1;
+} *Machine;
+</pre><p><a name="NWD2">We ``validate'' memory access to this machine by using only the</a>
+least significant ten bits.
+A better model would be to halt the machine if the other bits of an
+address were nonzero, but checking that is difficult in C without
+risking unpleasant side effects from evaluating the postincrement or
+predecrement more than once.
+<p><pre><a name="NW1fT8m4-1T9l0E-1" href="#NWD2"><dfn>&lt;memory validation&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+#define validate(A) ((A) &amp; 0x3ff)
+</pre><p>
+<h3><a name="NWD3">Instruction format</a></h3>
+All instructions have the same format:
+<blockquote>
+<table border><!-- alignment is |c|c|c|--><!-- 3 columns--><tr><td align=center><code>op</code></td><td align=center><code>md</code></td><td align=center>&nbsp;&nbsp;&nbsp;<code>adr</code>&nbsp;&nbsp;&nbsp;</td></tr>
+<tr><td align=center>15&nbsp;12</td><td align=center>11&nbsp;10</td><td align=center>9&nbsp;0
+</td></tr></table>
+</blockquote>
+We describe this format as follows:
+<p><pre><a name="NW1fT8m4-29C7eb-1" href="#NWD3"><dfn>&lt;xs.spec*&gt;=</dfn></a> <b>[D<a href="#NWD5">-&gt;</a>]</b>
+fields of instruction (16) op 12:15 md 10:11 adr 0:9
+</pre><p>
+<a name="NWD4">Because instructions are packed two to a word, we use the </a><code>PCHI</code>
+flag to distinguish the two instructions; if <code>PCHI</code> is set, the
+machine executes the instruction in the most significant half-word.
+We always execute the least significant half-word first.
+This scheme suggests some macros:
+<p><pre><a name="NW1fT8m4-16ShO9-1" href="#NWD4"><dfn>&lt;PC macros&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+#define setPC(M, A)  (((M)-&gt;PC = validate(A)), ((M)-&gt;PCHI = 0))
+#define advancePC(M) ((M)-&gt;PCHI ? setPC(M, (M)-&gt;PC+1) : ((M)-&gt;PCHI = 1))
+#define getPC(A)     ((A)-&gt;PC)
+</pre><p>
+<h3><a name="NWD5">Addressing modes</a></h3>
+The XS has direct, indexed, autoincrement, and autodecrement address
+modes: 
+<p><pre><a name="NW1fT8m4-29C7eb-2" href="#NWD3"><dfn>&lt;xs.spec*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+constructors
+  Direct         reloc : Address  is  md = 0 &amp; adr = reloc 
+  Indirect &quot;XR#&quot; reloc : Address  is  md = 1 &amp; adr = reloc 
+  Inc      &quot;XR+&quot; reloc : Address  is  md = 2 &amp; adr = reloc 
+  Dec      &quot;XR-&quot; reloc : Address  is  md = 3 &amp; adr = reloc 
+</pre><p><a name="NWD6">The address computation associated with each mode is:</a>
+<p><pre><a name="NW1fT8m4-34R69O-1" href="#NWD6"><dfn>&lt;procedure to compute address from mode&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+unsigned address(Machine M) {
+  match M to
+  | Direct(adr)   =&gt; return adr;
+  | Indirect(adr) =&gt; return adr + M-&gt;XR;
+  | Inc(adr)      =&gt; return adr + M-&gt;XR++;
+  | Dec(adr)      =&gt; return adr + --M-&gt;XR;
+  endmatch
+}
+</pre><p><a name="NWD7">Note the side effects on the index register XR.</a>
+<p>
+<h3><a name="NWD8">Opcodes</a></h3>
+Two sets, based on <code>op</code> zero or nonzero, plus we identify the
+invalid opcodes for completeness.
+<p><pre><a name="NW1fT8m4-29C7eb-3" href="#NWD3"><dfn>&lt;xs.spec*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+patterns
+  nullary is any of [ HALT NEG COM SHL SHR READ WRT NEWL NOOP TRA NOTR ],
+      which is op = 0 &amp; adr = { 0 to 10 }
+  invalid is op = 0 &amp; adr &gt; 10
+  unary   is any of [ _ LIT LDA STA LDX STX ADD SUB OR AND INC DEC JMP JPZ JPN JSR ],
+      which is op = { 0 to 15 }
+</pre><p><a name="NWD9">And we have the very simple set of constructors:</a>
+<p><pre><a name="NW1fT8m4-29C7eb-4" href="#NWD3"><dfn>&lt;xs.spec*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D]</b>
+placeholder for instruction is HALT
+constructors
+  nullary
+  unary Address
+</pre><p>
+<h3><a name="NWDA">Interpreter</a></h3>
+Here's where we interpret the instructions to have side effects on a
+machine state.
+We use a local variable to hold the current PC at the start of each
+instruction.
+The macros <code>MEMORY</code> and <code>BRANCH</code> encapsulate common idioms.
+<p><pre><a name="NW1fT8m4-2VZV02-1" href="#NWDA"><dfn>&lt;interpreter&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b> <b>[D<a href="#NWDD">-&gt;</a>]</b>
+static void show_inst(Machine m);
+
+void interpretXS(Machine m, unsigned start_address) {
+  unsigned trace = 0;
+  unsigned branch;
+#define MEMORY(a) (m-&gt;MEM[validate(address(a))])
+#define BRANCH(a) (setPC(m, validate(address(a))), branch = 1)
+  for (setPC(m, validate(start_address)); ; branch ? 0 : advancePC(m)) {
+    if (trace) show_inst(m);
+    branch = 0;
+    match m to
+    | HALT =&gt; return;
+    | NEG  =&gt; m-&gt;AC = - m-&gt;AC;
+    | COM  =&gt; m-&gt;AC = ~ m-&gt;AC;
+    | SHL  =&gt; m-&gt;AC &lt;&lt;= 1;
+    | SHR  =&gt; m-&gt;AC &gt;&gt;= 1;
+    | READ =&gt; m-&gt;AC = getchar();
+    | WRT  =&gt; putchar(m-&gt;AC);
+    | NEWL =&gt; putchar('\n');
+    | NOOP =&gt; /* do nothing */;
+    | TRA  =&gt; trace = 1;
+    | NOTR =&gt; trace = 0;
+    | invalid =&gt; assert((&quot;invalid instruction&quot;, 0));
+    | LIT(a) =&gt; m-&gt;AC = address(m);
+    | LDA(a) =&gt; m-&gt;AC = MEMORY(m);
+    | STA(a) =&gt; MEMORY(m) = m-&gt;AC;
+    | LDX(a) =&gt; m-&gt;XR = MEMORY(m);
+    | STX(a) =&gt; MEMORY(m) = m-&gt;XR;
+    | ADD(a) =&gt; m-&gt;AC += MEMORY(m);
+    | SUB(a) =&gt; m-&gt;AC -= MEMORY(m);
+    | OR(a)  =&gt; m-&gt;AC |= MEMORY(m);
+    | AND(a) =&gt; m-&gt;AC &amp;= MEMORY(m);
+    | INC(a) =&gt; MEMORY(m)++;
+    | DEC(a) =&gt; MEMORY(m)--;
+    | JMP(a) =&gt; BRANCH(m);
+    | JPZ(a) =&gt; if (m-&gt;AC == 0) then BRANCH(m);
+    | JPN(a) =&gt; if (m-&gt;AC &lt;  0) then BRANCH(m);
+    | JSR(a) =&gt; m-&gt;XR = m-&gt;PC; BRANCH(m);
+    endmatch
+  }
+}
+</pre><p>
+<a name="NWDB">In order to make the baroque treatment of the PC work,</a>
+we supply extremely baroque decoding templates:
+<p><pre><a name="NW1fT8m4-10wad2-1" href="#NWDB"><dfn>&lt;interpreter decoding templates&gt;=</dfn></a> <b>(<a href="#NWDI">U-&gt;</a>)</b>
+address type is &quot;Machine&quot;
+address add using &quot;(%o == 0 ? %a : NULL)&quot;
+address to integer using &quot;%a-&gt;PC&quot;
+fetch 16 using &quot;(%a-&gt;PCHI ? %a-&gt;MEM[%a-&gt;PC] &gt;&gt; 16 : %a-&gt;MEM[%a-&gt;PC] &amp; 0xffff)&quot;
+</pre><p><a name="NWDC">Note that we only ever fetch from offset&nbsp;0, we only ever fetch</a>
+instructions, and each instruction is 16&nbsp;bits.
+<p><pre><a name="NW1fT8m4-38fV1Y-1" href="#NWDC"><dfn>&lt;fetch macro&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+#define FETCH16(A) ((A)-&gt;PCHI ? (A)-&gt;MEM[(A)-&gt;PC] &gt;&gt; 16 : (A)-&gt;MEM[(A)-&gt;PC] &amp; 0xffff)
+</pre><p>
+<a name="NWDD">We also supply a tracing procedure.</a>
+<p><pre><a name="NW1fT8m4-2VZV02-2" href="#NWDA"><dfn>&lt;interpreter&gt;+=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b> <b>[<a href="#NWDA">&lt;-</a>D]</b>
+static char *adrstring(Machine m);
+
+static void show_inst(Machine m) {
+  fprintf(stderr, &quot;%03x%s : &quot;, m-&gt;PC, m-&gt;PCHI ? &quot;'&quot; : &quot; &quot;);
+  match m to
+  | nullary [name]  =&gt; fprintf(stderr, &quot;%s&quot;, name);
+  | invalid         =&gt; fprintf(stderr, &quot;INVALID [%08x]&quot;, m-&gt;MEM[validate(m-&gt;PC)]);
+  | unary(a) [name] =&gt; fprintf(stderr, &quot;%s %s&quot;, name, adrstring(m));
+  endmatch
+  fprintf(stderr, &quot;  (AC=%08x, XR=%08x)\n&quot;, m-&gt;AC, m-&gt;XR);
+}
+
+static char *adrstring(Machine m) {
+  static char buf[100];
+  match m to
+  | Direct(adr)   =&gt; sprintf(buf, &quot;%08x&quot;, adr);
+  | Indirect(adr) =&gt; sprintf(buf, &quot;XR#%08x&quot;, adr);
+  | Inc(adr)      =&gt; sprintf(buf, &quot;XR+%08x&quot;, adr);
+  | Dec(adr)      =&gt; sprintf(buf, &quot;XR-%08x&quot;, adr);
+  endmatch
+  return buf;
+}
+</pre><p>
+<h3>Loader and load format</h3>
+<a name="NWDE">The loader format is specified to be a sequence of words in</a>
+little-endian byte order:
+<blockquote>
+<table border><!-- alignment is r|l|l--><!-- 3 columns--><tr><td align=right>0</td><td align=left valign=top><tt>LA</tt></td><td align=left valign=top>LA: load address</td></tr>
+<tr><td align=right>1</td><td align=left valign=top><i>N</i></td><td align=left valign=top>number of memory words that follow</td></tr>
+<tr><td align=right>2</td><td align=left valign=top><i>...</i></td><td align=left valign=top>Initial contents of memory</td></tr>
+<tr><td align=right><i>N+2</i></td><td align=left valign=top><tt>START</tt></td><td align=left valign=top>Start address</td></tr>
+</table>
+</blockquote>
+<p><a name="NWDF">This format is written by the assembler and read by the loader.</a>
+<p><pre><a name="NW1fT8m4-1Cl5M7-1" href="#NWDF"><dfn>&lt;loader&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b> <b>[D<a href="#NWDG">-&gt;</a>]</b>
+static unsigned getword(FILE *fp);
+void load_and_goXS(Machine m, FILE *loadfile) {
+  unsigned LA, N, START;  
+  unsigned i;
+  LA = getword(loadfile);
+  N  = getword(loadfile);
+  for (i = 0; i &lt; N; i++)
+    m-&gt;MEM[validate(LA+i)] = getword(loadfile);
+  START = getword(loadfile);
+  interpretXS(m, START);
+}
+</pre><p><a name="NWDG">Here's the way we read words from the load file.</a>
+<p><pre><a name="NW1fT8m4-1Cl5M7-2" href="#NWDF"><dfn>&lt;loader&gt;+=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b> <b>[<a href="#NWDF">&lt;-</a>D]</b>
+static unsigned getword(FILE *fp) {
+  unsigned u;
+  u = 0;
+  u |= ((unsigned char) getc(fp)) &lt;&lt;  0;
+  u |= ((unsigned char) getc(fp)) &lt;&lt;  8;
+  u |= ((unsigned char) getc(fp)) &lt;&lt; 16;
+  u |= ((unsigned char) getc(fp)) &lt;&lt; 24;
+  return u;
+}
+</pre><p>
+<h3><a name="NWDH">Interpreter main program</a></h3>
+<p><pre><a name="NW1fT8m4-2NMmKq-1" href="#NWDH"><dfn>&lt;xs.m*&gt;=</dfn></a>
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+<a name="NW1fT8m4-2NMmKq-1-u1" href="#NWD1"><i>&lt;declarations for interpreter&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u2" href="#NWD2"><i>&lt;memory validation&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u3" href="#NWD4"><i>&lt;PC macros&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u4" href="#NWDC"><i>&lt;fetch macro&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u5" href="#NWD6"><i>&lt;procedure to compute address from mode&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u6" href="#NWDA"><i>&lt;interpreter&gt;</i></a>
+<a name="NW1fT8m4-2NMmKq-1-u7" href="#NWDF"><i>&lt;loader&gt;</i></a>
+
+main(int argc, char *argv[]) {
+  FILE *loadfile;
+  Machine m;
+  <a name="NW1fT8m4-2NMmKq-1-u8" href="#NW1fT8m4-2OVwg1-1"><i>&lt;insist on <code>progname loadfile</code>&gt;</i></a>
+  loadfile = fopen(argv[1], &quot;r&quot;);
+  <a name="NW1fT8m4-2NMmKq-1-u9" href="#NW1fT8m4-Fc4H3-1"><i>&lt;insist on non-NULL <code>loadfile</code>&gt;</i></a>
+  m = (Machine) malloc(sizeof(*m));
+  assert(m);
+  load_and_go(m, loadfile);
+}
+</pre><p>
+<pre><a name="NW1fT8m4-2OVwg1-1" href="#NW1fT8m4-2OVwg1-1"><dfn>&lt;insist on <code>progname loadfile</code>&gt;=</dfn></a> <b>(<a href="#NWDH">&lt;-U</a>)</b>
+if (argc != 2) {
+  fprintf(stderr, &quot;Usage: %s loadfile\n&quot;, argv[0]);
+  exit(1);
+}
+</pre><pre><a name="NW1fT8m4-Fc4H3-1" href="#NW1fT8m4-Fc4H3-1"><dfn>&lt;insist on non-NULL <code>loadfile</code>&gt;=</dfn></a> <b>(<a href="#NWDH">&lt;-U</a>)</b>
+if (loadfile == NULL) {
+  fprintf(stderr, &quot;%s: Could not open file %s for read\n&quot;, argv[0], argv[1]);
+  exit(1);
+}
+</pre><p>
+<h3><a name="NWDI">Makefile</a></h3>
+To build direct and indirect encoding procedures:
+<p><pre><a name="NW1fT8m4-2btFv9-1" href="#NWDI"><dfn>&lt;xs.decode&gt;=</dfn></a>
+<a name="NW1fT8m4-2btFv9-1-u1" href="#NWDB"><i>&lt;interpreter decoding templates&gt;</i></a>
+</pre><pre><a name="NW1fT8m4-2CgwVs-1" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;=</dfn></a> <b>[D<a href="#NW1fT8m4-2CgwVs-2">-&gt;</a>]</b>
+CCOPTS=
+INCLUDES=-I../src
+CFLAGS=$(CCOPTS) $(INCLUDES)
+CC=gcc
+
+all: xs-direct.o xs-indirect.o xs-asm.o
+
+clean:
+        rm -f *.o *.c *.h *~ *.html *.tex *.dvi *.log *.ps 
+        rm -f xs.spec xs.m xs.decode
+
+Makefile xs.spec xs.m xs.decode : xs.nw
+        noweb -t xs.nw
+</pre><pre><a name="NW1fT8m4-2CgwVs-2" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-1">&lt;-</a>D<a href="#NW1fT8m4-2CgwVs-3">-&gt;</a>]</b>
+xs.c: xs.spec xs.decode xs.m
+        tools -decoder xs.c -matcher xs.m xs.decode xs.spec 
+</pre><pre><a name="NW1fT8m4-2CgwVs-3" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-2">&lt;-</a>D<a href="#NW1fT8m4-2CgwVs-4">-&gt;</a>]</b>
+xs-direct.c xs-direct.h: xs.spec
+        tools -encoder xs-direct -late-const xs.spec
+</pre><pre><a name="NW1fT8m4-2CgwVs-4" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-3">&lt;-</a>D<a href="#NW1fT8m4-2CgwVs-5">-&gt;</a>]</b>
+xs-indirect.c xs-indirect.h: xs.spec
+        tools -encoder xs-indirect -late-const -indirect xs xs.spec
+</pre><pre><a name="NW1fT8m4-2CgwVs-5" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-4">&lt;-</a>D<a href="#NW1fT8m4-2CgwVs-6">-&gt;</a>]</b>
+xs-asm.c: xs.spec
+        tools -asm-encoder xs-asm -indirect xsasm xs.spec
+</pre><pre><a name="NW1fT8m4-2CgwVs-6" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-5">&lt;-</a>D<a href="#NW1fT8m4-2CgwVs-7">-&gt;</a>]</b>
+xs.html: xs.nw
+        noweave -filter l2h -html -x xs.nw &gt; xs.html
+</pre><pre><a name="NW1fT8m4-2CgwVs-7" href="#NW1fT8m4-2CgwVs-1"><dfn>&lt;Makefile&gt;+=</dfn></a> <b>[<a href="#NW1fT8m4-2CgwVs-6">&lt;-</a>D]</b>
+xs.tex: xs.nw
+        noweb -o xs.nw
+xs.dvi: xs.tex
+        latex '\scrollmode \input xs'
+        sh -c &quot;while grep -s 'Rerun to get cross-references right' xs.log; do latex '\scrollmode \input xs'; done&quot;
+xs.ps:  xs.dvi
+        dvips -o xs.ps xs
+distfiles: xs.ps xs.html
+        noweb -t xs.nw
+</pre><p>
+
+
+<a name="NWDJ">BUGS:</a>
+- too many warnings generating interpreter
+- #line not passed through properly in interpreter (xs.c is bad)
+<p>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;declarations for interpreter&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWDH">U2</a>
+<li><a href="#NWDC"><i>&lt;fetch macro&gt;</i></a>: <a href="#NWDC">D1</a>, <a href="#NWDH">U2</a>
+<li><a href="#NW1fT8m4-2OVwg1-1"><i>&lt;insist on <code>progname loadfile</code>&gt;</i></a>: <a href="#NWDH">U1</a>, <a href="#NW1fT8m4-2OVwg1-1">D2</a>
+<li><a href="#NW1fT8m4-Fc4H3-1"><i>&lt;insist on non-NULL <code>loadfile</code>&gt;</i></a>: <a href="#NWDH">U1</a>, <a href="#NW1fT8m4-Fc4H3-1">D2</a>
+<li><a href="#NWDA"><i>&lt;interpreter&gt;</i></a>: <a href="#NWDA">D1</a>, <a href="#NWDD">D2</a>, <a href="#NWDH">U3</a>
+<li><a href="#NWDB"><i>&lt;interpreter decoding templates&gt;</i></a>: <a href="#NWDB">D1</a>, <a href="#NWDI">U2</a>
+<li><a href="#NWDF"><i>&lt;loader&gt;</i></a>: <a href="#NWDF">D1</a>, <a href="#NWDG">D2</a>, <a href="#NWDH">U3</a>
+<li><a href="#NW1fT8m4-2CgwVs-1"><i>&lt;Makefile&gt;</i></a>: <a href="#NW1fT8m4-2CgwVs-1">D1</a>, <a href="#NW1fT8m4-2CgwVs-2">D2</a>, <a href="#NW1fT8m4-2CgwVs-3">D3</a>, <a href="#NW1fT8m4-2CgwVs-4">D4</a>, <a href="#NW1fT8m4-2CgwVs-5">D5</a>, <a href="#NW1fT8m4-2CgwVs-6">D6</a>, <a href="#NW1fT8m4-2CgwVs-7">D7</a>
+<li><a href="#NWD2"><i>&lt;memory validation&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWDH">U2</a>
+<li><a href="#NWD4"><i>&lt;PC macros&gt;</i></a>: <a href="#NWD4">D1</a>, <a href="#NWDH">U2</a>
+<li><a href="#NWD6"><i>&lt;procedure to compute address from mode&gt;</i></a>: <a href="#NWD6">D1</a>, <a href="#NWDH">U2</a>
+<li><a href="#NWDI"><i>&lt;xs.decode&gt;</i></a>: <a href="#NWDI">D1</a>
+<li><a href="#NWDH"><i>&lt;xs.m*&gt;</i></a>: <a href="#NWDH">D1</a>
+<li><a href="#NWD3"><i>&lt;xs.spec*&gt;</i></a>: <a href="#NWD3">D1</a>, <a href="#NWD5">D2</a>, <a href="#NWD8">D3</a>, <a href="#NWD9">D4</a>
+</ul>
+</body></html>
+

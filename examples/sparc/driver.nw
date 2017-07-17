@@ -1,0 +1,35 @@
+This simple driver for a SPARC disassembler disassembles its own main
+routine.
+<<*>>=
+#include <stdio.h>
+#include "sparcdis.h"	
+@ 
+We do nothing at all clever about disassembling relocatable addresses.
+A real function would keep track of labels and show these things more symbolically.
+<<*>>=
+static char *dis_rel (void *unused, unsigned addr) { 
+  static char buf[80];
+  sprintf(buf, "0x%08x", addr);
+  return buf;
+}
+@ 
+We fetch by casting pointers and integers.
+<<*>>=
+static unsigned fetch_word(void *unused, unsigned lc) {
+  return *(unsigned *)lc;
+}
+@ 
+The main program disassembles from [[main]] through [[empty]]
+<<*>>=
+static void empty(void);
+main() {
+  unsigned start = (unsigned)main;
+
+  for (start = (unsigned)main; start < (unsigned)empty; start += 4) {
+    sparc_disassemble(start, (Printer) fprintf, stdout, 
+                             dis_rel, NULL, fetch_word, NULL);
+    printf("\n");
+  }
+}
+
+static void empty() {}

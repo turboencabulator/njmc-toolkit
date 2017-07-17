@@ -1,0 +1,408 @@
+<html><head><title> gencode.nw</title></head><body><!-- -*- mode: Noweb; noweb-code-mode: icon-mode -*--->
+
+
+<h1><a name="NWD1">Code generation for matching</a></h1>
+This module contains the language-independent part of code generation
+for a matching statement.
+The records beginning with <code>G</code> define the structure, which is to be
+instantiated in a language-dependent way.
+<pre><a name="NWgenA-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWgenA-*-2">-&gt;</a>]</b>
+record <a href="#NWD1">Glines</a>(x)                # list of lines to be written out
+record <a href="#NWD1">Gresynch</a>(line, file)     # C #line or m3 &lt;* LINE ... *&gt;
+record <a href="#NWD1">Gblock</a>(decls, stmts)     # block with local variables
+record <a href="#NWD1">Gdecl</a>(name, type, init)  # variable with name, type, optional initial value
+record <a href="#NWD1">Gcall</a>(name, args)        # call to named function
+</pre><blockquote>Defines <a href="#NWI-Gblock"><code>Gblock</code></a>, <a href="#NWI-Gcall"><code>Gcall</code></a>, <a href="#NWI-Gdecl"><code>Gdecl</code></a>, <a href="#NWI-Glines"><code>Glines</code></a>, <a href="#NWI-Gresynch"><code>Gresynch</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD2">For </a><code><a href="#NWD1">Gdecl</a></code>, we require only that a type or an initial value be 
+specified, as in Modula-3.  Emitters for C may have to infer a type when an
+initial value is given.
+
+<pre><a name="NWgenA-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWgenA-*-3">-&gt;</a>]</b>
+record <a href="#NWgenA-*-2">Gdeclnamearray</a>(na)       # declares CONST ARRAY OF TEXT specified by
+                                # namearray na.
+</pre><blockquote>Defines <a href="#NWI-Gdeclnamearray"><code>Gdeclnamearray</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-2">&lt;-</a>D<a href="#NWgenA-*-4">-&gt;</a>]</b>
+record <a href="#NWgenA-*-3">Gcase</a>(x, arms)           # CASE x OF arms END;
+record <a href="#NWgenA-*-3">Gcasearm</a>(tags, x)        # tags is sorted list of lo, hi s.t. lo &lt;= x &lt; hi
+
+record <a href="#NWgenA-*-3">Ginrange</a>(lo, x, hi)      # predicate lo &lt;= x &lt; hi
+record <a href="#NWgenA-*-3">Gsetname</a>(lhs, name)      # lhs := name (where name is string or namearray)
+
+record <a href="#NWgenA-*-3">Gnomatch</a>()               # what happens when there's no match
+
+record <a href="#NWgenA-*-3">Tunsigned</a>(width)         # unsigned value of width bits (word size if /width)
+record <a href="#NWgenA-*-3">Tsigned</a>(width)           # signed value of width bits (word size if /width)
+record <a href="#NWgenA-*-3">Gasgn</a>(lhs, x)            # set lhs := x
+</pre><blockquote>Defines <a href="#NWI-Gasgn"><code>Gasgn</code></a>, <a href="#NWI-Gcase"><code>Gcase</code></a>, <a href="#NWI-Gcasearm"><code>Gcasearm</code></a>, <a href="#NWI-Ginrange"><code>Ginrange</code></a>, <a href="#NWI-Gnomatch"><code>Gnomatch</code></a>, <a href="#NWI-Gsetname"><code>Gsetname</code></a>, <a href="#NWI-Tsigned"><code>Tsigned</code></a>, <a href="#NWI-Tunsigned"><code>Tunsigned</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-argL-1" href="#NWgenA-argL-1"><dfn>&lt;argument descriptions&gt;=</dfn></a>
+expargs decls stmts init.
+</pre><pre><a name="NWgenA-rewD-1" href="#NWgenA-rewD-1"><dfn>&lt;rewrite rules&gt;=</dfn></a>
+<a href="#NWgenA-*-3">Ginrange</a>(lo, N, hi) -&gt; if lo &lt;= N &lt; hi then 1 else 0
+</pre><pre><a name="NWgenA-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-3">&lt;-</a>D<a href="#NWgenA-*-5">-&gt;</a>]</b>
+global <a href="#NWgenA-*-4">gen_file_header</a>, <a href="#NWgenA-*-4">gen_outer_decls</a>
+procedure <a href="#NWgenA-*-4">genheader</a>(header)
+  return <a href="#NWD1">Glines</a>([ 
+            <a href="#NWD1">Gresynch</a>(<a href="#NWgenA-*-5">codeline</a> := 1), 
+            literal(<a href="#NWgenA-*-4">gen_file_header</a>),
+            <a href="#NWD1">Gresynch</a>(header.line, header.file), 
+            <a href="#NWD1">Glines</a>(header.code), 
+            <a href="#NWD1">Gresynch</a>(<a href="#NWgenA-*-5">codeline</a> +:= 100)])
+end
+</pre><blockquote>Defines <a href="#NWI-gen_file_header"><code>gen_file_header</code></a>, <a href="#NWI-genheader"><code>genheader</code></a>, <a href="#NWI-gen_outer_decls"><code>gen_outer_decls</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-4">&lt;-</a>D<a href="#NWgenA-*-6">-&gt;</a>]</b>
+global <a href="#NWgenA-*-5">fetchtab</a>                 # code to use to fetch words: size -&gt; fetch string
+global <a href="#NWgenA-*-5">codeline</a>
+</pre><blockquote>Defines <a href="#NWI-codeline"><code>codeline</code></a>, <a href="#NWI-fetchtab"><code>fetchtab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-5">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-6">gencase</a>(cs, root) 
+  static label
+  local decls
+  initial label := 0
+  /root := tree(cs)
+  outtree(\ascii_tree, root)
+  decls := [<a href="#NWD1">Gdecl</a>(&quot;MATCH_p&quot;, <a href="#NWgenA-*-5">fetchtab</a>[&quot;type&quot;], cs.valcode)]
+  every put(decls, !<a href="#NWgenA-*-4">gen_outer_decls</a> | <a href="#NWgenA-*-2">Gdeclnamearray</a>(!namesused(root)))
+  return <a href="#NWD1">Glines</a>([<a href="#NWD1">Gblock</a>(decls, [<a href="#NWD1">Gresynch</a>(<a href="#NWgenA-*-5">codeline</a> +:= 100), <a href="#NWD3">gennode</a>(root, set())])] |||
+                <a href="#NWgenA-*-I">armscode</a>(cs.trailer))
+end
+</pre><blockquote>Defines <a href="#NWI-gencase"><code>gencase</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">I special-case the case of two children where one has a single range; </a>
+the generated code is cleaner if I just use one <code>if</code> statement.
+Actually, I could do this any time I have only two children...
+<pre><a name="NWgenA-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-6">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWD3">gennode</a>(n, wordsmatched)
+    local firstif, decls, added, single_range, other_child, answer
+    while *n.children = 1 do 
+        n := n.children[1].node
+    if *n.children &gt; 0 then {
+        decls := []
+pushtrace(&quot;DECLS&quot;)
+        added := <a href="#NWD5">add_decls</a>(decls, wordsmatched, <a href="#NWgenA-*-9">node_fields</a>(n.field))
+poptrace()
+        if *n.children = 2 &amp; single_range := !n.children &amp; *single_range.lo = 1 then {
+          <a name="NWgenA-*-7-u1" href="#NWgenA-setf-1"><i>&lt;set <code>answer</code> to single <code>if</code> statement&gt;</i></a>
+        } else {
+          <a name="NWgenA-*-7-u2" href="#NWgenA-spl1C-1"><i>&lt;split children into <code>if</code> and case tests, and make combination <code>answer</code>&gt;</i></a>
+        }
+        every delete(wordsmatched, !added)
+        return answer
+    } else {
+        decls := []
+        added := <a href="#NWD5">add_decls</a>(decls, wordsmatched, <a href="#NWD6">constraint_fields</a>(n.cs.arms))
+        s := <a href="#NWgenA-*-G">genarms</a>(n.cs.arms, n, wordsmatched)
+        answer := subst_for_pc(<a href="#NWD1">Gblock</a>(decls, [s]), <a href="#NWgenA-*-M">address_to_integer</a>(&quot;MATCH_p&quot;))
+        every delete(wordsmatched, !added)
+        return answer
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-gennode"><code>gennode</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-spl1C-1" href="#NWgenA-spl1C-1"><dfn>&lt;split children into <code>if</code> and case tests, and make combination <code>answer</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+edges := table()
+every e := !n.children do edges[sort(e.lo)[1]] := e
+edges := sort(edges)
+ifarms := []
+every <a href="#NWgenA-*-F">addarms</a>(ifarms, n.field, (!edges)[2], wordsmatched)
+casearms := []
+every <a href="#NWgenA-*-E">genedge</a>(casearms, n.field, (!edges)[2], wordsmatched)
+put(ifarms, Sguarded(1, <a href="#NWgenA-*-3">Gcase</a>(<a href="#NWD9">afieldexp</a>(n.field), casearms)))
+answer := subst_for_pc(<a href="#NWD1">Gblock</a>(decls, [Sif(ifarms)]), <a href="#NWgenA-*-M">address_to_integer</a>(&quot;MATCH_p&quot;))
+</pre><pre><a name="NWgenA-setf-1" href="#NWgenA-setf-1"><dfn>&lt;set <code>answer</code> to single <code>if</code> statement&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+other_child := single_range ~=== !n.children
+<a name="NWgenA-setf-1-u1" href="#NWD4"><i>&lt;if <code>other_child</code>'s range has one element, exchange it with <code>single_range</code>&gt;</i></a>
+f := <a href="#NWD9">afieldexp</a>(n.field)
+s := Sif([Sguarded(<a href="#NWgenA-*-3">Ginrange</a>(!single_range.lo, f, !single_range.hi),
+                   <a href="#NWD3">gennode</a>(single_range.node, wordsmatched)),
+          Sguarded(1, <a href="#NWD3">gennode</a>(other_child.node, wordsmatched))])
+answer := subst_for_pc(<a href="#NWD1">Gblock</a>(decls, [s]), <a href="#NWgenA-*-M">address_to_integer</a>(&quot;MATCH_p&quot;))
+</pre><p>
+<a name="NWD4">This little goodie makes it a bit more likely to use just one equality test.</a>
+It's not clear whether it's the right heuristic when both ranges
+contain more than one element.
+<pre><a name="NWgenA-if*1F-1" href="#NWD4"><dfn>&lt;if <code>other_child</code>'s range has one element, exchange it with <code>single_range</code>&gt;=</dfn></a> <b>(<a href="#NWgenA-setf-1">&lt;-U</a>)</b>
+if *other_child.lo = 1 &amp; (!other_child.lo + 1 = !other_child.hi) then {
+  *other_child.hi = 1 | impossible(&quot;ranges&quot;)
+  other_child :=: single_range
+}
+</pre><p>
+<code><a name="NWD5">wordsmatched</a></code> is slightly misnamed.  It contains the <em>names</em> of
+all the words that have been fetched, and it also contains the absolute fields that
+have been fetched.
+<pre><a name="NWgenA-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWgenA-*-9">-&gt;</a>]</b>
+procedure <a href="#NWD5">add_decls</a>(decls, wordsmatched, fields)
+  local added
+  added := set()
+  every w := <a href="#NWD7">wordname</a>(f := !fields) &amp; not member(wordsmatched, w) do {
+    put(decls, <a href="#NWD1">Gdecl</a>(<a href="#NWD7">wordname</a>(f), <a href="#NWgenA-*-3">Tunsigned</a>(f.field.class.size), 
+                     <a href="#NWgenA-*-L">fetchcode</a>(<a href="#NWDC">address_add</a>(&quot;MATCH_p&quot;, f.offset), f.field.class.size)))
+    every insert(wordsmatched | added, w)
+  }
+  # with [[<a href="#NWD9">afieldexp</a>]], these are no longer needed
+  ##  every f := !fields &amp; not member(wordsmatched, f) do {
+  ##    put(decls, <a href="#NWD1">Gdecl</a>(afieldname(f), <a href="#NWgenA-*-3">Tunsigned</a>(fwidth(f.field)), 
+  ##                       Eslice(literal(<a href="#NWD7">wordname</a>(f)), f.field.lo, fwidth(f.field))))
+  ##    every insert(wordsmatched | added, f)
+  ##  }
+  return added
+end  
+</pre><blockquote>Defines <a href="#NWI-add_decls"><code>add_decls</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-9">node_fields</a>(f)
+  return case type(f) of {
+    &quot;set&quot;   : f
+    &quot;list&quot;  : set(f)
+    default : set([f])
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-node_fields"><code>node_fields</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">Make sure to declare these fields before use.</a>
+<pre><a name="NWgenA-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-9">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD6">constraint_fields</a>(arms)
+  local fields
+  fields := set()
+  every a := !arms do
+    every insert(fields,
+                 <a href="#NWD6">absolute_fields</a>((\a.imp_soln).constraints |
+                                 subst_tab(!(\a.soln).constraints,
+                                           (\a.imp_soln).answers, 1)))
+  return fields
+end
+
+procedure <a href="#NWD6">absolute_fields</a>(e)
+  suspend subterms_matching(e, &quot;absolute_field&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-absolute_fields"><code>absolute_fields</code></a>, <a href="#NWI-constraint_fields"><code>constraint_fields</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">We use a stylized </a><code><a href="#NWD7">wordname</a></code> to refer to the word containing a particular
+field.  It's uniquely determined by its size and offset.
+<pre><a name="NWgenA-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+procedure <a href="#NWD7">wordname</a>(f)
+  return &quot;MATCH_w_&quot; || f.field.class.size || &quot;_&quot; || f.offset;
+end
+</pre><blockquote>Defines <a href="#NWI-wordname"><code>wordname</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD8">A similar trick gives us a unique name for each absolute field.</a>
+<pre><a name="NWgenA-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+##  procedure afieldname(f)
+##    return &quot;MATCH_f_&quot; || f.field.name || &quot;_&quot; || f.offset
+##  end
+</pre><p><a name="NWD9">BUT we're no longer using that trick; instead, we're grabbing the</a>
+word directly.
+<pre><a name="NWgenA-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWgenA-*-E">-&gt;</a>]</b>
+record <a href="#NWD9">Gcommented</a>(e, comment)
+procedure <a href="#NWD9">afieldexp</a>(f)
+  return <a href="#NWD9">Gcommented</a>(Eslice(literal(<a href="#NWD7">wordname</a>(f)), f.field.lo, fwidth(f.field)),
+                    f.field.name || &quot; at &quot; || f.offset)
+end
+</pre><blockquote>Defines <a href="#NWI-afieldexp"><code>afieldexp</code></a>, <a href="#NWI-Gcommented"><code>Gcommented</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWgenA-*-F">-&gt;</a>]</b>
+global <a href="#NWgenA-*-E">MAXRANGE</a>
+
+procedure <a href="#NWgenA-*-E">genedge</a>(casearms, f, e, wordsmatched)
+    local tags
+    tags := []
+    r := sort(e.lo ++ e.hi)
+    while lo := get(r) &amp; hi := get(r) do
+        if hi - lo &lt;= <a href="#NWgenA-*-E">MAXRANGE</a> then
+            every put(tags, lo | hi)
+    if *tags &gt; 0 then 
+        put(casearms, <a href="#NWgenA-*-3">Gcasearm</a>(tags, <a href="#NWD3">gennode</a>(e.node, wordsmatched)))
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-genedge"><code>genedge</code></a>, <a href="#NWI-MAXRANGE"><code>MAXRANGE</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-E">&lt;-</a>D<a href="#NWgenA-*-G">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-F">addarms</a>(ifarms, f, e, wordsmatched)
+    r := sort(e.lo ++ e.hi)
+    while lo := get(r) &amp; hi := get(r) do
+        if hi - lo &gt; <a href="#NWgenA-*-E">MAXRANGE</a> then
+            put(ifarms, Sguarded(<a href="#NWgenA-*-3">Ginrange</a>(lo, <a href="#NWD9">afieldexp</a>(f), hi), 
+                                 <a href="#NWD3">gennode</a>(e.node, wordsmatched)))
+    return 
+end
+</pre><blockquote>Defines <a href="#NWI-addarms"><code>addarms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-F">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-G">genarms</a>(arms, thenode, wordsmatched)
+    local ifarms
+    ifarms := []
+    every a := !arms do {
+      c := copy((\a.imp_soln).constraints) | set()
+      every insert_condition(c, 
+                subst_tab(!(\a.soln).constraints, (\a.imp_soln).answers, 1))
+      put(ifarms, Sguarded(c, <a href="#NWDA">genarm</a>(a, thenode, wordsmatched)))
+    }
+    put(ifarms, Sguarded(1, <a href="#NWgenA-*-3">Gnomatch</a>()))
+    return Sif(ifarms)
+end
+</pre><blockquote>Defines <a href="#NWI-genarms"><code>genarms</code></a> (links are to index).<p>
+</blockquote><p>
+It might be surprising to see us declaring identifiers with the null type
+(using <code><a href="#NWD1">Gdecl</a></code> below), but that's what we use when the exact type is unknown
+or unimportant.  
+Emitters for languages like SML or Modula-3 can then ignore type
+<a name="NWDA">entirely. </a>
+<p>
+Something is going awry in the equation solver. Pattern labels
+are inputs to the solver, and therefore should 
+not appear in <code>answers</code>; however, they do appear in <code>answers</code>,
+which means they were declared twice.  Omitting the code to 
+declare pattern labels seems to solve the problem, but why?
+Notice also that the omitted code could never have been right to begin
+with, since it bound the label to an <em>offset</em>, not to its true value.
+<pre><a name="NWgenA-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-G">&lt;-</a>D<a href="#NWgenA-*-I">-&gt;</a>]</b>
+procedure <a href="#NWDA">genarm</a>(a, thenode, wordsmatched)
+    local bindings, fused, block, decls, stmts, patlabels
+    /continue := 0
+    <a name="NWgenA-*-H-u1" href="#NWgenA-insl-1"><i>&lt;insist there are no field bindings in arm <code>a</code>&gt;</i></a>
+    fused := set(); 
+    every insert(fused, subterms_matching(!(\a.imp_soln).answers, &quot;absolute_field&quot;))
+    decls := []
+    added := <a href="#NWD5">add_decls</a>(decls, wordsmatched, fused)
+#    patlabels := a.pattern.disjuncts[1].patlabelbindings
+#    every id := key(\patlabels) do
+#      put(decls, <a href="#NWD1">Gdecl</a>(id, unsigned_type(), patlabels[id]))
+    every id := key((\a.imp_soln).answers) &amp; not <a href="#NWDB">is_wildcard</a>(id) do 
+      put(decls, <a href="#NWD1">Gdecl</a>(id, &amp;null, a.imp_soln.answers[id]))
+    every id := key((\a.soln).answers) &amp; not <a href="#NWDB">is_wildcard</a>(id)  do
+      put(decls, <a href="#NWD1">Gdecl</a>(id, &amp;null, a.soln.answers[id]))
+    if (\a.name &amp; /thenode.name) then 
+      warning(&quot;Name `&quot; || a.name || &quot;' in pattern arm is unbound.\n&quot;)
+    put(decls, <a href="#NWgenA-*-3">Gsetname</a>(\a.name, \thenode.name))
+    every delete(wordsmatched, !added)
+    stmts := <a href="#NWgenA-*-I">armscode</a>(a)
+    push(stmts, <a href="#NWgenA-*-3">Gasgn</a>(\thenode.cs.succptr, <a href="#NWDC">address_add</a>(&quot;MATCH_p&quot;, \a.patlen)))
+    write(\mdebug, &quot;successor for &quot;, image(a), &quot; at &quot;, \a.patlen)
+    return subst_for_pc(<a href="#NWD1">Gblock</a>(decls, stmts), <a href="#NWgenA-*-M">address_to_integer</a>(&quot;MATCH_p&quot;))
+end
+</pre><blockquote>Defines <a href="#NWI-genarm"><code>genarm</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-insl-1" href="#NWgenA-insl-1"><dfn>&lt;insist there are no field bindings in arm <code>a</code>&gt;=</dfn></a> <b>(<a href="#NWDA">&lt;-U</a>)</b>
+if type(c := !(!(\a.pattern).disjuncts).aconstraints) == &quot;fieldbinding&quot; 
+  then impossible(&quot;field binding in arm: &quot;, expimage(c))
+</pre><pre><a name="NWgenA-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-I">armscode</a>(a)
+  return [<a href="#NWD1">Gresynch</a>(a.line, a.file), <a href="#NWD1">Glines</a>(a.code), <a href="#NWD1">Gresynch</a>(<a href="#NWgenA-*-5">codeline</a> +:= 100)]
+end
+</pre><blockquote>Defines <a href="#NWI-armscode"><code>armscode</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDB">We don't create declarations for the </a><code>_</code> wildcard.
+At the moment, its implementation is as a fresh variable, and since
+fresh variables should not otherwise leak out (aren't valid C names
+anyway), this should be enough:
+<pre><a name="NWgenA-*-J" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-I">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDB">is_wildcard</a>(v)
+  return member(fresh_variables, v)
+end
+</pre><blockquote>Defines <a href="#NWI-is_wildcard"><code>is_wildcard</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDC">Handling fetch and address templates</a></h2>
+<code><a href="#NWgenA-*-L">fetchcode</a></code> does the expansion of the fetch table.
+<pre><a name="NWgenA-*-K" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWgenA-*-L">-&gt;</a>]</b>
+procedure <a href="#NWDC">address_add</a>(address, offset)
+  if offset % pc_unit_bits ~= 0 then
+    error(&quot;Tried to fetch at offset &quot;, offset, &quot;, but pc_unit_bits = &quot;, 
+          pc_unit_bits, &quot; doesn't divide &quot;, offset)
+  offset /:= pc_unit_bits;
+  return <a href="#NWgenA-*-N">interpret_fetchtab</a>(\<a href="#NWgenA-*-5">fetchtab</a>[&quot;add&quot;], address, offset, &amp;null, &quot;address add&quot;) |
+    error(&quot;No template given for 'address add'&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-address_add"><code>address_add</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-refS-1" href="#NWgenA-refS-1"><dfn>&lt;refman: address add template&gt;=</dfn></a>
+The \verb+address add+ template may use \verb+%a+ and \verb+%o+.
+</pre><pre><a name="NWgenA-*-L" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWgenA-*-M">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-L">fetchcode</a>(address, width)
+  return <a href="#NWgenA-*-N">interpret_fetchtab</a>(\<a href="#NWgenA-*-5">fetchtab</a>[width | &quot;any&quot;], address, &amp;null, width, &quot;fetch&quot;) |
+    error(&quot;No template given to fetch &quot;, width, &quot;-bit word&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-fetchcode"><code>fetchcode</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-refM-1" href="#NWgenA-refM-1"><dfn>&lt;refman: fetch template&gt;=</dfn></a>
+\verb+fetch+ templates may use \verb+%a+ and \verb+%w+.
+</pre><pre><a name="NWgenA-*-M" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-L">&lt;-</a>D<a href="#NWgenA-*-N">-&gt;</a>]</b>
+procedure <a href="#NWgenA-*-M">address_to_integer</a>(address)
+  return <a href="#NWgenA-*-N">interpret_fetchtab</a>(\<a href="#NWgenA-*-5">fetchtab</a>[&quot;integer&quot;], address, &amp;null, &amp;null, 
+                            &quot;address to integer&quot;) |
+    error(&quot;No template given for 'address to integer'&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-address_to_integer"><code>address_to_integer</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-refZ-1" href="#NWgenA-refZ-1"><dfn>&lt;refman: address to integer template&gt;=</dfn></a>
+The \verb+address to integer+ template may use only \verb+%a+.
+</pre><pre><a name="NWgenA-*-N" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWgenA-*-M">&lt;-</a>D]</b>
+procedure <a href="#NWgenA-*-N">interpret_fetchtab</a>(s, address, offset, width, msg)
+  r := &quot;(&quot;
+  s ? {
+    while r ||:= tab(upto('%')) do {
+      =&quot;%&quot;
+      r ||:= case move(1) of {
+               &quot;a&quot; : \address | error(&quot;%a illegal in template for &quot;, msg)
+               &quot;o&quot; : \offset  | error(&quot;%o illegal in template for &quot;, msg)
+               &quot;w&quot; : \width   | error(&quot;%w illegal in template for &quot;, msg)
+               &quot;%&quot; : &quot;%&quot;
+               default : error(&quot;Bad escape in fetch string for &quot;, 
+                               width, &quot;-bit word: %&quot;, move(-1), &quot;; try %a, %o, or %w&quot;)
+             }
+    }
+    return r || tab(0) || &quot;)&quot;
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-interpret_fetchtab"><code>interpret_fetchtab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWgenA-refZ.2-1" href="#NWgenA-refZ.2-1"><dfn>&lt;refman: meaning of fetchtab strings&gt;=</dfn></a>
+In the templates, \verb+%a+ stands for an address,
+\verb+%o+ for an offset, and \verb+%w+ for a width.
+Offsets are measured in increments of \verb+pc_unit_bits+, but
+widths are measured in bits.
+</pre>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWgenA-*-2">D2</a>, <a href="#NWgenA-*-3">D3</a>, <a href="#NWgenA-*-4">D4</a>, <a href="#NWgenA-*-5">D5</a>, <a href="#NWgenA-*-6">D6</a>, <a href="#NWD3">D7</a>, <a href="#NWD5">D8</a>, <a href="#NWgenA-*-9">D9</a>, <a href="#NWD6">D10</a>, <a href="#NWD7">D11</a>, <a href="#NWD8">D12</a>, <a href="#NWD9">D13</a>, <a href="#NWgenA-*-E">D14</a>, <a href="#NWgenA-*-F">D15</a>, <a href="#NWgenA-*-G">D16</a>, <a href="#NWDA">D17</a>, <a href="#NWgenA-*-I">D18</a>, <a href="#NWDB">D19</a>, <a href="#NWDC">D20</a>, <a href="#NWgenA-*-L">D21</a>, <a href="#NWgenA-*-M">D22</a>, <a href="#NWgenA-*-N">D23</a>
+<li><a href="#NWgenA-argL-1"><i>&lt;argument descriptions&gt;</i></a>: <a href="#NWgenA-argL-1">D1</a>
+<li><a href="#NWD4"><i>&lt;if <code>other_child</code>'s range has one element, exchange it with <code>single_range</code>&gt;</i></a>: <a href="#NWgenA-setf-1">U1</a>, <a href="#NWD4">D2</a>
+<li><a href="#NWgenA-insl-1"><i>&lt;insist there are no field bindings in arm <code>a</code>&gt;</i></a>: <a href="#NWDA">U1</a>, <a href="#NWgenA-insl-1">D2</a>
+<li><a href="#NWgenA-refS-1"><i>&lt;refman: address add template&gt;</i></a>: <a href="#NWgenA-refS-1">D1</a>
+<li><a href="#NWgenA-refZ-1"><i>&lt;refman: address to integer template&gt;</i></a>: <a href="#NWgenA-refZ-1">D1</a>
+<li><a href="#NWgenA-refM-1"><i>&lt;refman: fetch template&gt;</i></a>: <a href="#NWgenA-refM-1">D1</a>
+<li><a href="#NWgenA-refZ.2-1"><i>&lt;refman: meaning of fetchtab strings&gt;</i></a>: <a href="#NWgenA-refZ.2-1">D1</a>
+<li><a href="#NWgenA-rewD-1"><i>&lt;rewrite rules&gt;</i></a>: <a href="#NWgenA-rewD-1">D1</a>
+<li><a href="#NWgenA-setf-1"><i>&lt;set <code>answer</code> to single <code>if</code> statement&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWgenA-setf-1">D2</a>
+<li><a href="#NWgenA-spl1C-1"><i>&lt;split children into <code>if</code> and case tests, and make combination <code>answer</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWgenA-spl1C-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-absolute_fields" href="#NWD6">absolute_fields</a>: <a href="#NWD6">D1</a>
+<li><a name="NWI-addarms" href="#NWgenA-*-F">addarms</a>: <a href="#NWgenA-spl1C-1">U1</a>, <a href="#NWgenA-*-F">D2</a>
+<li><a name="NWI-add_decls" href="#NWD5">add_decls</a>: <a href="#NWD3">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWDA">U3</a>
+<li><a name="NWI-address_add" href="#NWDC">address_add</a>: <a href="#NWD5">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWDC">D3</a>
+<li><a name="NWI-address_to_integer" href="#NWgenA-*-M">address_to_integer</a>: <a href="#NWD3">U1</a>, <a href="#NWgenA-spl1C-1">U2</a>, <a href="#NWgenA-setf-1">U3</a>, <a href="#NWDA">U4</a>, <a href="#NWgenA-*-M">D5</a>
+<li><a name="NWI-afieldexp" href="#NWD9">afieldexp</a>: <a href="#NWgenA-spl1C-1">U1</a>, <a href="#NWgenA-setf-1">U2</a>, <a href="#NWD5">U3</a>, <a href="#NWD9">D4</a>, <a href="#NWgenA-*-F">U5</a>
+<li><a name="NWI-armscode" href="#NWgenA-*-I">armscode</a>: <a href="#NWgenA-*-6">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWgenA-*-I">D3</a>
+<li><a name="NWI-codeline" href="#NWgenA-*-5">codeline</a>: <a href="#NWgenA-*-4">U1</a>, <a href="#NWgenA-*-5">D2</a>, <a href="#NWgenA-*-6">U3</a>, <a href="#NWgenA-*-I">U4</a>
+<li><a name="NWI-constraint_fields" href="#NWD6">constraint_fields</a>: <a href="#NWD3">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-fetchcode" href="#NWgenA-*-L">fetchcode</a>: <a href="#NWD5">U1</a>, <a href="#NWgenA-*-L">D2</a>
+<li><a name="NWI-fetchtab" href="#NWgenA-*-5">fetchtab</a>: <a href="#NWgenA-*-5">D1</a>, <a href="#NWgenA-*-6">U2</a>, <a href="#NWDC">U3</a>, <a href="#NWgenA-*-L">U4</a>, <a href="#NWgenA-*-M">U5</a>
+<li><a name="NWI-Gasgn" href="#NWgenA-*-3">Gasgn</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWDA">U2</a>
+<li><a name="NWI-Gblock" href="#NWD1">Gblock</a>: <a href="#NWD1">D1</a>, <a href="#NWgenA-*-6">U2</a>, <a href="#NWD3">U3</a>, <a href="#NWgenA-spl1C-1">U4</a>, <a href="#NWgenA-setf-1">U5</a>, <a href="#NWDA">U6</a>
+<li><a name="NWI-Gcall" href="#NWD1">Gcall</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-Gcase" href="#NWgenA-*-3">Gcase</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWgenA-spl1C-1">U2</a>
+<li><a name="NWI-Gcasearm" href="#NWgenA-*-3">Gcasearm</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWgenA-*-E">U2</a>
+<li><a name="NWI-Gcommented" href="#NWD9">Gcommented</a>: <a href="#NWD9">D1</a>
+<li><a name="NWI-Gdecl" href="#NWD1">Gdecl</a>: <a href="#NWD1">D1</a>, <a href="#NWgenA-*-6">U2</a>, <a href="#NWD5">U3</a>, <a href="#NWDA">U4</a>
+<li><a name="NWI-Gdeclnamearray" href="#NWgenA-*-2">Gdeclnamearray</a>: <a href="#NWgenA-*-2">D1</a>, <a href="#NWgenA-*-6">U2</a>
+<li><a name="NWI-genarm" href="#NWDA">genarm</a>: <a href="#NWgenA-*-G">U1</a>, <a href="#NWDA">D2</a>
+<li><a name="NWI-genarms" href="#NWgenA-*-G">genarms</a>: <a href="#NWD3">U1</a>, <a href="#NWgenA-*-G">D2</a>
+<li><a name="NWI-gencase" href="#NWgenA-*-6">gencase</a>: <a href="#NWgenA-*-6">D1</a>
+<li><a name="NWI-genedge" href="#NWgenA-*-E">genedge</a>: <a href="#NWgenA-spl1C-1">U1</a>, <a href="#NWgenA-*-E">D2</a>
+<li><a name="NWI-gen_file_header" href="#NWgenA-*-4">gen_file_header</a>: <a href="#NWgenA-*-4">D1</a>
+<li><a name="NWI-genheader" href="#NWgenA-*-4">genheader</a>: <a href="#NWgenA-*-4">D1</a>
+<li><a name="NWI-gennode" href="#NWD3">gennode</a>: <a href="#NWgenA-*-6">U1</a>, <a href="#NWD3">D2</a>, <a href="#NWgenA-setf-1">U3</a>, <a href="#NWgenA-*-E">U4</a>, <a href="#NWgenA-*-F">U5</a>
+<li><a name="NWI-gen_outer_decls" href="#NWgenA-*-4">gen_outer_decls</a>: <a href="#NWgenA-*-4">D1</a>, <a href="#NWgenA-*-6">U2</a>
+<li><a name="NWI-Ginrange" href="#NWgenA-*-3">Ginrange</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWgenA-rewD-1">U2</a>, <a href="#NWgenA-setf-1">U3</a>, <a href="#NWgenA-*-F">U4</a>
+<li><a name="NWI-Glines" href="#NWD1">Glines</a>: <a href="#NWD1">D1</a>, <a href="#NWgenA-*-4">U2</a>, <a href="#NWgenA-*-6">U3</a>, <a href="#NWgenA-*-I">U4</a>
+<li><a name="NWI-Gnomatch" href="#NWgenA-*-3">Gnomatch</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWgenA-*-G">U2</a>
+<li><a name="NWI-Gresynch" href="#NWD1">Gresynch</a>: <a href="#NWD1">D1</a>, <a href="#NWgenA-*-4">U2</a>, <a href="#NWgenA-*-6">U3</a>, <a href="#NWgenA-*-I">U4</a>
+<li><a name="NWI-Gsetname" href="#NWgenA-*-3">Gsetname</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWDA">U2</a>
+<li><a name="NWI-interpret_fetchtab" href="#NWgenA-*-N">interpret_fetchtab</a>: <a href="#NWDC">U1</a>, <a href="#NWgenA-*-L">U2</a>, <a href="#NWgenA-*-M">U3</a>, <a href="#NWgenA-*-N">D4</a>
+<li><a name="NWI-is_wildcard" href="#NWDB">is_wildcard</a>: <a href="#NWDA">U1</a>, <a href="#NWDB">D2</a>
+<li><a name="NWI-MAXRANGE" href="#NWgenA-*-E">MAXRANGE</a>: <a href="#NWgenA-*-E">D1</a>, <a href="#NWgenA-*-F">U2</a>
+<li><a name="NWI-node_fields" href="#NWgenA-*-9">node_fields</a>: <a href="#NWD3">U1</a>, <a href="#NWgenA-*-9">D2</a>
+<li><a name="NWI-Tsigned" href="#NWgenA-*-3">Tsigned</a>: <a href="#NWgenA-*-3">D1</a>
+<li><a name="NWI-Tunsigned" href="#NWgenA-*-3">Tunsigned</a>: <a href="#NWgenA-*-3">D1</a>, <a href="#NWD5">U2</a>
+<li><a name="NWI-wordname" href="#NWD7">wordname</a>: <a href="#NWD5">U1</a>, <a href="#NWD7">D2</a>, <a href="#NWD9">U3</a>
+</ul>
+</body></html>
+

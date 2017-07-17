@@ -1,0 +1,137 @@
+<html><head><title> tclos.nw</title></head><body>
+<h2><a name="NWD1">Token-based closures</a></h2>
+The major difference is that we split disjuncts into individual
+sequents (tokens) and handle the sequents one by one.  
+<pre><a name="NWtcl8-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWD1">emit_tokenized_closure_functions</a>(pp, cons, b)
+  pushtrace(&quot;TCLOS&quot;)
+  every cl := subterms_matching(b, &quot;Sclosure&quot;) do
+    <a href="#NWD2">emit_tokenized_functions_of_closure</a>(pp, cons, cons.name, cl) 
+  poptrace()
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_tokenized_closure_functions"><code>emit_tokenized_closure_functions</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">We really ought to add a string type to the closure, so that we</a>
+could give the name of the constructor when conditions aren't
+satisfied in the closure.  As it is, I use the same error message for
+each constructor---otherwise they won't all use the same closure function!
+<p>
+To have some
+prayer of getting the PC right, I split 
+<code>creation</code> into <code>alloc</code> and <code>emit</code>.
+<pre><a name="NWtcl8-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+record <a href="#NWD2">closure_creation</a>(alloc, emit)
+procedure <a href="#NWD2">emit_tokenized_functions_of_closure</a>(pp, cons, name, cl)
+  local latevars, offset
+  latevars := set()
+  every insert(latevars, inputs_of(cons, &quot;string&quot;).name)
+  cl.creation := <a href="#NWD2">closure_creation</a>([], [])
+  offset := 0
+  every s := !cl.disjunct.sequents &amp; type(s) == &quot;sequent&quot; do {
+    if subterms_matching(s, &quot;Eforce&quot;) then # was member(latevars, free_variables(s)) 
+      <a href="#NWD4">emit_tokenized_closure_function</a>(pp, cons, name, cl, latevars, s, offset)
+    else
+      put(cl.creation.emit, sequent_to_Stoken(s, offset))
+    offset := cl.creation.emit[-1].offset + cl.creation.emit[-1].n
+  }
+  cl.creation := Sstmts(put(cl.creation.alloc, Semit(cl.creation.emit)))
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-closure_creation"><code>closure_creation</code></a>, <a href="#NWI-emit_tokenized_functions_of_closure"><code>emit_tokenized_functions_of_closure</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD3">Because a single sequent can have a placeholder of multiple sequents,</a>
+we can't just continually add the last <code>n</code> to the <code>offset</code>. Ugh.
+
+<a name="NWD4">This procedure comes from some very fast and loose inline expansion of</a>
+<code>disjunct_to_emission</code>.  There must be a more careful and
+intelligent way to do things.
+<p>
+I hack things to make the <code>offset</code> always look like zero in the
+closure body.  This enables more sharing, but I have to compensate by
+adjusting the PC when I create the closure.
+<pre><a name="NWtcl8-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWtcl8-*-4">-&gt;</a>]</b>
+procedure <a href="#NWD4">emit_tokenized_closure_function</a>(pp, cons, name, cl, latevars, seq, offset)
+  local selections, selected, free, save, upc, clo, subst, body, lconds
+  lconds := <a href="#NWtcl8-*-4">conditions_applying_to</a>(\cl.conditions, seq) | &amp;null
+  if offset &gt; 0 then {
+    lconds := subst_for_pc(lconds, binop(the_global_pc, &quot;-&quot;, offset))
+    seq    := subst_for_pc(seq,    binop(the_global_pc, &quot;-&quot;, offset))
+  }
+  body := 
+     super_simplify(Sif([Sguarded(lconds, Semit([sequent_to_Stoken(seq, 0)])),
+        ### sequent_to_Stoken should be changed to include width conditions &amp;c
+                         Sguarded(1, 
+                            Sfail(&quot;Conditions not satisfied for unnamed constructor&quot;))
+                        ]))
+  p := hoist(pp, Elambda(sort(latevars), body), latevars)
+  clo := p.e # is a closure
+  clo := apply_subst(clo, p.sigma)
+  free := set(); every insert(free, free_variables(clo))
+  free := sort(free)
+PPwrite(pp, &quot;/****************&quot;)
+PPxwrite(pp, &quot;CLOSURE IS:$t $o&quot;, ppexpimage(clo), &quot;$b&quot;)
+PPwrite(pp, &quot;****************/&quot;)
+  <a name="NWtcl8-*-3-u1" href="#NWtcl8-add1F-1"><i>&lt;add creation of <code>clo</code> (and placeholder) to <code>cl.creation</code> and return width&gt;</i></a>
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_tokenized_closure_function"><code>emit_tokenized_closure_function</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtcl8-add1F-1" href="#NWtcl8-add1F-1"><dfn>&lt;add creation of <code>clo</code> (and placeholder) to <code>cl.creation</code> and return width&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+l := []
+every i := 1 to *clo.values do
+  put(l, pretty(Gasgn(Eclosure_val(i),  clo.values[i])) || &quot;$n&quot;)
+every i := 1 to *clo.addresses do
+  put(l, pretty(Gasgn(Eclosure_addr(i), clo.addresses[i])) || &quot;$n&quot;)
+upc := if subterms_matching(\lconds | seq, &quot;Epc&quot;, &quot;Epc_known&quot;) then 1
+       else 0
+put(cl.creation.alloc,
+  if offset = 0 then 
+    literal(template_to_list(&quot;create-closure.t&quot;, &quot;name&quot;, clo.ty, &quot;clofun&quot;, clo.fun, 
+                             &quot;uses-pc&quot;, upc, &quot;save&quot;, l))
+  else
+    literal(template_to_list(&quot;create-closure-at.t&quot;, &quot;name&quot;, clo.ty, &quot;clofun&quot;, clo.fun, 
+                             &quot;uses-pc&quot;, upc, &quot;save&quot;, l, &quot;offset&quot;, offset)))
+<a name="NWtcl8-add1F-1-u1" href="#NWD5"><i>&lt;add placeholder for <code>seq</code> to <code>cl.creation.emit</code>&gt;</i></a>
+</pre><p>
+<a name="NWD5">This is really dreadful, but I don't have time to be clean.</a>
+<pre><a name="NWtcl8-addp-1" href="#NWD5"><dfn>&lt;add placeholder for <code>seq</code> to <code>cl.creation.emit</code>&gt;=</dfn></a> <b>(<a href="#NWtcl8-add1F-1">&lt;-U</a>)</b>
+d := disjunct_to_emission(place_holder(disjunct([seq])), offset)
+every put(cl.creation.emit, !d.x)
+</pre><p>
+<pre><a name="NWtcl8-seqX-1" href="#NWtcl8-seqX-1"><dfn>&lt;complain if <code>/seq.class.holder</code>&gt;=</dfn></a>
+if /seq.class.holder then
+    error(&quot;No placeholder is defined for class &quot;, seq.class.name)
+</pre><pre><a name="NWtcl8-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWtcl8-*-5">-&gt;</a>]</b>
+procedure <a href="#NWtcl8-*-4">conditions_applying_to</a>(conds, seq)
+  local applying
+  applying := copy(conds)
+  every c := !applying &amp; f := <a href="#NWtcl8-*-5">free_variable_set</a>(c) do
+    if member(f, free_variables(seq)) then &amp;null else delete(applying, c)
+  return if *applying = 0 then &amp;null else applying
+end
+</pre><blockquote>Defines <a href="#NWI-conditions_applying_to"><code>conditions_applying_to</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtcl8-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtcl8-*-4">&lt;-</a>D]</b>
+procedure <a href="#NWtcl8-*-5">free_variable_set</a>(x)
+  s := set()
+  every insert(s, free_variables(x))
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-free_variable_set"><code>free_variable_set</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>, <a href="#NWD4">D3</a>, <a href="#NWtcl8-*-4">D4</a>, <a href="#NWtcl8-*-5">D5</a>
+<li><a href="#NWtcl8-add1F-1"><i>&lt;add creation of <code>clo</code> (and placeholder) to <code>cl.creation</code> and return width&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWtcl8-add1F-1">D2</a>
+<li><a href="#NWD5"><i>&lt;add placeholder for <code>seq</code> to <code>cl.creation.emit</code>&gt;</i></a>: <a href="#NWtcl8-add1F-1">U1</a>, <a href="#NWD5">D2</a>
+<li><a href="#NWtcl8-seqX-1"><i>&lt;complain if <code>/seq.class.holder</code>&gt;</i></a>: <a href="#NWtcl8-seqX-1">D1</a>
+</ul>
+<ul>
+<li><a name="NWI-closure_creation" href="#NWD2">closure_creation</a>: <a href="#NWD2">D1</a>
+<li><a name="NWI-conditions_applying_to" href="#NWtcl8-*-4">conditions_applying_to</a>: <a href="#NWD4">U1</a>, <a href="#NWtcl8-*-4">D2</a>
+<li><a name="NWI-emit_tokenized_closure_function" href="#NWD4">emit_tokenized_closure_function</a>: <a href="#NWD2">U1</a>, <a href="#NWD4">D2</a>
+<li><a name="NWI-emit_tokenized_closure_functions" href="#NWD1">emit_tokenized_closure_functions</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-emit_tokenized_functions_of_closure" href="#NWD2">emit_tokenized_functions_of_closure</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>
+<li><a name="NWI-free_variable_set" href="#NWtcl8-*-5">free_variable_set</a>: <a href="#NWtcl8-*-4">U1</a>, <a href="#NWtcl8-*-5">D2</a>
+</ul>
+</body></html>
+

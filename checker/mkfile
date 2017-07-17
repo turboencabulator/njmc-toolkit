@@ -1,0 +1,176 @@
+TARGETS="mips sparc pentium spent ppc alpha"
+SPECSREGEXP=`echo $TARGETS | sed 's/ /|/g'`
+SPECSDOTSPEC=`echo $TARGETS | sed 's/ /.spec /g;s/$/.spec/'`
+PENTSPECS=`echo AF GK LQ R SZ arith float| sed 's/ /.spec pentium-/g;s/$/.spec/;s/^/pentium-/'`
+SPECS=../specs
+TOOLS=../src
+CFLAGS="-I. -I$TOOLS -DemitX=emitbits"
+BUILTINS=
+GDB=gdb
+CC=gcc -ansi -pedantic -fno-builtin
+TOOLFLAGS="-verbose -lc-cons-names $XTOOLFLAGS"
+# set to, e.g., "rsh iona", to run target-sensitive stuff on remote host.
+
+small:V: checkmips checksparc
+all:V: small checkpentium
+
+################################################################
+#
+#       SPECS TO CHECK 
+# 
+mld-%.spec: $SPECS/%.nw
+        notangle -R$target $prereq | cpif $target
+
+^$SPECS/($SPECSREGEXP)'\.'spec:R: $SPECS/'\1'.nw
+	(cd $SPECS; mk $stem.spec)
+	
+^$SPECS/($SPECSREGEXP)-(.*)'\.'spec:R: $SPECS/'\1'.nw
+	(cd $SPECS; mk $stem1-$stem2.spec)
+	
+mips.spec: $SPECS/mips.spec $SPECS/mips-trunc.spec 
+	sed 's/# {/{/' $prereq | cpif $target
+
+sparc.spec: $SPECS/sparc.spec mld-sparc.spec
+	sed 's/# {/{/' $prereq | cpif $target
+
+alpha.spec: $SPECS/alpha.spec $SPECS/alpha-check.spec
+	sed 's/# {/{/' $prereq | cpif $target
+
+# we don't actually build a single pentium spec, so it's :V:
+pentium.spec:V: $PENTSPECS 
+
+^($SPECSREGEXP)(-.*)'\.'spec:R: $SPECS/'\1'.nw
+        notangle -L -R$target $prereq | cpif $target 
+
+################################################################
+#
+#       RULES TO BUILD CHECKER
+# 
+^($SPECSREGEXP)(-checker)'\.'s:R: $SPECS/'\1'.nw
+        notangle -R"${stem}-checker.s" $prereq > $target
+
+^($SPECSREGEXP)(checker):R: '\1'-check.o '\1'-asm.o '\1'-bin.o \
+                 '\1'-bits.o $TOOLS/mclib.o
+        $CC  $prereq -o $target
+
+^($SPECSREGEXP)(.*-asm|-bits|-bin)'\.o':R: '\1''\2'.h '\1''\2'.c \
+                                           $TOOLS/mclib.h
+        $CC -c $CFLAGS ${stem1}${stem2}.c -o $target
+
+old-chkraddr:
+        echo "main(){}" >_boot.c
+        $CC -g _boot.c -o _boot
+        nm _boot | egrep "T _main|T main" | \
+                   awk '{print "0x"$1}' | cpif $target
+        rm -f _boot.c _boot
+
+chkraddr:
+        echo 'main(){printf("0x%x%c", (unsigned)&main, 012);}' >_boot.c
+        $CC -g _boot.c -o _boot
+	./_boot | cpif $target
+        rm -f _boot.c _boot
+
+^($SPECSREGEXP)(-check)'\.o':R: '\1''\2'.c chkraddr
+        $CC -c -DCHKRADDR=`cat chkraddr` -I. -I$TOOLS \
+            ${stem1}${stem2}.c -o $target
+
+^($SPECSREGEXP)(-check)'\.'c:R: '\1'.spec '\1'-asm.h \
+                                '\1'-check.spec
+        $TOOLS/tools $TOOLFLAGS -checker ${stem1}-check \
+          -indirect ${stem1} ${stem1}.spec ${stem1}-check.spec
+        echo "#include \"${stem}-asm.h\""> ${stem1}-check.h
+
+^($SPECSREGEXP)-bits'\.'c:R: emitbits.nw
+        notangle -R"header" $prereq | cpif ${stem}-bits.h
+        notangle -R"$stem bits emitter" $prereq | cpif $target
+
+^($SPECSREGEXP)-(asm|bin|bits)'\.'h:R: '\1'-'\2'.c
+        # Created by rule for .c file
+
+^($SPECSREGEXP)-bin'\.'c:R: '\1'.spec $TOOLS/tools
+        $TOOLS/tools $TOOLFLAGS -late-const -byteorder X -indirect \
+          ${stem}_bin:${stem}_asm -encoder ${stem}-bin \
+          ${stem}.spec
+
+^($SPECSREGEXP)-asm'\.'c:R: '\1'.spec '\1'-names.spec \
+                            $TOOLS/tools
+        $TOOLS/tools $TOOLFLAGS -asm-encoder ${stem}-asm \
+          -indirect ${stem}_asm ${stem}.spec \
+          ${stem}-names.spec
+
+################################################################
+#
+#       RULES TO RUN CHECKER
+# 
+^_($SPECSREGEXP)'\.'s:R: '\1'checker '\1'-checker.s 
+        cat ${stem}-checker.s > _${stem}.s
+        ./${stem}checker >> _${stem}.s
+
+^_($SPECSREGEXP)'\.'out:R: _'\1'.s
+        $CC -g _${stem}.s -o _${stem}.out
+
+^check(mips|sparc):RV: do'\1'
+
+checkpentium:V: 
+	for i in $PENTSPECS
+	do 
+	    mk $i
+	    cp $i pentium.spec
+	    mk dopentium
+	done
+
+^($SPECSREGEXP)\$:RV:
+	mk TARGET=${stem} do${stem}
+
+^do($SPECSREGEXP):R: _'\1'.out chkrfilter gdb-asmoutput gdb-binoutput
+    if [ ${stem} = "sparc" ]; then 
+      sed -e 's/_//g' <gdb-asmoutput >_gdb
+      mv _gdb gdb-asmoutput
+      sed -e 's/_//g' <gdb-binoutput >_gdb
+      mv _gdb gdb-binoutput
+      ./chkrfilter nawk _${stem}.out
+    elif [ ${stem} = "pentium" ]; then 
+      ./chkrfilter gawk _${stem}.out
+    else
+      ./chkrfilter nawk _${stem}.out
+    fi
+
+(chkrfilter|gdb-asmoutput|gdb-binoutput):R: $TOOLS/checker.nw
+        notangle -R$target $prereq | cpif $target
+        chmod 755 $target
+
+
+################################################################
+#
+#	POPULATE BASE-CHECKER DIRECTORY
+
+^($SPECSREGEXP)-dist:VR: '\1'.spec '\1'-bits.c '\1'-bits.h \
+	'\1'-checker.s '\1'-check.spec '\1'-names.spec
+	cp ${stem}*.spec ${stem}-bits.c ${stem}-bits.h \
+	    ${stem}-checker.s ${stem}-check.spec ${stem}-names.spec ../base-checker/
+
+baseclean:V:
+	/bin/rm -f ../base-checker/*
+
+base:V: baseclean makefile chkrfilter gdb-asmoutput gdb-binoutput \
+	mips-dist sparc-dist pentium-dist 
+	cp makefile chkrfilter gdb-asmoutput gdb-binoutput ../base-checker/
+
+
+################################################################
+#
+#	MAKING A DISTRIBUTION
+
+distfiles:V: base 
+dist:V:	distfiles
+	mk distclean
+distclean:V:
+	mk clean 
+
+clean:V:
+	/bin/rm -f *.spec *.s chkrfilter chkraddr 
+	/bin/rm -f *checker *.o *.c *.h *.out.* gdb-* ./#*# *~
+
+clobber:V: clean
+
+minimal:V: clobber

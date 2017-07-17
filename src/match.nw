@@ -1,0 +1,285 @@
+% l2h ignore change {
+\chapter{Support for pattern-matching statements}
+
+Much of what happens here is the dual of what is done in
+{\tt constructors.nw}.
+Abstract syntax is converted to patterns, but this time the free variables
+must be discovered, and they become the inputs to, not the outputs from, the
+equation-solving process.
+
+\section{Pattern syntax in decoding}
+Free variables induce field or constructor bindings (although we have no support
+yet for constructor bindings).
+What we really want is for all the constructor stuff to DWIM.
+Whatever that is.
+All patterns are resolved into absolute normal form (q.v.).
+<<*>>=
+procedure resolve_case_patterns(cs)
+  a := []
+  every put(a, new_matching_arms(!cs.arms, cs.succptr))
+  cs.arms := a
+  return cs
+end
+@
+In resolving an arm, the first step is to find all the free identifiers, so we can 
+do some suitable injection with them.  
+We'll also identify the subset of those identifiers that become the binding instances 
+that might be used in equations.
+We can then put the pattern first into normal form, then into absolute normal form.
+
+At that point, we have our usual encoding-type pattern, with fields bound to 
+expressions, which is emphatically no good for decoding.
+The next step is to introduce fresh variables to the field bindings for which we need
+expressions, creating a set of equations used solely to invert the field bindings. 
+We'll solve that set of equations, giving us our goo solely in 
+terms of the absolute fields. 
+We'll then be able to apply it to any conditions.
+
+Eventually we'll also have to deal with any explicit equations, including
+identifying any additional binding instances 
+of identifiers that appear only in such equations.
+
+Only identifiers that are bound in every disjunct can reliably be used in code or in 
+equations.
+
+{\em old: In principle, an identifier
+could  be bound to different fields in different disjuncts.
+I resolve that problem by forbidding the construct; a single
+identifier must always be bound to the same field, although it may
+appear in different positions and therefore in different absolute}
+fields.
+<<*>>=
+procedure new_matching_arms(a, succptr)
+  local idents, Ii, id, patlabeltab, freevars
+  pp := PPnew(\mdebug)
+###  idents := set(); every insert(idents, pattern_free_variables(a.pattern))
+###  rho := newscope(globals)
+###  <inject [[idents]] into [[rho]]>
+###  patlabeltab := table()
+###  every n := pattern_label_names(a.pattern) do
+###    patlabeltab[n] := n
+###  push(rho, patlabeltab)
+  freevars := table()
+  x := pnf(a.pattern, globals, freevars)
+  PPxwrite(\pp, "after pnf we have case arm $t$o", ppexpimage(x), "$b")
+  x := bind_patlabel_names(x, 1)
+  PPxwrite(\pp, "after binding patlabel names we have case arm $t$o", ppexpimage(x), "$b")
+  every set_patlabel_offsets(!x.disjuncts)
+  PPxwrite(\pp, "after setting offsets we have case arm $t$o", ppexpimage(x), "$b")
+  a.pattern := anf(x)
+  a.pattern := gsubst(a.pattern, always_fail)  	# remove wildcards and instances,
+						# turn latent to real labels
+  PPxwrite(\pp, "after anf+subst we have case arm $t$o", ppexpimage(a.pattern), "$b")
+<<*>>=
+  <<remove from [[freevars]] names of pattern labels in [[a.pattern]]>>
+  if *freevars > 0 then
+    write(\mdebug, "caught free variables:", envimage(freevars, "freevars"))
+  <<dump image of case arm before simplification>>
+  x := simplify(a.pattern)
+  if not exps_eq(x, a.pattern) then {
+    a.pattern := x
+    <<dump image of case arm after simplification>>
+  } else
+    write(\mdebug, "Case arm doesn't simplify")
+  idents := all_disjuncts_ids(a.pattern, free_var_or_patlabelbinding_name, 
+                              "Ignoring bound identifier ", 
+                              " because it doesn't appear in every disjunct")
+  if *idents > 0 then 
+    write(\mdebug, "Saw binding instances of ", commafy(sort(idents)))
+  else                
+    write(\mdebug, "No binding instances")
+  a.soln := solve(balance_eqns(\a.eqns), idents)  
+  <<convert field bindings to answers, split arm as needed, and suspend results>>
+end
+<<remove from [[freevars]] names of pattern labels in [[a.pattern]]>>=
+every delete(freevars, key(\(!a.pattern.disjuncts).patlabelbindings))
+<<dump image of case arm before simplification>>=
+PPxwrites(\pp, "Before simplification, case arm is $t${$c", ppexpimage(a.pattern))
+PPxwrites(\pp, "$o{ ", ppexpimage(\a.eqns), " }")
+PPxwrite(\pp, "$}$b")
+<<dump image of case arm after simplification>>=
+PPxwrites(\pp, "After simplification, case arm is $t${$c", ppexpimage(a.pattern))
+PPxwrites(\pp, "$o{ ", ppexpimage(\a.eqns), " }")
+PPxwrite(\pp, "$}$b")
+
+@
+Note that we're letting field names be used either to stand for patterns or to be
+binding instances of integers (just like predefined identifiers).
+We think it's OK to allow both, but we're not sure.  In any case, it was too
+annoying not to allow filed names as binding instances in constructor applications.
+<<inject [[idents]] into [[rho]]>>=
+every i := !idents do 
+  case type(symtab[i]) of {
+    "field"    : add_to_rho(i, inject(constraints2pattern(fieldbinding(symtab[i], i)),
+                                      i, &null), rho)
+    "pattern"  : add_to_rho(i, inject(symtab[i], &null, &null), rho)
+    "constype" : 
+       add_to_rho(
+          i, 
+          inject(seqpx(label2pattern(i),
+                       consinput_pattern(ipt := input(Ewildcard(i), symtab[i]))),
+                 &null, 
+                 ipt), 
+          rho)
+    "null"     : add_to_rho(i, inject(&null, i, &null), rho)
+    default    : error("I can't make sense of ", image(i), " (a ", type(symtab[i]), 
+                       ") within a pattern")
+  }
+<<*>>=
+procedure always_fail()
+  fail
+end
+@
+<<*>>=
+procedure free_var_or_patlabelbinding_name(d)
+  suspend free_variables(d) | key(\d.patlabelbindings)
+end
+<<convert field bindings to answers, split arm as needed, and suspend results>>=
+acount := 0
+lasta := &null
+every d := !a.pattern.disjuncts do {
+  s := fieldbindings_to_soln(d, idents)
+  l := if \succptr then d.length else &null
+  if (\lasta).imp_soln === s & lasta.patlen === l &
+     patlabelbindings_match(lasta.pattern.disjuncts[1].patlabelbindings, 
+                            d.patlabelbindings) 
+  then
+    put(lasta.pattern.disjuncts, d)
+  else {
+    <<show last answers and conditions>>
+    suspend \lasta
+    lasta := copy(a)
+    lasta.pattern := copy(a.pattern)
+    lasta.pattern.disjuncts := [d]
+    lasta.imp_soln := s
+    lasta.patlen := l
+    acount +:= 1
+  }
+}
+if acount > 1 then 
+  write(\mdebug, "split case arm at ", image(a.file), ", line ", a.line, 
+                 " because of varying implicit solutions or pattern lengths")
+<<show last answers and conditions>>
+suspend \lasta
+<<show last answers and conditions>>=
+write(\mdebug, "Answers and conditions (", image(\lasta), ") at length ", 
+               (\lasta).patlen,
+               " (", image((\lasta).imp_soln), "):", solnimage((\lasta).imp_soln))
+<<*>>=
+procedure patlabelbindings_match(t1, t2)
+  if      /t1 then return (/t2 | *t2 = 0, t1)
+  else if /t2 then return (/t1 | *t1 = 0, t1) 
+  else if k := key(t1) & (/t2[k] | t1[k] ~= t2[k]) then fail
+  else if k := key(t2) & (/t1[k] | t1[k] ~= t2[k]) then fail 
+  else return t1
+end
+@
+For each disjunct, we turn field bindings into answers and conditions, using the
+following steps:
+\begin{enumerate}
+\item
+Remove all the field bindings from the constraints, making a new
+equation for each field binding.
+Because the solve works with variables, use the function
+[[afield_var]] to map each absolute field to its corresponding
+variable.
+The table [[afield_vars_inverse]] is used later to perform the
+inverse mapping.
+The variables introduced by [[afield_var]] stand for the absolute
+fields in the bindings, and they are exactly the variables that are
+the inputs to the equations.
+\item
+Solve the equations, and build the answers table by using
+the values they give to the identifiers in [[idents]].
+At this point we inverse-map the variables, so the results are free
+in absolute fields, not in these auxiliary variables.
+\item
+Add any constraints produced by the equations to the conditions of the
+disjunct, performing the same inverse mapping.
+\end{enumerate}
+<<*>>=
+procedure fieldbindings_to_soln(d, idents)
+  local newconstraints, newconditions, eqns, soln, inputs, x, result
+  every newconstraints | eqns := []
+  inputs := set()
+  every insert(inputs, key(\d.patlabelbindings))
+  afield_vars := table()
+  every c := !d.aconstraints do 
+    case type(c) of {
+      "constraint"   : put(newconstraints, c)
+      "fieldbinding" : {
+         insert(inputs, x := afield_var(c.field))
+         put(eqns, eqn(x, "=", c.code))
+      }
+      default : impossible("constraint type")
+    }
+  d.aconstraints := newconstraints
+  newconditions := set()
+  every e := !\d.conditions do
+    case type(e) of {
+      "eqn"   : put(eqns, e)
+      default : insert(newconditions, e)
+    }
+  d.conditions := if *newconditions > 0 then newconditions else &null
+  soln := solve(balance_eqns(eqns), inputs)
+    # soln.answers : bound [[idents]] -> exps in afield_vars
+  result := solution(table(), set())
+  <<make sure there's an answer for every non-label in [[idents]]>>
+  every id := !idents do
+    result.answers[id] := 
+      if member(\d.patlabelbindings, id) then
+        binop(the_global_pc, "+", d.patlabelbindings[id])
+      else
+        super_simplify(subst_tab(soln.answers[id], afield_vars_inverse, 1))
+            # is super_simplify really safe here?  dunno...
+  every insert_condition(result.constraints,
+           super_simplify(subst_tab(!soln.constraints, afield_vars_inverse, 1)))
+  return unique_soln(result)
+end
+<<make sure there's an answer for every non-label in [[idents]]>>=
+if (id := !idents, not member(\d.patlabelbindings, id), /soln.answers[id]) then {
+  PPxwrite(PPnew(&errout),"Error: trouble with disjunct ${$t$o", ppexpimage(d), "$b$}")
+  <<make [[l]] list of [[idents]] not in [[soln.answers]]>>
+  error("Can't solve for ", commafy(sort(l)), envimage(soln.answers, "soln.answers"))
+}
+@ 
+Better error message:\change{15}
+<<make [[l]] list of [[idents]] not in [[soln.answers]]>>=
+l := []
+every /soln.answers[x := !idents] & not member(\d.patlabelbindings, x) do 
+  put(l, x)
+@
+<<*>>=
+global afield_vars, afield_vars_inverse
+procedure afield_var(af)
+  initial {
+    every afield_vars | afield_vars_inverse := table()
+  }
+  afield_vars_inverse[/afield_vars[af] := fresh_variable(af.field.name)] := af
+  return afield_vars[af]
+end
+<<*>>=
+procedure unique_soln(soln)
+  static cache
+  initial cache := table()
+  /cache[*soln.constraints] := table()
+  t := cache[*soln.constraints]
+  l := sort(soln.answers)
+  k := ""; 
+  every p := !sort(soln.answers) do k ||:= p[1] || " " || type(p[2]) || " "
+  /t[k] := set()
+  if s := !t[k] & answers_eq(s.answers, soln.answers) &
+     exps_eq(s.constraints, soln.constraints) then
+    return s
+  else {
+    insert(t[k], soln)
+    return soln
+  }
+end
+<<*>>=
+procedure answers_eq(a1, a2)
+  if a1 === a2 then return
+  *a1 = *a2 | fail
+  if id := key(a1) & not exps_eq(a1[id], \a2[id]) then fail
+  return
+end

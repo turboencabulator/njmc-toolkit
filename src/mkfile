@@ -1,0 +1,397 @@
+CC=gcc -ansi -pedantic
+CFLAGS=-g
+BUILTINS=
+TOOLS="lex Cexp M3exp Iconexp constructors tclos checker exp expwalk expps expbc \
+fieldinfo grammar patterns output solve balance environment debug code tree \
+dag gencode encoding main match assembly disassemble symdis checker bytecode"
+TOOLSDOTNW=`echo    $TOOLS | sed 's/ /.nw /g;s/$/.nw/'`
+TOOLSDOTICN=`echo    $TOOLS | sed 's/ /.icn /g;s/$/.icn/'`
+TOOLSDOTU1=`echo    $TOOLS | sed 's/ /.u1 /g;s/$/.u1/'`
+TOOLSDOTDEFS=`echo $TOOLS | sed 's/ /.defs /g;s/$/.defs/'`
+TOOLSDOTTEX=`echo   $TOOLS | sed 's/ /.tex /g;s/$/.tex/'`
+TOOLSDOTHTML=`echo   $TOOLS | sed 's/ /.html /g;s/$/.html/'`
+TOOLSREGEXP=`echo $TOOLS | sed 's/ /|/g'`
+LIBRARY="reloc mclib library"
+LIBREGEXP=`echo $LIBRARY | sed 's/ /|/g'`
+LIBTEX=`echo $LIBRARY | sed 's/ /.tex /g;s/$/.tex/'`
+LIBDEFS=`echo $LIBTEX | sed 's/\.tex/.defs/g'`
+LIBNW=`echo $LIBTEX | sed 's/\.tex/.nw/g'`
+LATEX=latex
+CTEMPLATES=reloc-call.t constructor-labels.t input-test.t cons-call.t closure-type.t \
+           instance-type.t instance-assignment.t \
+           direct-proto.t indirect-proto.t create-instance-body.t \
+           emitter-body.t no-labels.t create-closure.t create-closure-at.t \
+	   proc-structure.t \
+	   int-print-header.t constype-print-header.t assembly-impl.t \
+           checker.t inchecker.t afterchecker.t closure-header.t emitclo-call.t \
+           emitclo.t disassembler-body.t
+
+NWLIB1=/usr/public/pkg/noweb/lib
+NWLIB2=/usr/local/lib/noweb
+NWLIB3=/usr/cs/contrib/lib/noweb
+NWLIB4=/usr/local/noweb/lib
+NREP=2
+
+
+default:V: binaries headers
+
+binaries:V: tools mclib.o
+headers:V: mclib.h
+docs:V: refman.ps source.ps
+
+all:V: binaries headers docs
+
+################################################################
+#
+#	rules for building documentation
+
+
+################ metarules
+
+%.ps:	%.dvi
+	dvips -o $target -D 300 $stem
+
+%.xdvi:V: %.dvi
+	xdvi $prereq
+
+%.dvi:  %.tex
+	$LATEX '\scrollmode \input '"$stem"
+	ltxcount=3
+	while grep -s 'Rerun to get cross-references right' $stem.log &&
+	      [ $ltxcount -gt 0 ]
+	do
+	  $LATEX '\scrollmode \input '"$stem"
+	  ltxcount=`expr $ltxcount - 1`
+	done
+
+%.bbl: %.tex
+	if [ ! -r $target ]; then latex $stem; fi
+	bibtex $stem
+
+%.ind: %.tex
+	if [ ! -r $target ]; then latex $stem; fi
+	makeindex $stem
+
+%.html: %.nw   ################ for browsing
+	noweave -filter l2h -autodefs icon -index -html $prereq | htmltoc > $target
+
+################ defined identifiers (Icon and C)
+
+^($TOOLSREGEXP)'\.'defs:R: '\1'.nw 
+	nodefs -auto icon $prereq > $target
+
+^($LIBREGEXP)'\.'defs:R: '\1'.nw
+	nodefs -auto c    $prereq > $target
+
+all.defs: $TOOLSDOTDEFS $LIBDEFS
+	sort -u $prereq | cpif $target
+
+################ tex files (Icon and C)
+
+^($TOOLSREGEXP)'\.'tex:R: '\1'.nw all.defs
+	noweave -filter 'elide refman:*' -autodefs icon -indexfrom all.defs -n $stem1.nw >$target
+
+^($LIBREGEXP)'\.'tex:R: '\1'.nw all.defs
+	noweave -filter 'elide refman:*' -autodefs c    -indexfrom all.defs -n $stem1.nw >$target
+
+################ literate source 
+
+SOURCEINPUTS="source.tex $TOOLSDOTTEX source.nwi $LIBTEX"
+
+sourcein:V: $SOURCEINPUTS
+
+source.dvi: $SOURCEINPUTS
+
+source.tex: source.nw
+	noweave -filter 'elide refman:*' -delay source.nw >$target
+
+source_check:V: source.tex
+	for i in $TOOLSDOTTEX; do 
+	  j=`basename $i .tex`
+	  fgrep -s "\include{$j}" source.tex || echo "$i not in source" 1>&2
+        done
+
+%.nwi: %.tex
+	noindex $prereq
+
+
+
+
+
+################################################################
+#
+#	rules for finding unused identifiers
+
+all.uses: all.defs $TOOLSDOTNW
+	PATH="$NWLIB1:$NWLIB2:$NWLIB3:$NWLIB4:$PATH"
+	export PATH
+	markup $prereq | finduses -noquote all.defs |
+	awk '/^@index use / { print substr($0, 12) }' | sort |
+	uniq -c > $target
+
+unused:V: all.uses
+	awk '$1 == 1 { print substr($0, 6) }' $prereq
+
+
+################################################################
+#
+#	counting lines of code
+
+counts:V: $TOOLSDOTNW
+	PATH="$NWLIB1:$NWLIB2:$NWLIB3:$NWLIB4:$PATH"
+	export PATH
+	markup $prereq | elide 'refman:*' | nocount -f
+
+
+################################################################
+#
+#	rules for building tools
+
+%.icn:	%.nw
+	notangle -L'#line %-1L "%F"%N' $prereq | cpif $target 
+
+%.u1:	%.icn
+	icont -c $prereq 
+
+%.ll: 	%.g
+	ebnf -picky -flatten -parser $stem.g >$target 
+
+%.lr: 	%.g
+	ebnf -picky -slr $stem.g >$target 
+
+%.g: %.nw
+	notangle -L $prereq | cpif $target
+
+$CTEMPLATES:	constructors.nw encoding.nw Cexp.nw assembly.nw checker.nw disassemble.nw
+	PATH="$NWLIB1:$NWLIB2:$NWLIB3:$NWLIB4:$PATH"
+	markup $prereq | mnt $CTEMPLATES
+
+templates.icn: $CTEMPLATES
+	mktemplate -write PPxwrite $prereq > $target
+
+grammar.icn: grammar.ll
+	cp $prereq $target
+
+lump.icn: $TOOLSDOTICN templates.icn
+	ilump $prereq > $target
+
+u1:V:	$TOOLSDOTU1 templates.u1
+
+tools:	$TOOLSDOTU1 templates.u1
+	icont -o $target $prereq
+
+
+################################################################
+#
+#	rewrite engine
+
+rewriteg.icn: rewriteg.ll
+	cp $prereq $target
+
+rewriteg.g: rewrite.nw
+	notangle -L -Rgrammar $prereq | cpif $target
+
+rewrite: rewrite.u1 rewriteg.u1
+	icont -o $target $prereq
+
+################################################################
+#
+#	tree viewer
+
+htmltree:V: htmltree.u1
+
+
+################################################################
+#
+#	#line renumberer
+
+ungenerate: ungenerate.u1
+	icont -o $target $prereq
+
+################################################################
+#
+#	simplifier rules
+
+simp.spec: exp.nw gencode.nw
+	(notangle $prereq | grep '^record'
+	 notangle -R'argument descriptions' $prereq
+	 echo "%%"
+	 notangle -R'rewrite rules' $prereq) | cpif $target
+
+simp.gen: simp.spec rewrite
+	(echo "<<cases generated from rewrite rules>>="
+	 ./rewrite < simp.spec) > $target
+
+supersimp.spec: exp.nw gencode.nw
+	(notangle $prereq | grep '^record'
+	 notangle -R'argument descriptions' $prereq
+	 echo "%%"
+	 notangle -filter 'sed "s/@defn super rewrite rules/@defn rewrite rules/"' -R'rewrite rules' $prereq) | cpif $target
+
+supersimp.gen: supersimp.spec rewrite
+	(echo "<<cases generated from super rewrite rules>>="
+	 ./rewrite < supersimp.spec) > $target
+
+exp.icn: simp.gen supersimp.gen
+
+
+
+################################################################
+#
+#	hoisting engine
+
+hoistg.icn: hoistg.ll
+	cp $prereq $target
+
+hoistg.g: hoist.nw
+	notangle -L -Rgrammar $prereq | cpif $target
+
+hoist: hoist.u1 hoistg.u1
+	icont -o $target $prereq
+
+################################################################
+#
+#	hoisting rules
+
+hoist.spec: exp.nw gencode.nw constructors.nw
+	(notangle exp.nw gencode.nw | grep '^record'
+	 notangle constructors.nw | grep '^record [A-Z]'
+	 notangle -R'argument descriptions' $prereq) | cpif $target
+
+hoist.gen: hoist.spec hoist
+	(echo "<<generated cases for hoisting>>="
+	 ./hoist < hoist.spec) > $target
+
+constructors.icn: hoist.gen
+
+################################################################
+#
+#	rules for building library
+
+mclib.o: mclib.h mclib.c
+	$CC -c $CFLAGS -I. mclib.c
+mclib.h: library.nw reloc.nw mclib.nw 
+	notangle -R$target $prereq | cpif $target
+mclib.c: mclib.nw reloc.nw
+	notangle -L -R$target $prereq > $target
+
+
+################################################################
+#
+#	HTML sources
+
+html:V:	$TOOLSDOTHTML rewrite.html
+
+
+################################################################
+#
+#	populate base directory
+
+base:V: lump.icn htmltree.icn ungenerate.icn mclib.c mclib.h refman.ps
+	/bin/rm -f ../base/*
+	cp lump.icn ../base/tools.icn
+	cp htmltree.icn ungenerate.icn mclib.c mclib.h refman.ps ../base
+
+
+################################################################
+#
+#	rules for building reference manual
+
+MANSRC=refman.nw grammar.nw lex.nw main.nw patterns.nw \
+	gencode.nw reserved.xw tree.nw encoding.nw tools_output.nw \
+	checker.nw 
+
+refman.tex: $MANSRC
+	notangle -R$target $prereq > $target
+#	notangle -L'%%%% %F, line %L%N' -R$target $MANSR > $target
+
+# refman tex:	noweave -x -n $prereq > $target
+
+tex:V: $MANSRC
+
+manroots:V: $MANSRC checker.nw 
+	noroots $prereq
+
+showreserved: showreserved.icn
+	icont $target
+
+reserved.xw: showreserved grammar.icn
+	./showreserved < grammar.icn > $target
+
+^man(library|reloc)'\.'tex:R: '\1'.nw noweave.vbe cdecls
+	noweave -filter 'elide indirect?library?procedures' -filter ./cdecls -n -backend ./noweave.vbe $stem1.nw > $target
+
+^(vapor|mld-excerpts)'\.'tex:R: '\1'.nw noweave.vbe
+	noweave -n -backend ./noweave.vbe $stem1.nw > $target
+
+cdecls: cdecls.icn
+	icont -o $target $prereq
+
+refman.dvi: manlibrary.tex vapor.tex mld-excerpts.tex manreloc.tex 
+refman.dvi: refman.bbl refman.ind
+
+
+################################################################
+#
+#	bytecodes
+
+bytecode.spec: expbc.nw
+	notangle -L -R$target $prereq | cpif $target
+
+bytecodex.icn: bytecode.spec
+	tools -icon -foldemit -encoder bytecodex $prereq
+
+bytecodey.icn: bytecodex.icn
+	sed 's/^void /$procedure bc_/
+	s/(void)/()/
+	s/) {$/)$  local _result$  _result := ""/
+	s/(int /(/
+	s/ int / /
+	s/(unsigned /(/
+	s/ unsigned / /
+	s/);/)/
+	/^[/]\*\*\*\*\*/,/^\*\*\*\*\**[/]/d
+	s/^}/  return _result$end/' $prereq |
+	tr '$' '\012'> $target
+
+bcd.spec: bcd.nw
+	notangle -L -R$target $prereq | cpif $target
+	
+bcd.m: bcd.nw
+	notangle -L -R$target $prereq | cpif $target
+
+bcd.c: bcd.m bytecode.spec bcd.spec
+	tools -decoder bcd.c -matcher bcd.m bytecode.spec bcd.spec 
+
+################################################################
+#
+#	making a distribution
+
+distfiles:V: base source.ps
+dist:V:	distfiles
+	mk distclean
+distclean:V:
+	mk clean cleanaux
+	/bin/rm -f refman.ps
+
+
+
+################################################################
+#
+#	cleanup
+
+clean:V:
+	/bin/rm -f showreserved htmltree ungenerate reserved.xw cdecls
+	/bin/rm -f *.u[12] *.icn *~ *.g *.ll *.dvi *.log *.t *.[cho] *.html
+	/bin/rm -f tools rewrite hoist *.tex *.defs *.sml *.out *.blg
+	/bin/rm -f simp.spec simp.gen supersimp.spec supersimp.gen
+	/bin/rm -f hoist.spec hoist.gen
+
+cleanaux:V:
+	/bin/rm -f *.aux *.bbl *.ind *.idx *.ilg *.nwi *.toc
+
+clobber:V: clean
+	/bin/rm -f *.ps
+	/bin/rm -f bytecode.spec
+
+minimal:V: clobber cleanaux

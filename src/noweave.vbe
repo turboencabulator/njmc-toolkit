@@ -1,0 +1,90 @@
+#!/bin/sh
+
+# back end using only vanilla latex
+
+nawk '
+BEGIN		  { code=0 
+                    CODE="\\noindent\\hbox{\\ttfamily\\mdseries\\upshape "
+                    EDOC="}"
+                    indent = "1.5em"
+                  }
+END               { if (code) print "\\end{trivlist}" }
+/^@trailer latex/ { if (code) print "\\end{trivlist}" 
+                    code = 0
+                    print "\\end{document}"
+                  }
+/^@header latex/  { print "\\documentclass{article}"
+                    print "\\begin{document}"
+   		  }
+/^@quote$/        { quote=1 }
+/^@endquote$/     { quote=0 }
+/^@begin code/    { if (!code) printf "\\begin{trivlist}\\raggedright\\obeylines\\leftskip=%s\\rightskip=-1in \\item[]%%\n", indent ; code=1 }
+/^@end code/      { }
+/^@begin docs/    { if (code) print "\\end{trivlist}"; code=0 }
+/^@end docs/      { }
+/^@defn /         { name = convquotes(substr($0,7))
+                    printf "\\hspace{-%s}", indent
+                    printf "%s", fragment(name)
+                    defs[name] += 1
+                    if (defs[name] > 1)
+                            printf "$+\\!\\!\\equiv$"
+                    else
+                  	    printf "$\\equiv$"
+                  }
+/^@index defn /   { printf "\\libindex{%s}", substr($0,13) }
+/^@use /          { printf "%s", fragment(convquotes(substr($0,6))) }
+/^@nl$/           { print "" }
+/^@text /         { if (code || quote)
+                      printf "%s", verbatim(substr($0, 7))
+		    else
+		      printf "%s", substr($0, 7)
+                  }
+
+function fragment(s) {
+  return "\\mbox{\\normalfont\\itshape$\\langle$" s "\\/$\\rangle$}"
+}
+function verbatim(s) {
+  return CODE TeXliteral(s) EDOC
+}
+function TeXliteral(arg) {
+  gsub(/\\/, "<\\char92>",  arg)
+  gsub(/}/,  "<\\char125}", arg)
+  gsub(/{/,  "{\\char123}", arg)
+  gsub(/<\\char/, "{\\char", arg)
+  gsub(/{\\char92>/, "{\\char92}", arg)
+  gsub(/\$/, "{\\char36}",  arg)
+  gsub(/&/,  "{\\char38}",  arg)
+  gsub(/#/,  "{\\char35}",  arg)
+  gsub(/\^/, "{\\char94}",  arg)
+  gsub(/_/,  "{\\char95}",  arg)
+  gsub(/%/,  "{\\char37}",  arg)
+  gsub(/~/,  "{\\char126}", arg)
+  gsub(/ /,  "\\ ",         arg)
+  return arg
+}
+function convquotes(s, r, i) {
+  r = ""
+  while (i = index(s, "[[")) {
+    r = r substr(s, 1, i-1) CODE
+    s = substr(s, i+2)
+    if (i = match(s, "\\]\\]+")) {
+      r = r TeXliteral(substr(s, 1, i-1+RLENGTH-2)) EDOC
+      s = substr(s, i+RLENGTH)
+    } else {
+      r = r s EDOC
+      s = ""
+    }
+  }
+  return doubleparen(r s)
+}
+function doubleparen(s, i) {
+  if (i = match(s, /[(][(][^()]*[)][)]$/)) {
+    return substr(s, 1, length(s) - RLENGTH) nocondmark(substr(s, 1 + 2 + length(s) - RLENGTH, RLENGTH-4))
+  } else {
+    return s
+  }
+}
+function nocondmark(s) {
+  return "{\\/{\\upshape\\bfseries[\\negthinspace[" s "]\\negthinspace]}}"
+}
+'

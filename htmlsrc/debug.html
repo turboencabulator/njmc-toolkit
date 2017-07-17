@@ -1,0 +1,111 @@
+<html><head><title> debug.nw</title></head><body>
+<pre><a name="NWdeb8-*-1" href="#NWdeb8-*-1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD1">-&gt;</a>]</b>
+global <a href="#NWdeb8-*-1">debug</a>, <a href="#NWdeb8-*-1">debugs</a>, <a href="#NWdeb8-*-1">debugstack</a>
+procedure <a href="#NWdeb8-*-1">wrerr</a>(L[])
+    write ! ([&amp;errout] ||| L)
+end
+procedure <a href="#NWdeb8-*-1">wrerrs</a>(L[])
+    writes ! ([&amp;errout] ||| L)
+end
+procedure <a href="#NWdeb8-*-1">nop</a>()
+end
+
+procedure <a href="#NWdeb8-*-1">debug_on</a>()
+  /<a href="#NWdeb8-*-1">debugstack</a> := []
+  every push(<a href="#NWdeb8-*-1">debugstack</a>, <a href="#NWdeb8-*-1">debug</a> | <a href="#NWdeb8-*-1">debugs</a>)
+  <a href="#NWdeb8-*-1">debug</a> := <a href="#NWdeb8-*-1">wrerr</a>
+  <a href="#NWdeb8-*-1">debugs</a> := <a href="#NWdeb8-*-1">wrerrs</a>
+  return
+end
+
+procedure <a href="#NWdeb8-*-1">debug_off</a>()
+  /<a href="#NWdeb8-*-1">debugstack</a> := []
+  every push(<a href="#NWdeb8-*-1">debugstack</a>, <a href="#NWdeb8-*-1">debug</a> | <a href="#NWdeb8-*-1">debugs</a>)
+  <a href="#NWdeb8-*-1">debug</a> := <a href="#NWdeb8-*-1">debugs</a> := <a href="#NWdeb8-*-1">nop</a>
+  return
+end
+
+procedure <a href="#NWdeb8-*-1">debug_pop</a>()
+  every <a href="#NWdeb8-*-1">debugs</a> | <a href="#NWdeb8-*-1">debug</a> := pop(<a href="#NWdeb8-*-1">debugstack</a>)
+  return
+end
+
+</pre><blockquote>Defines <a href="#NWI-debug"><code>debug</code></a>, <a href="#NWI-debug_off"><code>debug_off</code></a>, <a href="#NWI-debug_on"><code>debug_on</code></a>, <a href="#NWI-debug_pop"><code>debug_pop</code></a>, <a href="#NWI-debugs"><code>debugs</code></a>, <a href="#NWI-debugstack"><code>debugstack</code></a>, <a href="#NWI-nop"><code>nop</code></a>, <a href="#NWI-wrerr"><code>wrerr</code></a>, <a href="#NWI-wrerrs"><code>wrerrs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWdeb8-intJ-1" href="#NWdeb8-intJ-1"><dfn>&lt;integer-input error&gt;=</dfn></a>
+# error(&quot;unknown integer input `&quot;, image(i),&quot;' of type `&quot;, type(i), &quot;'&quot;)
+</pre><p>
+<a name="NWD1">Note this procedure doesn't parenthesize properly.</a>
+<pre><a name="NWdeb8-*-2" href="#NWdeb8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWdeb8-*-1">&lt;-</a>D<a href="#NWdeb8-*-3">-&gt;</a>]</b>
+procedure <a href="#NWD1">astimage</a>(n)
+    return case type(n) of { 
+        &quot;pattern&quot;  : &quot;&lt;pattern&gt; &quot; || patternimage(n)
+        &quot;Pident&quot;   : n.name
+        &quot;Pcon&quot;     : n.name || &quot; &quot; || n.relop || &quot; &quot; || <a href="#NWD1">astimage</a>(n.value)
+        &quot;Pand&quot;     : commaseparate(<a href="#NWD1">astimage</a>(n.patterns), &quot; &amp; &quot;)
+        &quot;Por&quot;      : commaseparate(<a href="#NWD1">astimage</a>(n.patterns), &quot; | &quot;) 
+        &quot;Pseq&quot;     : <a name="NWdeb8-*-2-u1" href="#NWdeb8-imac-1"><i>&lt;image of <code>Pseq</code> (possibly with dots)&gt;</i></a>
+        &quot;Papp&quot;     : <a href="#NWD1">astimage</a>(n.cons) || &quot;(&quot; || commaseparate(<a href="#NWD1">astimage</a>(n.args)) || &quot;)&quot;
+        &quot;integer&quot;  : n
+        &quot;string&quot;   : n
+        &quot;Glist&quot;    : <a href="#NWD1">astimage</a>(n.values)
+        &quot;list&quot;     : maplist(<a href="#NWD1">astimage</a>, n)
+        default    : image(n)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-astimage"><code>astimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWdeb8-imac-1" href="#NWdeb8-imac-1"><dfn>&lt;image of <code>Pseq</code> (possibly with dots)&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b>
+if *n.patterns = 2 &amp; n.patterns[1] === dots_pattern() then 
+  &quot;... &quot; || <a href="#NWD1">astimage</a>(n.patterns[2])
+else if *n.patterns = 2 &amp; n.patterns[2] === dots_pattern() then
+  <a href="#NWD1">astimage</a>(n.patterns[1]) || &quot; ...&quot;
+else 
+  commaseparate(<a href="#NWD1">astimage</a>(n.patterns), &quot;; &quot;)
+</pre><pre><a name="NWdeb8-*-3" href="#NWdeb8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWdeb8-*-4">-&gt;</a>]</b>
+procedure <a href="#NWdeb8-*-3">solnimage</a>(soln)
+  s := envimage(soln.answers, &quot;answers&quot;) || &quot;\n&quot;
+  s ||:= &quot;Uses &quot; || commafy(maplist(expimage, sort(\soln.used))) || &quot;\n&quot;
+  s ||:= &quot;Defines &quot; || commafy(maplist(expimage, sort(\soln.defined))) || &quot;\n&quot;
+  s ||:= &quot;(constraints: &quot; || commafy(maplist(expimage, \soln.constraints)) || &quot; )&quot;
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-solnimage"><code>solnimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWdeb8-*-4" href="#NWdeb8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWdeb8-*-3">&lt;-</a>D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWdeb8-*-4">injectimage</a>(i)
+  return &quot;\tas pattern: &quot; || expimage(i.pattern) || &quot;\n&quot; ||
+         &quot;\tas integer: &quot; || expimage(i.integer) || &quot;\n&quot; ||
+         &quot;\tas consop: &quot; || expimage(i.consop) || &quot;\n&quot; 
+end
+</pre><blockquote>Defines <a href="#NWI-injectimage"><code>injectimage</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD2">Show with positive coefficients.</a>
+<pre><a name="NWdeb8-*-5" href="#NWdeb8-*-1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWdeb8-*-4">&lt;-</a>D]</b>
+procedure <a href="#NWD2">zeroimage</a>(z)
+  e := eqn(table(0), &quot;=&quot;, table(0))
+  every k := key(z) do
+    if z[k] &gt; 0 then e.left[k] := z[k] else e.right[k] := -z[k]
+  return expimage(e)
+end
+</pre><blockquote>Defines <a href="#NWI-zeroimage"><code>zeroimage</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWdeb8-*-1"><i>&lt;*&gt;</i></a>: <a href="#NWdeb8-*-1">D1</a>, <a href="#NWD1">D2</a>, <a href="#NWdeb8-*-3">D3</a>, <a href="#NWdeb8-*-4">D4</a>, <a href="#NWD2">D5</a>
+<li><a href="#NWdeb8-imac-1"><i>&lt;image of <code>Pseq</code> (possibly with dots)&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWdeb8-imac-1">D2</a>
+<li><a href="#NWdeb8-intJ-1"><i>&lt;integer-input error&gt;</i></a>: <a href="#NWdeb8-intJ-1">D1</a>
+</ul>
+<ul>
+<li><a name="NWI-astimage" href="#NWD1">astimage</a>: <a href="#NWD1">D1</a>, <a href="#NWdeb8-imac-1">U2</a>
+<li><a name="NWI-debug" href="#NWdeb8-*-1">debug</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-debug_off" href="#NWdeb8-*-1">debug_off</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-debug_on" href="#NWdeb8-*-1">debug_on</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-debug_pop" href="#NWdeb8-*-1">debug_pop</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-debugs" href="#NWdeb8-*-1">debugs</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-debugstack" href="#NWdeb8-*-1">debugstack</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-injectimage" href="#NWdeb8-*-4">injectimage</a>: <a href="#NWdeb8-*-4">D1</a>
+<li><a name="NWI-nop" href="#NWdeb8-*-1">nop</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-solnimage" href="#NWdeb8-*-3">solnimage</a>: <a href="#NWdeb8-*-3">D1</a>
+<li><a name="NWI-wrerr" href="#NWdeb8-*-1">wrerr</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-wrerrs" href="#NWdeb8-*-1">wrerrs</a>: <a href="#NWdeb8-*-1">D1</a>
+<li><a name="NWI-zeroimage" href="#NWD2">zeroimage</a>: <a href="#NWD2">D1</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,90 @@
+<html><head><title>Toolkit News for September, 1996</title></head><body>
+Several changes are underway, and I thought our users would like to
+know what is happening.
+
+<h2>Toolkit news for September, 1996</h2>
+
+Mary Fernandez now has full-time responsibilities at AT&amp;T, which
+means she has very little time to devote to the toolkit.
+Mary will continue to help maintain the toolkit, but unfortunately she
+will not be able to be involved in new development to the extent that
+she would like.
+<p>
+I (Norman Ramsey) have moved from Purdue to the University of
+Virginia, where I am Research Assistant Professor in the Deparment of
+Computer Science.  My primary responsibility is my work on the
+Zephyr project; we are working with Princeton, Stanford, and others to
+build a National Compiler Infrastructure.
+I expect to focus on machine descriptions,
+including writing tools to process them, and I expect the toolkit work
+to dovetail nicely with Zephyr.
+<p>
+The toolkit's home page has moved with me; it is
+now at <a
+href=http://www.cs.virginia.edu/~nr/toolkit>http://www.cs.virginia.edu/~nr/toolkit</a>. <!--UVA OK-->
+The contact address for questions and problems continues to be
+<tt><a
+href=mailto:toolkit@cs.princeton.edu>toolkit@cs.princeton.edu</a></tt>,
+and for now I intend to maintain the 
+<tt>toolkit-interest</tt> and <tt>toolkit-users</tt> mailing lists at
+Purdue.
+
+<h3>Name that language!</h3>
+
+Mary and I would like to give the ``toolkit specification language'' a
+real name.  
+We have a couple of ideas but no great ones, and we hope maybe you all
+will have better ones.
+Here's what we're hoping for:
+<ul>
+<li>An acronym that says something about what the language is for:
+encoding, decoding, assembly, and disassembly of machine
+instructions (or other binary specifications).
+<li>Something pronounceable!
+<li>Ideally, we would like an acronym that works out to a concrete noun,
+so we can have a picture of it, make a logo, put it on our web page,
+etcetera.
+This sort of nonsense helps visibility, which means it helps me beg
+for money, which means I can spend more time improving the toolkit.
+</ul>
+Send suggestions to <tt><a
+href=mailto:toolkit@cs.princeton.edu>toolkit@cs.princeton.edu</a></tt>.
+
+
+
+<h3>Software news</h3>
+
+In May I made several small changes and extensions to the toolkit,
+including
+<ul>
+<li>Fixed several bugs in handling matching statements and generating
+decoders.
+<li>Added more support for automatic generation of assemblers and
+disassemblers. 
+</ul>
+I have not taken the time to build another official release, but if
+you think you need these fixes or extensions, send me mail.
+<p>
+The big news is that <em>work on version 1.0 is on underway</em>.
+Thanks to many interesting discussions with members of Dave MacQueen's
+group at Bell Labs, I have a plan for re-implementing the toolkit in
+Standard ML.
+I have done some work already, reaching a point where
+I can elaborate many constructor definitions, and I hope I will soon
+be in a position to generate code.
+<p>
+It says here there the rewrite will have the following wonderful benefits:
+<ul>
+<li>Better error messages, with better relationsihp to source locations.
+The toolkit may no longer always halt after the first message.
+<li>The toolkit will run faster.
+<li>The toolkit may be more reliable.
+<li>We should be able to support at least C, Modula-3, and Standard ML
+without too much trouble.
+<li>We should be able to support variations on code generation.
+<li>The new implementation should be a much better vehicle for
+research and future extension.
+</ul>
+<p>
+Thanks for your interest in the toolkit.
+</body></html>

@@ -1,0 +1,172 @@
+% l2h ignore change {
+\chapter{Field-dependent information}
+\section{Field categories}
+There are a number of things one wants to know about each field,
+depending on whether one is to assemble, disassemble, or generate C
+code for assembly.
+Here's a tentative classification:
+\begin{itemize}
+\item How to disassemble
+ \begin{itemize}
+ \item array of names
+ \item enumeration (for sparsely populated fields)
+ \item {\tt printf} format string (e.g. for MIPS [[spec03]])?
+ \end{itemize} 
+\item Type of argument to pass to C or Modula-3 procedure (could be
+      enumeration or subrange type, for example).  Different types may
+      require different value checking within the procedure.
+\item Literals
+  \begin{itemize}
+  \item C {\tt enum}s or constants
+  \item use in assembly code (syntactic category?)
+  \end{itemize} 
+\end{itemize} 
+@
+If field names are specified, they are kept in a name-to-value table.
+That table is associated with the field in the global table [[fnt]] 
+(standing for ``field-name table'').
+<<*>>=
+global fnt		# field -> name -> value
+@
+<<*>>=
+procedure fieldinfo(f, info) 
+    initial { /fnt := table(); /fieldasm := table() }
+    case type(info) of {
+        "string" :  case info of { "checked"    : { <<make [[f]] checked>> }
+                                   "unchecked"  : { <<make [[f]] unchecked>> }
+                                   "guaranteed" : { <<make [[f]] guaranteed>> }
+				   default : { <<complain about fieldspec [[info]]>> }
+                                 }
+        "namespec"  : (/fnt[f] := check_namespec(info, f)) | 
+                         error("Field names for field ", f.name, " already specified")
+        default     : fail
+    }
+    return
+end
+<<make [[f]] checked>>=
+every delete(guaranteed_fields | unchecked_fields, f)
+<<make [[f]] unchecked>>=
+insert(unchecked_fields, f)
+delete(guaranteed_fields, f)
+<<make [[f]] guaranteed>>=
+every insert(guaranteed_fields | unchecked_fields, f)
+<<complain about fieldspec [[info]]>>=
+error("Unknown field info specifier `", info, "'")
+@
+Fields can be checked or unchecked at assembly time.
+<<*>>=
+global unchecked_fields, guaranteed_fields
+@
+Field values may be assigned pneumonic names that are used during disassembly
+of instructions.
+The names bound to field values within an enumeration are used to
+synthesize the sames of opcodes.
+<<*>>=
+record namespec(nametable, full)
+procedure sparse_name_table(bindlist)
+  t := table()
+  every b := !bindlist do
+    (/t[b.name] := b.val) | error("duplicate field names")
+  return namespec(t)
+end
+<<*>>=
+record enumbinding(name, val)
+@
+<<*>>=
+procedure full_name_table(namelist, f)
+  t := table()
+  every i := 1 to *namelist do
+    (/t[namelist[i]] := i - 1) | error("duplicate field names")
+  return namespec(t, 1)
+end
+<<*>>=
+procedure check_namespec(spec, f)
+  if \spec.full then
+    *spec.nametable = 2^fwidth(f) | 
+       error("Field ", f.name, " has ", 2^fwidth(f), " values, not ", *spec.nametable)
+  if x := spec.nametable[n := key(spec.nametable)] & (x < 0 | x >= 2^fwidth(f)) then
+    error("name ", image(n), " = ", x, 
+          " falls outside the value range of field ", f.name)
+  return spec.nametable
+end
+<<*>>=
+procedure fieldname_table(f)
+  initial /fnt := table()
+  return fnt[f]
+end
+<<*>>=
+procedure fieldname_env_for(f)
+  return [\fieldname_table(f)] | []
+end
+
+procedure fieldname_env_for_ipt(ipt)
+  return (type(ipt.meaning) == "field", fieldname_env_for(ipt.meaning)) | []
+end
+@
+\section{Emitting field names}
+We concoct a [[namearray]] and pass it to [[pretty]].
+<<*>>=
+procedure emit_fieldnames(base)
+  local header, data, fields
+  data := open(base || implementation_extension, "w")
+  header := open(base || interface_extension, "w");
+  if interface_extension == ".h" then
+    write(data, "#include \"", base, interface_extension, "\"")
+  pp := PPnew(data);
+  <<make [[fields]] an array of all fields sorted by name>>
+  every PPxwrite(pp, pretty(Gdeclnamearray(fieldnamearray(!fields))), ";")
+  every write(header, "extern char *", (!fields).name, "_names[];")
+  every close(data | header)
+  return
+end
+<<make [[fields]] an array of all fields sorted by name>>=
+t := table()
+fields := []
+every f := !symtab & type(f) == "field" do t[f.name] := f
+every put(fields, (!sort(t))[2])
+@
+To build a name array, we first create a table of all invalid field values.
+The valid ones are then overwritten using names from 
+[[fieldname_table(f)]].
+{\hfuzz=2.1pt\par}
+<<*>>=
+procedure fieldnamearray(f)
+  return name_array_from_table(\fieldname_table(f), 2^fwidth(f), f.name)
+end
+procedure name_array_from_table(t, limit, fieldname)
+  local name
+  limit <= 1024 |
+    error("Tried to enumerate ", limit, " names for field or operand ", fieldname)
+  na := namearray(field, table(), limit, fieldname || "_names", "")
+  every i := 0 to na.hi - 1 do
+    na.tbl[i] := bad_operand_name(fieldname, i)
+  every name := key(t) do
+    na.tbl[t[name]] := name
+  return na
+end
+procedure bad_operand_name(name, value)
+  return "??" || name || "=" || value || "?!"
+end
+@ 
+For use in identifying fields with identical naming patterns, we have
+to turn a name table into a suitable string.  This means covering the
+keys in order.
+<<*>>=
+procedure nametablekey(nametab)
+  local min, max
+  static cache
+  initial cache := table()
+  if \cache[nametab] then return cache[nametab]
+  if /nametab then return cache[f] := "(no name table)"
+  u := table()
+  every k := key(nametab) do u[nametab[k]] := k
+  <<make [[min]] and [[max]] smallest and largest values in [[nametab]]>>  
+  s := ""
+  every i := min to max do
+    s ||:= \u[i] || "@" || i || "\0"
+  return cache[f] := s
+end
+<<make [[min]] and [[max]] smallest and largest values in [[nametab]]>>=
+min := max := !nametab | 0
+every min >:= !nametab
+every max <:= !nametab

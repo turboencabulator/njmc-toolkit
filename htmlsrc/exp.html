@@ -1,0 +1,1290 @@
+<html><head><title> exp.nw</title></head><body>
+<h1>Expressions and Equations</h1>
+<p>
+<em>Expressions</em> describe all the value manipulations performed by the toolkit.
+They include not only manipulations that can be expressed using the
+input expression language, but also manipulations that are generated internally, 
+including slicing, narrowing, sign extension, division, and modulus. 
+A special normal form is used to represent sums
+of terms with constant coefficients.
+The integer&nbsp;1 may also be used as a term; 
+<a name="NWD1">it is multiplied by a coefficient to represent a constant term, if any.</a>
+This normal form is represented as an Icon table in which the keys are the terms 
+and the values are the coefficients.  
+For example, the expression <code>10*x + 4</code> is represented by the Icon
+table mapping <code>&quot;x&quot;</code> to 10 and 1 to 4.
+<p>
+These expressions are used both in equation solving and to compute the values of fields. 
+I give definitions in terms of Modula-3.
+<code>x</code> and <code>y</code> are expressions; <code>n</code> and <code>lo</code> are integer constants.
+<pre><a name="NWexp6-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+record <a href="#NWD1">Eorb</a>(x, y)                       # Word.Or(x, y)
+record <a href="#NWD1">Eand</a>(x, y)                       # x AND y               -- short-circuit Boolean
+record <a href="#NWD1">Eslice</a>(x, lo, n)                 # Word.Extract(x, lo, width)
+record <a href="#NWD1">Eshift</a>(x, n)                     # Word.Shift(x, n)
+record <a href="#NWD1">Enarrowu</a>(x, n)                   # narrow to n bits, unsigned, with check
+record <a href="#NWD1">Enarrows</a>(x, n)                   # narrow to n bits,   signed, with check
+record <a href="#NWD1">Ewiden</a>(x, n)                     # sign-extend low n bits
+record <a href="#NWD1">Ediv</a>(x, n)                       # x DIV y
+record <a href="#NWD1">Emod</a>(x, n)                       # x MOD y
+record <a href="#NWD1">Efitsu</a>(x, n)                     # unsigned value x fits in n bits
+record <a href="#NWD1">Efitss</a>(x, n)                     # signed value x fits in n bits
+record <a href="#NWD1">Epatlabel</a>(l)                     # reference to patlabel l
+record <a href="#NWD1">Eforce</a>(x)                        # force relocatable x to an integer
+record <a href="#NWD1">Eforceable</a>(x)                    # true iff relocatable x has known address
+record <a href="#NWD1">Epc</a>()                            # start of pattern match or token emission
+record <a href="#NWD1">Epc_known</a>()                      # predicate needed in encoding
+record <a href="#NWD1">Sstmts</a>(x)                        # sequence of statements
+record <a href="#NWD1">Enot</a>(x)                          # NOT x
+record <a href="#NWD1">Enosimp</a>(x)                       # x, but suppress simplification
+record <a href="#NWD1">Semit</a>(x)                         # emit list of <a href="#NWD1">Stoken</a>
+record <a href="#NWD1">Stoken</a>(x, n, offset)             # emit x with width n (offset from beginning)
+                                        #       (offset &gt;= 0 always)
+record <a href="#NWD1">Einstance</a>(cons, argt)            # cons applied to arguments in table argt
+record <a href="#NWD1">Einstance_input</a>(x, cons, name)   # input name from instance x of constructor cons
+record <a href="#NWD1">Einstance_tagged</a>(x, cons, uid)   # true iff instance x tagged as constructor cons
+record <a href="#NWD1">Ebinding_instance</a>(name, type, vart) # binding instance of constructor-typed input
+                                           # vart is table used to find fresh vars
+record <a href="#NWD1">Sif</a>(arms)                        # list of <a href="#NWD1">Sguarded</a>
+record <a href="#NWD1">Sguarded</a>(guard, x)               # if guard then x (in <a href="#NWD1">Sif</a>)
+record <a href="#NWD1">Sepsilon</a>()                       # empty statement
+record <a href="#NWD1">Efail</a>(msg)                       # result of selecting from the wrong constructor
+record <a href="#NWD1">Eapp</a>(f, args)                    # function application
+record <a href="#NWD1">Eclosure_loc</a>()                   # location of a relocation closure
+record <a href="#NWD1">Eclosure_addr</a>(n)                 # relocatable address in a relocation closure
+record <a href="#NWD1">Eclosure_val</a>(n)                  # value in a relocation closure
+</pre><blockquote>Defines <a href="#NWI-Eand"><code>Eand</code></a>, <a href="#NWI-Eapp"><code>Eapp</code></a>, <a href="#NWI-Ebinding_instance"><code>Ebinding_instance</code></a>, <a href="#NWI-Eclosure_addr"><code>Eclosure_addr</code></a>, <a href="#NWI-Eclosure_loc"><code>Eclosure_loc</code></a>, <a href="#NWI-Eclosure_val"><code>Eclosure_val</code></a>, <a href="#NWI-Ediv"><code>Ediv</code></a>, <a href="#NWI-Efail"><code>Efail</code></a>, <a href="#NWI-Efitss"><code>Efitss</code></a>, <a href="#NWI-Efitsu"><code>Efitsu</code></a>, <a href="#NWI-Eforce"><code>Eforce</code></a>, <a href="#NWI-Eforceable"><code>Eforceable</code></a>, <a href="#NWI-Einstance"><code>Einstance</code></a>, <a href="#NWI-Einstance_input"><code>Einstance_input</code></a>, <a href="#NWI-Einstance_tagged"><code>Einstance_tagged</code></a>, <a href="#NWI-Emod"><code>Emod</code></a>, <a href="#NWI-Enarrows"><code>Enarrows</code></a>, <a href="#NWI-Enarrowu"><code>Enarrowu</code></a>, <a href="#NWI-Enosimp"><code>Enosimp</code></a>, <a href="#NWI-Enot"><code>Enot</code></a>, <a href="#NWI-Eorb"><code>Eorb</code></a>, <a href="#NWI-Epatlabel"><code>Epatlabel</code></a>, <a href="#NWI-Epc"><code>Epc</code></a>, <a href="#NWI-Epc_known"><code>Epc_known</code></a>, <a href="#NWI-Eshift"><code>Eshift</code></a>, <a href="#NWI-Eslice"><code>Eslice</code></a>, <a href="#NWI-Ewiden"><code>Ewiden</code></a>, <a href="#NWI-Semit"><code>Semit</code></a>, <a href="#NWI-Sepsilon"><code>Sepsilon</code></a>, <a href="#NWI-Sguarded"><code>Sguarded</code></a>, <a href="#NWI-Sif"><code>Sif</code></a>, <a href="#NWI-Sstmts"><code>Sstmts</code></a>, <a href="#NWI-Stoken"><code>Stoken</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-argL-1" href="#NWexp6-argL-1"><dfn>&lt;argument descriptions&gt;=</dfn></a>
+expargs x y arms guard left right args.
+special <a href="#NWDD">simplify</a> <a href="#NWD1">Einstance</a> Stagcase <a href="#NWD1">Enosimp</a> <a href="#NWD1">Sif</a>.
+special hoist <a href="#NWD1">Epc</a> <a href="#NWD1">Epc_known</a> <a href="#NWD1">Eorb</a> <a href="#NWD1">Sguarded</a> <a href="#NWD1">Sepsilon</a> Sfail <a href="#NWD1">Stoken</a> <a href="#NWD1">Eforce</a>.
+</pre><p>
+<a name="NWD2">The  following types officially represent values:</a>
+<pre><a name="NWexp6-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">exptypes</a>()
+  suspend &quot;string&quot; | &quot;integer&quot; | &quot;table&quot; | &quot;<a href="#NWD1">Eorb</a>&quot; | &quot;<a href="#NWD1">Eslice</a>&quot; | &quot;<a href="#NWD1">Eshift</a>&quot; | &quot;<a href="#NWD1">Enarrowu</a>&quot; |
+          &quot;<a href="#NWD1">Enarrows</a>&quot; | &quot;<a href="#NWD1">Ewiden</a>&quot; | &quot;<a href="#NWD1">Ediv</a>&quot; | &quot;<a href="#NWD1">Emod</a>&quot; | &quot;<a href="#NWD1">Einstance_input</a>&quot; | &quot;<a href="#NWD1">Einstance</a>&quot; |
+          &quot;<a href="#NWD1">Ebinding_instance</a>&quot; | &quot;<a href="#NWD1">Eapp</a>&quot; | &quot;<a href="#NWD1">Eclosure_loc</a>&quot; | &quot;<a href="#NWD1">Eclosure_addr</a>&quot; |
+          &quot;<a href="#NWD1">Eclosure_val</a>&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-exptypes"><code>exptypes</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">An </a><em>equation</em> asserts that two expressions are equal.
+In this code, I extend the term to cover what is more normally
+called an ``inequality''---a pair of expressions related by one of the usual
+relational operators.
+<pre><a name="NWexp6-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+record <a href="#NWD3">eqn</a>(left, op, right)             # equality or inequality
+</pre><blockquote>Defines <a href="#NWI-eqn"><code>eqn</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD4">Searching for subterms and free variables</a></h2>
+<code><a href="#NWD4">subterms_matching</a>(e, ty)</code> suspends all subterms of <code>e</code> that have type <code>ty</code>. 
+<pre><a name="NWexp6-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWD4">subterms_matching_f</a>(e, types[])
+  return if type(e) == !types then e
+end
+
+procedure <a href="#NWD4">subterms_matching</a>(e, types[])
+  suspend do_expwalk(e, <a href="#NWD4">subterms_matching_f</a>, types)
+end
+</pre><blockquote>Defines <a href="#NWI-subterms_matching"><code>subterms_matching</code></a>, <a href="#NWI-subterms_matching_f"><code>subterms_matching_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">Finding free variables is a common enough case of </a><code><a href="#NWD4">subterms_matching</a></code>
+that I define a special procedure for it:
+<pre><a name="NWexp6-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">free_variables_f</a>(e)
+  return if type(e) == &quot;string&quot; then e
+end
+
+procedure <a href="#NWD5">free_variables</a>(e)
+  suspend expwalk(e, <a href="#NWD5">free_variables_f</a>)
+end
+</pre><blockquote>Defines <a href="#NWI-free_variables"><code>free_variables</code></a>, <a href="#NWI-free_variables_f"><code>free_variables_f</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD6">Testing for equality</a></h2>
+This is a conservative test.
+<pre><a name="NWexp6-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWexp6-*-7">-&gt;</a>]</b>
+procedure <a href="#NWD6">exps_eq</a>(e1, e2)
+  if e1 === e2 then return e2
+  e1 := <a href="#NWexp6-*-8">untableexp</a>(e1)
+  e2 := <a href="#NWexp6-*-8">untableexp</a>(e2)
+  return case type(e1) == type(e2) of {
+    <a name="NWexp6-*-6-u1" href="#NWexp6-casL-1"><i>&lt;cases for <code>exps_eq</code>&gt;</i></a>
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-exps_eq"><code>exps_eq</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-casL-1" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[D<a href="#NWexp6-casL-2">-&gt;</a>]</b>
+&quot;pattern&quot;      : fail
+&quot;disjunct&quot;     : fail
+&quot;adisjunct&quot;    : fail
+&quot;sequent&quot;      : fail
+&quot;patlabel&quot;     : e1 === e2
+&quot;latent_patlabel&quot; : e1 === e2  ## ???
+&quot;dots_sequent&quot; : fail
+&quot;constraint&quot;   : fail
+&quot;fieldbinding&quot; : fail
+&quot;field&quot;        : e1 === e2
+&quot;absolute_field&quot; : <a href="#NWD6">exps_eq</a>(e1.field, e2.field) &amp; e1.offset = e2.offset
+</pre><pre><a name="NWexp6-casL-2" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-1">&lt;-</a>D<a href="#NWexp6-casL-3">-&gt;</a>]</b>
+&quot;list&quot;         : if *e1 ~= *e2 then fail
+                 else {
+                   every i := 1 to *e1 do if not <a href="#NWD6">exps_eq</a>(e1[i], e2[i]) then fail
+                   e1
+                 }
+&quot;<a href="#NWD3">eqn</a>&quot;          : <a name="NWexp6-casL-2-u1" href="#NWD7"><i>&lt;equations <code>e1</code> and <code>e2</code> are the same&gt;</i></a>
+</pre><pre><a name="NWexp6-casL-3" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-2">&lt;-</a>D<a href="#NWexp6-casL-4">-&gt;</a>]</b>
+&quot;table&quot;        : { if *e1 ~= *e2 then fail
+                   every k1 := key(e1) do
+                     if k2 := key(e2) &amp; e2[k2] = e1[k1] &amp; <a href="#NWD6">exps_eq</a>(k1, k2) then &amp;null 
+                     else fail
+                   e2
+                 }
+</pre><pre><a name="NWexp6-casL-4" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-3">&lt;-</a>D<a href="#NWexp6-casL-5">-&gt;</a>]</b>
+&quot;set&quot;          : { if *e1 ~= *e2 then fail
+                   s := set()
+                   every x := !e1 do
+                     if <a href="#NWD6">exps_eq</a>(x, y := !e2)
+                       then insert(s, y)
+                     else
+                       fail
+                   *s = *e2          
+                  }
+</pre><pre><a name="NWexp6-casL-5" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-4">&lt;-</a>D<a href="#NWexp6-casL-6">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eorb</a>&quot; | &quot;<a href="#NWD1">Eand</a>&quot; : <a href="#NWD6">exps_eq</a>(e1.x, e2.x) &amp; <a href="#NWD6">exps_eq</a>(e1.y, e2.y)
+&quot;<a href="#NWD1">Eslice</a>&quot; : e1.lo = e2.lo &amp; e1.n = e2.n &amp; <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Eshift</a>&quot; | &quot;<a href="#NWD1">Enarrowu</a>&quot; | &quot;<a href="#NWD1">Enarrows</a>&quot; | &quot;<a href="#NWD1">Ewiden</a>&quot; | &quot;<a href="#NWD1">Ediv</a>&quot; | &quot;<a href="#NWD1">Emod</a>&quot; |
+&quot;<a href="#NWD1">Efitsu</a>&quot; | &quot;<a href="#NWD1">Efitss</a>&quot; : e1.n = e2.n &amp; <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Epatlabel</a>&quot; : e1.l === e2.l
+&quot;<a href="#NWD1">Eforce</a>&quot; | &quot;<a href="#NWD1">Eforceable</a>&quot; | &quot;<a href="#NWD1">Enot</a>&quot; | &quot;<a href="#NWD1">Enosimp</a>&quot; | &quot;<a href="#NWD1">Sstmts</a>&quot; | &quot;<a href="#NWD1">Semit</a>&quot; : <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Epc</a>&quot; | &quot;<a href="#NWD1">Epc_known</a>&quot; : true
+&quot;<a href="#NWD1">Stoken</a>&quot; : e1.offset = e1.offset &amp; e1.n = e2.n &amp; <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Einstance_input</a>&quot;  : e1.cons === e2.cons &amp; e1.name == e2.name &amp; <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Einstance_tagged</a>&quot; : e1.cons === e2.cons &amp; e1.uid = e2.uid &amp; <a href="#NWD6">exps_eq</a>(e1.x, e2.x)
+&quot;<a href="#NWD1">Einstance</a>&quot;        : impossible(&quot;escaping <a href="#NWD1">Einstance</a>&quot;)
+&quot;<a href="#NWD1">Ebinding_instance</a>&quot;: impossible(&quot;escaping <a href="#NWD1">Ebinding_instance</a>&quot;)
+</pre><pre><a name="NWexp6-casL-6" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-5">&lt;-</a>D<a href="#NWexp6-casL-7">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Sif</a>&quot; | &quot;<a href="#NWD1">Sguarded</a>&quot; | &quot;Stagcase&quot; : fail
+</pre><pre><a name="NWexp6-casL-7" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-6">&lt;-</a>D<a href="#NWexp6-casL-8">-&gt;</a>]</b>
+&quot;Glines&quot;    : fail
+&quot;Gresynch&quot;  : fail
+&quot;Gblock&quot;    : fail
+&quot;Gdecl&quot;     : fail
+&quot;Gcase&quot;     : fail
+&quot;Gcasearm&quot;  : fail
+&quot;Ginrange&quot;  : fail
+&quot;Gsetname&quot;  : fail
+&quot;Gnomatch&quot;  : fail
+&quot;Gasgn&quot;     : fail
+&quot;Tunsigned&quot; : fail
+&quot;Gcomment&quot;  : fail
+&quot;Gcommented&quot; : e1.comment == e2.comment &amp; <a href="#NWD6">exps_eq</a>(e1.e, e2.e)
+</pre><pre><a name="NWexp6-casL-8" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-7">&lt;-</a>D<a href="#NWexp6-casL-9">-&gt;</a>]</b>
+&quot;string&quot;  : e1 == e2
+&quot;integer&quot; : e1 = e2
+</pre><pre><a name="NWexp6-casL-9" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-8">&lt;-</a>D<a href="#NWexp6-casL-A">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eapp</a>&quot; : fail
+</pre><pre><a name="NWexp6-casL-A" href="#NWexp6-casL-1"><dfn>&lt;cases for <code>exps_eq</code>&gt;+=</dfn></a> <b>(<a href="#NWD6">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casL-9">&lt;-</a>D]</b>
+&quot;<a href="#NWD1">Eclosure_loc</a>&quot; : e1
+&quot;<a href="#NWD1">Eclosure_addr</a>&quot; : e1.n = e2.n
+&quot;<a href="#NWD1">Eclosure_val</a>&quot; : e1.n = e2.n
+</pre><p>
+<a name="NWD7">For matching equations, we have a plethora of possibilities.</a>
+The first line is an optimization.
+For the second line, we test both for the same relation and
+``opposite'' relations.  Note that equality is its own opposite, so
+<i>a=b</i> is equivalent to <i>a'=b'</i> if either <i>a-b=a'-b'</i> or <i>a-b=b'-a'</i>.
+Similarly for simple inequality.
+<pre><a name="NWexp6-eque-1" href="#NWD7"><dfn>&lt;equations <code>e1</code> and <code>e2</code> are the same&gt;=</dfn></a> <b>(<a href="#NWexp6-casL-2">&lt;-U</a>)</b>
+(e1.op == e2.op, <a href="#NWD6">exps_eq</a>(e1.left, e2.left), <a href="#NWD6">exps_eq</a>(e1.right, e2.right)) |
+(d1 := subtract(e1.left, e1.right), 
+  (e1.op == e2.op, 
+   <a href="#NWD6">exps_eq</a>(d1, subtract(e2.left, e2.right))) |
+  (e1.op == <a href="#NWexp6-*-7">opposite_op</a>(e2.op),
+   <a href="#NWD6">exps_eq</a>(d1, subtract(e2.right, e2.left))))
+</pre><pre><a name="NWexp6-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWexp6-*-8">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-7">opposite_op</a>(op)
+  return case op of { 
+    &quot;&lt;&quot;  : &quot;&gt;&quot;
+    &quot;&lt;=&quot; : &quot;&gt;=&quot;
+    &quot;&gt;&quot;  : &quot;&lt;&quot;
+    &quot;&gt;=&quot; : &quot;&lt;=&quot;
+    &quot;=&quot;  : &quot;=&quot;
+    &quot;!=&quot; : &quot;!=&quot;
+  }
+end    
+</pre><blockquote>Defines <a href="#NWI-opposite_op"><code>opposite_op</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWexp6-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-7">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-8">untableexp</a>(e)
+  local result
+  if type(e) == &quot;table&quot; then {
+    every k := key(e) &amp; e[k] = 0 do 
+      delete(e, k)
+    case *e of {
+      0: return 0
+      1: { k := key(e)
+           if k === 1 then return e[k]
+           else if e[k] = 1 then return k
+         }
+     }
+  }
+  return e
+end
+</pre><blockquote>Defines <a href="#NWI-untableexp"><code>untableexp</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD8">Substitution</a></h2>
+I have two forms:  single value for variable and
+values for variables in table.
+<pre><a name="NWexp6-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-8">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+procedure <a href="#NWD8">subst_f</a>(e, var, value)
+  if type(e) === &quot;string&quot; then return if var == e then value else e
+end
+
+procedure <a href="#NWD8">subst</a>(e, var, value)
+  return if var === value then e        # optimization
+         else do_gsubst(e, <a href="#NWD8">subst_f</a>, [var, value])
+end
+</pre><blockquote>Defines <a href="#NWI-subst"><code>subst</code></a>, <a href="#NWI-subst_f"><code>subst_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD9">If </a><code>all</code> is not null, all the free variables in the expression
+must be bound by the table.
+<pre><a name="NWexp6-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+procedure <a href="#NWD9">subst_tab_f</a>(e, tbl, all)
+  return if type(e) == &quot;string&quot; then
+           \tbl[e] | if \all then 
+                       error(&quot;variable &quot;, image(e),&quot; is unbound in table &quot;, 
+                                                   envimage(tbl, &quot;substitions&quot;))
+                     else 
+                       e
+end
+
+procedure <a href="#NWD9">subst_tab</a>(e, tbl, all)
+  return do_gsubst(e, <a href="#NWD9">subst_tab_f</a>, [tbl, all])
+end
+</pre><blockquote>Defines <a href="#NWI-subst_tab"><code>subst_tab</code></a>, <a href="#NWI-subst_tab_f"><code>subst_tab_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDA">Sometimes we just want to substitute for all elements of any table,</a>
+even if they aren't just strings.
+<pre><a name="NWexp6-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWexp6-*-C">-&gt;</a>]</b>
+procedure <a href="#NWDA">subst_table_elements_f</a>(e, tbl)
+  return \tbl[e]
+end
+procedure <a href="#NWDA">subst_table_elements</a>(e, tbl)
+  return do_gsubst(e, <a href="#NWDA">subst_table_elements_f</a>, [tbl])
+end
+</pre><blockquote>Defines <a href="#NWI-subst_table_elements"><code>subst_table_elements</code></a>, <a href="#NWI-subst_table_elements_f"><code>subst_table_elements_f</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-C">subst_for_pc_f</a>(e, val)
+  return if e === the_global_pc then val
+end
+
+procedure <a href="#NWexp6-*-C">subst_for_pc</a>(e, val)
+  return do_gsubst(e, <a href="#NWexp6-*-C">subst_for_pc_f</a>, [val])
+end
+</pre><blockquote>Defines <a href="#NWI-subst_for_pc"><code>subst_for_pc</code></a>, <a href="#NWI-subst_for_pc_f"><code>subst_for_pc_f</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDB">Sometimes the values in a table are expressions.</a>
+<pre><a name="NWexp6-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-C">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDB">subst_values_in_table</a>(t, var, value)
+  return <a href="#NWDB">do_gsubst_values_in_table</a>(t, <a href="#NWD8">subst_f</a>, [var, value])
+end
+
+procedure <a href="#NWDB">subst_tab_values_in_table</a>(t, var, value)
+  return <a href="#NWDB">do_gsubst_values_in_table</a>(t, <a href="#NWD9">subst_tab_f</a>, [var, value])
+end
+
+procedure <a href="#NWDB">do_gsubst_values_in_table</a>(t, f, closure)
+  n := 0
+  u := table()
+  every k := key(t) &amp; x := do_gsubst(t[k], f, closure) do {
+    u[k] := x
+    if x ~=== t[k] then n +:= 1
+  }
+  return if n &gt; 0 then u else t
+end
+</pre><blockquote>Defines <a href="#NWI-do_gsubst_values_in_table"><code>do_gsubst_values_in_table</code></a>, <a href="#NWI-subst_tab_values_in_table"><code>subst_tab_values_in_table</code></a>, <a href="#NWI-subst_values_in_table"><code>subst_values_in_table</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDC">The solver needs destructive substitution when </a><code>e</code> is a table or an
+equation. 
+Fortuitously, we can use the same code for <code><a href="#NWDC">dsubst</a></code> and
+<code><a href="#NWDC">dsubst_tab</a></code>.
+<pre><a name="NWexp6-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWexp6-*-F">-&gt;</a>]</b>
+procedure <a href="#NWDC">dsubst</a>(e, var, value)
+  return <a href="#NWexp6-*-F">destructive_subst</a>(e, var, value, <a href="#NWD8">subst</a>)
+end
+procedure <a href="#NWDC">dsubst_tab</a>(e, tbl, all)
+  return <a href="#NWexp6-*-F">destructive_subst</a>(e, tbl, all, <a href="#NWD9">subst_tab</a>)
+end
+</pre><blockquote>Defines <a href="#NWI-dsubst"><code>dsubst</code></a>, <a href="#NWI-dsubst_tab"><code>dsubst_tab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-F">destructive_subst</a>(e, a2, a3, substitute)
+  if type(e) == &quot;<a href="#NWD3">eqn</a>&quot; then {
+    e.left  := <a href="#NWexp6-*-F">destructive_subst</a>(<a href="#NWexp6-*-T">term2table</a>(e.left),  a2, a3, substitute)
+    e.right := <a href="#NWexp6-*-F">destructive_subst</a>(<a href="#NWexp6-*-T">term2table</a>(e.right), a2, a3, substitute)
+  } else {
+    m := copy(e)
+    every k := key(m) &amp; mm := m[k] &amp; kk := substitute(k, a2, a3) do {
+      e[k] -:= mm
+      if type(kk) ~== &quot;table&quot; then
+        e[kk] +:= mm
+      else 
+        every v := key(kk) do e[v] +:= kk[v] * mm
+    }
+    every k := key(e) &amp; e[k] = 0 do delete(e, k)
+  }
+  return e
+end  
+</pre><blockquote>Defines <a href="#NWI-destructive_subst"><code>destructive_subst</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Simplification</h2>
+I discovered late in the day that there need to be two kinds of simplification.
+Basically, some of the simplifying rules reduce the strength of operations, 
+<a name="NWDD">and after strength reduction the solver can't always invert the results.</a>
+On the other hand, there are situations in which one simply can't do without 
+simplification, as when it eliminates an unsolvable disjunct (see bug #2).
+A tentative fix is to designate some simplification rules as 
+<code><a href="#NWexp6-supJ-1"><i>&lt;super rewrite rules&gt;</i></a></code>, and to use them only on expressions that won't be
+further transformed.
+They are used in <code><a href="#NWexp6-*-H">super_simplify</a></code> only.
+<p>
+<code><a href="#NWDD">simplify</a></code> is not functional; it may mutate its argument.
+<pre><a name="NWexp6-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-F">&lt;-</a>D<a href="#NWexp6-*-H">-&gt;</a>]</b>
+procedure <a href="#NWDD">simplify</a>(e)
+  local left, right
+  return case type(e) of {
+    $define simfun <a href="#NWDD">simplify</a>
+      <a name="NWexp6-*-G-u1" href="#NWexp6-basU-1"><i>&lt;basic cases for simplification&gt;</i></a>
+      <a name="NWexp6-*-G-u2" href="#NWDE"><i>&lt;cases generated from rewrite rules&gt;</i></a>
+    $undef simfun
+    default : e
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-simplify"><code>simplify</code></a> (links are to index).<p>
+</blockquote><p><a name="NWDE">I need an empty chunk for bootstrapping.</a>
+<pre><a name="NWexp6-casY-1" href="#NWDE"><dfn>&lt;cases generated from rewrite rules&gt;=</dfn></a> <b>(<a href="#NWDD">&lt;-U</a>)</b>
+</pre><pre><a name="NWexp6-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWexp6-*-I">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-H">super_simplify</a>(e)
+  local left, right
+  return case type(e) of {
+    $define simfun <a href="#NWexp6-*-H">super_simplify</a>
+      <a name="NWexp6-*-H-u1" href="#NWexp6-basU-1"><i>&lt;basic cases for simplification&gt;</i></a>
+      <a name="NWexp6-*-H-u2" href="#NWDF"><i>&lt;cases generated from super rewrite rules&gt;</i></a>
+    $undef simfun
+    default : e
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-super_simplify"><code>super_simplify</code></a> (links are to index).<p>
+</blockquote><p><a name="NWDF">I need an empty chunk for bootstrapping.</a>
+<pre><a name="NWexp6-case-1" href="#NWDF"><dfn>&lt;cases generated from super rewrite rules&gt;=</dfn></a> <b>(<a href="#NWexp6-*-H">&lt;-U</a>)</b>
+</pre><p>
+<pre><a name="NWexp6-basU-1" href="#NWexp6-basU-1"><dfn>&lt;basic cases for simplification&gt;=</dfn></a> <b>(<a href="#NWDD">&lt;-U</a> <a href="#NWexp6-*-H">&lt;-U</a>)</b>
+&quot;<a href="#NWD3">eqn</a>&quot;      : {<a name="NWexp6-basU-1-u1" href="#NWexp6-simH.2-1"><i>&lt;simplify equation&gt;</i></a>}
+&quot;pattern&quot;  : {<a name="NWexp6-basU-1-u2" href="#NWDG"><i>&lt;simplify pattern&gt;</i></a>}
+&quot;disjunct&quot; : {<a name="NWexp6-basU-1-u3" href="#NWexp6-simH-1"><i>&lt;simplify disjunct&gt;</i></a>}
+&quot;adisjunct&quot;: {<a name="NWexp6-basU-1-u4" href="#NWexp6-simI-1"><i>&lt;simplify adisjunct&gt;</i></a>}
+&quot;sequent&quot;  : if (l := simfun(e.constraints)) === e.constraints then e
+             else sequent(l, e.class)
+&quot;patlabel&quot;     : e
+&quot;dots_sequent&quot; : e
+&quot;constraint&quot;   : e
+&quot;fieldbinding&quot; : if (x := simfun(e.code)) === e.code then e 
+                 else fieldbinding(e.field, x)
+&quot;absolute_field&quot; : 
+  if simfun === <a href="#NWexp6-*-H">super_simplify</a> then
+    afieldexp(e)
+  else
+    e
+&quot;set&quot;   : {<a name="NWexp6-basU-1-u5" href="#NWexp6-simQ-1"><i>&lt;simplify set of conditions&gt;</i></a>}
+&quot;table&quot; : {<a name="NWexp6-basU-1-u6" href="#NWexp6-simE-1"><i>&lt;simplify table&gt;</i></a>}
+&quot;list&quot;  : {l := maplist(simfun, e); if lists_match(e, l) then e else l}
+&quot;integer&quot; | &quot;string&quot; : e
+&quot;<a href="#NWD1">Einstance</a>&quot; : {<a name="NWexp6-basU-1-u7" href="#NWexp6-simY-1"><i>&lt;simplify instance's argument table&gt;</i></a>}
+&quot;Stagcase&quot;  : {<a name="NWexp6-basU-1-u8" href="#NWexp6-simT-1"><i>&lt;simplify tag case's arm table&gt;</i></a>}
+&quot;<a href="#NWD1">Sif</a>&quot;   : {<a name="NWexp6-basU-1-u9" href="#NWexp6-simL-1"><i>&lt;simplify if statement&gt;</i></a>}
+&quot;<a href="#NWD1">Enosimp</a>&quot; : e       # suppresses simplification
+&quot;Gcommented&quot; : if (ee := simfun(e.e)) === e.e then e else Gcommented(ee, e.comment)
+&quot;Gcomment&quot; : e
+</pre><p>
+
+<a name="NWDG">Simplification of a disjunct could fail, implying that the disjunct's</a>
+condition is always false.
+<pre><a name="NWexp6-simG-1" href="#NWDG"><dfn>&lt;simplify pattern&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+l := []; every put(l, simfun(!e.disjuncts))
+if lists_match(l, e.disjuncts) then e else pattern(l, e.name)
+</pre><pre><a name="NWexp6-simH-1" href="#NWexp6-simH-1"><dfn>&lt;simplify disjunct&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+c := simfun(e.conditions)
+if member(\c, 0) then fail
+else {
+  l := []; every put(l, vanishing_latent_patlabel ~=== simfun(!e.sequents))
+  if lists_match(l, e.sequents) then l := e.sequents
+  if ss := !l &amp; type(ss) == &quot;sequent&quot; &amp;
+     cc := !ss.constraints &amp; type(cc) == &quot;constraint&quot; &amp; cc.lo &gt;= cc.hi 
+  then
+    fail # this disjunct can't match -- eliminate it
+  if c === e.conditions &amp; l === e.sequents then e else disjunct(l, e.name, c)
+}
+</pre><pre><a name="NWexp6-simI-1" href="#NWexp6-simI-1"><dfn>&lt;simplify adisjunct&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+c := simfun(e.conditions)
+if member(\c, 0) then fail
+else {
+  l := simfun(e.aconstraints)
+  if cc := !l &amp; type(cc) == &quot;constraint&quot; &amp; cc.lo &gt;= cc.hi then
+    fail # this disjunct can't match -- eliminate it
+  if c === e.conditions &amp; l === e.aconstraints then e ### &amp; a === e.answers then e 
+  else adisjunct(l, e.name, c, e.length, e.patlabelbindings) ### , a)
+}
+</pre><pre><a name="NWexp6-simQ-1" href="#NWexp6-simQ-1"><dfn>&lt;simplify set of conditions&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+s := set()
+every x := simfun(!e) do {
+  if type(x) == &quot;<a href="#NWD3">eqn</a>&quot; then {
+    if      x.op == &quot;=&quot;  &amp; x.left === x.right then x := 1
+    else if x.op == &quot;!=&quot; &amp; x.left === x.right then x := 0
+  }
+  insert(s, x) 
+}
+delete(s, 1)
+return if member(s, 0) then set([0])
+       else if sets_match(e, s) then e
+       else if *s = 0 then &amp;null
+       else s       
+</pre><pre><a name="NWexp6-simY-1" href="#NWexp6-simY-1"><dfn>&lt;simplify instance's argument table&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+every k := key(e.argt) do e.argt[k] := simfun(e.argt[k])
+e
+</pre><pre><a name="NWexp6-simT-1" href="#NWexp6-simT-1"><dfn>&lt;simplify tag case's arm table&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+every k := key(e.arms) do e.arms[k] := simfun(e.arms[k])
+e
+</pre><pre><a name="NWexp6-simE-1" href="#NWexp6-simE-1"><dfn>&lt;simplify table&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+m := copy(e)
+every k := key(e) do {
+  m[k] -:= e[k]
+  add_to_table(m, simfun(k), e[k])
+}
+every k := key(m) &amp; m[k] = 0 do delete(m, k)
+if *m &gt; 1 then
+  return if tables_match(m, e) then e else m
+else
+  return if !m = 1 then key(m) else if key(m) === 1 then !m else m
+</pre><pre><a name="NWexp6-simH.2-1" href="#NWexp6-simH.2-1"><dfn>&lt;simplify equation&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+l := simfun(e.left)
+r := simfun(e.right)
+if <a href="#NWD6">exps_eq</a>(l, r) then 
+  if e.left === 0 &amp; e.right === 0 then e
+  else <a href="#NWD3">eqn</a>(0, e.op, 0) 
+else if simfun === <a href="#NWexp6-*-H">super_simplify</a> &amp; # not safe for decoding! see bugs{nnn}
+        ( (type(l) == &quot;<a href="#NWD1">Enarrows</a>&quot;, type(r) == &quot;<a href="#NWD1">Eslice</a>&quot;,   r.lo = 0) |
+          (type(l) == &quot;<a href="#NWD1">Eslice</a>&quot;,   type(r) == &quot;<a href="#NWD1">Enarrows</a>&quot;, l.lo = 0) ) &amp; 
+        l.n = r.n &amp; <a href="#NWD6">exps_eq</a>(l.x, r.x)
+     then
+       simfun(<a href="#NWD1">Efitss</a>(l.x, l.n))
+else 
+  if e.left === l &amp; e.right === r then e
+  else <a href="#NWD3">eqn</a>(l, e.op, r)
+</pre><pre><a name="NWexp6-simL-1" href="#NWexp6-simL-1"><dfn>&lt;simplify if statement&gt;=</dfn></a> <b>(<a href="#NWexp6-basU-1">&lt;-U</a>)</b>
+a := <a href="#NWexp6-*-I">simp_arms</a>(e.arms, simfun)
+if *a = 0 then <a href="#NWD1">Sepsilon</a>()
+else if *a = 1 &amp; <a href="#NWexp6-*-J">guard_always_satisfied</a>(a[1].guard) then a[1].x
+else if a === (e.arms) then e
+else <a href="#NWD1">Sif</a>(a)
+</pre><pre><a name="NWexp6-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-H">&lt;-</a>D<a href="#NWexp6-*-J">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-I">simp_arms</a>(earms, simfun)
+  local arms
+  l := []
+  arms := copy(earms)
+  while a := get(arms) &amp; g := simfun(a.guard) do
+    if <a href="#NWexp6-*-J">guard_always_satisfied</a>(g) then { # always take this arm
+      c := simfun(a.x)
+      put(l, if <a href="#NWD6">exps_eq</a>(g, a.guard) &amp; <a href="#NWD6">exps_eq</a>(c, a.x) then a else <a href="#NWD1">Sguarded</a>(g, c))
+      return if lists_match(l, earms) then earms else l
+    } else if not case type(g) of {
+      &quot;integer&quot; : g = 0
+      &quot;set&quot;     : member(g, 0)
+    } then { # sometimes take this arm
+      c := simfun(a.x)
+      put(l, if <a href="#NWD6">exps_eq</a>(g, a.guard) &amp; <a href="#NWD6">exps_eq</a>(c, a.x) then a else <a href="#NWD1">Sguarded</a>(g, c))
+    } 
+  return if lists_match(l, earms) then earms else l
+end
+</pre><blockquote>Defines <a href="#NWI-simp_arms"><code>simp_arms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-J" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-I">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-J">guard_always_satisfied</a>(g)
+  return case type(g) of {
+      &quot;integer&quot; : g = 1
+      &quot;set&quot;     : *g = 0
+      &quot;null&quot;    : &amp;null
+  } 
+end
+</pre><blockquote>Defines <a href="#NWI-guard_always_satisfied"><code>guard_always_satisfied</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-rewD-1" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;=</dfn></a> <b>[D<a href="#NWexp6-rewD-2">-&gt;</a>]</b>
+<a href="#NWD1">Eorb</a>(0, x) -&gt; x
+<a href="#NWD1">Eorb</a>(x, 0) -&gt; x
+<a href="#NWD1">Eorb</a>(N, M) -&gt; ior(N, M)
+<a href="#NWD1">Eorb</a>(<a href="#NWD1">Eorb</a>(x, N), M) -&gt; <a href="#NWD1">Eorb</a>(x, ior(N, M))
+<a href="#NWD1">Eorb</a>(N, x) -&gt; <a href="#NWD1">Eorb</a>(x, N)
+<a href="#NWD1">Eand</a>(1, x) -&gt; x
+<a href="#NWD1">Eand</a>(0, _) -&gt; 0
+<a href="#NWD1">Eand</a>(x, 1) -&gt; x
+<a href="#NWD1">Eand</a>(_, 0) -&gt; 0
+<a href="#NWD1">Eand</a>(x, y) -&gt;
+  if type(x) == &quot;set&quot; &amp; *x = 0 then y
+  else if type(x) == &quot;set&quot; &amp; *y = 0 then x
+  else e
+<a href="#NWD1">Eslice</a>(N, lo, n) -&gt; iand(ishift(N, -lo), 2^n-1)
+</pre><pre><a name="NWexp6-supJ-1" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;=</dfn></a> <b>[D<a href="#NWexp6-supJ-2">-&gt;</a>]</b>
+<a href="#NWD1">Eslice</a>(<a href="#NWD1">Eshift</a>(x, n), m, k) -&gt; 
+  if m - n &gt;= 0 then <a href="#NWD1">Eslice</a>(x, m-n, k)
+  else <a href="#NWD1">Eslice</a>(<a href="#NWD1">Eshift</a>(x, n-m), 0, k)
+<a href="#NWD1">Eslice</a>(y as <a href="#NWD1">Enarrowu</a>(x, n), 0, m) -&gt; if n &lt;= m then y else e
+<a href="#NWD1">Eslice</a>(y as <a href="#NWD1">Enarrows</a>(x, n), 0, m) -&gt; if n &lt;= m then y else e
+<a href="#NWD1">Eslice</a>(<a href="#NWD1">Eslice</a>(x, l1, n1), l2, n2) -&gt; 
+  if l2 &gt;= n1 then 0 else <a href="#NWD1">Eslice</a>(x, l1+l2, if n2 &lt; n1-l2 then n2 else n1-l2)
+<a href="#NWD1">Eslice</a>(y as <a href="#NWD1">Einstance_input</a>(x, c, name), 0, n) -&gt;
+  if ipt := inputs_of(c) &amp; ipt.name == name &amp; case type(ipt.meaning) of {
+    &quot;field&quot; : <a href="#NWexp6-*-Z">fwidth</a>(ipt.meaning) &lt;= n
+  } then y else e
+<a href="#NWD1">Eslice</a>(x, 0, n) -&gt; if n = wordsize then x else e
+</pre><pre><a name="NWexp6-rewD-2" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-1">&lt;-</a>D<a href="#NWexp6-rewD-3">-&gt;</a>]</b>
+<a href="#NWD1">Eshift</a>(x, 0) -&gt; x
+<a href="#NWD1">Eshift</a>(N, n) -&gt; ishift(N, n)
+<a href="#NWD1">Enarrowu</a>(N, n) -&gt; if 0 &lt;= N &lt; 2^n then N else <a href="#NWD1">Efail</a>(<a href="#NWDK">expimage</a>(e))
+</pre><pre><a name="NWexp6-supJ-2" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-supJ-1">&lt;-</a>D<a href="#NWexp6-supJ-3">-&gt;</a>]</b>
+<a href="#NWD1">Enarrowu</a>(y as <a href="#NWD1">Eslice</a>(x, lo, n), m) -&gt; if n &lt;= m then y else e
+<a href="#NWD1">Enarrowu</a>(x, M) -&gt; if M &gt;= wordsize then x else e
+</pre><pre><a name="NWexp6-rewD-3" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-2">&lt;-</a>D<a href="#NWexp6-rewD-4">-&gt;</a>]</b>
+<a href="#NWD1">Ewiden</a>(N, n) -&gt; 
+  if (iand(N,2^(n-1)) = 0) then iand(N,2^n-1) 
+  else ior(iand(2^wordsize-1,icom(2^n-1)),N)
+<a href="#NWD1">Enarrows</a>(N, n) -&gt; 
+  if -(2^(n-1)) &lt;= N &lt; 2^(n-1) then iand(N,2^n-1) else <a href="#NWD1">Efail</a>(<a href="#NWDK">expimage</a>(e))
+</pre><pre><a name="NWexp6-supJ-3" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-supJ-2">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+<a href="#NWD1">Ewiden</a>(x, n) -&gt; if n = wordsize then x else e
+<a href="#NWD1">Enarrows</a>(y as <a href="#NWD1">Eslice</a>(x, lo, n), m) -&gt; if n &lt; m then y else e
+</pre><pre><a name="NWexp6-rewD-4" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-3">&lt;-</a>D<a href="#NWexp6-rewD-5">-&gt;</a>]</b>
+<a href="#NWD1">Enarrows</a>(<a href="#NWD1">Ewiden</a>(x, n), m) -&gt; if n = m then x else e
+<a href="#NWD1">Enarrows</a>(y as <a href="#NWD1">Enarrows</a>(x, n), m) -&gt; if n = m then y else e
+</pre><p>
+<a name="NWDH">Note we can't rewrite </a><code><a href="#NWD1">Ewiden</a>(<a href="#NWD1">Enarrows</a>(x, N), N)</code> as <code>x</code> because
+there's no way to pick up <code><a href="#NWD1">Efitss</a>(x, N)</code>.  Ugh.
+<pre><a name="NWexp6-supJ-4" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-supJ-3">&lt;-</a>D<a href="#NWexp6-supJ-5">-&gt;</a>]</b>
+<a href="#NWD1">Enarrows</a>(x, M) -&gt; if M &gt;= wordsize then x else e
+<a href="#NWD1">Ediv</a>(N, M) -&gt; if N &gt; 0 then N / M else (N - M + 1) / M  # force toward - infinity
+</pre><pre><a name="NWexp6-supJ-5" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWexp6-supJ-6">-&gt;</a>]</b>
+<a href="#NWD1">Ediv</a>(x, N) -&gt; simfun(<a href="#NWD1">Eshift</a>(x, - <a href="#NWexp6-*-L">exactlog2</a>(N))) | e
+</pre><pre><a name="NWexp6-rewD-5" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-4">&lt;-</a>D<a href="#NWexp6-rewD-6">-&gt;</a>]</b>
+<a href="#NWD1">Emod</a>(N, M) -&gt; {x := integer(N % M); while x &lt; 0 do x +:= M; x}
+</pre><pre><a name="NWexp6-supJ-6" href="#NWexp6-supJ-1"><dfn>&lt;super rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-supJ-5">&lt;-</a>D]</b>
+<a href="#NWD1">Emod</a>(x, N) -&gt;
+  if x := <a href="#NWDI">strip_const_multiple_N</a>(x, N) then
+    simfun(<a href="#NWD1">Eslice</a>(x, 0, <a href="#NWexp6-*-L">exactlog2</a>(N))) | <a href="#NWD1">Emod</a>(x, N)
+  else
+    simfun(<a href="#NWD1">Eslice</a>(x, 0, <a href="#NWexp6-*-L">exactlog2</a>(N))) | e
+</pre><p>
+<a name="NWDI">This procedure helps optimize the constant term out of modulus expressions.</a>
+<pre><a name="NWexp6-*-K" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-J">&lt;-</a>D<a href="#NWexp6-*-L">-&gt;</a>]</b>
+procedure <a href="#NWDI">strip_const_multiple_N</a>(x, N) 
+  local y
+  if type(x) == &quot;table&quot; &amp; x[1] ~= 0 &amp; x[1] % N = 0 then {
+    y := copy(x)
+    y[1] := 0
+    return y
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-strip_const_multiple_N"><code>strip_const_multiple_N</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-rewD-6" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-5">&lt;-</a>D<a href="#NWexp6-rewD-7">-&gt;</a>]</b>
+<a href="#NWD1">Efitsu</a>(N, m) -&gt; if 0 &lt;= N &lt; 2^m then 1 else 0
+<a href="#NWD1">Efitsu</a>(<a href="#NWD1">Enarrowu</a>(x, n), m)   -&gt; if n &lt;= m then 1 else e
+<a href="#NWD1">Efitsu</a>(<a href="#NWD1">Enarrows</a>(x, n), m)   -&gt; if n &lt;= m then 1 else e
+<a href="#NWD1">Efitsu</a>(<a href="#NWD1">Eslice</a>(x, lo, n), m) -&gt; if n &lt;= m then 1 else e
+<a href="#NWD1">Efitsu</a>(y as <a href="#NWD1">Einstance_input</a>(_, _, _), m) -&gt; 
+  if known_to_fit(input_fitsu, y, &amp;null, m) then 1 else e
+<a href="#NWD1">Efitsu</a>(<a href="#NWD1">Eshift</a>(x, n), m)     -&gt; simfun(<a href="#NWD1">Efitsu</a>(x, m-n))
+<a href="#NWD1">Efitsu</a>(x, M) -&gt; if M &gt;= wordsize then 1 else e
+<a href="#NWD1">Efitss</a>(N, m) -&gt; if -(2^(m-1)) &lt;= N &lt; 2^(m-1) then 1 else 0
+<a href="#NWD1">Efitss</a>(<a href="#NWD1">Enarrowu</a>(x, n), m)   -&gt; if n &lt; m then 1 else e
+<a href="#NWD1">Efitss</a>(<a href="#NWD1">Enarrows</a>(x, n), m)   -&gt; if n &lt; m then 1 else e
+<a href="#NWD1">Efitss</a>(<a href="#NWD1">Eslice</a>(x, lo, n), m) -&gt; if n &lt; m then 1 else e
+<a href="#NWD1">Efitss</a>(<a href="#NWD1">Ewiden</a>(<a href="#NWD1">Eslice</a>(x, lo, n), m), mm) -&gt; 
+  if n = m &lt;= mm then 1 
+  else if lo &gt; 0 then simfun(<a href="#NWD1">Efitss</a>(<a href="#NWD1">Ewiden</a>(<a href="#NWD1">Eslice</a>(x, 0, n+lo), m+lo), mm+lo))
+  else e
+<a href="#NWD1">Efitss</a>(y as <a href="#NWD1">Einstance_input</a>(_, _, _), m) -&gt; 
+  if known_to_fit(input_fitss, y, &amp;null, m) then 1 else e
+<a href="#NWD1">Efitss</a>(<a href="#NWD1">Eshift</a>(x, n), m)     -&gt; simfun(<a href="#NWD1">Efitss</a>(x, m-n))
+<a href="#NWD1">Efitss</a>(x, M) -&gt; if M &gt;= wordsize then 1 else e
+<a href="#NWD1">Eforce</a>(x as <a href="#NWD1">Eforce</a>(_)) -&gt; x
+<a href="#NWD1">Eforce</a>(N) -&gt; N
+<a href="#NWD1">Eforceable</a>(N) -&gt; 1
+<a href="#NWD1">Enot</a>(N) -&gt; if N = 0 then 1 else 0
+<a href="#NWD1">Enot</a>(<a href="#NWD1">Enot</a>(x)) -&gt; x
+</pre><p><a name="NWDJ">See </a><code>eliminate_instances</code> for an explanation of why the
+transformations below are no longer implemented as rewrite rules.
+<pre><a name="NWexp6-for11-1" href="#NWDJ"><dfn>&lt;former rewrite rules now implemented by <code>eliminate_instances</code>&gt;=</dfn></a>
+<a href="#NWD1">Einstance_tagged</a>(<a href="#NWD1">Einstance</a>(c, a), c2, uid) -&gt; if c === c2 then 1 else 0
+<a href="#NWD1">Einstance_input</a>(<a href="#NWD1">Einstance</a>(c, a), c2, name) -&gt; if c === c2 then a[name] 
+                                              else <a href="#NWD1">Efail</a>(<a href="#NWDK">expimage</a>(e))
+<a href="#NWD1">Einstance_tagged</a>(Ewildcard(_), _, _) -&gt; 1
+<a href="#NWD1">Einstance_input</a>(Ewildcard(iname), c, fname) -&gt;
+   Ewildcard(iname || &quot;.&quot; || c.name || &quot;.&quot; || fname)
+latent_patlabel(<a href="#NWD1">Einstance</a>(_, _)) -&gt; vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -&gt; patlabel(nam, nam)
+</pre><pre><a name="NWexp6-rewD-7" href="#NWexp6-rewD-1"><dfn>&lt;rewrite rules&gt;+=</dfn></a> <b>[<a href="#NWexp6-rewD-6">&lt;-</a>D]</b>
+<a href="#NWD1">Sstmts</a>(l) -&gt; case *l of { 0 : <a href="#NWD1">Sepsilon</a>(); 1: l[1]; default : e }
+</pre><pre><a name="NWexp6-*-L" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-L">exactlog2</a>(n)
+  local log
+  log := 0
+  while 2^log &lt; n do log +:= 1
+  if n = 2^log then return log else fail
+end
+</pre><blockquote>Defines <a href="#NWI-exactlog2"><code>exactlog2</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDK">Imaging</a></h2>
+<code><a href="#NWDK">expimage</a></code> prints a readable form of an expression.
+It is used only for diagnostic purposes; a separate procedure is
+used to produce C (or Modula-3) code that implements an expression.
+<pre><a name="NWexp6-*-M" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-L">&lt;-</a>D<a href="#NWDL">-&gt;</a>]</b>
+procedure <a href="#NWDK">expimage</a>(e, pp, precedence, associativity)
+  local leadingsign, prefix
+  static nopp
+  initial {<a name="NWexp6-*-M-u1" href="#NWexp6-iniX-1"><i>&lt;initialize <code>prec</code> and <code>assoc</code>&gt;</i></a>
+           <a name="NWexp6-*-M-u2" href="#NWexp6-iniF-1"><i>&lt;initialize nopp&gt;</i></a>}
+  /pp := nopp
+  /precedence := 0
+  /associativity := &quot;L&quot;
+  return case type(e) of {
+    <a name="NWexp6-*-M-u3" href="#NWexp6-casM-1"><i>&lt;cases for <code>expimage</code>&gt;</i></a>
+    default    : (proc(type(e) || &quot;image&quot;) | image)(e)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-expimage"><code>expimage</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDL" href="#NWDK">expimage</a></code> can optionally use a prettyprinter, but by default it uses none.
+<pre><a name="NWexp6-*-N" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWexp6-*-O">-&gt;</a>]</b>
+record <a href="#NWDL">ppspec</a>(be, en, in, ou, nl, on, cn) # { } t b m o c
+</pre><blockquote>Defines <a href="#NWI-ppspec"><code>ppspec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-iniF-1" href="#NWexp6-iniF-1"><dfn>&lt;initialize nopp&gt;=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b>
+nopp := <a href="#NWDL">ppspec</a>(&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;)
+</pre><pre><a name="NWexp6-*-O" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWexp6-*-P">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-O">ppexpimage</a>(e)
+  static pp
+  initial pp := <a href="#NWDL">ppspec</a>(&quot;${&quot;, &quot;$}&quot;, &quot;$t&quot;, &quot;$b&quot;, &quot;$n&quot;, &quot;$o&quot;, &quot;$c&quot;)
+  return <a href="#NWDK">expimage</a>(e, pp)
+end
+</pre><blockquote>Defines <a href="#NWI-ppexpimage"><code>ppexpimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-casM-1" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[D<a href="#NWexp6-casM-2">-&gt;</a>]</b>
+&quot;arm&quot; : pp.in || &quot;| @&quot; || e.file || &quot;:&quot; || e.line || &quot;: &quot; || pp.be ||
+        <a href="#NWDK">expimage</a>(e.pattern, pp) || pp.en || &quot; =&gt; &quot; || pp.cn || <a href="#NWDK">expimage</a>(e.code, pp) ||
+        pp.ou 
+</pre><pre><a name="NWexp6-casM-2" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-1">&lt;-</a>D<a href="#NWexp6-casM-3">-&gt;</a>]</b>
+&quot;pattern&quot;  : if *e.disjuncts &gt; 0 then {
+               s := commaseparate(maplist3(<a href="#NWDK">expimage</a>, e.disjuncts, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;|&quot;]),
+                                  &quot; &quot; || pp.cn || &quot;| &quot;)
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;|&quot;, precedence) ### || (&quot;[[&quot; || \e.name || &quot;]]&quot; | &quot;&quot;)
+             } else &quot;&lt;NOMATCH&gt;&quot;
+</pre><pre><a name="NWexp6-casM-3" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-2">&lt;-</a>D<a href="#NWexp6-casM-4">-&gt;</a>]</b>
+&quot;disjunct&quot; : { s := &quot;(&quot; || (if \e.name then e.name else &quot;?noname?&quot;) || &quot;) &quot; 
+               s ||:= if *\e.conditions &gt; 0 then
+                      &quot;{&quot; || pp.be || <a href="#NWDK">expimage</a>(e.conditions, pp) || pp.en || &quot;} =&gt; &quot; ||
+                      pp.in || pp.cn
+                    else &quot;&quot;
+               s ||:= if *e.sequents = 0 then &quot;epsilon&quot;
+                      else { 
+                        prefix := &quot;&quot;
+                        every i := 1 to *e.sequents do {
+                          s ||:= prefix || <a href="#NWDK">expimage</a>(e.sequents[i], pp, <a href="#NWexp6-*-Q">prec</a>[&quot;;&quot;])
+                          prefix := 
+                            (if type(e.sequents[i]) == (&quot;patlabel&quot;|&quot;latent_patlabel&quot;) 
+                             then &quot;: &quot; 
+                             else &quot;; &quot;) || pp.on
+                        }
+                      }
+               s ||:= if *\e.conditions &gt; 0 then pp.ou else &quot;&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;;&quot;, precedence) ### || (&quot;[&quot; || \e.name || &quot;]&quot; | &quot;&quot;)
+             }
+</pre><pre><a name="NWexp6-casM-4" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-3">&lt;-</a>D<a href="#NWexp6-casM-5">-&gt;</a>]</b>
+&quot;adisjunct&quot; : {  s := &quot;(&quot; || (if \e.name then e.name else &quot;?noname?&quot;) || &quot;) &quot; 
+                 s ||:= if \e.patlabelbindings then {
+                  &quot;[&quot; || pp.in || pp.be || <a href="#NWexp6-*-P">bindingimage</a>(e.patlabelbindings, pp) || 
+                         pp.en || pp.ou || &quot;] &quot; || pp.cn
+                } else &quot;&quot;
+                s ||:= if *\e.conditions &gt; 0 then
+                      &quot;{&quot; || pp.be || <a href="#NWDK">expimage</a>(e.conditions, pp) || pp.en || &quot;} =&gt; &quot; ||
+                      pp.in || pp.cn
+                    else &quot;&quot;
+               s ||:= &quot;LENGTH = &quot; || <a href="#NWDK">expimage</a>(e.length) || &quot;, &quot;
+               s ||:= if *e.aconstraints = 0 then &quot;&lt;MATCH&gt;&quot;
+                      else commaseparate(maplist3(<a href="#NWDK">expimage</a>, e.aconstraints, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;&amp;&quot;]),
+                                      &quot; &amp; &quot; || pp.on)
+               s ||:= if *\e.conditions &gt; 0 then pp.ou else &quot;&quot;
+###               if *\e.answers &gt; 0 then {
+###                 l := []
+###                 every k := key(e.answers) do
+###                   put(l, k || &quot; = &quot; || <a href="#NWDK">expimage</a>(e.answers[k], pp, <a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;]))
+###                 s ||:= pp.in || pp.on || &quot;{&quot; || pp.in || pp.be ||
+###                     commaseparate(l, &quot;, &quot; || pp.cn) || pp.en || pp.ou || &quot;}&quot; || pp.ou
+###               }               
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;&amp;&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-*-P" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-O">&lt;-</a>D<a href="#NWexp6-*-Q">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-P">bindingimage</a>(t, pp)
+  local sep, id
+  sep := &quot;&quot;
+  s := &quot;&quot;
+  every id := key(t) do {
+    s ||:= sep || pp.be || id || &quot; -&gt; &quot; || <a href="#NWDK">expimage</a>(t[id], pp) || pp.en
+    sep := &quot;, &quot; || pp.on
+  }
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-bindingimage"><code>bindingimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-casM-5" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-4">&lt;-</a>D<a href="#NWexp6-casM-6">-&gt;</a>]</b>
+&quot;sequent&quot;  : { s := if *e.constraints = 0 then &quot;some &quot; || e.class.name
+                    else commaseparate(maplist3(<a href="#NWDK">expimage</a>, e.constraints, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;&amp;&quot;]),
+                                       &quot; &amp; &quot; || pp.on)
+               pp.be || <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;&amp;&quot;, precedence) || pp.en
+             }
+&quot;patlabel&quot;        : \e.name | e.original_name || &quot;#&quot; || image(e)[17:-3] ||
+                    (&quot;@&quot; || \e.offset | &quot;&quot;) || &quot;:&quot;
+&quot;latent_patlabel&quot; : &quot;(?&quot; || <a href="#NWDK">expimage</a>(e.instance, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;:)&quot;
+&quot;dots_sequent&quot;    : &quot;...&quot;
+&quot;constraint&quot;      : <a href="#NWexp6-*-Q">bracket</a>(stringininterval(<a href="#NWDK">expimage</a>(e.field, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;]), 
+                                             e.lo, e.hi), pp, &quot;=&quot;, precedence)
+&quot;fieldbinding&quot;    : { s := <a href="#NWDK">expimage</a>(e.field) || &quot; = &quot; || <a href="#NWDK">expimage</a>(e.code, pp,<a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;])
+                      <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;=&quot;, precedence)
+                    }
+&quot;field&quot;  : e.name
+&quot;absolute_field&quot; : &quot;{&quot; || <a href="#NWDK">expimage</a>(e.field) || &quot; at &quot; || e.offset || &quot;}&quot;
+</pre><pre><a name="NWexp6-casM-6" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-5">&lt;-</a>D<a href="#NWexp6-casM-7">-&gt;</a>]</b>
+&quot;binding_instance&quot; : <a href="#NWDK">expimage</a>(e.val) || &quot; : &quot; || <a href="#NWDK">expimage</a>(e.type)
+&quot;constype&quot; : &quot;constructor-type &quot; || e.name
+</pre><pre><a name="NWexp6-casM-7" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-6">&lt;-</a>D<a href="#NWexp6-casM-8">-&gt;</a>]</b>
+&quot;list&quot;     : commaseparate(maplist3(<a href="#NWDK">expimage</a>, e, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]), &quot;, &quot; || pp.on)
+&quot;set&quot;      : commaseparate(maplist3(<a href="#NWDK">expimage</a>, sort(e), pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]), &quot;, &quot; || pp.on)
+&quot;<a href="#NWD3">eqn</a>&quot;      : <a href="#NWexp6-*-Q">bracket</a>(<a href="#NWDK">expimage</a>(e.left, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;]) || &quot; &quot; || e.op || &quot; &quot; || pp.on || 
+                     <a href="#NWDK">expimage</a>(e.right, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;]), pp, &quot;=&quot;, precedence)
+&quot;table&quot;    : {                      # standard normal form
+    <a name="NWexp6-casM-7-u1" href="#NWDM"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>
+    pp.in || pp.be || s || pp.en || pp.ou
+  }
+&quot;string&quot;   : e
+&quot;literal&quot;  : image(e.s)
+&quot;integer&quot;  : string(e)
+&quot;null&quot;     : image(e)
+</pre><p><a name="NWDM">The old version printed in any old order, but the new version prints</a>
+positive terms first, then negative terms, with the constant term last in its group.
+
+<pre><a name="NWexp6-mak1F-1" href="#NWDM"><dfn>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a> <b>(<a href="#NWexp6-casM-7">&lt;-U</a>)</b>
+{
+  s := &quot;&quot;; leadingsign := &quot;&quot;
+  <a name="NWexp6-mak1F-1-u1" href="#NWexp6-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>
+  leadingsign := &quot; - &quot; || pp.on
+  <a name="NWexp6-mak1F-1-u2" href="#NWexp6-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWexp6-addR-1" href="#NWexp6-addR-1"><dfn>&lt;add positive terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWDM">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &gt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWDK">expimage</a>(k, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;+&quot;])
+    leadingsign := &quot; + &quot; || pp.on
+}
+if e[1] &gt; 0 then s ||:= leadingsign || string(e[1])
+</pre><pre><a name="NWexp6-addR.2-1" href="#NWexp6-addR.2-1"><dfn>&lt;add negative terms to <code>s</code>&gt;=</dfn></a> <b>(<a href="#NWDM">&lt;-U</a>)</b>
+every e[k := 1 ~=== key(e)] &lt; 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+    s ||:= <a href="#NWDK">expimage</a>(k, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;+&quot;])
+}
+if e[1] &lt; 0 then s ||:= leadingsign || string(-e[1])
+</pre><p>
+<pre><a name="NWexp6-old1J-1" href="#NWexp6-old1J-1"><dfn>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;=</dfn></a>
+{
+  # print <a href="#NWDP">constant</a> term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := &quot; + &quot; || pp.on }
+  else s := leadingsign := &quot;&quot;
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] &lt; 0 then &quot; - &quot; else leadingsign
+      leadingsign := &quot; + &quot; || pp.on
+      s ||:= (1 ~= abs(e[k])) || &quot;*&quot;    # print coefficient if not 1
+      s ||:= <a href="#NWDK">expimage</a>(k, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;+&quot;])
+  }
+  s := if s == &quot;&quot; then &quot;0&quot; else <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;+&quot;, precedence)
+}
+</pre><pre><a name="NWexp6-casM-8" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-7">&lt;-</a>D<a href="#NWexp6-casM-9">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eorb</a>&quot;     : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eorb</a>&quot;], &quot;L&quot;)
+               t := <a href="#NWDK">expimage</a>(e.y, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eorb</a>&quot;], &quot;R&quot;)
+               <a href="#NWexp6-*-Q">bracket</a>(s || &quot; ORB &quot; || pp.on || t, pp, &quot;<a href="#NWD1">Eorb</a>&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Eand</a>&quot;     : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eand</a>&quot;], &quot;L&quot;)
+               t := <a href="#NWDK">expimage</a>(e.y, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eand</a>&quot;], &quot;R&quot;)
+               <a href="#NWexp6-*-Q">bracket</a>(s || &quot; AND &quot; || t, pp, &quot;<a href="#NWD1">Eand</a>&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-9" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-8">&lt;-</a>D<a href="#NWexp6-casM-A">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eslice</a>&quot;   : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eslice</a>&quot;]) 
+               s ||:= &quot;[&quot; || e.lo || &quot;:&quot; || (e.lo + e.n - 1) || &quot;]&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Eslice</a>&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Eshift</a>&quot;   : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Eshift</a>&quot;]) 
+               s ||:= if e.n &lt; 0 then (&quot; &gt;&gt; &quot; || -e.n) else (&quot; &lt;&lt; &quot; || e.n)
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Eshift</a>&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-A" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-9">&lt;-</a>D<a href="#NWexp6-casM-B">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Enarrowu</a>&quot; : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Enarrowu</a>&quot;]) 
+               s ||:= &quot;[&quot; || e.n || &quot;]&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Enarrowu</a>&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Enarrows</a>&quot; : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Enarrows</a>&quot;]) 
+               s ||:= &quot;[&quot; || e.n || &quot;!]&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Enarrows</a>&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Ewiden</a>&quot;   : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Ewiden</a>&quot;]) 
+               s ||:= &quot;!&quot; || e.n
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Ewiden</a>&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-B" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-A">&lt;-</a>D<a href="#NWexp6-casM-C">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Ediv</a>&quot;     : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Ediv</a>&quot;]) 
+               s ||:= &quot; DIV &quot; || e.n
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Ediv</a>&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Emod</a>&quot;     : { s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Emod</a>&quot;]) 
+               s ||:= &quot; MOD &quot; || e.n
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Emod</a>&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-C" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-B">&lt;-</a>D<a href="#NWexp6-casM-D">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Semit</a>&quot;    : commaseparate(maplist3(<a href="#NWDK">expimage</a>, e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]), &quot;;&quot; || pp.cn)
+&quot;<a href="#NWD1">Stoken</a>&quot;   : { s := &quot;EMIT@&quot; || e.offset || &quot;(&quot; || pp.in || 
+                    <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;, &quot; || 
+                    pp.on || e.n || &quot;)&quot; || pp.ou
+               <a href="#NWexp6-*-Q">bracket</a>(pp.cn || s, pp, &quot;app&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-D" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-C">&lt;-</a>D<a href="#NWexp6-casM-E">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Efitsu</a>&quot;   : { s := &quot;FITSU(&quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;, &quot; || pp.on || e.n||&quot;)&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Efitss</a>&quot;   : { s := &quot;FITSS(&quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;, &quot; || pp.on ||e.n ||&quot;)&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-E" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-D">&lt;-</a>D<a href="#NWexp6-casM-F">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Epatlabel</a>&quot; : &quot;LOCATION_OF(&quot; || <a href="#NWDK">expimage</a>(e.l, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;)&quot; 
+</pre><pre><a name="NWexp6-casM-F" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-E">&lt;-</a>D<a href="#NWexp6-casM-G">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eforce</a>&quot;   : { s := &quot;FORCE(&quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;)&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Eforceable</a>&quot;:{ s := &quot;FORCEABLE(&quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;)&quot;
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-G" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-F">&lt;-</a>D<a href="#NWexp6-casM-H">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Epc</a>&quot;       : &quot;FORCE(&lt;program counter&gt;)&quot;
+&quot;<a href="#NWD1">Epc_known</a>&quot; :&quot; FORCEABLE(&lt;program counter&gt;)&quot;
+</pre><pre><a name="NWexp6-casM-H" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-G">&lt;-</a>D<a href="#NWexp6-casM-I">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Enot</a>&quot;      : { s := &quot;NOT &quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;NOT&quot;])
+                <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;NOT&quot;, precedence)
+              }
+</pre><pre><a name="NWexp6-casM-I" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-H">&lt;-</a>D<a href="#NWexp6-casM-J">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Enosimp</a>&quot;   : <a href="#NWDK">expimage</a>(e.x, pp, precedence, associativity)
+</pre><pre><a name="NWexp6-casM-J" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-I">&lt;-</a>D<a href="#NWexp6-casM-K">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Sstmts</a>&quot;    : pp.in || pp.be || &quot;{ &quot; || pp.cn || 
+              commaseparate(maplist3(<a href="#NWDK">expimage</a>, e.x, pp), &quot;; &quot; || pp.cn) ||
+              pp.ou || pp.cn || &quot; }&quot; || pp.en
+</pre><pre><a name="NWexp6-casM-K" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-J">&lt;-</a>D<a href="#NWexp6-casM-L">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Einstance</a>&quot; : { l := []; 
+                every i := inputs_of(e.cons) do
+                  put(l, <a href="#NWDK">expimage</a>(e.argt[i.name], pp))
+                s := e.cons.name || &quot;(&quot; || commaseparate(l, &quot;, &quot; || pp.on) || &quot;)&quot;
+                <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+              }
+&quot;<a href="#NWD1">Einstance_input</a>&quot; : { 
+               s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;.&quot;]) || &quot;.&quot; || e.cons.name || &quot;.&quot; || e.name
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;.&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Einstance_tagged</a>&quot; : { 
+               s := <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;=&quot;]) || &quot; IS &quot; || e.cons.name 
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;=&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Ebinding_instance</a>&quot; : e.name || &quot; : &quot; || e.type.name
+</pre><pre><a name="NWexp6-casM-L" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-K">&lt;-</a>D<a href="#NWexp6-casM-M">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Sif</a>&quot;      : { s := pp.cn || &quot;if&quot;
+               every s ||:= 
+                 pp.cn || &quot;:: &quot; || pp.in || <a href="#NWDK">expimage</a>(!e.arms, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;low&quot;]) || pp.ou
+               <a href="#NWexp6-*-Q">bracket</a>(s || &quot; &quot; || pp.cn || &quot;fi&quot;, pp, &quot;app&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Sguarded</a>&quot; : { s := <a href="#NWDK">expimage</a>(e.guard, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Sguarded</a>&quot;]) || &quot; -&gt; &quot; || 
+                    pp.in || pp.be || pp.cn ||
+                    <a href="#NWDK">expimage</a>(e.x,     pp, <a href="#NWexp6-*-Q">prec</a>[&quot;<a href="#NWD1">Sguarded</a>&quot;]) ||
+                    pp.en || pp.ou
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;<a href="#NWD1">Sguarded</a>&quot;, precedence)
+             }
+</pre><pre><a name="NWexp6-casM-M" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-L">&lt;-</a>D<a href="#NWexp6-casM-N">-&gt;</a>]</b>
+&quot;Stagcase&quot; : { s := &quot;CASE &quot; || <a href="#NWDK">expimage</a>(e.x, pp) || &quot; OF &quot;
+              every c := kept_constructors(e.type) do
+                s ||:= pp.nl || &quot;| &quot; || c.name || &quot; =&gt; &quot; || pp.in || pp.in || pp.be ||
+                          pp.cn || <a href="#NWDK">expimage</a>(e.arms[c], pp) || pp.en || pp.ou || pp.ou 
+              pp.be || pp.cn || s || pp.nl || &quot;END (* &quot; || <a href="#NWDK">expimage</a>(e.x, pp) ||
+                  &quot; *)&quot; || pp.en || pp.on
+            }
+</pre><pre><a name="NWexp6-casM-N" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-M">&lt;-</a>D<a href="#NWexp6-casM-O">-&gt;</a>]</b>
+&quot;Sfail&quot;    : { s := &quot;FAIL(&quot; || image(if *pp.nl &gt; 0 then <a href="#NWexp6-*-R">escape_dollars</a>(e.fmt) else e.fmt)
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= &quot;, &quot; || pp.on || <a href="#NWDK">expimage</a>(\a, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;])
+               s := pp.in || pp.be || s || &quot;)&quot; || pp.en || pp.ou
+               <a href="#NWexp6-*-Q">bracket</a>(s, pp, &quot;app&quot;, precedence)
+             }
+&quot;<a href="#NWD1">Sepsilon</a>&quot; : &quot;/* skip */&quot;
+</pre><pre><a name="NWexp6-casM-O" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-N">&lt;-</a>D<a href="#NWexp6-casM-P">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Efail</a>&quot;    : &quot;[BAD EXP: &quot; || e.msg || &quot;]&quot;
+</pre><pre><a name="NWexp6-casM-P" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-O">&lt;-</a>D<a href="#NWexp6-casM-Q">-&gt;</a>]</b>
+&quot;Glines&quot;    : commaseparate(maplist2(<a href="#NWDK">expimage</a>, e.x, pp), &quot;\n&quot;)
+&quot;Gresynch&quot;  : &quot;#line &quot; || e.line  || &quot; &quot; || image(\e.file | &quot;generated-code&quot;)
+&quot;Gblock&quot;    : { s := &quot;{ &quot; || pp.be || pp.in || pp.cn
+                every s ||:= <a href="#NWDK">expimage</a>(!e.decls, pp) || &quot;; &quot; || pp.nl
+                every s ||:= <a href="#NWDK">expimage</a>(!e.stmts, pp) || &quot;; &quot; || pp.cn
+                s || pp.ou || pp.cn || &quot;}&quot; || pp.en
+              }
+&quot;Gdecl&quot;     : { s := pp.be || <a href="#NWDK">expimage</a>(e.type, pp) || &quot; &quot; || e.name 
+                s ||:= &quot; = &quot; || pp.in || pp.cn || <a href="#NWDK">expimage</a>(\e.init, pp) || pp.ou
+                s || pp.en
+              }
+</pre><pre><a name="NWexp6-casM-Q" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-P">&lt;-</a>D<a href="#NWexp6-casM-R">-&gt;</a>]</b>
+&quot;Gcase&quot;     : { s := &quot;CASE &quot; || <a href="#NWDK">expimage</a>(e.x, pp) || &quot; OF &quot;
+                every s ||:= <a href="#NWDK">expimage</a>(!e.arms, pp)
+                pp.be || pp.cn || s || pp.nl || &quot;END (* CASE &quot; || <a href="#NWDK">expimage</a>(e.x, pp) ||
+                  &quot; *)&quot; || pp.en || pp.on
+               }
+&quot;Gcasearm&quot;  : { s := pp.nl || &quot;| &quot; || pp.in
+                every i := 1 to *e.tags by 2 do {
+                  if i &gt; 1 then s ||:= &quot;, &quot; || pp.on
+                  s ||:= if e.tags[i] + 1 = e.tags[i+1] then e.tags[i] 
+                         else e.tags[i] || &quot;..&quot; || (e.tags[i+1]-1)
+                } 
+                s ||:= &quot; =&gt; &quot;  || pp.in || pp.cn || <a href="#NWDK">expimage</a>(e.x, pp)
+                pp.be || s || pp.ou || pp.ou || pp.en
+              }
+&quot;Ginrange&quot;  : <a href="#NWexp6-*-Q">bracket</a>(pp.in || e.lo || &quot; &lt;= &quot; || pp.on || 
+                         <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;&lt;=&quot;]) || &quot; &lt; &quot; || e.hi, 
+                      pp, &quot;&lt;&quot;, precedence)
+&quot;Gcomment&quot;  : &quot;(* COMMENT : &quot; || e.s || &quot; *)&quot;
+&quot;Gcommented&quot; : <a href="#NWDK">expimage</a>(e.e, pp)
+</pre><pre><a name="NWexp6-casM-R" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-Q">&lt;-</a>D<a href="#NWexp6-casM-S">-&gt;</a>]</b>
+&quot;Gasgn&quot;     : <a href="#NWexp6-*-Q">bracket</a>(e.lhs || &quot; := &quot; || <a href="#NWDK">expimage</a>(e.x, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;:=&quot;]), 
+                      pp, &quot;:=&quot;, precedence)
+&quot;Gsetname&quot;  : e.lhs || &quot; := &quot; || image(e.name)
+&quot;Gnomatch&quot;  : &quot;&lt;NO MATCH&gt;&quot;
+&quot;Tunsigned&quot; : { s := &quot;unsigned&quot;
+                s ||:= &quot; /* &quot; || \e.width || &quot; bits */&quot;
+                s
+              }
+</pre><pre><a name="NWexp6-casM-S" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-R">&lt;-</a>D<a href="#NWexp6-casM-T">-&gt;</a>]</b>
+&quot;<a href="#NWD1">Eapp</a>&quot; : image(e.f) || &quot;(&quot; || pp.in || <a href="#NWDK">expimage</a>(e.args, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || pp.ou || &quot;)&quot;
+</pre><pre><a name="NWexp6-casM-T" href="#NWexp6-casM-1"><dfn>&lt;cases for <code>expimage</code>&gt;+=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b> <b>[<a href="#NWexp6-casM-S">&lt;-</a>D]</b>
+&quot;Eclosure&quot; : &quot;CLOSURE(&quot; || pp.in || pp.be || pp.cn || 
+               &quot;type = &quot; || e.ty || &quot;, &quot; || pp.cn || 
+               &quot;fun = &quot; ||  e.fun || &quot;, &quot; || pp.cn || 
+               &quot;header = &quot; ||  e.headertype || &quot;, &quot; || pp.cn || 
+               &quot;values = {&quot; || <a href="#NWDK">expimage</a>(e.values) || &quot;}, &quot; || pp.cn || 
+               &quot;addresses = {&quot; || <a href="#NWDK">expimage</a>(e.addresses) || &quot;}&quot; || pp.en || pp.ou || &quot;)&quot;
+&quot;Elambda&quot; : pp.be || &quot;(FN &quot; || commaseparate(e.formals) || &quot; =&gt; &quot; || pp.in || pp.on ||
+               <a href="#NWDK">expimage</a>(e.body, pp, <a href="#NWexp6-*-Q">prec</a>[&quot;,&quot;]) || &quot;)&quot; || pp.ou || pp.en
+&quot;<a href="#NWD1">Eclosure_loc</a>&quot;  : &quot;CL-&gt;loc&quot;
+&quot;<a href="#NWD1">Eclosure_addr</a>&quot; : &quot;CL-&gt;a&quot; || e.n
+&quot;<a href="#NWD1">Eclosure_val</a>&quot;  : &quot;CL-&gt;v&quot; || e.n
+</pre><pre><a name="NWexp6-*-Q" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-P">&lt;-</a>D<a href="#NWexp6-*-R">-&gt;</a>]</b>
+global <a href="#NWexp6-*-Q">prec</a>, <a href="#NWexp6-*-Q">assoc</a>
+procedure <a href="#NWexp6-*-Q">bracket</a>(s, pp, op, p, a)
+  /a := &quot;L&quot;
+  return pp.be || (if <a href="#NWexp6-*-Q">prec</a>[op] &gt; p | (<a href="#NWexp6-*-Q">prec</a>[op] = p &amp; <a href="#NWexp6-*-Q">assoc</a>[p] == a) then s
+                   else &quot;(&quot; || s || &quot;)&quot;) || pp.en
+end
+</pre><blockquote>Defines <a href="#NWI-assoc"><code>assoc</code></a>, <a href="#NWI-bracket"><code>bracket</code></a>, <a href="#NWI-prec"><code>prec</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-iniX-1" href="#NWexp6-iniX-1"><dfn>&lt;initialize <code>prec</code> and <code>assoc</code>&gt;=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b>
+ops := [&quot;N&quot;, [&quot;low&quot;],
+        &quot;L&quot;, [&quot;|&quot;, &quot;pattern&quot;],
+        &quot;L&quot;, [&quot;;&quot;],
+        &quot;L&quot;, [&quot;&amp;&quot;, &quot;sequent&quot;, &quot;patlabel&quot;],
+        &quot;R&quot;, [&quot;:=&quot;],
+        &quot;L&quot;, [&quot;,&quot;],
+        &quot;N&quot;, [&quot;<a href="#NWD1">Sguarded</a>&quot;],
+        &quot;N&quot;, [&quot;=&quot;],
+        &quot;L&quot;, [&quot;ORB&quot;, &quot;<a href="#NWD1">Eorb</a>&quot;], 
+        &quot;L&quot;, [&quot;AND&quot;, &quot;<a href="#NWD1">Eand</a>&quot;],
+        &quot;L&quot;, [&quot;&lt;&quot;, &quot;&lt;=&quot;],
+        &quot;L&quot;, [&quot;+&quot;],
+        &quot;N&quot;, [&quot;<a href="#NWD1">Emod</a>&quot;, &quot;<a href="#NWD1">Ediv</a>&quot;, &quot;*&quot;],
+        &quot;N&quot;, [&quot;<a href="#NWD1">Eshift</a>&quot;],
+        &quot;N&quot;, [&quot;NOT&quot;],
+        &quot;L&quot;, [&quot;<a href="#NWD1">Eslice</a>&quot;, &quot;<a href="#NWD1">Enarrowu</a>&quot;, &quot;<a href="#NWD1">Enarrows</a>&quot;, &quot;<a href="#NWD1">Ewiden</a>&quot;, &quot;.&quot;],
+        &quot;N&quot;, [&quot;app&quot;],           # function application
+        &quot;N&quot;, [&quot;high&quot;]
+       ]
+<a href="#NWexp6-*-Q">prec</a> := table([])  # missed lookups break arithmetic comparisons
+<a href="#NWexp6-*-Q">assoc</a> := table()
+every i := 1 to *ops by 2 do {
+  every <a href="#NWexp6-*-Q">prec</a>[!ops[i+1]] := i
+  <a href="#NWexp6-*-Q">assoc</a>[i] := ops[i]
+}
+</pre><p>
+<pre><a name="NWexp6-*-R" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-Q">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-R">escape_dollars</a>(s)
+  r := &quot;&quot;
+  s ? {
+    while r ||:= tab(upto('$')) do { =&quot;$&quot;; r ||:= &quot;$$&quot; }
+    return r || tab(0)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-escape_dollars"><code>escape_dollars</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDN">Semantic functions</a></h2>
+<code><a href="#NWDN">binop</a></code> implements the semantics of binary operators.
+It modifies its inputs and returns <code>e1</code>, 
+so it should be used only during parsing. 
+<pre><a name="NWexp6-*-S" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-R">&lt;-</a>D<a href="#NWexp6-*-T">-&gt;</a>]</b>
+procedure <a href="#NWDN">binop</a>(e1, op, e2) 
+  e1 := <a href="#NWexp6-*-T">term2table</a>(e1)
+  e2 := <a href="#NWexp6-*-T">term2table</a>(e2)
+  case op of {
+    &quot;+&quot; : every v := key(e2) do e1[v] +:= e2[v]
+    &quot;-&quot; : every v := key(e2) do e1[v] -:= e2[v]
+    &quot;*&quot; : if n2 := <a href="#NWDP">constant</a>(e2) then {
+              every !e1 *:= n2
+          } else if n1 := <a href="#NWDP">constant</a>(e1) then {
+              every !e2 *:= n1
+              e1 := e2
+          } else error(&quot;multiplication must be by constants only&quot;)
+    &quot;/&quot; : error(&quot;division is not permitted in this language&quot;)
+  }
+  return e1
+end
+</pre><blockquote>Defines <a href="#NWI-binop"><code>binop</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-T" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-T">term2table</a>(x)
+  return case type(x) of {
+    &quot;table&quot;   : x
+    &quot;integer&quot; : 1(e := table(0), e[1] := x)
+    default   : 1(e := table(0), e[x] := 1)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-term2table"><code>term2table</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDO" href="#NWDO">addconst</a></code> is nondestructive.
+<pre><a name="NWexp6-*-U" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-T">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+procedure <a href="#NWDO">addconst</a>(e, n)
+  if n = 0 then return e
+  if type(e) == &quot;table&quot; then
+    t := copy(e)
+  else {
+    t := table(0)
+    if type(t) == &quot;integer&quot; then t[1] := e else t[e] := 1
+  }
+  t[1] +:= n
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-addconst"><code>addconst</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDP">It is necessary to identify a constant in normal form.</a>
+<pre><a name="NWexp6-*-V" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWexp6-*-W">-&gt;</a>]</b>
+procedure <a href="#NWDP">constant</a>(e)
+  if type(c := <a href="#NWexp6-*-W">untable</a>(e)) == &quot;integer&quot; then return c
+end
+</pre><blockquote>Defines <a href="#NWI-constant"><code>constant</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWexp6-*-W" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWDQ">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-W">untable</a>(e)
+  return if type(e) ~== &quot;table&quot; then e else {
+    n := 0
+    every k := key(e) &amp; e[k] ~= 0 do n +:= 1
+    case n of {
+      0       : 0
+      1       : if k := key(e) &amp; e[k] = 1 then k 
+                else if e[1] ~= 0 then e[1]
+                else e
+      default : e
+    }
+  } 
+end
+</pre><blockquote>Defines <a href="#NWI-untable"><code>untable</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDQ">Creation</a></h2>
+<code><a href="#NWDQ">mkslice</a></code> is used only to create slices from actual specifications,
+in which the bit numbering could change.
+
+<pre><a name="NWexp6-*-X" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-W">&lt;-</a>D<a href="#NWexp6-*-Y">-&gt;</a>]</b>
+procedure <a href="#NWDQ">mkslice</a>(x, lo, hi)
+  local n # size of range
+  if lo &lt; 0 then error(&quot;Can't take negative bit slice!!&quot;)
+  if hi &lt;= lo then error(<a href="#NWDK">expimage</a>(x), &quot;[&quot;, lo, &quot;:&quot;, hi - 1, &quot;] has no bits!&quot;)
+  if hi &gt; <a href="#NWexp6-*-Y">bitsizeof</a>(x) then
+    error(if type(f := symtab[x]) == &quot;field&quot; then &quot;Field &quot; || f.name 
+          else &quot;Host machine&quot;, 
+             &quot; has only &quot;, <a href="#NWexp6-*-Y">bitsizeof</a>(x), &quot; bits&quot;)
+  bit_numbering_used := 1
+  <a name="NWexp6-*-X-u1" href="#NWexp6-if*X-1"><i>&lt;if needed, flip <code>lo</code> and <code>hi</code>&gt;</i></a>
+  return <a href="#NWD1">Eslice</a>(x, lo, hi - lo)
+end
+</pre><blockquote>Defines <a href="#NWI-mkslice"><code>mkslice</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-if*X-1" href="#NWexp6-if*X-1"><dfn>&lt;if needed, flip <code>lo</code> and <code>hi</code>&gt;=</dfn></a> <b>(<a href="#NWDQ">&lt;-U</a>)</b>
+if /bit_zero_is_lsb then {
+  lo := <a href="#NWexp6-*-Y">bitsizeof</a>(x) - hi
+  hi := <a href="#NWexp6-*-Y">bitsizeof</a>(x) - lo
+}
+</pre><pre><a name="NWexp6-*-Y" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDQ">&lt;-</a>D<a href="#NWexp6-*-Z">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-Y">bitsizeof</a>(f)
+  return case type(symtab[f]) of {
+      &quot;field&quot; : <a href="#NWexp6-*-Z">fwidth</a>(symtab[f])
+      default : wordsize
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-bitsizeof"><code>bitsizeof</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-Z" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-Y">&lt;-</a>D<a href="#NWexp6-*-a">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-Z">fwidth</a>(f)
+  return f.hi - f.lo
+end
+</pre><blockquote>Defines <a href="#NWI-fwidth"><code>fwidth</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-a" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-Z">&lt;-</a>D<a href="#NWexp6-*-b">-&gt;</a>]</b>
+procedure <a href="#NWexp6-*-a">mkshift</a>(x, n)
+  return if n = 0 then x else 
+         ishift(\simp &amp; <a href="#NWDP">constant</a>(x), n) | <a href="#NWD1">Eshift</a>(x, n)
+end
+</pre><blockquote>Defines <a href="#NWI-mkshift"><code>mkshift</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexp6-*-b" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-a">&lt;-</a>D<a href="#NWDR">-&gt;</a>]</b>
+record <a href="#NWexp6-*-b">bogus</a>(e) # ditch invalid field name complaint
+</pre><blockquote>Defines <a href="#NWI-bogus"><code>bogus</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDR" href="#NWDR">flatten</a></code> is used to flatten the argument lists of binary
+associative operators like <code><a href="#NWD1">Eorb</a></code> and <code><a href="#NWD1">Eand</a></code>.
+<pre><a name="NWexp6-*-c" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexp6-*-b">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+procedure <a href="#NWDR">flatten</a>(e, ty, l)
+  /l := []
+  return if type(e) == ty then 
+    <a href="#NWDR">flatten</a>(e.x, ty, <a href="#NWDR">flatten</a>(e.y, ty, l))
+  else
+    push(l, e)
+end
+</pre><blockquote>Defines <a href="#NWI-flatten"><code>flatten</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDS">Unflatten takes the list and the operator and turns it back into a tree.</a>
+<pre><a name="NWexp6-*-d" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDR">&lt;-</a>D]</b>
+procedure <a href="#NWDS">unflatten</a>(l, rator, zero)
+  if *l = 0 then return zero
+  else {
+    x := l[1]
+    every x := rator(x, l[2 to *l])
+  }
+  return x
+end
+</pre><blockquote>Defines <a href="#NWI-unflatten"><code>unflatten</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>, <a href="#NWD3">D3</a>, <a href="#NWD4">D4</a>, <a href="#NWD5">D5</a>, <a href="#NWD6">D6</a>, <a href="#NWexp6-*-7">D7</a>, <a href="#NWexp6-*-8">D8</a>, <a href="#NWD8">D9</a>, <a href="#NWD9">D10</a>, <a href="#NWDA">D11</a>, <a href="#NWexp6-*-C">D12</a>, <a href="#NWDB">D13</a>, <a href="#NWDC">D14</a>, <a href="#NWexp6-*-F">D15</a>, <a href="#NWDD">D16</a>, <a href="#NWexp6-*-H">D17</a>, <a href="#NWexp6-*-I">D18</a>, <a href="#NWexp6-*-J">D19</a>, <a href="#NWDI">D20</a>, <a href="#NWexp6-*-L">D21</a>, <a href="#NWDK">D22</a>, <a href="#NWDL">D23</a>, <a href="#NWexp6-*-O">D24</a>, <a href="#NWexp6-*-P">D25</a>, <a href="#NWexp6-*-Q">D26</a>, <a href="#NWexp6-*-R">D27</a>, <a href="#NWDN">D28</a>, <a href="#NWexp6-*-T">D29</a>, <a href="#NWDO">D30</a>, <a href="#NWDP">D31</a>, <a href="#NWexp6-*-W">D32</a>, <a href="#NWDQ">D33</a>, <a href="#NWexp6-*-Y">D34</a>, <a href="#NWexp6-*-Z">D35</a>, <a href="#NWexp6-*-a">D36</a>, <a href="#NWexp6-*-b">D37</a>, <a href="#NWDR">D38</a>, <a href="#NWDS">D39</a>
+<li><a href="#NWexp6-addR.2-1"><i>&lt;add negative terms to <code>s</code>&gt;</i></a>: <a href="#NWDM">U1</a>, <a href="#NWexp6-addR.2-1">D2</a>
+<li><a href="#NWexp6-addR-1"><i>&lt;add positive terms to <code>s</code>&gt;</i></a>: <a href="#NWDM">U1</a>, <a href="#NWexp6-addR-1">D2</a>
+<li><a href="#NWexp6-argL-1"><i>&lt;argument descriptions&gt;</i></a>: <a href="#NWexp6-argL-1">D1</a>
+<li><a href="#NWexp6-basU-1"><i>&lt;basic cases for simplification&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWexp6-*-H">U2</a>, <a href="#NWexp6-basU-1">D3</a>
+<li><a href="#NWexp6-casM-1"><i>&lt;cases for <code>expimage</code>&gt;</i></a>: <a href="#NWDK">U1</a>, <a href="#NWexp6-casM-1">D2</a>, <a href="#NWexp6-casM-2">D3</a>, <a href="#NWexp6-casM-3">D4</a>, <a href="#NWexp6-casM-4">D5</a>, <a href="#NWexp6-casM-5">D6</a>, <a href="#NWexp6-casM-6">D7</a>, <a href="#NWexp6-casM-7">D8</a>, <a href="#NWexp6-casM-8">D9</a>, <a href="#NWexp6-casM-9">D10</a>, <a href="#NWexp6-casM-A">D11</a>, <a href="#NWexp6-casM-B">D12</a>, <a href="#NWexp6-casM-C">D13</a>, <a href="#NWexp6-casM-D">D14</a>, <a href="#NWexp6-casM-E">D15</a>, <a href="#NWexp6-casM-F">D16</a>, <a href="#NWexp6-casM-G">D17</a>, <a href="#NWexp6-casM-H">D18</a>, <a href="#NWexp6-casM-I">D19</a>, <a href="#NWexp6-casM-J">D20</a>, <a href="#NWexp6-casM-K">D21</a>, <a href="#NWexp6-casM-L">D22</a>, <a href="#NWexp6-casM-M">D23</a>, <a href="#NWexp6-casM-N">D24</a>, <a href="#NWexp6-casM-O">D25</a>, <a href="#NWexp6-casM-P">D26</a>, <a href="#NWexp6-casM-Q">D27</a>, <a href="#NWexp6-casM-R">D28</a>, <a href="#NWexp6-casM-S">D29</a>, <a href="#NWexp6-casM-T">D30</a>
+<li><a href="#NWexp6-casL-1"><i>&lt;cases for <code>exps_eq</code>&gt;</i></a>: <a href="#NWD6">U1</a>, <a href="#NWexp6-casL-1">D2</a>, <a href="#NWexp6-casL-2">D3</a>, <a href="#NWexp6-casL-3">D4</a>, <a href="#NWexp6-casL-4">D5</a>, <a href="#NWexp6-casL-5">D6</a>, <a href="#NWexp6-casL-6">D7</a>, <a href="#NWexp6-casL-7">D8</a>, <a href="#NWexp6-casL-8">D9</a>, <a href="#NWexp6-casL-9">D10</a>, <a href="#NWexp6-casL-A">D11</a>
+<li><a href="#NWDE"><i>&lt;cases generated from rewrite rules&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWDE">D2</a>
+<li><a href="#NWDF"><i>&lt;cases generated from super rewrite rules&gt;</i></a>: <a href="#NWexp6-*-H">U1</a>, <a href="#NWDF">D2</a>
+<li><a href="#NWD7"><i>&lt;equations <code>e1</code> and <code>e2</code> are the same&gt;</i></a>: <a href="#NWexp6-casL-2">U1</a>, <a href="#NWD7">D2</a>
+<li><a href="#NWDJ"><i>&lt;former rewrite rules now implemented by <code>eliminate_instances</code>&gt;</i></a>: <a href="#NWDJ">D1</a>
+<li><a href="#NWexp6-if*X-1"><i>&lt;if needed, flip <code>lo</code> and <code>hi</code>&gt;</i></a>: <a href="#NWDQ">U1</a>, <a href="#NWexp6-if*X-1">D2</a>
+<li><a href="#NWexp6-iniF-1"><i>&lt;initialize nopp&gt;</i></a>: <a href="#NWDK">U1</a>, <a href="#NWexp6-iniF-1">D2</a>
+<li><a href="#NWexp6-iniX-1"><i>&lt;initialize <code>prec</code> and <code>assoc</code>&gt;</i></a>: <a href="#NWDK">U1</a>, <a href="#NWexp6-iniX-1">D2</a>
+<li><a href="#NWDM"><i>&lt;make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWexp6-casM-7">U1</a>, <a href="#NWDM">D2</a>
+<li><a href="#NWexp6-old1J-1"><i>&lt;old make <code>s</code> represent table <code>e</code>, but elide additive and multiplicative units&gt;</i></a>: <a href="#NWexp6-old1J-1">D1</a>
+<li><a href="#NWexp6-rewD-1"><i>&lt;rewrite rules&gt;</i></a>: <a href="#NWexp6-rewD-1">D1</a>, <a href="#NWexp6-rewD-2">D2</a>, <a href="#NWexp6-rewD-3">D3</a>, <a href="#NWexp6-rewD-4">D4</a>, <a href="#NWexp6-rewD-5">D5</a>, <a href="#NWexp6-rewD-6">D6</a>, <a href="#NWexp6-rewD-7">D7</a>
+<li><a href="#NWexp6-simI-1"><i>&lt;simplify adisjunct&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simI-1">D2</a>
+<li><a href="#NWexp6-simH-1"><i>&lt;simplify disjunct&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simH-1">D2</a>
+<li><a href="#NWexp6-simH.2-1"><i>&lt;simplify equation&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simH.2-1">D2</a>
+<li><a href="#NWexp6-simL-1"><i>&lt;simplify if statement&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simL-1">D2</a>
+<li><a href="#NWexp6-simY-1"><i>&lt;simplify instance's argument table&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simY-1">D2</a>
+<li><a href="#NWDG"><i>&lt;simplify pattern&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWDG">D2</a>
+<li><a href="#NWexp6-simQ-1"><i>&lt;simplify set of conditions&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simQ-1">D2</a>
+<li><a href="#NWexp6-simE-1"><i>&lt;simplify table&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simE-1">D2</a>
+<li><a href="#NWexp6-simT-1"><i>&lt;simplify tag case's arm table&gt;</i></a>: <a href="#NWexp6-basU-1">U1</a>, <a href="#NWexp6-simT-1">D2</a>
+<li><a href="#NWexp6-supJ-1"><i>&lt;super rewrite rules&gt;</i></a>: <a href="#NWexp6-supJ-1">D1</a>, <a href="#NWexp6-supJ-2">D2</a>, <a href="#NWexp6-supJ-3">D3</a>, <a href="#NWDH">D4</a>, <a href="#NWexp6-supJ-5">D5</a>, <a href="#NWexp6-supJ-6">D6</a>
+</ul>
+<ul>
+<li><a name="NWI-addconst" href="#NWDO">addconst</a>: <a href="#NWDO">D1</a>
+<li><a name="NWI-assoc" href="#NWexp6-*-Q">assoc</a>: <a href="#NWexp6-*-Q">D1</a>, <a href="#NWexp6-iniX-1">U2</a>
+<li><a name="NWI-bindingimage" href="#NWexp6-*-P">bindingimage</a>: <a href="#NWexp6-casM-4">U1</a>, <a href="#NWexp6-*-P">D2</a>
+<li><a name="NWI-binop" href="#NWDN">binop</a>: <a href="#NWDN">D1</a>
+<li><a name="NWI-bitsizeof" href="#NWexp6-*-Y">bitsizeof</a>: <a href="#NWDQ">U1</a>, <a href="#NWexp6-if*X-1">U2</a>, <a href="#NWexp6-*-Y">D3</a>
+<li><a name="NWI-bogus" href="#NWexp6-*-b">bogus</a>: <a href="#NWexp6-*-b">D1</a>
+<li><a name="NWI-bracket" href="#NWexp6-*-Q">bracket</a>: <a href="#NWexp6-casM-2">U1</a>, <a href="#NWexp6-casM-3">U2</a>, <a href="#NWexp6-casM-4">U3</a>, <a href="#NWexp6-casM-5">U4</a>, <a href="#NWexp6-casM-7">U5</a>, <a href="#NWDM">U6</a>, <a href="#NWexp6-old1J-1">U7</a>, <a href="#NWexp6-casM-8">U8</a>, <a href="#NWexp6-casM-9">U9</a>, <a href="#NWexp6-casM-A">U10</a>, <a href="#NWexp6-casM-B">U11</a>, <a href="#NWexp6-casM-C">U12</a>, <a href="#NWexp6-casM-D">U13</a>, <a href="#NWexp6-casM-F">U14</a>, <a href="#NWexp6-casM-H">U15</a>, <a href="#NWexp6-casM-K">U16</a>, <a href="#NWexp6-casM-L">U17</a>, <a href="#NWexp6-casM-N">U18</a>, <a href="#NWexp6-casM-Q">U19</a>, <a href="#NWexp6-casM-R">U20</a>, <a href="#NWexp6-*-Q">D21</a>
+<li><a name="NWI-constant" href="#NWDP">constant</a>: <a href="#NWexp6-old1J-1">U1</a>, <a href="#NWDN">U2</a>, <a href="#NWDP">D3</a>, <a href="#NWexp6-*-a">U4</a>
+<li><a name="NWI-destructive_subst" href="#NWexp6-*-F">destructive_subst</a>: <a href="#NWDC">U1</a>, <a href="#NWexp6-*-F">D2</a>
+<li><a name="NWI-do_gsubst_values_in_table" href="#NWDB">do_gsubst_values_in_table</a>: <a href="#NWDB">D1</a>
+<li><a name="NWI-dsubst" href="#NWDC">dsubst</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-dsubst_tab" href="#NWDC">dsubst_tab</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-Eand" href="#NWD1">Eand</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-rewD-1">U3</a>, <a href="#NWexp6-casM-8">U4</a>, <a href="#NWexp6-iniX-1">U5</a>
+<li><a name="NWI-Eapp" href="#NWD1">Eapp</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-9">U3</a>, <a href="#NWexp6-casM-S">U4</a>
+<li><a name="NWI-Ebinding_instance" href="#NWD1">Ebinding_instance</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-casM-K">U4</a>
+<li><a name="NWI-Eclosure_addr" href="#NWD1">Eclosure_addr</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-A">U3</a>, <a href="#NWexp6-casM-T">U4</a>
+<li><a name="NWI-Eclosure_loc" href="#NWD1">Eclosure_loc</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-A">U3</a>, <a href="#NWexp6-casM-T">U4</a>
+<li><a name="NWI-Eclosure_val" href="#NWD1">Eclosure_val</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-A">U3</a>, <a href="#NWexp6-casM-T">U4</a>
+<li><a name="NWI-Ediv" href="#NWD1">Ediv</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWDH">U4</a>, <a href="#NWexp6-supJ-5">U5</a>, <a href="#NWexp6-casM-B">U6</a>, <a href="#NWexp6-iniX-1">U7</a>
+<li><a name="NWI-Efail" href="#NWD1">Efail</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-rewD-2">U2</a>, <a href="#NWexp6-rewD-3">U3</a>, <a href="#NWDJ">U4</a>, <a href="#NWexp6-casM-O">U5</a>
+<li><a name="NWI-Efitss" href="#NWD1">Efitss</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-simH.2-1">U3</a>, <a href="#NWexp6-rewD-6">U4</a>, <a href="#NWexp6-casM-D">U5</a>
+<li><a name="NWI-Efitsu" href="#NWD1">Efitsu</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-rewD-6">U3</a>, <a href="#NWexp6-casM-D">U4</a>
+<li><a name="NWI-Eforce" href="#NWD1">Eforce</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-rewD-6">U4</a>, <a href="#NWexp6-casM-F">U5</a>
+<li><a name="NWI-Eforceable" href="#NWD1">Eforceable</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-rewD-6">U3</a>, <a href="#NWexp6-casM-F">U4</a>
+<li><a name="NWI-Einstance" href="#NWD1">Einstance</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWD2">U3</a>, <a href="#NWexp6-casL-5">U4</a>, <a href="#NWexp6-basU-1">U5</a>, <a href="#NWDJ">U6</a>, <a href="#NWexp6-casM-K">U7</a>
+<li><a name="NWI-Einstance_input" href="#NWD1">Einstance_input</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-supJ-1">U4</a>, <a href="#NWexp6-rewD-6">U5</a>, <a href="#NWDJ">U6</a>, <a href="#NWexp6-casM-K">U7</a>
+<li><a name="NWI-Einstance_tagged" href="#NWD1">Einstance_tagged</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWDJ">U3</a>, <a href="#NWexp6-casM-K">U4</a>
+<li><a name="NWI-Emod" href="#NWD1">Emod</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-rewD-5">U4</a>, <a href="#NWexp6-supJ-6">U5</a>, <a href="#NWexp6-casM-B">U6</a>, <a href="#NWexp6-iniX-1">U7</a>
+<li><a name="NWI-Enarrows" href="#NWD1">Enarrows</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-simH.2-1">U4</a>, <a href="#NWexp6-supJ-1">U5</a>, <a href="#NWexp6-rewD-3">U6</a>, <a href="#NWexp6-supJ-3">U7</a>, <a href="#NWexp6-rewD-4">U8</a>, <a href="#NWDH">U9</a>, <a href="#NWexp6-rewD-6">U10</a>, <a href="#NWexp6-casM-A">U11</a>, <a href="#NWexp6-iniX-1">U12</a>
+<li><a name="NWI-Enarrowu" href="#NWD1">Enarrowu</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-supJ-1">U4</a>, <a href="#NWexp6-rewD-2">U5</a>, <a href="#NWexp6-supJ-2">U6</a>, <a href="#NWexp6-rewD-6">U7</a>, <a href="#NWexp6-casM-A">U8</a>, <a href="#NWexp6-iniX-1">U9</a>
+<li><a name="NWI-Enosimp" href="#NWD1">Enosimp</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-basU-1">U4</a>, <a href="#NWexp6-casM-I">U5</a>
+<li><a name="NWI-Enot" href="#NWD1">Enot</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-rewD-6">U3</a>, <a href="#NWexp6-casM-H">U4</a>
+<li><a name="NWI-Eorb" href="#NWD1">Eorb</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWD2">U3</a>, <a href="#NWexp6-casL-5">U4</a>, <a href="#NWexp6-rewD-1">U5</a>, <a href="#NWexp6-casM-8">U6</a>, <a href="#NWexp6-iniX-1">U7</a>
+<li><a name="NWI-Epatlabel" href="#NWD1">Epatlabel</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-casM-E">U3</a>
+<li><a name="NWI-Epc" href="#NWD1">Epc</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-casM-G">U4</a>
+<li><a name="NWI-Epc_known" href="#NWD1">Epc_known</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-casM-G">U4</a>
+<li><a name="NWI-eqn" href="#NWD3">eqn</a>: <a href="#NWD3">D1</a>, <a href="#NWexp6-casL-2">U2</a>, <a href="#NWexp6-*-F">U3</a>, <a href="#NWexp6-basU-1">U4</a>, <a href="#NWexp6-simQ-1">U5</a>, <a href="#NWexp6-simH.2-1">U6</a>, <a href="#NWexp6-casM-7">U7</a>
+<li><a name="NWI-escape_dollars" href="#NWexp6-*-R">escape_dollars</a>: <a href="#NWexp6-casM-N">U1</a>, <a href="#NWexp6-*-R">D2</a>
+<li><a name="NWI-Eshift" href="#NWD1">Eshift</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-supJ-1">U4</a>, <a href="#NWexp6-rewD-2">U5</a>, <a href="#NWexp6-supJ-5">U6</a>, <a href="#NWexp6-rewD-6">U7</a>, <a href="#NWexp6-casM-9">U8</a>, <a href="#NWexp6-iniX-1">U9</a>, <a href="#NWexp6-*-a">U10</a>
+<li><a name="NWI-Eslice" href="#NWD1">Eslice</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-simH.2-1">U4</a>, <a href="#NWexp6-rewD-1">U5</a>, <a href="#NWexp6-supJ-1">U6</a>, <a href="#NWexp6-supJ-2">U7</a>, <a href="#NWexp6-supJ-3">U8</a>, <a href="#NWexp6-supJ-6">U9</a>, <a href="#NWexp6-rewD-6">U10</a>, <a href="#NWexp6-casM-9">U11</a>, <a href="#NWexp6-iniX-1">U12</a>, <a href="#NWDQ">U13</a>
+<li><a name="NWI-Ewiden" href="#NWD1">Ewiden</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-rewD-3">U4</a>, <a href="#NWexp6-supJ-3">U5</a>, <a href="#NWexp6-rewD-4">U6</a>, <a href="#NWexp6-rewD-6">U7</a>, <a href="#NWexp6-casM-A">U8</a>, <a href="#NWexp6-iniX-1">U9</a>
+<li><a name="NWI-exactlog2" href="#NWexp6-*-L">exactlog2</a>: <a href="#NWexp6-supJ-5">U1</a>, <a href="#NWexp6-supJ-6">U2</a>, <a href="#NWexp6-*-L">D3</a>
+<li><a name="NWI-expimage" href="#NWDK">expimage</a>: <a href="#NWexp6-rewD-2">U1</a>, <a href="#NWexp6-rewD-3">U2</a>, <a href="#NWDJ">U3</a>, <a href="#NWDK">D4</a>, <a href="#NWexp6-*-O">U5</a>, <a href="#NWexp6-casM-1">U6</a>, <a href="#NWexp6-casM-2">U7</a>, <a href="#NWexp6-casM-3">U8</a>, <a href="#NWexp6-casM-4">U9</a>, <a href="#NWexp6-*-P">U10</a>, <a href="#NWexp6-casM-5">U11</a>, <a href="#NWexp6-casM-6">U12</a>, <a href="#NWexp6-casM-7">U13</a>, <a href="#NWexp6-addR-1">U14</a>, <a href="#NWexp6-addR.2-1">U15</a>, <a href="#NWexp6-old1J-1">U16</a>, <a href="#NWexp6-casM-8">U17</a>, <a href="#NWexp6-casM-9">U18</a>, <a href="#NWexp6-casM-A">U19</a>, <a href="#NWexp6-casM-B">U20</a>, <a href="#NWexp6-casM-C">U21</a>, <a href="#NWexp6-casM-D">U22</a>, <a href="#NWexp6-casM-E">U23</a>, <a href="#NWexp6-casM-F">U24</a>, <a href="#NWexp6-casM-H">U25</a>, <a href="#NWexp6-casM-I">U26</a>, <a href="#NWexp6-casM-J">U27</a>, <a href="#NWexp6-casM-K">U28</a>, <a href="#NWexp6-casM-L">U29</a>, <a href="#NWexp6-casM-M">U30</a>, <a href="#NWexp6-casM-N">U31</a>, <a href="#NWexp6-casM-P">U32</a>, <a href="#NWexp6-casM-Q">U33</a>, <a href="#NWexp6-casM-R">U34</a>, <a href="#NWexp6-casM-S">U35</a>, <a href="#NWexp6-casM-T">U36</a>, <a href="#NWDQ">U37</a>
+<li><a name="NWI-exps_eq" href="#NWD6">exps_eq</a>: <a href="#NWD6">D1</a>, <a href="#NWexp6-casL-1">U2</a>, <a href="#NWexp6-casL-2">U3</a>, <a href="#NWexp6-casL-3">U4</a>, <a href="#NWexp6-casL-4">U5</a>, <a href="#NWexp6-casL-5">U6</a>, <a href="#NWexp6-casL-7">U7</a>, <a href="#NWD7">U8</a>, <a href="#NWexp6-simH.2-1">U9</a>, <a href="#NWexp6-*-I">U10</a>
+<li><a name="NWI-exptypes" href="#NWD2">exptypes</a>: <a href="#NWD2">D1</a>
+<li><a name="NWI-flatten" href="#NWDR">flatten</a>: <a href="#NWDR">D1</a>
+<li><a name="NWI-free_variables" href="#NWD5">free_variables</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-free_variables_f" href="#NWD5">free_variables_f</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-fwidth" href="#NWexp6-*-Z">fwidth</a>: <a href="#NWexp6-supJ-1">U1</a>, <a href="#NWexp6-*-Y">U2</a>, <a href="#NWexp6-*-Z">D3</a>
+<li><a name="NWI-guard_always_satisfied" href="#NWexp6-*-J">guard_always_satisfied</a>: <a href="#NWexp6-simL-1">U1</a>, <a href="#NWexp6-*-I">U2</a>, <a href="#NWexp6-*-J">D3</a>
+<li><a name="NWI-mkshift" href="#NWexp6-*-a">mkshift</a>: <a href="#NWexp6-*-a">D1</a>
+<li><a name="NWI-mkslice" href="#NWDQ">mkslice</a>: <a href="#NWDQ">D1</a>
+<li><a name="NWI-opposite_op" href="#NWexp6-*-7">opposite_op</a>: <a href="#NWD7">U1</a>, <a href="#NWexp6-*-7">D2</a>
+<li><a name="NWI-ppexpimage" href="#NWexp6-*-O">ppexpimage</a>: <a href="#NWexp6-*-O">D1</a>
+<li><a name="NWI-ppspec" href="#NWDL">ppspec</a>: <a href="#NWDL">D1</a>, <a href="#NWexp6-iniF-1">U2</a>, <a href="#NWexp6-*-O">U3</a>
+<li><a name="NWI-prec" href="#NWexp6-*-Q">prec</a>: <a href="#NWexp6-casM-2">U1</a>, <a href="#NWexp6-casM-3">U2</a>, <a href="#NWexp6-casM-4">U3</a>, <a href="#NWexp6-casM-5">U4</a>, <a href="#NWexp6-casM-7">U5</a>, <a href="#NWexp6-addR-1">U6</a>, <a href="#NWexp6-addR.2-1">U7</a>, <a href="#NWexp6-old1J-1">U8</a>, <a href="#NWexp6-casM-8">U9</a>, <a href="#NWexp6-casM-9">U10</a>, <a href="#NWexp6-casM-A">U11</a>, <a href="#NWexp6-casM-B">U12</a>, <a href="#NWexp6-casM-C">U13</a>, <a href="#NWexp6-casM-D">U14</a>, <a href="#NWexp6-casM-E">U15</a>, <a href="#NWexp6-casM-F">U16</a>, <a href="#NWexp6-casM-H">U17</a>, <a href="#NWexp6-casM-K">U18</a>, <a href="#NWexp6-casM-L">U19</a>, <a href="#NWexp6-casM-N">U20</a>, <a href="#NWexp6-casM-Q">U21</a>, <a href="#NWexp6-casM-R">U22</a>, <a href="#NWexp6-casM-S">U23</a>, <a href="#NWexp6-casM-T">U24</a>, <a href="#NWexp6-*-Q">D25</a>, <a href="#NWexp6-iniX-1">U26</a>
+<li><a name="NWI-Semit" href="#NWD1">Semit</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-casM-C">U3</a>
+<li><a name="NWI-Sepsilon" href="#NWD1">Sepsilon</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-simL-1">U3</a>, <a href="#NWexp6-rewD-7">U4</a>, <a href="#NWexp6-casM-N">U5</a>
+<li><a name="NWI-Sguarded" href="#NWD1">Sguarded</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-6">U3</a>, <a href="#NWexp6-*-I">U4</a>, <a href="#NWexp6-casM-L">U5</a>, <a href="#NWexp6-iniX-1">U6</a>
+<li><a name="NWI-Sif" href="#NWD1">Sif</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-6">U3</a>, <a href="#NWexp6-basU-1">U4</a>, <a href="#NWexp6-simL-1">U5</a>, <a href="#NWexp6-casM-L">U6</a>
+<li><a name="NWI-simp_arms" href="#NWexp6-*-I">simp_arms</a>: <a href="#NWexp6-simL-1">U1</a>, <a href="#NWexp6-*-I">D2</a>
+<li><a name="NWI-simplify" href="#NWDD">simplify</a>: <a href="#NWexp6-argL-1">U1</a>, <a href="#NWDD">D2</a>
+<li><a name="NWI-Sstmts" href="#NWD1">Sstmts</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-casL-5">U2</a>, <a href="#NWexp6-rewD-7">U3</a>, <a href="#NWexp6-casM-J">U4</a>
+<li><a name="NWI-Stoken" href="#NWD1">Stoken</a>: <a href="#NWD1">D1</a>, <a href="#NWexp6-argL-1">U2</a>, <a href="#NWexp6-casL-5">U3</a>, <a href="#NWexp6-casM-C">U4</a>
+<li><a name="NWI-strip_const_multiple_N" href="#NWDI">strip_const_multiple_N</a>: <a href="#NWexp6-supJ-6">U1</a>, <a href="#NWDI">D2</a>
+<li><a name="NWI-subst" href="#NWD8">subst</a>: <a href="#NWD8">D1</a>, <a href="#NWDC">U2</a>
+<li><a name="NWI-subst_f" href="#NWD8">subst_f</a>: <a href="#NWD8">D1</a>, <a href="#NWDB">U2</a>
+<li><a name="NWI-subst_for_pc" href="#NWexp6-*-C">subst_for_pc</a>: <a href="#NWexp6-*-C">D1</a>
+<li><a name="NWI-subst_for_pc_f" href="#NWexp6-*-C">subst_for_pc_f</a>: <a href="#NWexp6-*-C">D1</a>
+<li><a name="NWI-subst_tab" href="#NWD9">subst_tab</a>: <a href="#NWD9">D1</a>, <a href="#NWDC">U2</a>
+<li><a name="NWI-subst_tab_f" href="#NWD9">subst_tab_f</a>: <a href="#NWD9">D1</a>, <a href="#NWDB">U2</a>
+<li><a name="NWI-subst_table_elements" href="#NWDA">subst_table_elements</a>: <a href="#NWDA">D1</a>
+<li><a name="NWI-subst_table_elements_f" href="#NWDA">subst_table_elements_f</a>: <a href="#NWDA">D1</a>
+<li><a name="NWI-subst_tab_values_in_table" href="#NWDB">subst_tab_values_in_table</a>: <a href="#NWDB">D1</a>
+<li><a name="NWI-subst_values_in_table" href="#NWDB">subst_values_in_table</a>: <a href="#NWDB">D1</a>
+<li><a name="NWI-subterms_matching" href="#NWD4">subterms_matching</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-subterms_matching_f" href="#NWD4">subterms_matching_f</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-super_simplify" href="#NWexp6-*-H">super_simplify</a>: <a href="#NWexp6-*-H">D1</a>, <a href="#NWexp6-basU-1">U2</a>, <a href="#NWexp6-simH.2-1">U3</a>
+<li><a name="NWI-term2table" href="#NWexp6-*-T">term2table</a>: <a href="#NWexp6-*-F">U1</a>, <a href="#NWDN">U2</a>, <a href="#NWexp6-*-T">D3</a>
+<li><a name="NWI-unflatten" href="#NWDS">unflatten</a>: <a href="#NWDS">D1</a>
+<li><a name="NWI-untable" href="#NWexp6-*-W">untable</a>: <a href="#NWDP">U1</a>, <a href="#NWexp6-*-W">D2</a>
+<li><a name="NWI-untableexp" href="#NWexp6-*-8">untableexp</a>: <a href="#NWD6">U1</a>, <a href="#NWexp6-*-8">D2</a>
+</ul>
+</body></html>
+

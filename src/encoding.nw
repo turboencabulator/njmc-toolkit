@@ -1,0 +1,186 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+% l2h ignore change {
+\chapter{Managing generation of binary encoders}
+<<*>>=
+link pretty
+procedure emit_encoding(outfilename)
+  local i, f
+  emit_encoding_interface(open(i := outfilename || interface_extension, "w")) |
+    error("Could not open ", image(i), " for writing")
+  emit_encoding_implementation(
+         open(f := outfilename || implementation_extension, "w"), i, outfilename) |
+    error("Could not open ", image(f), " for writing")
+end
+<<*>>=
+procedure emit_encoding_interface(outfile)
+  local cons, t, u
+  verbose("Emitting encoding interface")
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  PPwrite(pp, "/* must #include <mclib.h> before this file */")
+  <<write definitions of instance types, possibly including instructions>>
+  if \gen_counters then declare_counter_types(pp)
+  if \indirectname then
+    PPxwrite(pp, "struct ", indirecttype, " {$t")
+  <<emit declarations for all of the kept constructors>>
+  if \gen_counters then declare_counter_funs(pp)
+  if \indirectname then
+    PPxwrite(pp, "$b$n};")
+  return
+end
+<<write definitions of instance types, possibly including instructions>>=
+every ty := !\all_types | (\encode_as_data, instructionctype) do {
+  PPxwrites(pp, "enum ", ty.name, "_tag ${$t{ $o")
+  every cons := kept_constructors(ty) do 
+    PPxwrites(pp, cons.name, "_TAG = ", cons.tag, ", $o")
+  PPxwrite(pp, "$b$}};")
+  emit_instance_type(pp, ty)
+}
+@ 
+If an indirect encoder is emitted, the order of the constructors has
+to match exactly the order used in [[emit_encoding_interface]].
+At one time we rearranged things to put typed constructors first, but
+on March 3, 1996, we decided there was no good reason to rearrange the
+users' constructor declarations.
+<<emit declarations for all of the kept constructors>>=
+every emit_proc_declaration(pp, kept_constructors())
+<<*>>=
+procedure emit_indirect_encoder(pp)
+  e := []
+  every cons := kept_constructors() do
+    put(e, Cnoreserve(cons.name) || ", $o")
+  c := if \gen_counters then counter_names() else ""
+  emit_template(pp, "proc-structure.t", 
+                    "indirectname", indirectname, "indirecttype", indirecttype,
+                    "encoders", e, "counters", c)
+  return
+end
+<<proc-structure.t>>=
+static struct %indirecttype encoding_procs = {$t%encoders%counters$b
+};
+struct %indirecttype *%indirectname = &encoding_procs;
+@ 
+Here's some old code
+<<proc-structure.t (segregated version)>>=
+static struct %indirecttype encoding_procs = {$t%typed%untyped%counters$b
+};
+struct %indirecttype *%indirectname = &encoding_procs;
+<<emit declarations for all of the kept constructors (segregated version)>>=
+every t | u := []
+every cons := kept_constructors() do
+  put(if cons.type === instructionctype then u else t, cons)
+    every emit_proc_declaration(pp, !t | !u)
+@ 
+<<*>>=
+procedure emit_encoding_implementation(outfile, interfacename, basename)
+  verbose("Emitting encoding implementation")
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  PPwrite(pp, "#include <mclib.h>")
+  PPwrite(pp, "#include ", image(interfacename))
+  PPwrite(pp, "#define sign_extend(N,SIZE) \\")
+  PPwrite(pp, "  (((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) ",
+              "@>> (sizeof(unsigned)*8-(SIZE)))")
+
+  pushtrace("ASS")
+  if \gen_counters then declare_counters(pp)
+  # <write tag definitions for typed [[kept_constructors]]>
+  every cons := kept_constructors() do {
+    verbose("Encoder for constructor ", cons.name)
+    PPwrite(pp, "/**************")
+    show_constructor(pp, cons)
+    PPwrite(pp, "***********/")
+    if cons.type ~=== instructionctype | \encode_as_data then
+      emit_create_instance_body(pp, cons)
+    else 
+      emit_emitter_body(pp, cons) 
+  }
+  PPwrite(pp)	# flush prettyprinter
+  poptrace()
+  if \gen_counters then define_counter_funs(pp)
+  if \indirectname then emit_indirect_encoder(pp)
+  emit_closure_functions_postfix(pp, basename)
+  emit_closure_functions_bytecode(pp, basename)
+  emit_closure_functions_emitclosure_map(pp, basename)
+  return
+end
+<<write tag definitions for typed [[kept_constructors]]>>=
+every cons := kept_constructors() & cons.type ~=== instructionctype do 
+  PPwrite(pp, "#define ", cons.name, "_TAG ", cons.tag)
+@
+<<*>>=
+procedure show_constructor(pp, cons)
+  PPwrite(pp)
+  PPwrites(pp, cons.name, " ")
+  every o := !cons.operands do 
+    case type(o) of {
+      "literal" : PPwrites(pp, o.s)
+      "input"   : PPwrites(pp, o.name, 
+                         if type(o.meaning) == "integer" then "!" else "")
+      default   : impossible("operand")
+    }
+  PPxwrites(pp, " is $t${$c")
+  PPxwrite(pp, ppexpimage(pattern_to_case(crhs(cons))), "$}$b$n")
+  return
+end
+<<*>>=
+procedure show_constype(outfile, type)
+  write(outfile)  
+  l := []; every put(l, kept_constructors(type).name)
+  PPwrite(pp, type.name, " (", commaseparate(l, " | "), "):")
+  show_case(outfile, pattern_to_case(constype_pattern(type)))
+  write(outfile)
+  return
+end
+<<*>>=
+procedure declare_counters(pp)
+  every PPwrite(pp, "static int ", kept_constructors().name, "_ctr = 0;")
+  return
+end
+procedure declare_counter_types(pp)
+  PPwrite(pp, "typedef void (*Printer)(void *closure, char *fmt, ...);")
+  return
+end
+procedure declare_counter_funs(pp)
+  c_function_declaration(pp, "void", "reset_cons_counters", "(void)")
+  c_function_declaration(pp, "void", "dump_cons_counters","(Printer p, void *closure)")
+  return
+end
+procedure counter_names()
+  return "reset_cons_counters, dump_cons_counters, $o"
+end
+procedure define_counter_funs(pp)  
+  PPxwrites(pp, if \indirectname then "static " else "",
+               "void reset_cons_counters(void) {$t")
+  every PPxwrites(pp, "$n", kept_constructors().name, "_ctr = 0;")
+  PPxwrite(pp, "$b$n}")
+  PPxwrites(pp, if \indirectname then "static " else "",
+                 "void dump_cons_counters(Printer p, void *closure) {$t")
+  every cons := kept_constructors() do
+    PPxwrites(pp, "$np(closure, \"%d ", cons.name, " : ", <<type of [[cons]]>>, 
+          "\\n\", ", cons.name, "_ctr);")
+  PPxwrite(pp, "$b$n}")
+end
+<<type of [[cons]]>>=
+(if cons.type === instructionctype then "<instruction>" else cons.type.name)
+<<refman: counter functions>>=
+The C procedure
+\begin{quote}
+\tt void reset\_cons\_counters(void);
+\end{quote}
+resets the counters; the procedure
+\begin{quote}
+\tt
+typedef void (*Printer)(void *closure, char *fmt, ...);\\
+void dump\_cons\_counters(Printer p, void *closure);
+\end{quote}
+dumps the values of all the counters.
+The user must provide a function of type {\tt Printer}, a variadic
+function which
+accepts a closure, a {\tt printf}-style format, and additional arguments.
+The closure encapsulates any information needed by the
+user's printing function.
+For example, the standard C~function {\tt fprintf} may be used as a {\tt Printer},
+in which case a file pointer acts as a closure.
+@
+

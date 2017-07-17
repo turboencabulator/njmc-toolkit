@@ -1,0 +1,791 @@
+<html><head><title> assembly.nw</title></head><body>
+<h1><a name="NWD1">Managing generation of assembly encoders</a></h1>
+We can reuse the encoding interface, since the assembly stuff is an
+implementation of it.
+<pre><a name="NWassB-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+link pretty
+procedure <a href="#NWD1">emit_assembly</a>(outfilename)
+  local i, f
+  verbose(&quot;Emitting encoding interface&quot;)
+  emit_encoding_interface(openfile(i := outfilename || interface_extension, &quot;w&quot;)) |
+    error(&quot;Could not open &quot;, image(i), &quot; for writing&quot;)
+  verbose(&quot;Emitting assembly procedures&quot;)
+  <a href="#NWD3">emit_assembly_implementation</a>(
+         openfile(f := outfilename || implementation_extension, &quot;w&quot;), i) |
+    error(&quot;Could not open &quot;, image(f), &quot; for writing&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_assembly"><code>emit_assembly</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">Here's the template that begins all assembly implementations:</a>
+<pre><a name="NWassB-assF-1" href="#NWD2"><dfn>&lt;assembly-impl.t&gt;=</dfn></a>
+#include &lt;mclib.h&gt;
+#include %interface
+
+#define sign_extend(N,SIZE) \
+  (((int)((N) &lt;&lt; (sizeof(unsigned)*8-(SIZE)))) &gt;&gt; (sizeof(unsigned)*8-(SIZE)))
+ 
+</pre><p>
+<a name="NWD3">This next should probably be turned into something higher-order at</a>
+some point.
+We reuse the same implementations of typed constructors to bundle up
+their
+arguments. We also create a local procedure we can call for
+each typed constructor to emit is assembly code.
+<pre><a name="NWassB-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWD3">emit_assembly_implementation</a>(outfile, interfacename)
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  emit_template(pp, &quot;assembly-impl.t&quot;, &quot;interface&quot;, image(interfacename))
+
+  pushtrace(&quot;ASS&quot;)
+  <a name="NWassB-*-2-u1" href="#NWassB-wrir-1"><i>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;</i></a>
+  every cons := kept_constructors() do {
+    verbose(&quot;Assembler for &quot;, cons.name)
+    if cons.type ~=== instructionctype then
+      emit_create_instance_body(pp, cons)
+    <a href="#NWDF">emit_assembler_body</a>(pp, cons) 
+  }
+  PPwrite(pp)   # flush prettyprinter
+  if \gen_counters then 
+    emit_counter_funs(outfile)
+  poptrace()
+  if \indirectname then emit_indirect_encoder(pp)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_assembly_implementation"><code>emit_assembly_implementation</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-wrir-1" href="#NWassB-wrir-1"><dfn>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+every cons := kept_constructors() &amp; cons.type ~=== instructionctype do 
+  PPwrite(pp, &quot;#define &quot;, cons.name, &quot;_TAG &quot;, cons.tag)
+</pre><p>
+<h2>Name mapping</h2>
+And now we start in with name mapping o-rama.
+The game here is to use separate mappings for every possible
+component of a constructor.
+By postulating these mappings now, we separate concerns, so that we
+can worry elsewhere about how they are defined.
+<p>
+As part of planning the mappings, we need to think about how we want
+the code organized at run time.  In particular, we need to think about
+where to use specialized print procedures and where to use simple
+format strings.  We assume that if people want speed, they'll be
+emitting binary, not assembly language, so for simplicity we use lots
+and lots of procedures.
+We have a procedure for each:
+<ul>
+<li>field
+<li>constructor
+<li>constructor type
+</ul>
+We try to reuse field procedures where possible.
+The application must supply a print procedure <code>asmprintf</code> in the
+style of <tt>fprintf</tt>, and also a procedure <code>asmprintreloc</code>, which
+prints a relocatable address.
+<p>
+<a name="NWD4">We're going to create these procedures lazily.</a>
+The field-printing procedure is off in the <tt>fieldinfo.nw</tt> module.
+<p>
+
+The mappings are:
+<blockquote>
+<code><a href="#NWD5">consname2asm</a></code> --- constructor names<br><code>field_asm_syntax</code> --- field operands<br><code>intarg_asm_syntax</code> --- non-field integer operands<br>??? --- what else?
+</blockquote>
+<p>
+
+<h3><a name="NWD5">Mapping constructor names</a></h3>
+Use the mapping for constructor's complete name, if it exists.
+Otherwise, we break the constructor name into its components and match the
+individual components.
+We never use full-name mapping and componentwise mapping on the same
+constructor name.
+<pre><a name="NWassB-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">consname2asm</a>(cons)
+  local n, x, cname
+  n := &quot;&quot;
+  cname := &quot;&quot;
+  every cname ||:= opcode_component_name(!cons.opcode)
+  x := <a href="#NWD6">map_fullname</a>(cname)
+  pushtrace(&quot;GLOB&quot;)
+  if (\x) then 
+    n := if (\lowercons) then map(x) else x
+  else 
+    every x := <a href="#NWD6">map_component</a>(opcode_component_name(!cons.opcode), cons.type) do
+      n ||:= if (\lowercons) then map(x) else x
+  poptrace()
+  return if cons.type === instructionctype | *n &gt; 0 then 
+           if /postfix then (if !<a href="#NWDC">asmoperands</a>(cons) then n || &quot; &quot;  else n)
+           else             &quot; &quot; || n
+         else &quot;&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-consname2asm"><code>consname2asm</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">We map the individual components by opcode globbing.</a>
+<pre><a name="NWassB-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+global <a href="#NWD6">opcode_globs</a>, <a href="#NWD6">opcode_full</a>
+procedure <a href="#NWD6">map_fullname</a>(name)
+  initial /<a href="#NWD6">opcode_full</a> := []
+  return <a href="#NWD8">globmap</a>(name, !<a href="#NWD6">opcode_full</a>) | &amp;null
+end
+procedure <a href="#NWD6">map_component</a>(name, type)
+  initial /<a href="#NWD6">opcode_globs</a> := []
+  return <a href="#NWD8">globmap</a>(name, !<a href="#NWD6">opcode_globs</a>) | if type === instructionctype then name else &quot;&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-map_component"><code>map_component</code></a>, <a href="#NWI-map_fullname"><code>map_fullname</code></a>, <a href="#NWI-opcode_full"><code>opcode_full</code></a>, <a href="#NWI-opcode_globs"><code>opcode_globs</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">And finally, here's where we install the globs.</a>
+<pre><a name="NWassB-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+record <a href="#NWD7">globpair</a>(lhs, rhs)
+procedure <a href="#NWD7">asmopcode</a>(lhs, rhs, full)
+  initial { /<a href="#NWD6">opcode_globs</a> := []
+            /<a href="#NWD6">opcode_full</a> := []
+          }
+  put(if (\full) then <a href="#NWD6">opcode_full</a> else <a href="#NWD6">opcode_globs</a>, <a href="#NWD7">globpair</a>(lhs, rhs))
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-asmopcode"><code>asmopcode</code></a>, <a href="#NWI-globpair"><code>globpair</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD8">And now, the implementation of globbing.</a>
+<pre><a name="NWassB-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWassB-*-7">-&gt;</a>]</b>
+procedure <a href="#NWD8">globmap</a>(name, glob) 
+  l := []   # used for $n
+  name ?
+    if <a href="#NWassB-*-7">consume_globs</a>(glob.lhs, l) &amp; pos(0) then
+      return <a href="#NWassB-*-9">insert_glob_matches</a>(glob.rhs, l)
+end
+</pre><blockquote>Defines <a href="#NWI-globmap"><code>globmap</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWassB-*-8">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-7">consume_globs</a>(pat, dollars, i)
+  suspend case type(pat) of {
+    &quot;glob_any&quot; : { 
+       while *dollars &lt; pat.number do put(dollars, &amp;null)
+       dollars[pat.number] &lt;- <a href="#NWassB-*-7">consume_globs</a>(!pat.alternatives, dollars)
+    }
+    &quot;glob_wildcard&quot; : tab(&amp;pos to *&amp;subject + 1)
+    &quot;list&quot;          : {<a name="NWassB-*-7-u1" href="#NWassB-gloK-1"><i>&lt;glob a concatenation&gt;</i></a>}
+    &quot;string&quot;        : =pat
+    default         : impossible(&quot;glob pattern&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-consume_globs"><code>consume_globs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-gloK-1" href="#NWassB-gloK-1"><dfn>&lt;glob a concatenation&gt;=</dfn></a> <b>(<a href="#NWassB-*-7">&lt;-U</a>)</b>
+/i := 1
+if pat[i] then 
+  <a href="#NWassB-*-7">consume_globs</a>(pat[i], dollars) || <a href="#NWassB-*-7">consume_globs</a>(pat, dollars, i+1)
+else
+  &quot;&quot;
+</pre><pre><a name="NWassB-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-7">&lt;-</a>D<a href="#NWassB-*-9">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-8">number_braces</a>(pat)
+  <a href="#NWassB-*-8">do_number_braces</a>(pat, 0)
+  return pat
+end
+
+procedure <a href="#NWassB-*-8">do_number_braces</a>(pat, bracecount)
+  case type(pat) of {
+    &quot;glob_any&quot;      : { pat.number := bracecount +:= 1
+                        bracecount := <a href="#NWassB-*-8">do_number_braces</a>(pat.alternatives, bracecount)
+                      }
+    &quot;glob_wildcard&quot; : &amp;null
+    &quot;list&quot;          : every i := 1 to *pat do
+                        bracecount := <a href="#NWassB-*-8">do_number_braces</a>(pat[i], bracecount)
+    &quot;string&quot;        : &amp;null
+    default         : impossible(&quot;glob pattern: &quot;, image(pat))
+  }
+  return bracecount
+end
+</pre><blockquote>Defines <a href="#NWI-do_number_braces"><code>do_number_braces</code></a>, <a href="#NWI-number_braces"><code>number_braces</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-8">&lt;-</a>D<a href="#NWassB-*-A">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-9">insert_glob_matches</a>(rhs, dollars)
+  s := &quot;&quot;
+  every x := !rhs do 
+    s ||:= case type(x) of {
+      &quot;string&quot;      : x
+      &quot;glob_dollar&quot; : \dollars[x.number] |
+                        error(&quot;No match for $&quot;, x.number, &quot; in `&quot;, <a href="#NWassB-*-A">grhsimage</a>(rhs), &quot;'&quot;)
+      default : impossible(&quot;glob rhs&quot;)
+    }
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-insert_glob_matches"><code>insert_glob_matches</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-9">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-A">grhsimage</a>(rhs)
+  s := &quot;&quot;
+  every x := !rhs do 
+    s ||:= case type(x) of {
+      &quot;string&quot;      : x
+      &quot;glob_dollar&quot; : &quot;$&quot; || x.number
+      default : impossible(&quot;glob rhs&quot;)
+    }
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-grhsimage"><code>grhsimage</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWD9">Mapping operands</a></h3>
+First, we're only allowed to map integers and fields, not relocatables
+or constructor types.
+<pre><a name="NWassB-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-A">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+record <a href="#NWD9">operand_syntax</a>(syntax, nametable)
+  # syntax string, optional name table, optional bound on values (max+1)
+
+global <a href="#NWD9">operand_syntax_tab</a>
+
+procedure <a href="#NWD9">asmoperand</a>(name, syntax, names)
+  local nametable
+  initial /<a href="#NWD9">operand_syntax_tab</a> := table()
+  <a name="NWassB-*-B-u1" href="#NWassB-ins15-1"><i>&lt;insist that <code>name</code> not refer to a constructor type or relocatable&gt;</i></a>
+  <a name="NWassB-*-B-u2" href="#NWassB-setz-1"><i>&lt;set <code>nametable</code> to the name table, checking for consistency&gt;</i></a>
+  <a name="NWassB-*-B-u3" href="#NWassB-insX-1"><i>&lt;insist on names if <code>%s</code> is used&gt;</i></a>
+  (return /<a href="#NWD9">operand_syntax_tab</a>[name] := <a href="#NWD9">operand_syntax</a>(syntax, nametable)) |
+     error(&quot;Operand syntax for &quot;, name, &quot; already specified&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-asmoperand"><code>asmoperand</code></a>, <a href="#NWI-operand_syntax"><code>operand_syntax</code></a>, <a href="#NWI-operand_syntax_tab"><code>operand_syntax_tab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-setz-1" href="#NWassB-setz-1"><dfn>&lt;set <code>nametable</code> to the name table, checking for consistency&gt;=</dfn></a> <b>(<a href="#NWD9">&lt;-U</a>)</b>
+if type(names) == &quot;field&quot; then
+  names := namespec(\fieldname_table(names)) | 
+              error(&quot;No names supplied for field &quot;, ii2)
+nametable := 
+  if type(f := symtab[name]) == &quot;field&quot; then {
+    /names := namespec(\fieldname_table(f))  # use default names if none given
+    check_namespec(\names, f)
+  } else
+    (\names).nametable
+if \names &amp; /nametable then impossible(&quot;name table: &quot;, image(names))
+</pre><pre><a name="NWassB-ins15-1" href="#NWassB-ins15-1"><dfn>&lt;insist that <code>name</code> not refer to a constructor type or relocatable&gt;=</dfn></a> <b>(<a href="#NWD9">&lt;-U</a>)</b>
+if type(symtab[name]) == (&quot;constype&quot; | &quot;relocatable&quot;) then
+  error(&quot;You may specify an operand syntax only for integer or field operands&quot;)
+</pre><pre><a name="NWassB-insX-1" href="#NWassB-insX-1"><dfn>&lt;insist on names if <code>%s</code> is used&gt;=</dfn></a> <b>(<a href="#NWD9">&lt;-U</a>)</b>
+if /nametable &amp; !<a href="#NWDM">percent_split</a>(syntax) == &quot;%s&quot; then 
+  error(&quot;You used %s to format operand &quot;, name, &quot;, but you gave no name specifier&quot;)
+</pre><p>
+<a name="NWDA">To implement lookup, we must provide suitable defaults.</a>
+The only tricky case is that we use a field's name if it exists,
+otherwise not.
+<pre><a name="NWassB-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDA">operand_syntax_of</a>(ipt)
+  initial /<a href="#NWD9">operand_syntax_tab</a> := table()
+  return \<a href="#NWD9">operand_syntax_tab</a>[ipt.name] |
+    case type(ipt.meaning) of { 
+      &quot;null&quot;    : <a href="#NWD9">operand_syntax</a>(&quot;%d&quot;)   # integer
+      &quot;integer&quot; : <a href="#NWD9">operand_syntax</a>(&quot;%d&quot;)   # signed field
+      &quot;field&quot;   : { n := fieldname_table(symtab[ipt.name])
+                    <a href="#NWD9">operand_syntax</a>(if \n then &quot;%s&quot; else &quot;%u&quot;, n)
+                  }
+      default   : impossible(&quot;violated default syntax invariant&quot;)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-operand_syntax_of"><code>operand_syntax_of</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDB">Assembly syntax of constructors</a></h2>
+
+<a name="NWDC">Next, the syntax may be given by an </a><code><a href="#NWDC">asmsyntax</a></code> directive, or it may
+be taken from the original declaration.
+<pre><a name="NWassB-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWassB-*-E">-&gt;</a>]</b>
+global <a href="#NWDC">asmsyntax</a>
+procedure <a href="#NWDC">set_asmsyntax</a>(cons, operands)
+  local oldoperands
+  initial /<a href="#NWDC">asmsyntax</a> := table()
+  <a name="NWassB-*-D-u1" href="#NWassB-ins17-1"><i>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same names&gt;</i></a>
+  <a name="NWassB-*-D-u2" href="#NWassB-ins1H-1"><i>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same signed operands&gt;</i></a>
+  (/<a href="#NWDC">asmsyntax</a>[cons] := operands) |
+    {<a name="NWassB-*-D-u3" href="#NWDD"><i>&lt;<code>operands</code> matches existing assembly syntax for <code>cons</code>&gt;</i></a>} |
+    error(&quot;Conflicting assembly syntax already given for constructor &quot;, cons.name)
+  return
+end
+
+procedure <a href="#NWDC">asmoperands</a>(cons)
+  initial /<a href="#NWDC">asmsyntax</a> := table()
+  return \<a href="#NWDC">asmsyntax</a>[cons] | cons.operands
+end
+</pre><blockquote>Defines <a href="#NWI-asmoperands"><code>asmoperands</code></a>, <a href="#NWI-asmsyntax"><code>asmsyntax</code></a>, <a href="#NWI-set_asmsyntax"><code>set_asmsyntax</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-ins17-1" href="#NWassB-ins17-1"><dfn>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same names&gt;=</dfn></a> <b>(<a href="#NWDC">&lt;-U</a>)</b>
+s1 := set(); every insert(s1, inputs_of_operands(operands).name)
+s2 := set(); every insert(s2, inputs_of(cons).name)
+every x := !s1 &amp; not member(s2, x) do
+  error(&quot;Operand &quot;, x, &quot; given in assembly syntax for &quot;, cons.name, 
+        &quot; is not in the original constructor specification&quot;)
+every x := !s2 &amp; not member(s1, x) do
+  warning(&quot;Operand &quot;, x, &quot; of constructor &quot;, cons.name, 
+          &quot; is not shown in the assembly syntax&quot;)
+</pre><pre><a name="NWassB-ins1H-1" href="#NWassB-ins1H-1"><dfn>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same signed operands&gt;=</dfn></a> <b>(<a href="#NWDC">&lt;-U</a>)</b>
+s1 := set(); every insert(s1, inputs_of_operands(operands, &quot;integer&quot;).name)
+s2 := set(); every insert(s2, inputs_of(cons, &quot;integer&quot;).name)
+every x := !s1 &amp; not member(s2, x) do
+  error(&quot;Operand &quot;, x, &quot; of constructor &quot;, cons.name, 
+        &quot; is signed in assembly syntax but unsigned in the constructor specification&quot;)
+every x := !s2 &amp; not member(s1, x) do
+  error(&quot;Operand &quot;, x, &quot; of constructor &quot;, cons.name, 
+        &quot; is unsigned in assembly syntax but signed in the constructor specification&quot;)
+</pre><p>
+<a name="NWDD">Because some constructors explode with vacuous disjuncts, we make it</a>
+OK to define duplicate syntax, but we do insist the duplicates be identical.
+<pre><a name="NWassB-**ow-1" href="#NWDD"><dfn>&lt;<code>operands</code> matches existing assembly syntax for <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWDC">&lt;-U</a>)</b>
+oldoperands := <a href="#NWDC">asmsyntax</a>[cons]
+*operands = *oldoperands &amp;
+  if i := 1 to *operands &amp; not <a href="#NWassB-*-E">operands_match</a>(operands[i], oldoperands[i]) then
+    {<a href="#NWassB-*-F">dump_em</a>(&quot;new&quot;, operands); <a href="#NWassB-*-F">dump_em</a>(&quot;old&quot;, oldoperands); &amp;fail}
+  else
+    &amp;null
+</pre><pre><a name="NWassB-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWassB-*-F">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-E">operands_match</a>(op1, op2)
+  return case type(op1) == type(op2) of {
+    &quot;literal&quot; : op1.s == op2.s
+    &quot;input&quot;   : op1.name == op2.name &amp; op1.meaning === op2.meaning
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-operands_match"><code>operands_match</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-E">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+procedure <a href="#NWassB-*-F">dump_em</a>(ty, ops)
+  writes(&amp;errout, ty, &quot; syntax:&quot;)
+  every writes(&amp;errout, x := !ops &amp; 
+               case type(x) of { 
+                    &quot;literal&quot; : x.s
+                    &quot;input&quot;   : x.name || 
+                                if type(x.meaning) == &quot;integer&quot; then &quot;!&quot; 
+                                else &quot;&quot;
+                    default : impossible(&quot;operand type&quot;)
+               })
+  write(&amp;errout)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-dump_em"><code>dump_em</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDE">Emitting print procedures for constructors</a></h2>
+The first issue is figuring out what to call the print procedures
+and what storage class they should be.
+Untyped constructors print directly and are visible (if not doing
+indirect),
+whereas typed constructors create instances, so we have to give them
+different names and we have to make them always hidden (static).
+<pre><a name="NWassB-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-F">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+procedure <a href="#NWDE">assembler_proc_name</a>(cons)
+  return if cons.type === instructionctype then cons.name 
+         else cons.name || &quot;_asm&quot;  # unsafe, but what do you want?
+end
+procedure <a href="#NWDE">assembler_proc_class</a>(cons)
+  return if \indirectname |  cons.type ~=== instructionctype then &quot;static &quot; else &quot;&quot; 
+end
+</pre><blockquote>Defines <a href="#NWI-assembler_proc_class"><code>assembler_proc_class</code></a>, <a href="#NWI-assembler_proc_name"><code>assembler_proc_name</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDF" href="#NWDF">emit_assembler_body</a></code> creates an assembly-emitting procedure for the
+constructor <code>cons</code>.  Its first act is to make sure there are print
+procedures for all the operands.  After that, it just prints all the
+syntax, then possibly a newline.
+<pre><a name="NWassB-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDE">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+procedure <a href="#NWDF">emit_assembler_body</a>(pp, cons) 
+  local asmname
+  every <a href="#NWDH">create_input_print_proc</a>(pp, inputs_of(cons))
+  emit_template(pp, &quot;emitter-body.t&quot;, 
+                    &quot;safename&quot;, Cnoreserve(<a href="#NWDE">assembler_proc_name</a>(cons)),
+                    &quot;args&quot;, arg_decls(cons),
+                    &quot;class&quot;, <a href="#NWDE">assembler_proc_class</a>(cons))
+  asmname := <a href="#NWD5">consname2asm</a>(cons)
+  if *asmname &gt; 0 &amp; /postfix then
+    <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%s&quot;, image(asmname))
+  every o := !<a href="#NWDC">asmoperands</a>(cons) do
+    case type(o) of {
+      &quot;literal&quot; : <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%s&quot;, image(o.s))
+      &quot;input&quot;  : 
+          PPxwrites(pp, &quot;$n&quot;, 
+                        <a href="#NWDH">create_input_print_proc</a>(pp, o), &quot;(&quot;, Cnoreserve(o.name), &quot;);&quot;)
+      default : impossible(&quot;operand type&quot;)
+    }
+  if *asmname &gt; 0 &amp; \postfix then
+    <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%s&quot;, image(asmname))
+  if cons.type === instructionctype then
+    <a href="#NWDN">emit_asm_printf</a>(pp, &quot;\n&quot;)
+  PPxwrite(pp, &quot;$b$n}&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_assembler_body"><code>emit_assembler_body</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDG">Generating print procedures for operands</a></h2>
+Next we show how to create a print procedure for an operand.
+We do it lazily, and we return the name of the procedure.
+
+<a name="NWDH">We're allowed to print any integer argument using any syntax we like.</a>
+Relocatable addresses constructor types have constrained syntaxes.
+<pre><a name="NWassB-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+procedure <a href="#NWDH">create_input_print_proc</a>(pp, ipt)
+  return case type(ipt.meaning) of {
+    &quot;string&quot;   : &quot;asmprintreloc&quot;
+    &quot;constype&quot; : <a href="#NWDK">create_constype_print_proc</a>(pp, ipt.name, ipt.meaning)
+    &quot;integer&quot;  : <a href="#NWDI">create_integer_print_proc</a>(pp, &quot;signed&quot;,   ipt, 
+                    signed_type(fwidth(f := symtab[ipt.name])), <a href="#NWDA">operand_syntax_of</a>(ipt))
+                        # maybe this should be forced to %d?
+    &quot;field&quot;    : <a href="#NWDI">create_integer_print_proc</a>(pp, &quot;unsigned&quot;, ipt, 
+                    unsigned_type(fwidth(f := ipt.meaning)), <a href="#NWDA">operand_syntax_of</a>(ipt))
+    &quot;null&quot;     : <a href="#NWDI">create_integer_print_proc</a>(pp, &quot;signed&quot;,   ipt, 
+                    signed_type(), <a href="#NWDA">operand_syntax_of</a>(ipt))
+    default    : impossible(&quot;Bad operand value&quot;, type(ipt.meaning))
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-create_input_print_proc"><code>create_input_print_proc</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDI">There's no science here. </a>
+<pre><a name="NWassB-*-J" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+procedure <a href="#NWDI">create_integer_print_proc</a>(pp, sign, ipt, argtype, syntax)
+  local namearray, argname, limit
+  if p := <a href="#NWDJ">lookup_printproc</a>(syntax, argtype) then return p
+  argname := ipt.name
+  emit_template(pp, &quot;int-print-header.t&quot;, 
+                     &quot;name&quot;, argname, &quot;type&quot;, argtype, &quot;sign&quot;, sign)
+  l := <a href="#NWDM">percent_split</a>(syntax.syntax)
+  if !l == &quot;%s&quot; then {
+    \syntax.nametable | <a name="NWassB-*-J-u1" href="#NWassB-comR-1"><i>&lt;complain no names specified&gt;</i></a>
+    <a name="NWassB-*-J-u2" href="#NWassB-setn-1"><i>&lt;set <code>limit</code> based on <code>ipt</code> and the name table&gt;</i></a>
+    namearray := name_array_from_table(syntax.nametable, limit, argname)
+    namearray.storageclass := &quot;static&quot;
+    PPxwrite(pp, pretty(Gdeclnamearray(namearray)), &quot;;&quot;) # local name array
+    if type(ipt.meaning) == &quot;null&quot; then
+      PPxwrite(pp, pretty(Sif([
+          Sguarded(set([literal(&quot;0 &lt;= &quot; || argname),
+                        literal(argname || &quot; &lt; &quot; || limit)]),
+                   Sepsilon()),
+          Sguarded(set(), 
+                   literal(&quot;{asmprintf(asmprintfd, &quot; || 
+                               image(bad_operand_name(argname, &quot;%d&quot;)) || &quot;, &quot; || 
+                               argname || &quot;); return;}&quot;))])))
+  }
+  every x := !l do
+    case x of {
+      &quot;%s&quot; : <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%s&quot;, namearray.codename || &quot;[&quot; || argname || &quot;]&quot;)
+      &quot;%d&quot; | &quot;%u&quot; | &quot;%x&quot; : <a href="#NWDN">emit_asm_printf</a>(pp, x, argname)
+      &quot;%%&quot; : <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%%&quot;)
+      default :
+        if match(&quot;%&quot;, x) then
+          error(&quot;Unknown escape &quot;, x, &quot; in syntax string for argument &quot;, argname)
+        else
+          <a href="#NWDN">emit_asm_printf</a>(pp, &quot;%s&quot;, image(x))
+    }
+  PPxwrite(pp, &quot;$b$n}&quot;)  
+  p := &quot;print_&quot; || sign || &quot;_&quot; || argname
+  <a href="#NWDJ">save_printproc</a>(p, syntax, argtype)
+  return p
+end
+</pre><blockquote>Defines <a href="#NWI-create_integer_print_proc"><code>create_integer_print_proc</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWassB-setn-1" href="#NWassB-setn-1"><dfn>&lt;set <code>limit</code> based on <code>ipt</code> and the name table&gt;=</dfn></a> <b>(<a href="#NWDI">&lt;-U</a>)</b>
+case type(ipt.meaning) of {
+  &quot;field&quot;   : limit := 2^fwidth(ipt.meaning)
+  &quot;integer&quot; : limit := 2^ipt.meaning
+  default   : { limit := 0; every limit &lt;:= !syntax.nametable; limit +:= 1 }
+}
+</pre><pre><a name="NWassB-intI-1" href="#NWassB-intI-1"><dfn>&lt;int-print-header.t&gt;=</dfn></a>
+static void print_%sign_%name(%type %name) {$t
+</pre><pre><a name="NWassB-comR-1" href="#NWassB-comR-1"><dfn>&lt;complain no names specified&gt;=</dfn></a> <b>(<a href="#NWDI">&lt;-U</a>)</b>
+error(&quot;Tried to use field names to format argument &quot;, argname, 
+      &quot;, but no name specifier was given&quot;)
+</pre><p>
+<a name="NWDJ">To keep track of print procedures, the easy case is one in which no</a>
+field names are used: we just look up a procedure by its syntax and
+argument type.  Otherwise we need a key that captures all the field
+names.
+I use <code>&quot;\0&quot;</code> to separate parts of a key.
+This trick isn't perfectly safe, but names are most unlikely to
+contain the null character, and if they do, the C code is going to
+break anyway.
+<pre><a name="NWassB-*-K" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+global <a href="#NWDJ">printproctab</a>
+
+procedure <a href="#NWDJ">printproc_key</a>(syntax, argtype)
+  k := syntax.syntax || &quot;\0&quot; || argtype
+  if find(&quot;%s&quot;, syntax.syntax) then
+    k ||:= nametablekey(syntax.nametable)
+  return k
+end
+
+procedure <a href="#NWDJ">lookup_printproc</a>(syntax, argtype)
+  initial /<a href="#NWDJ">printproctab</a> := table()
+  return \<a href="#NWDJ">printproctab</a>[<a href="#NWDJ">printproc_key</a>(syntax, argtype)]
+end
+
+procedure <a href="#NWDJ">save_printproc</a>(procname, syntax, argtype)
+  initial /<a href="#NWDJ">printproctab</a> := table()
+  (/<a href="#NWDJ">printproctab</a>[<a href="#NWDJ">printproc_key</a>(syntax, argtype)] := procname) |
+  impossible(&quot;duplicated print procedures&quot;)
+  return procname
+end
+</pre><blockquote>Defines <a href="#NWI-lookup_printproc"><code>lookup_printproc</code></a>, <a href="#NWI-printproc_key"><code>printproc_key</code></a>, <a href="#NWI-printproctab"><code>printproctab</code></a>, <a href="#NWI-save_printproc"><code>save_printproc</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDK">Here's the print procedure for a constructor type.</a>
+Note that we don't have to worry about whether the print procedures
+for the individual constructors are out, because the global ordering
+on constructors guarantees they've all been emitted.
+<b>[</b>There are probably several lurking bugs if somebody discards
+a typed constructor.<b>]</b> 
+<pre><a name="NWassB-*-L" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWDM">-&gt;</a>]</b>
+procedure <a href="#NWDK">create_constype_print_proc</a>(pp, argname, constype)
+  local call, prefix
+  static constype_syntax
+  initial constype_syntax := <a href="#NWD9">operand_syntax</a>(&quot;&quot;)
+  if p := <a href="#NWDJ">lookup_printproc</a>(constype_syntax, constype.name) then return p
+  emit_template(pp, &quot;constype-print-header.t&quot;, &quot;type&quot;, constype.name)
+  s := Stagcase(argname, constype, table())
+  every cons := kept_constructors(constype) do {
+    <a name="NWassB-*-L-u1" href="#NWDL"><i>&lt;let <code>call</code> represent a call to the assembly proc for <code>cons</code>&gt;</i></a>
+    s.arms[cons] := literal(call)
+  } 
+  PPxwrite(pp, pretty(s), &quot;$b$n}&quot;)
+  p := &quot;print_&quot; || constype.name
+  <a href="#NWDJ">save_printproc</a>(p, <a href="#NWD9">operand_syntax</a>(&quot;&quot;), constype.name)
+  return p
+end
+</pre><blockquote>Defines <a href="#NWI-create_constype_print_proc"><code>create_constype_print_proc</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDL">Just blast out the arguments...</a>and make sure to have inital parenthesis .
+<pre><a name="NWassB-let11-1" href="#NWDL"><dfn>&lt;let <code>call</code> represent a call to the assembly proc for <code>cons</code>&gt;=</dfn></a> <b>(<a href="#NWDK">&lt;-U</a>)</b>
+call := [<a href="#NWDE">assembler_proc_name</a>(cons), &quot;(&quot;]
+prefix := &quot;&quot;
+every ipt := inputs_of(cons) do {
+  put(call, prefix); prefix := &quot;, &quot;
+  put(call, pretty(Einstance_input(argname, cons, ipt.name)))
+}
+put(call, &quot;);&quot;)
+</pre><pre><a name="NWassB-conN-1" href="#NWassB-conN-1"><dfn>&lt;constype-print-header.t&gt;=</dfn></a>
+static void print_%type(%type_Instance %type) {$t
+</pre><p>
+<h2><a name="NWDM">Little utility procedures</a></h2>
+<code><a href="#NWDM">percent_split</a></code> divides up a syntax string such that the escapes are
+obvious.
+<pre><a name="NWassB-*-M" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+procedure <a href="#NWDM">percent_split</a>(s)
+  l := []
+  s ? 
+    while not pos(0) do {
+      if not match(&quot;%&quot;) then 
+        put(l, tab(upto('%') | 0))
+      while match(&quot;%&quot;) do
+        put(l, move(2)) | error(&quot;unescaped % at end of syntax string&quot;)
+    }
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-percent_split"><code>percent_split</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDN" href="#NWDN">emit_asm_printf</a></code> emits a call to <tt>asmprintf</tt><b>[</b>Note the
+complete lack of consistency in my use of the underscore<b>]</b>.
+<pre><a name="NWassB-*-N" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDM">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+procedure <a href="#NWDN">emit_asm_printf</a>(pp, fmt, args[])
+  PPxwrites(pp, &quot;$nasmprintf(asmprintfd, &quot;)
+  PPwrites(pp, image(fmt))
+  every PPwrites(pp, &quot;, &quot;, !args)
+  PPwrites(pp, &quot;);&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_asm_printf"><code>emit_asm_printf</code></a> (links are to index).<p>
+</blockquote><p>
+<h1><a name="NWDO">Emitting assembly-language grammars</a></h1>
+<pre><a name="NWassB-*-O" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+procedure <a href="#NWDO">emit_asm_grammar</a>(outfilename)
+  local outfile
+  verbose(&quot;Emitting assembly-language grammar&quot;)
+  (outfile := openfile(outfilename, &quot;w&quot;)) | 
+                error(&quot;could not open &quot;, image(outfilename), &quot; for writing&quot;)
+  pushtrace(&quot;ASMGRAMMAR&quot;)
+  every <a href="#NWDQ">emit_cons_production</a>(outfile, kept_constructors())
+  poptrace()
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_asm_grammar"><code>emit_asm_grammar</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDP">We use the nonterminal </a><code>Instruction</code> for untyped constructors.
+For typed constructors we use the name of the type plus the word <code>Operand</code>.
+<pre><a name="NWassB-*-P" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWDQ">-&gt;</a>]</b>
+procedure <a href="#NWDP">nonterminal_name</a>(cons)
+  return if cons.type === instructionctype then &quot;Instruction&quot; 
+         else cons.type.name || &quot;Operand&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-nonterminal_name"><code>nonterminal_name</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDQ">To emit a production, we use the operands and the concrete syntax.</a>
+We share <code><a href="#NWD5">consname2asm</a></code> to determine the syntax for the constructor
+name (and whether to use it at all!).
+The semantic action calls an encoding procedure.
+<pre><a name="NWassB-*-Q" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWDR">-&gt;</a>]</b>
+procedure <a href="#NWDQ">emit_cons_production</a>(outfile, cons)
+  local asmname, i, operand_positions, procname
+  every <a href="#NWassB-*-T">create_field_nonterminal</a>(outfile, inputs_of(cons, &quot;field&quot;))
+  writes(outfile, <a href="#NWDP">nonterminal_name</a>(cons), &quot; :&quot;)
+  asmname := <a href="#NWD5">consname2asm</a>(cons)
+  i := 1
+  if *asmname &gt; 0 then
+    i +:= <a href="#NWDR">emit_literal_syntax</a>(outfile, asmname)
+  operand_positions := []
+  every o := !<a href="#NWDC">asmoperands</a>(cons) do
+    case type(o) of {
+      &quot;literal&quot; : i +:= <a href="#NWDR">emit_literal_syntax</a>(outfile, o.s)
+      &quot;input&quot;   :  {
+          put(operand_positions, &quot;$&quot; || i)
+          i +:= <a href="#NWDS">emit_operand_syntax</a>(outfile, o)
+        }
+      default : impossible(&quot;operand type&quot;)
+    }
+  procname := Cnoreserve(cons.name)
+  write(outfile, &quot; /* &quot;, 
+           if cons.type === instructionctype then &quot;&quot; else &quot;$0 = &quot;,
+           (\indirectname || &quot;-&gt;&quot; | &quot;&quot;) || procname, 
+                &quot;(&quot;, commaseparate(operand_positions), &quot;); */;&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_cons_production"><code>emit_cons_production</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDR">This is a first cut and will have to be refined to tokenize things</a>
+properly.
+<pre><a name="NWassB-*-R" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDQ">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+procedure <a href="#NWDR">emit_literal_syntax</a>(outfile, s)
+  static alphanum, letters, multichar
+  initial { letters := &amp;letters ++ '_.'
+            alphanum := letters ++ &amp;digits 
+            multichar := [&quot;&lt;=&quot;, &quot;&gt;=&quot;, &quot;!=&quot;]
+           }
+  n := 0
+  s ? {
+    optwhite() 
+    while not pos(0) do {
+      if any(letters) then 
+        writes(outfile, &quot; &quot;, image(tab(many(alphanum))))
+      else if any(&amp;digits) then {
+        warning(&quot;Can't put digits in assembly syntax&quot;)
+        tab(many(&amp;digits))
+      } else 
+        writes(outfile, &quot; &quot;, image(=!multichar | move(1)))
+      n +:= 1
+      optwhite()
+    }     
+  }
+  return n
+end
+</pre><blockquote>Defines <a href="#NWI-emit_literal_syntax"><code>emit_literal_syntax</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDS">This, too, is temporary and bogus.</a>
+We need to take the same directives used to create
+<code><a href="#NWD9">operand_syntax_tab</a></code> and use them to create a sensible input syntax.
+<pre><a name="NWassB-*-S" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDR">&lt;-</a>D<a href="#NWassB-*-T">-&gt;</a>]</b>
+global <a href="#NWDS">operand_input_syntax_tab</a>
+procedure <a href="#NWDS">emit_operand_syntax</a>(outfile, ipt)
+  initial /<a href="#NWDS">operand_input_syntax_tab</a> := table()
+  s := \<a href="#NWDS">operand_input_syntax_tab</a>[ipt.name] |
+    case type(ipt.meaning) of { 
+      &quot;null&quot;     : &quot;Integer&quot;
+      &quot;integer&quot;  : &quot;Integer&quot;
+      &quot;field&quot;    : <a href="#NWassB-*-T">field_nonterminal</a>[ipt.meaning]
+      &quot;string&quot;   : &quot;Relocatable&quot;
+      &quot;constype&quot; : ipt.meaning.name || &quot;Operand&quot;
+      default    : impossible(&quot;type of operand&quot;)
+    }
+  writes(outfile, &quot; &quot;, s)
+  return 1
+end
+</pre><blockquote>Defines <a href="#NWI-emit_operand_syntax"><code>emit_operand_syntax</code></a>, <a href="#NWI-operand_input_syntax_tab"><code>operand_input_syntax_tab</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWassB-*-T" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDS">&lt;-</a>D<a href="#NWDT">-&gt;</a>]</b>
+global <a href="#NWassB-*-T">field_nonterminal</a> # maps fields to nonterminal names
+
+procedure <a href="#NWassB-*-T">create_field_nonterminal</a>(outfile, ipt)
+  local nt, prefix
+  /<a href="#NWassB-*-T">field_nonterminal</a> := table()
+  f := ipt.meaning
+  if member(<a href="#NWassB-*-T">field_nonterminal</a>, f) then return <a href="#NWassB-*-T">field_nonterminal</a>[f]
+  t := fieldname_table(f := ipt.meaning)
+  return <a href="#NWassB-*-T">field_nonterminal</a>[f] := 
+    if /t then
+      &quot;Integer&quot;
+    else if fprime := key(<a href="#NWassB-*-T">field_nonterminal</a>) &amp; t === fieldname_table(fprime) then
+      <a href="#NWassB-*-T">field_nonterminal</a>[fprime] # reuse
+    else {
+      nt := f.name || &quot;Field&quot;
+      write(outfile, nt)
+      prefix := &quot;:&quot;
+      every p := !sort(t, 2) do {
+        writes(outfile, &quot;  &quot;, prefix)
+        <a href="#NWDR">emit_literal_syntax</a>(outfile, p[1])
+        write(outfile, &quot; /* $0 = &quot;, p[2], &quot;; */&quot;)
+        prefix := &quot;|&quot;
+      }
+      write(outfile, &quot;  ;\n&quot;)
+      nt
+    }
+end  
+</pre><blockquote>Defines <a href="#NWI-create_field_nonterminal"><code>create_field_nonterminal</code></a>, <a href="#NWI-field_nonterminal"><code>field_nonterminal</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDT">Here we remove whitespace from between the operands of</a>
+<pre><a name="NWassB-*-U" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWassB-*-T">&lt;-</a>D]</b>
+procedure <a href="#NWDT">strip_asm_whitespace</a>(cons)
+  every o := !cons.operands &amp; type(o) == &quot;literal&quot; do
+    o.s := <a href="#NWDT">strip_whitespace</a>(o.s)
+  return cons
+end
+
+procedure <a href="#NWDT">strip_whitespace</a>(s)
+  r := &quot;&quot;
+  s ? {
+    while r ||:= tab(upto(' \t')) do tab(many(' \t'))
+    return r || tab(0)
+  }
+end
+
+</pre><blockquote>Defines <a href="#NWI-strip_asm_whitespace"><code>strip_asm_whitespace</code></a>, <a href="#NWI-strip_whitespace"><code>strip_whitespace</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWD5">D3</a>, <a href="#NWD6">D4</a>, <a href="#NWD7">D5</a>, <a href="#NWD8">D6</a>, <a href="#NWassB-*-7">D7</a>, <a href="#NWassB-*-8">D8</a>, <a href="#NWassB-*-9">D9</a>, <a href="#NWassB-*-A">D10</a>, <a href="#NWD9">D11</a>, <a href="#NWDA">D12</a>, <a href="#NWDC">D13</a>, <a href="#NWassB-*-E">D14</a>, <a href="#NWassB-*-F">D15</a>, <a href="#NWDE">D16</a>, <a href="#NWDF">D17</a>, <a href="#NWDH">D18</a>, <a href="#NWDI">D19</a>, <a href="#NWDJ">D20</a>, <a href="#NWDK">D21</a>, <a href="#NWDM">D22</a>, <a href="#NWDN">D23</a>, <a href="#NWDO">D24</a>, <a href="#NWDP">D25</a>, <a href="#NWDQ">D26</a>, <a href="#NWDR">D27</a>, <a href="#NWDS">D28</a>, <a href="#NWassB-*-T">D29</a>, <a href="#NWDT">D30</a>
+<li><a href="#NWD2"><i>&lt;assembly-impl.t&gt;</i></a>: <a href="#NWD2">D1</a>
+<li><a href="#NWassB-comR-1"><i>&lt;complain no names specified&gt;</i></a>: <a href="#NWDI">U1</a>, <a href="#NWassB-comR-1">D2</a>
+<li><a href="#NWassB-conN-1"><i>&lt;constype-print-header.t&gt;</i></a>: <a href="#NWassB-conN-1">D1</a>
+<li><a href="#NWassB-gloK-1"><i>&lt;glob a concatenation&gt;</i></a>: <a href="#NWassB-*-7">U1</a>, <a href="#NWassB-gloK-1">D2</a>
+<li><a href="#NWassB-insX-1"><i>&lt;insist on names if <code>%s</code> is used&gt;</i></a>: <a href="#NWD9">U1</a>, <a href="#NWassB-insX-1">D2</a>
+<li><a href="#NWassB-ins15-1"><i>&lt;insist that <code>name</code> not refer to a constructor type or relocatable&gt;</i></a>: <a href="#NWD9">U1</a>, <a href="#NWassB-ins15-1">D2</a>
+<li><a href="#NWassB-ins17-1"><i>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same names&gt;</i></a>: <a href="#NWDC">U1</a>, <a href="#NWassB-ins17-1">D2</a>
+<li><a href="#NWassB-ins1H-1"><i>&lt;insist that <code>operands</code> and operands of <code>cons</code> have the same signed operands&gt;</i></a>: <a href="#NWDC">U1</a>, <a href="#NWassB-ins1H-1">D2</a>
+<li><a href="#NWassB-intI-1"><i>&lt;int-print-header.t&gt;</i></a>: <a href="#NWassB-intI-1">D1</a>
+<li><a href="#NWDL"><i>&lt;let <code>call</code> represent a call to the assembly proc for <code>cons</code>&gt;</i></a>: <a href="#NWDK">U1</a>, <a href="#NWDL">D2</a>
+<li><a href="#NWDD"><i>&lt;<code>operands</code> matches existing assembly syntax for <code>cons</code>&gt;</i></a>: <a href="#NWDC">U1</a>, <a href="#NWDD">D2</a>
+<li><a href="#NWassB-setn-1"><i>&lt;set <code>limit</code> based on <code>ipt</code> and the name table&gt;</i></a>: <a href="#NWDI">U1</a>, <a href="#NWassB-setn-1">D2</a>
+<li><a href="#NWassB-setz-1"><i>&lt;set <code>nametable</code> to the name table, checking for consistency&gt;</i></a>: <a href="#NWD9">U1</a>, <a href="#NWassB-setz-1">D2</a>
+<li><a href="#NWassB-wrir-1"><i>&lt;write tag definitions for typed <code>kept_constructors</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWassB-wrir-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-asmopcode" href="#NWD7">asmopcode</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-asmoperand" href="#NWD9">asmoperand</a>: <a href="#NWD9">D1</a>
+<li><a name="NWI-asmoperands" href="#NWDC">asmoperands</a>: <a href="#NWD5">U1</a>, <a href="#NWDC">D2</a>, <a href="#NWDF">U3</a>, <a href="#NWDQ">U4</a>
+<li><a name="NWI-asmsyntax" href="#NWDC">asmsyntax</a>: <a href="#NWDB">U1</a>, <a href="#NWDC">D2</a>, <a href="#NWDD">U3</a>
+<li><a name="NWI-assembler_proc_class" href="#NWDE">assembler_proc_class</a>: <a href="#NWDE">D1</a>, <a href="#NWDF">U2</a>
+<li><a name="NWI-assembler_proc_name" href="#NWDE">assembler_proc_name</a>: <a href="#NWDE">D1</a>, <a href="#NWDF">U2</a>, <a href="#NWDL">U3</a>
+<li><a name="NWI-consname2asm" href="#NWD5">consname2asm</a>: <a href="#NWD5">D1</a>, <a href="#NWDF">U2</a>, <a href="#NWDQ">U3</a>
+<li><a name="NWI-consume_globs" href="#NWassB-*-7">consume_globs</a>: <a href="#NWD8">U1</a>, <a href="#NWassB-*-7">D2</a>, <a href="#NWassB-gloK-1">U3</a>
+<li><a name="NWI-create_constype_print_proc" href="#NWDK">create_constype_print_proc</a>: <a href="#NWDH">U1</a>, <a href="#NWDK">D2</a>
+<li><a name="NWI-create_field_nonterminal" href="#NWassB-*-T">create_field_nonterminal</a>: <a href="#NWDQ">U1</a>, <a href="#NWassB-*-T">D2</a>
+<li><a name="NWI-create_input_print_proc" href="#NWDH">create_input_print_proc</a>: <a href="#NWDF">U1</a>, <a href="#NWDH">D2</a>
+<li><a name="NWI-create_integer_print_proc" href="#NWDI">create_integer_print_proc</a>: <a href="#NWDH">U1</a>, <a href="#NWDI">D2</a>
+<li><a name="NWI-do_number_braces" href="#NWassB-*-8">do_number_braces</a>: <a href="#NWassB-*-8">D1</a>
+<li><a name="NWI-dump_em" href="#NWassB-*-F">dump_em</a>: <a href="#NWDD">U1</a>, <a href="#NWassB-*-F">D2</a>
+<li><a name="NWI-emit_asm_grammar" href="#NWDO">emit_asm_grammar</a>: <a href="#NWDO">D1</a>
+<li><a name="NWI-emit_asm_printf" href="#NWDN">emit_asm_printf</a>: <a href="#NWDF">U1</a>, <a href="#NWDI">U2</a>, <a href="#NWDN">D3</a>
+<li><a name="NWI-emit_assembler_body" href="#NWDF">emit_assembler_body</a>: <a href="#NWD3">U1</a>, <a href="#NWDF">D2</a>
+<li><a name="NWI-emit_assembly" href="#NWD1">emit_assembly</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-emit_assembly_implementation" href="#NWD3">emit_assembly_implementation</a>: <a href="#NWD1">U1</a>, <a href="#NWD3">D2</a>
+<li><a name="NWI-emit_cons_production" href="#NWDQ">emit_cons_production</a>: <a href="#NWDO">U1</a>, <a href="#NWDQ">D2</a>
+<li><a name="NWI-emit_literal_syntax" href="#NWDR">emit_literal_syntax</a>: <a href="#NWDQ">U1</a>, <a href="#NWDR">D2</a>, <a href="#NWassB-*-T">U3</a>
+<li><a name="NWI-emit_operand_syntax" href="#NWDS">emit_operand_syntax</a>: <a href="#NWDQ">U1</a>, <a href="#NWDS">D2</a>
+<li><a name="NWI-field_nonterminal" href="#NWassB-*-T">field_nonterminal</a>: <a href="#NWDS">U1</a>, <a href="#NWassB-*-T">D2</a>
+<li><a name="NWI-globmap" href="#NWD8">globmap</a>: <a href="#NWD6">U1</a>, <a href="#NWD8">D2</a>
+<li><a name="NWI-globpair" href="#NWD7">globpair</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-grhsimage" href="#NWassB-*-A">grhsimage</a>: <a href="#NWassB-*-9">U1</a>, <a href="#NWassB-*-A">D2</a>
+<li><a name="NWI-insert_glob_matches" href="#NWassB-*-9">insert_glob_matches</a>: <a href="#NWD8">U1</a>, <a href="#NWassB-*-9">D2</a>
+<li><a name="NWI-lookup_printproc" href="#NWDJ">lookup_printproc</a>: <a href="#NWDI">U1</a>, <a href="#NWDJ">D2</a>, <a href="#NWDK">U3</a>
+<li><a name="NWI-map_component" href="#NWD6">map_component</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-map_fullname" href="#NWD6">map_fullname</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-nonterminal_name" href="#NWDP">nonterminal_name</a>: <a href="#NWDP">D1</a>, <a href="#NWDQ">U2</a>
+<li><a name="NWI-number_braces" href="#NWassB-*-8">number_braces</a>: <a href="#NWassB-*-8">D1</a>
+<li><a name="NWI-opcode_full" href="#NWD6">opcode_full</a>: <a href="#NWD6">D1</a>, <a href="#NWD7">U2</a>
+<li><a name="NWI-opcode_globs" href="#NWD6">opcode_globs</a>: <a href="#NWD6">D1</a>, <a href="#NWD7">U2</a>
+<li><a name="NWI-operand_input_syntax_tab" href="#NWDS">operand_input_syntax_tab</a>: <a href="#NWDS">D1</a>
+<li><a name="NWI-operands_match" href="#NWassB-*-E">operands_match</a>: <a href="#NWDD">U1</a>, <a href="#NWassB-*-E">D2</a>
+<li><a name="NWI-operand_syntax" href="#NWD9">operand_syntax</a>: <a href="#NWD9">D1</a>, <a href="#NWDA">U2</a>, <a href="#NWDK">U3</a>
+<li><a name="NWI-operand_syntax_of" href="#NWDA">operand_syntax_of</a>: <a href="#NWDA">D1</a>, <a href="#NWDH">U2</a>
+<li><a name="NWI-operand_syntax_tab" href="#NWD9">operand_syntax_tab</a>: <a href="#NWD9">D1</a>, <a href="#NWDA">U2</a>
+<li><a name="NWI-percent_split" href="#NWDM">percent_split</a>: <a href="#NWassB-insX-1">U1</a>, <a href="#NWDI">U2</a>, <a href="#NWDM">D3</a>
+<li><a name="NWI-printproc_key" href="#NWDJ">printproc_key</a>: <a href="#NWDJ">D1</a>
+<li><a name="NWI-printproctab" href="#NWDJ">printproctab</a>: <a href="#NWDJ">D1</a>
+<li><a name="NWI-save_printproc" href="#NWDJ">save_printproc</a>: <a href="#NWDI">U1</a>, <a href="#NWDJ">D2</a>, <a href="#NWDK">U3</a>
+<li><a name="NWI-set_asmsyntax" href="#NWDC">set_asmsyntax</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-strip_asm_whitespace" href="#NWDT">strip_asm_whitespace</a>: <a href="#NWDT">D1</a>
+<li><a name="NWI-strip_whitespace" href="#NWDT">strip_whitespace</a>: <a href="#NWDT">D1</a>
+</ul>
+</body></html>
+

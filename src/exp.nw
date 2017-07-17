@@ -1,0 +1,1132 @@
+% l2h ignore change {
+\chapter{Expressions and Equations}
+
+{\em Expressions} describe all the value manipulations performed by the toolkit.
+They include not only manipulations that can be expressed using the
+input expression language, but also manipulations that are generated internally, 
+including slicing, narrowing, sign extension, division, and modulus. 
+A special normal form is used to represent sums
+of terms with constant coefficients.
+The integer~1 may also be used as a term; 
+it is multiplied by a coefficient to represent a constant term, if any.
+This normal form is represented as an Icon table in which the keys are the terms 
+and the values are the coefficients.  
+For example, the expression [[10*x + 4]] is represented by the Icon
+table mapping [["x"]] to 10 and 1 to 4.
+
+These expressions are used both in equation solving and to compute the values of fields. 
+I give definitions in terms of Modula-3.
+[[x]] and [[y]] are expressions; [[n]] and [[lo]] are integer constants.
+<<*>>=
+record Eorb(x, y)                       # Word.Or(x, y)
+record Eand(x, y)                       # x AND y               -- short-circuit Boolean
+record Eslice(x, lo, n)                 # Word.Extract(x, lo, width)
+record Eshift(x, n)                     # Word.Shift(x, n) -- n>0 shifts left
+record Enarrowu(x, n)                   # narrow to n bits, unsigned, with check
+record Enarrows(x, n)                   # narrow to n bits,   signed, with check
+record Ewiden(x, n)                     # sign-extend low n bits
+record Ediv(x, n)                       # x DIV y
+record Emod(x, n)                       # x MOD y
+record Efitsu(x, n)                     # unsigned value x fits in n bits
+record Efitss(x, n)                     # signed value x fits in n bits
+record Epatlabel(l)			# reference to patlabel l
+record Eforce(x)                        # force relocatable x to an integer
+record Eforceable(x)                    # true iff relocatable x has known address
+record Epc()				# start of pattern match or token emission
+record Epc_known()			# predicate needed in encoding
+record Sstmts(x)                        # sequence of statements
+record Enot(x)                          # NOT x
+record Enosimp(x)                       # x, but suppress simplification
+record Semit(x)                         # emit list of Stoken
+record Stoken(x, n, offset)             # emit x with width n (offset from beginning)
+					#	(offset >= 0 always)
+record Einstance(cons, argt)            # cons applied to arguments in table argt
+record Einstance_input(x, cons, name)   # input name from instance x of constructor cons
+record Einstance_tagged(x, cons, uid)   # true iff instance x tagged as constructor cons
+record Ebinding_instance(name, type, vart) # binding instance of constructor-typed input
+					   # vart is table used to find fresh vars
+record Sif(arms)                        # list of Sguarded
+record Sguarded(guard, x)               # if guard then x (in Sif)
+record Sepsilon()                       # empty statement
+record Efail(msg)                       # result of selecting from the wrong constructor
+record Eapp(f, args)			# function application
+record Eclosure_loc()			# location of a relocation closure
+record Eclosure_addr(n)			# relocatable address in a relocation closure
+record Eclosure_val(n)			# value in a relocation closure
+<<argument descriptions>>=
+expargs x y arms guard left right args.
+special simplify Einstance Stagcase Enosimp Sif.
+special hoist Epc Epc_known Eorb Sguarded Sepsilon Sfail Stoken Eforce.
+@
+The  following types officially represent values:
+<<*>>=
+procedure exptypes()
+  suspend "string" | "integer" | "table" | "Eorb" | "Eslice" | "Eshift" | "Enarrowu" |
+          "Enarrows" | "Ewiden" | "Ediv" | "Emod" | "Einstance_input" | "Einstance" |
+          "Ebinding_instance" | "Eapp" | "Eclosure_loc" | "Eclosure_addr" |
+          "Eclosure_val"
+end
+@ 
+An {\em equation} asserts that two expressions are equal.
+In this code, I extend the term to cover what is more normally
+called an ``inequality''---a pair of expressions related by one of the usual
+relational operators.
+<<*>>=
+record eqn(left, op, right)             # equality or inequality
+@
+\section{Searching for subterms and free variables}
+[[subterms_matching(e, ty)]] suspends all subterms of [[e]] that have type [[ty]]. 
+<<*>>=
+procedure subterms_matching_f(e, types[])
+  return if type(e) == !types then e
+end
+
+procedure subterms_matching(e, types[])
+  suspend do_expwalk(e, subterms_matching_f, types)
+end
+@
+Finding free variables is a common enough case of [[subterms_matching]]
+that I define a special procedure for it:
+<<*>>=
+procedure free_variables_f(e)
+  return if type(e) == "string" then e
+end
+
+procedure free_variables(e)
+  suspend expwalk(e, free_variables_f)
+end
+@
+\section{Testing for equality}
+This is a conservative test.
+<<*>>=
+procedure exps_eq(e1, e2)
+  if e1 === e2 then return e2
+  e1 := untableexp(e1)
+  e2 := untableexp(e2)
+  return case type(e1) == type(e2) of {
+    <<cases for [[exps_eq]]>>
+  }
+end
+<<cases for [[exps_eq]]>>=
+"pattern"      : fail
+"disjunct"     : fail
+"adisjunct"    : fail
+"sequent"      : fail
+"patlabel"     : e1 === e2
+"latent_patlabel" : e1 === e2  ## ???
+"dots_sequent" : fail
+"constraint"   : fail
+"fieldbinding" : fail
+"field"        : e1 === e2
+"absolute_field" : exps_eq(e1.field, e2.field) & e1.offset = e2.offset
+<<cases for [[exps_eq]]>>=
+"list"         : if *e1 ~= *e2 then fail
+                 else {
+                   every i := 1 to *e1 do if not exps_eq(e1[i], e2[i]) then fail
+                   e1
+                 }
+"eqn"          : <<equations [[e1]] and [[e2]] are the same>>
+<<cases for [[exps_eq]]>>=
+"table"        : { if *e1 ~= *e2 then fail
+                   every k1 := key(e1) do
+                     if k2 := key(e2) & e2[k2] = e1[k1] & exps_eq(k1, k2) then &null 
+                     else fail
+		   e2
+                 }
+<<cases for [[exps_eq]]>>=
+"set"          : { if *e1 ~= *e2 then fail
+                   s := set()
+                   every x := !e1 do
+                     if exps_eq(x, y := !e2)
+                       then insert(s, y)
+                     else
+                       fail
+		   *s = *e2          
+                  }
+<<cases for [[exps_eq]]>>=
+"Eorb" | "Eand" : exps_eq(e1.x, e2.x) & exps_eq(e1.y, e2.y)
+"Eslice" : e1.lo = e2.lo & e1.n = e2.n & exps_eq(e1.x, e2.x)
+"Eshift" | "Enarrowu" | "Enarrows" | "Ewiden" | "Ediv" | "Emod" |
+"Efitsu" | "Efitss" : e1.n = e2.n & exps_eq(e1.x, e2.x)
+"Epatlabel" : e1.l === e2.l
+"Eforce" | "Eforceable" | "Enot" | "Enosimp" | "Sstmts" | "Semit" : exps_eq(e1.x, e2.x)
+"Epc" | "Epc_known" : true
+"Stoken" : e1.offset = e1.offset & e1.n = e2.n & exps_eq(e1.x, e2.x)
+"Einstance_input"  : e1.cons === e2.cons & e1.name == e2.name & exps_eq(e1.x, e2.x)
+"Einstance_tagged" : e1.cons === e2.cons & e1.uid = e2.uid & exps_eq(e1.x, e2.x)
+"Einstance"        : impossible("escaping Einstance")
+"Ebinding_instance": impossible("escaping Ebinding_instance")
+<<cases for [[exps_eq]]>>=
+"Sif" | "Sguarded" | "Stagcase" : fail
+<<cases for [[exps_eq]]>>=
+"Glines"    : fail
+"Gresynch"  : fail
+"Gblock"    : fail
+"Gdecl"     : fail
+"Gcase"     : fail
+"Gcasearm"  : fail
+"Ginrange"  : fail
+"Gsetname"  : fail
+"Gnomatch"  : fail
+"Gasgn"	    : fail
+"Tunsigned" : fail
+"Gcomment"  : fail
+"Gcommented" : e1.comment == e2.comment & exps_eq(e1.e, e2.e)
+<<cases for [[exps_eq]]>>=
+"string"  : e1 == e2
+"integer" : e1 = e2
+<<cases for [[exps_eq]]>>=
+"Eapp" : fail
+<<cases for [[exps_eq]]>>=
+"Eclosure_loc" : e1
+"Eclosure_addr" : e1.n = e2.n
+"Eclosure_val" : e1.n = e2.n
+@ 
+For matching equations, we have a plethora of possibilities.
+The first line is an optimization.
+For the second line, we test both for the same relation and
+``opposite'' relations.  Note that equality is its own opposite, so
+$a=b$ is equivalent to $a'=b'$ if either $a-b=a'-b'$ or $a-b=b'-a'$.
+Similarly for simple inequality.
+<<equations [[e1]] and [[e2]] are the same>>=
+(e1.op == e2.op, exps_eq(e1.left, e2.left), exps_eq(e1.right, e2.right)) |
+(d1 := subtract(e1.left, e1.right), 
+  (e1.op == e2.op, 
+   exps_eq(d1, subtract(e2.left, e2.right))) |
+  (e1.op == opposite_op(e2.op),
+   exps_eq(d1, subtract(e2.right, e2.left))))
+<<*>>=
+procedure opposite_op(op)
+  return case op of { 
+    "<"  : ">"
+    "<=" : ">="
+    ">"  : "<"
+    ">=" : "<="
+    "="  : "="
+    "!=" : "!="
+  }
+end    
+@
+<<*>>=
+procedure untableexp(e)
+  local result
+  if type(e) == "table" then {
+    every k := key(e) & e[k] = 0 do 
+      delete(e, k)
+    case *e of {
+      0: return 0
+      1: { k := key(e)
+           if k === 1 then return e[k]
+           else if e[k] = 1 then return k
+         }
+     }
+  }
+  return e
+end
+@
+\section{Substitution}
+I have two forms:  single value for variable and
+values for variables in table.
+<<*>>=
+procedure subst_f(e, var, value)
+  if type(e) === "string" then return if var == e then value else e
+end
+
+procedure subst(e, var, value)
+  return if var === value then e	# optimization
+         else do_gsubst(e, subst_f, [var, value])
+end
+@
+If [[all]] is not null, all the free variables in the expression
+must be bound by the table.
+<<*>>=
+procedure subst_tab_f(e, tbl, all)
+  return if type(e) == "string" then
+           \tbl[e] | if \all then 
+                       error("variable ", image(e)," is unbound in table ", 
+                                                   envimage(tbl, "substitions"))
+                     else 
+                       e
+end
+
+procedure subst_tab(e, tbl, all)
+  return do_gsubst(e, subst_tab_f, [tbl, all])
+end
+@ 
+Sometimes we just want to substitute for all elements of any table,
+even if they aren't just strings.
+<<*>>=
+procedure subst_table_elements_f(e, tbl)
+  return \tbl[e]
+end
+procedure subst_table_elements(e, tbl)
+  return do_gsubst(e, subst_table_elements_f, [tbl])
+end
+<<*>>=
+procedure subst_for_pc_f(e, val)
+  return if e === the_global_pc then val
+end
+
+procedure subst_for_pc(e, val)
+  return do_gsubst(e, subst_for_pc_f, [val])
+end
+@
+Sometimes the values in a table are expressions.
+<<*>>=
+procedure subst_values_in_table(t, var, value)
+  return do_gsubst_values_in_table(t, subst_f, [var, value])
+end
+
+procedure subst_tab_values_in_table(t, var, value)
+  return do_gsubst_values_in_table(t, subst_tab_f, [var, value])
+end
+
+procedure do_gsubst_values_in_table(t, f, closure)
+  n := 0
+  u := table()
+  every k := key(t) & x := do_gsubst(t[k], f, closure) do {
+    u[k] := x
+    if x ~=== t[k] then n +:= 1
+  }
+  return if n > 0 then u else t
+end
+@
+The solver needs destructive substitution when [[e]] is a table or an
+equation.\change{37} 
+Fortuitously, we can use the same code for [[dsubst]] and
+[[dsubst_tab]].
+<<*>>=
+procedure dsubst(e, var, value)
+  return destructive_subst(e, var, value, subst)
+end
+procedure dsubst_tab(e, tbl, all)
+  return destructive_subst(e, tbl, all, subst_tab)
+end
+<<*>>=
+procedure destructive_subst(e, a2, a3, substitute)
+  if type(e) == "eqn" then {
+    e.left  := destructive_subst(term2table(e.left),  a2, a3, substitute)
+    e.right := destructive_subst(term2table(e.right), a2, a3, substitute)
+  } else {
+    m := copy(e)
+    every k := key(m) & mm := m[k] & kk := substitute(k, a2, a3) do {
+      e[k] -:= mm
+      if type(kk) ~== "table" then
+        e[kk] +:= mm
+      else 
+        every v := key(kk) do e[v] +:= kk[v] * mm
+    }
+    every k := key(e) & e[k] = 0 do delete(e, k)
+  }
+  return e
+end  
+@
+\section{Simplification}
+I discovered late in the day that there need to be two kinds of simplification.
+Basically, some of the simplifying rules reduce the strength of operations, 
+and after strength reduction the solver can't always invert the results.
+On the other hand, there are situations in which one simply can't do without 
+simplification, as when it eliminates an unsolvable disjunct (see bug \#2).
+A tentative fix is to designate some simplification rules as 
+[[<<super rewrite rules>>]], and to use them only on expressions that won't be
+further transformed.
+They are used in [[super_simplify]] only.\change{11}
+
+[[simplify]] is not functional; it may mutate its argument.
+<<*>>=
+procedure simplify(e)
+  local left, right
+  return case type(e) of {
+    $define simfun simplify
+      <<basic cases for simplification>>
+      <<cases generated from rewrite rules>>
+    $undef simfun
+    default : e
+  }
+end
+@ I need an empty chunk for bootstrapping.
+<<cases generated from rewrite rules>>=
+<<*>>=
+procedure super_simplify(e)
+  local left, right
+  return case type(e) of {
+    $define simfun super_simplify
+      <<basic cases for simplification>>
+      <<cases generated from super rewrite rules>>
+    $undef simfun
+    default : e
+  }
+end
+@ I need an empty chunk for bootstrapping.
+<<cases generated from super rewrite rules>>=
+@
+<<basic cases for simplification>>=
+"eqn"      : {<<simplify equation>>}
+"pattern"  : {<<simplify pattern>>}
+"disjunct" : {<<simplify disjunct>>}
+"adisjunct": {<<simplify adisjunct>>}
+"sequent"  : if (l := simfun(e.constraints)) === e.constraints then e
+             else sequent(l, e.class)
+"patlabel"     : e
+"dots_sequent" : e
+"constraint"   : e
+"fieldbinding" : if (x := simfun(e.code)) === e.code then e 
+                 else fieldbinding(e.field, x)
+"absolute_field" : e
+  # don't call super_simplify --- can't spot which fields are used any more!
+  # change 50
+"set"   : {<<simplify set of conditions>>}
+"table" : {<<simplify table>>}
+"list"  : {l := maplist(simfun, e); if lists_match(e, l) then e else l}
+"integer" | "string" : e
+"Einstance" : {<<simplify instance's argument table>>}
+"Stagcase"  : {<<simplify tag case's arm table>>}
+"Sif"   : {<<simplify if statement>>}
+"Enosimp" : e       # suppresses simplification
+"Gcommented" : if (ee := simfun(e.e)) === e.e then e else Gcommented(ee, e.comment)
+"Gcomment" : e
+@
+@
+Simplification of a disjunct could fail, implying that the disjunct's
+condition is always false.
+<<simplify pattern>>=
+l := []; every put(l, simfun(!e.disjuncts))
+if lists_match(l, e.disjuncts) then e else pattern(l, e.name)
+<<simplify disjunct>>=
+c := simfun(e.conditions)
+if member(\c, 0) then fail
+else {
+  l := []; every put(l, vanishing_latent_patlabel ~=== simfun(!e.sequents))
+  if lists_match(l, e.sequents) then l := e.sequents
+  if ss := !l & type(ss) == "sequent" &
+     cc := !ss.constraints & type(cc) == "constraint" & cc.lo >= cc.hi 
+  then
+    fail # this disjunct can't match -- eliminate it
+  if c === e.conditions & l === e.sequents then e else disjunct(l, e.name, c)
+}
+<<simplify adisjunct>>=
+c := simfun(e.conditions)
+if member(\c, 0) then fail
+else {
+  l := simfun(e.aconstraints)
+  if cc := !l & type(cc) == "constraint" & cc.lo >= cc.hi then
+    fail # this disjunct can't match -- eliminate it
+  if c === e.conditions & l === e.aconstraints then e ### & a === e.answers then e 
+  else adisjunct(l, e.name, c, e.length, e.patlabelbindings) ### , a)
+}
+<<simplify set of conditions>>=
+s := set()
+every x := simfun(!e) do {
+  if type(x) == "eqn" then {
+    if      x.op == "="  & x.left === x.right then x := 1
+    else if x.op == "!=" & x.left === x.right then x := 0
+  }
+  insert(s, x) 
+}
+delete(s, 1)
+return if member(s, 0) then set([0])
+       else if sets_match(e, s) then e
+       else if *s = 0 then &null
+       else s       
+<<simplify instance's argument table>>=
+every k := key(e.argt) do e.argt[k] := simfun(e.argt[k])
+e
+<<simplify tag case's arm table>>=
+every k := key(e.arms) do e.arms[k] := simfun(e.arms[k])
+e
+<<simplify table>>=
+m := copy(e)
+every k := key(e) do {
+  m[k] -:= e[k]
+  add_to_table(m, simfun(k), e[k])
+}
+every k := key(m) & m[k] = 0 do delete(m, k)
+if *m > 1 then
+  return if tables_match(m, e) then e else m
+else
+  return if !m = 1 then key(m) else if key(m) === 1 then !m else m
+<<simplify equation>>=
+l := simfun(e.left)
+r := simfun(e.right)
+if exps_eq(l, r) then 
+  if e.left === 0 & e.right === 0 then e
+  else eqn(0, e.op, 0) 
+else if simfun === super_simplify & # not safe for decoding! see bugs{nnn}
+        ( (type(l) == "Enarrows", type(r) == "Eslice",   r.lo = 0) |
+          (type(l) == "Eslice",   type(r) == "Enarrows", l.lo = 0) ) & 
+        l.n = r.n & exps_eq(l.x, r.x)
+     then
+       simfun(Efitss(l.x, l.n))
+else 
+  if e.left === l & e.right === r then e
+  else eqn(l, e.op, r)
+<<simplify if statement>>=
+a := simp_arms(e.arms, simfun)
+if *a = 0 then Sepsilon()
+else if *a = 1 & guard_always_satisfied(a[1].guard) then a[1].x
+else if a === (e.arms) then e
+else Sif(a)
+<<*>>=
+procedure simp_arms(earms, simfun)
+  local arms
+  l := []
+  arms := copy(earms)
+  while a := get(arms) & g := simfun(a.guard) do
+    if guard_always_satisfied(g) then { # always take this arm
+      c := simfun(a.x)
+      put(l, if exps_eq(g, a.guard) & exps_eq(c, a.x) then a else Sguarded(g, c))
+      return if lists_match(l, earms) then earms else l
+    } else if not case type(g) of {
+      "integer" : g = 0
+      "set"     : member(g, 0)
+    } then { # sometimes take this arm
+      c := simfun(a.x)
+      put(l, if exps_eq(g, a.guard) & exps_eq(c, a.x) then a else Sguarded(g, c))
+    } 
+  return if lists_match(l, earms) then earms else l
+end
+<<*>>=
+procedure guard_always_satisfied(g)
+  return case type(g) of {
+      "integer" : g = 1
+      "set"     : *g = 0
+      "null"    : &null
+  } 
+end
+<<rewrite rules>>=
+Eorb(0, x) -> x
+Eorb(x, 0) -> x
+Eorb(N, M) -> ior(N, M)
+Eorb(Eorb(x, N), M) -> Eorb(x, ior(N, M))
+Eorb(N, x) -> Eorb(x, N)
+Eand(1, x) -> x
+Eand(0, _) -> 0
+Eand(x, 1) -> x
+Eand(_, 0) -> 0
+Eand(x, y) ->
+  if type(x) == "set" & *x = 0 then y
+  else if type(x) == "set" & *y = 0 then x
+  else e
+Eslice(N, lo, n) -> iand(ishift(N, -lo), 2^n-1)
+<<super rewrite rules>>=
+Eslice(Eshift(x, n), m, k) -> 
+  if m - n >= 0 then Eslice(x, m-n, k)
+  else Eslice(Eshift(x, n-m), 0, k)
+Eslice(y as Enarrowu(x, n), 0, m) -> if n <= m then y else e
+Eslice(y as Enarrows(x, n), 0, m) -> if n <= m then y else e
+Eslice(Eslice(x, l1, n1), l2, n2) -> 
+  if l2 >= n1 then 0 else Eslice(x, l1+l2, if n2 < n1-l2 then n2 else n1-l2)
+Eslice(y as Einstance_input(x, c, name), 0, n) ->
+  if ipt := inputs_of(c) & ipt.name == name & case type(ipt.meaning) of {
+    "field" : fwidth(ipt.meaning) <= n
+  } then y else e
+Eslice(x, 0, n) -> if n = wordsize then x else e
+<<rewrite rules>>=
+Eshift(x, 0) -> x
+Eshift(N, n) -> ishift(N, n)
+Enarrowu(N, n) -> if 0 <= N < 2^n then N else Efail(expimage(e))
+<<super rewrite rules>>=
+Enarrowu(y as Eslice(x, lo, n), m) -> if n <= m then y else e
+Enarrowu(x, M) -> if M >= wordsize then x else e
+<<rewrite rules>>=
+Ewiden(N, n) -> 
+  if (iand(N,2^(n-1)) = 0) then iand(N,2^n-1) 
+  else ior(iand(2^wordsize-1,icom(2^n-1)),N)
+Enarrows(N, n) -> 
+  if -(2^(n-1)) <= N < 2^(n-1) then iand(N,2^n-1) else Efail(expimage(e))
+<<super rewrite rules>>=
+Ewiden(x, n) -> if n = wordsize then x else e
+Enarrows(y as Eslice(x, lo, n), m) -> if n < m then y else e
+<<rewrite rules>>=
+Enarrows(Ewiden(x, n), m) -> if n = m then x else e
+Enarrows(y as Enarrows(x, n), m) -> if n = m then y else e
+@ 
+Note we can't rewrite [[Ewiden(Enarrows(x, N), N)]] as [[x]] because
+there's no way to pick up [[Efitss(x, N)]].  Ugh.
+<<super rewrite rules>>=
+Enarrows(x, M) -> if M >= wordsize then x else e
+Ediv(N, M) -> if N > 0 then N / M else (N - M + 1) / M  # force toward - infinity
+<<super rewrite rules>>=
+Ediv(x, N) -> simfun(Eshift(x, - exactlog2(N))) | e
+<<rewrite rules>>=
+Emod(N, M) -> {x := integer(N % M); while x < 0 do x +:= M; x}
+<<super rewrite rules>>=
+Emod(x, N) ->
+  if x := strip_const_multiple_N(x, N) then
+    simfun(Eslice(x, 0, exactlog2(N))) | Emod(x, N)
+  else
+    simfun(Eslice(x, 0, exactlog2(N))) | e
+@ 
+This procedure helps optimize the constant term out of modulus expressions.
+<<*>>=
+procedure strip_const_multiple_N(x, N) 
+  local y
+  if type(x) == "table" & x[1] ~= 0 & x[1] % N = 0 then {
+    y := copy(x)
+    y[1] := 0
+    return y
+  }
+end
+<<rewrite rules>>=
+Efitsu(N, m) -> if 0 <= N < 2^m then 1 else 0
+Efitsu(Enarrowu(x, n), m)   -> if n <= m then 1 else e
+Efitsu(Enarrows(x, n), m)   -> if n <= m then 1 else e
+Efitsu(Eslice(x, lo, n), m) -> if n <= m then 1 else e
+Efitsu(y as Einstance_input(_, _, _), m) -> 
+  if known_to_fit(input_fitsu, y, &null, m) then 1 else e
+Efitsu(Eshift(x, n), m)     -> simfun(Efitsu(x, m-n))
+Efitsu(x, M) -> if M >= wordsize then 1 else e
+Efitss(N, m) -> if -(2^(m-1)) <= N < 2^(m-1) then 1 else 0
+Efitss(Enarrowu(x, n), m)   -> if n < m then 1 else e
+Efitss(Enarrows(x, n), m)   -> if n < m then 1 else e
+Efitss(Eslice(x, lo, n), m) -> if n < m then 1 else e
+Efitss(Ewiden(Eslice(x, lo, n), m), mm) -> 
+  if n = m <= mm then 1 
+  else if lo > 0 then simfun(Efitss(Ewiden(Eslice(x, 0, n+lo), m+lo), mm+lo))
+  else e
+Efitss(y as Einstance_input(_, _, _), m) -> 
+  if known_to_fit(input_fitss, y, &null, m) then 1 else e
+Efitss(Eshift(x, n), m)     -> simfun(Efitss(x, m-n))
+Efitss(x, M) -> if M >= wordsize then 1 else e
+Eforce(x as Eforce(_)) -> x
+Eforce(N) -> N
+Eforceable(N) -> 1
+Enot(N) -> if N = 0 then 1 else 0
+Enot(Enot(x)) -> x
+@ See [[eliminate_instances]] for an explanation of why the
+transformations below are no longer implemented as rewrite rules.
+<<former rewrite rules now implemented by [[eliminate_instances]]>>=
+Einstance_tagged(Einstance(c, a), c2, uid) -> if c === c2 then 1 else 0
+Einstance_input(Einstance(c, a), c2, name) -> if c === c2 then a[name] 
+                                              else Efail(expimage(e))
+Einstance_tagged(Ewildcard(_), _, _) -> 1
+Einstance_input(Ewildcard(iname), c, fname) ->
+   Ewildcard(iname || "." || c.name || "." || fname)
+latent_patlabel(Einstance(_, _)) -> vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -> patlabel(nam, nam)
+<<rewrite rules>>=
+Sstmts(l) -> case *l of { 0 : Sepsilon(); 1: l[1]; default : e }
+<<*>>=
+procedure exactlog2(n)
+  local log
+  log := 0
+  while 2^log < n do log +:= 1
+  if n = 2^log then return log else fail
+end
+@
+\section{Imaging}
+[[expimage]] prints a readable form of an expression.
+It is used only for diagnostic purposes; a separate procedure is
+used to produce C (or Modula-3) code that implements an expression.
+<<*>>=
+procedure expimage(e, pp, precedence, associativity)
+  local leadingsign, prefix
+  static nopp
+  initial {<<initialize [[prec]] and [[assoc]]>>
+           <<initialize nopp>>}
+  /pp := nopp
+  /precedence := 0
+  /associativity := "L"
+  return case type(e) of {
+    <<cases for [[expimage]]>>
+    default    : (proc(type(e) || "image") | image)(e)
+  }
+end
+@
+[[expimage]] can optionally use a prettyprinter, but by default it uses none.
+<<*>>=
+record ppspec(be, en, in, ou, nl, on, cn) # { } t b m o c
+<<initialize nopp>>=
+nopp := ppspec("", "", "", "", "", "", "")
+<<*>>=
+procedure ppexpimage(e)
+  static pp
+  initial pp := ppspec("${", "$}", "$t", "$b", "$n", "$o", "$c")
+  return expimage(e, pp)
+end
+<<cases for [[expimage]]>>=
+"arm" : pp.in || "| @" || e.file || ":" || e.line || ": " || pp.be ||
+        expimage(e.pattern, pp) || pp.en || " => " || pp.cn || expimage(e.code, pp) ||
+        pp.ou 
+<<cases for [[expimage]]>>=
+"pattern"  : if *e.disjuncts > 0 then {
+               s := commaseparate(maplist3(expimage, e.disjuncts, pp, prec["|"]),
+                                  " " || pp.cn || "| ")
+               bracket(s, pp, "|", precedence) ### || ("[[" || \e.name || "]]" | "")
+             } else "<NOMATCH>"
+<<cases for [[expimage]]>>=
+"disjunct" : { s := "(" || (if \e.name then e.name else "?noname?") || ") " 
+               s ||:= if *\e.conditions > 0 then
+                      "{" || pp.be || expimage(e.conditions, pp) || pp.en || "} => " ||
+                      pp.in || pp.cn
+                    else ""
+               s ||:= if *e.sequents = 0 then "epsilon"
+                      else { 
+                        prefix := ""
+                        every i := 1 to *e.sequents do {
+                          s ||:= prefix || expimage(e.sequents[i], pp, prec[";"])
+                          prefix := 
+                            (if type(e.sequents[i]) == ("patlabel"|"latent_patlabel") 
+                             then ": " 
+                             else "; ") || pp.on
+                        }
+                      }
+               s ||:= if *\e.conditions > 0 then pp.ou else ""
+               bracket(s, pp, ";", precedence) ### || ("[" || \e.name || "]" | "")
+             }
+<<cases for [[expimage]]>>=
+"adisjunct" : {  s := "(" || (if \e.name then e.name else "?noname?") || ") " 
+                 s ||:= if \e.patlabelbindings then {
+                  "[" || pp.in || pp.be || bindingimage(e.patlabelbindings, pp) || 
+                         pp.en || pp.ou || "] " || pp.cn
+                } else ""
+                s ||:= if *\e.conditions > 0 then
+                      "{" || pp.be || expimage(e.conditions, pp) || pp.en || "} => " ||
+                      pp.in || pp.cn
+                    else ""
+	       s ||:= "LENGTH = " || expimage(e.length) || ", "
+               s ||:= if *e.aconstraints = 0 then "<MATCH>"
+                      else commaseparate(maplist3(expimage, e.aconstraints, pp, prec["&"]),
+                                      " & " || pp.on)
+               s ||:= if *\e.conditions > 0 then pp.ou else ""
+###               if *\e.answers > 0 then {
+###                 l := []
+###                 every k := key(e.answers) do
+###                   put(l, k || " = " || expimage(e.answers[k], pp, prec["="]))
+###                 s ||:= pp.in || pp.on || "{" || pp.in || pp.be ||
+###                     commaseparate(l, ", " || pp.cn) || pp.en || pp.ou || "}" || pp.ou
+###               }               
+               bracket(s, pp, "&", precedence)
+             }
+<<*>>=
+procedure bindingimage(t, pp)
+  local sep, id
+  sep := ""
+  s := ""
+  every id := key(t) do {
+    s ||:= sep || pp.be || id || " -> " || expimage(t[id], pp) || pp.en
+    sep := ", " || pp.on
+  }
+  return s
+end
+<<cases for [[expimage]]>>=
+"sequent"  : { s := if *e.constraints = 0 then "some " || e.class.name
+                    else commaseparate(maplist3(expimage, e.constraints, pp, prec["&"]),
+                                       " & " || pp.on)
+               pp.be || bracket(s, pp, "&", precedence) || pp.en
+             }
+"patlabel"        : \e.name | e.original_name || "#" || image(e)[17:-3] ||
+                    ("@" || \e.offset | "") || ":"
+"latent_patlabel" : "(?" || expimage(e.instance, pp, prec[","]) || ":)"
+"dots_sequent"    : "..."
+"constraint"      : bracket(stringininterval(expimage(e.field, pp, prec["="]), 
+                                             e.lo, e.hi), pp, "=", precedence)
+"fieldbinding"    : { s := expimage(e.field) || " = " || expimage(e.code, pp,prec["="])
+                      bracket(s, pp, "=", precedence)
+                    }
+"field"  : e.name
+"absolute_field" : "{" || expimage(e.field) || " at " || e.offset || "}"
+<<cases for [[expimage]]>>=
+"binding_instance" : expimage(e.val) || " : " || expimage(e.type)
+"constype" : "constructor-type " || e.name
+<<cases for [[expimage]]>>=
+"list"     : commaseparate(maplist3(expimage, e, pp, prec[","]), ", " || pp.on)
+"set"      : commaseparate(maplist3(expimage, sort(e), pp, prec[","]), ", " || pp.on)
+"eqn"      : bracket(expimage(e.left, pp, prec["="]) || " " || e.op || " " || pp.on || 
+                     expimage(e.right, pp, prec["="]), pp, "=", precedence)
+"table"    : {                      # standard normal form
+    <<make [[s]] represent table [[e]], but elide additive and multiplicative units>>
+    pp.in || pp.be || s || pp.en || pp.ou
+  }
+"string"   : e
+"literal"  : image(e.s)
+"integer"  : string(e)
+"null"     : image(e)
+@ The old version printed in any old order, but the new version prints
+positive terms first, then negative terms, with the constant term last in its group.
+\change{23}
+<<make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  s := ""; leadingsign := ""
+  <<add positive terms to [[s]]>>
+  leadingsign := " - " || pp.on
+  <<add negative terms to [[s]]>>
+  s := if s == "" then "0" else bracket(s, pp, "+", precedence)
+}
+<<add positive terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] > 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= expimage(k, pp, prec["+"])
+    leadingsign := " + " || pp.on
+}
+if e[1] > 0 then s ||:= leadingsign || string(e[1])
+<<add negative terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] < 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= expimage(k, pp, prec["+"])
+}
+if e[1] < 0 then s ||:= leadingsign || string(-e[1])
+@
+<<old make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := " + " || pp.on }
+  else s := leadingsign := ""
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] < 0 then " - " else leadingsign
+      leadingsign := " + " || pp.on
+      s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+      s ||:= expimage(k, pp, prec["+"])
+  }
+  s := if s == "" then "0" else bracket(s, pp, "+", precedence)
+}
+<<cases for [[expimage]]>>=
+"Eorb"     : { s := expimage(e.x, pp, prec["Eorb"], "L")
+               t := expimage(e.y, pp, prec["Eorb"], "R")
+               bracket(s || " ORB " || pp.on || t, pp, "Eorb", precedence)
+             }
+"Eand"     : { s := expimage(e.x, pp, prec["Eand"], "L")
+               t := expimage(e.y, pp, prec["Eand"], "R")
+               bracket(s || " AND " || t, pp, "Eand", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Eslice"   : { s := expimage(e.x, pp, prec["Eslice"]) 
+               s ||:= "[" || e.lo || ":" || (e.lo + e.n - 1) || "]"
+               bracket(s, pp, "Eslice", precedence)
+             }
+"Eshift"   : { s := expimage(e.x, pp, prec["Eshift"]) 
+               s ||:= if e.n < 0 then (" >> " || -e.n) else (" << " || e.n)
+               bracket(s, pp, "Eshift", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Enarrowu" : { s := expimage(e.x, pp, prec["Enarrowu"]) 
+               s ||:= "[" || e.n || "]"
+               bracket(s, pp, "Enarrowu", precedence)
+             }
+"Enarrows" : { s := expimage(e.x, pp, prec["Enarrows"]) 
+               s ||:= "[" || e.n || "!]"
+               bracket(s, pp, "Enarrows", precedence)
+             }
+"Ewiden"   : { s := expimage(e.x, pp, prec["Ewiden"]) 
+               s ||:= "!" || e.n
+               bracket(s, pp, "Ewiden", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Ediv"     : { s := expimage(e.x, pp, prec["Ediv"]) 
+               s ||:= " DIV " || e.n
+               bracket(s, pp, "Ediv", precedence)
+             }
+"Emod"     : { s := expimage(e.x, pp, prec["Emod"]) 
+               s ||:= " MOD " || e.n
+               bracket(s, pp, "Emod", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Semit"    : commaseparate(maplist3(expimage, e.x, pp, prec[","]), ";" || pp.cn)
+"Stoken"   : { s := "EMIT@" || e.offset || "(" || pp.in || 
+                    expimage(e.x, pp, prec[","]) || ", " || 
+                    pp.on || e.n || ")" || pp.ou
+               bracket(pp.cn || s, pp, "app", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Efitsu"   : { s := "FITSU(" || expimage(e.x, pp, prec[","]) || ", " || pp.on || e.n||")"
+               bracket(s, pp, "app", precedence)
+             }
+"Efitss"   : { s := "FITSS(" || expimage(e.x, pp, prec[","]) || ", " || pp.on ||e.n ||")"
+               bracket(s, pp, "app", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Epatlabel" : "LOCATION_OF(" || expimage(e.l, pp, prec[","]) || ")" 
+<<cases for [[expimage]]>>=
+"Eforce"   : { s := "FORCE(" || expimage(e.x, pp, prec[","]) || ")"
+               bracket(s, pp, "app", precedence)
+             }
+"Eforceable":{ s := "FORCEABLE(" || expimage(e.x, pp, prec[","]) || ")"
+               bracket(s, pp, "app", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Epc"       : "FORCE(<program counter>)"
+"Epc_known" :" FORCEABLE(<program counter>)"
+<<cases for [[expimage]]>>=
+"Enot"      : { s := "NOT " || expimage(e.x, pp, prec["NOT"])
+                bracket(s, pp, "NOT", precedence)
+              }
+<<cases for [[expimage]]>>=
+"Enosimp"   : expimage(e.x, pp, precedence, associativity)
+<<cases for [[expimage]]>>=
+"Sstmts"    : pp.in || pp.be || "{ " || pp.cn || 
+              commaseparate(maplist3(expimage, e.x, pp), "; " || pp.cn) ||
+              pp.ou || pp.cn || " }" || pp.en
+<<cases for [[expimage]]>>=
+"Einstance" : { l := []; 
+                every i := inputs_of(e.cons) do
+                  put(l, expimage(e.argt[i.name], pp))
+                s := e.cons.name || "(" || commaseparate(l, ", " || pp.on) || ")"
+                bracket(s, pp, "app", precedence)
+              }
+"Einstance_input" : { 
+               s := expimage(e.x, pp, prec["."]) || "." || e.cons.name || "." || e.name
+               bracket(s, pp, ".", precedence)
+             }
+"Einstance_tagged" : { 
+               s := expimage(e.x, pp, prec["="]) || " IS " || e.cons.name 
+               bracket(s, pp, "=", precedence)
+             }
+"Ebinding_instance" : e.name || " : " || e.type.name
+<<cases for [[expimage]]>>=
+"Sif"      : { s := pp.cn || "if"
+               every s ||:= 
+                 pp.cn || ":: " || pp.in || expimage(!e.arms, pp, prec["low"]) || pp.ou
+               bracket(s || " " || pp.cn || "fi", pp, "app", precedence)
+             }
+"Sguarded" : { s := expimage(e.guard, pp, prec["Sguarded"]) || " -> " || 
+                    pp.in || pp.be || pp.cn ||
+                    expimage(e.x,     pp, prec["Sguarded"]) ||
+                    pp.en || pp.ou
+               bracket(s, pp, "Sguarded", precedence)
+             }
+<<cases for [[expimage]]>>=
+"Stagcase" : { s := "CASE " || expimage(e.x, pp) || " OF "
+              every c := kept_constructors(e.type) do
+                s ||:= pp.nl || "| " || c.name || " => " || pp.in || pp.in || pp.be ||
+                          pp.cn || expimage(e.arms[c], pp) || pp.en || pp.ou || pp.ou 
+              pp.be || pp.cn || s || pp.nl || "END (* " || expimage(e.x, pp) ||
+                  " *)" || pp.en || pp.on
+            }
+<<cases for [[expimage]]>>=
+"Sfail"    : { s := "FAIL(" || image(if *pp.nl > 0 then escape_dollars(e.fmt) else e.fmt)
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= ", " || pp.on || expimage(\a, pp, prec[","])
+               s := pp.in || pp.be || s || ")" || pp.en || pp.ou
+               bracket(s, pp, "app", precedence)
+             }
+"Sepsilon" : "/* skip */"
+<<cases for [[expimage]]>>=
+"Efail"    : "[BAD EXP: " || e.msg || "]"
+<<cases for [[expimage]]>>=
+"Glines"    : commaseparate(maplist2(expimage, e.x, pp), "\n")
+"Gresynch"  : "#line " || e.line  || " " || image(\e.file | "generated-code")
+"Gblock"    : { s := "{ " || pp.be || pp.in || pp.cn
+                every s ||:= expimage(!e.decls, pp) || "; " || pp.nl
+                every s ||:= expimage(!e.stmts, pp) || "; " || pp.cn
+                s || pp.ou || pp.cn || "}" || pp.en
+              }
+"Gdecl"     : { s := pp.be || expimage(e.type, pp) || " " || e.name 
+                s ||:= " = " || pp.in || pp.cn || expimage(\e.init, pp) || pp.ou
+                s || pp.en
+              }
+<<cases for [[expimage]]>>=
+"Gcase"     : { s := "CASE " || expimage(e.x, pp) || " OF "
+                every s ||:= expimage(!e.arms, pp)
+                pp.be || pp.cn || s || pp.nl || "END (* CASE " || expimage(e.x, pp) ||
+                  " *)" || pp.en || pp.on
+               }
+"Gcasearm"  : { s := pp.nl || "| " || pp.in
+                every i := 1 to *e.tags by 2 do {
+                  if i > 1 then s ||:= ", " || pp.on
+                  s ||:= if e.tags[i] + 1 = e.tags[i+1] then e.tags[i] 
+                         else e.tags[i] || ".." || (e.tags[i+1]-1)
+                } 
+                s ||:= " => "  || pp.in || pp.cn || expimage(e.x, pp)
+                pp.be || s || pp.ou || pp.ou || pp.en
+              }
+"Ginrange"  : bracket(pp.in || e.lo || " <= " || pp.on || 
+			 expimage(e.x, pp, prec["<="]) || " < " || e.hi, 
+                      pp, "<", precedence)
+"Gcomment"  : "(* COMMENT : " || e.s || " *)"
+"Gcommented" : expimage(e.e, pp)
+<<cases for [[expimage]]>>=
+"Gasgn"	    : bracket(e.lhs || " := " || expimage(e.x, pp, prec[":="]), 
+                      pp, ":=", precedence)
+"Gsetname"  : e.lhs || " := " || image(e.name)
+"Gnomatch"  : "<NO MATCH>"
+"Tunsigned" : { s := "unsigned"
+                s ||:= " /* " || \e.width || " bits */"
+                s
+              }
+<<cases for [[expimage]]>>=
+"Eapp" : image(e.f) || "(" || pp.in || expimage(e.args, pp, prec[","]) || pp.ou || ")"
+<<cases for [[expimage]]>>=
+"Eclosure" : "CLOSURE(" || pp.in || pp.be || pp.cn || 
+               "type = " || e.ty || ", " || pp.cn || 
+               "fun = " ||  e.fun || ", " || pp.cn || 
+               "header = " ||  e.headertype || ", " || pp.cn || 
+               "values = {" || expimage(e.values) || "}, " || pp.cn || 
+               "addresses = {" || expimage(e.addresses) || "}" || pp.en || pp.ou || ")"
+"Elambda" : pp.be || "(FN " || commaseparate(e.formals) || " => " || pp.in || pp.on ||
+               expimage(e.body, pp, prec[","]) || ")" || pp.ou || pp.en
+"Eclosure_loc"  : "CL->loc"
+"Eclosure_addr" : "CL->a" || e.n
+"Eclosure_val"  : "CL->v" || e.n
+<<*>>=
+global prec, assoc
+procedure bracket(s, pp, op, p, a)
+  /a := "L"
+  return pp.be || (if prec[op] > p | (prec[op] = p & assoc[p] == a) then s
+                   else "(" || s || ")") || pp.en
+end
+<<initialize [[prec]] and [[assoc]]>>=
+ops := ["N", ["low"],
+        "L", ["|", "pattern"],
+        "L", [";"],
+        "L", ["&", "sequent", "patlabel"],
+        "R", [":="],
+        "L", [","],
+        "N", ["Sguarded"],
+        "N", ["="],
+        "L", ["ORB", "Eorb"], 
+        "L", ["AND", "Eand"],
+        "L", ["<", "<="],
+        "L", ["+"],
+        "N", ["Emod", "Ediv", "*"],
+        "N", ["Eshift"],
+        "N", ["NOT"],
+        "L", ["Eslice", "Enarrowu", "Enarrows", "Ewiden", "."],
+        "N", ["app"],           # function application
+        "N", ["high"]
+       ]
+prec := table([])  # missed lookups break arithmetic comparisons
+assoc := table()
+every i := 1 to *ops by 2 do {
+  every prec[!ops[i+1]] := i
+  assoc[i] := ops[i]
+}
+@
+<<*>>=
+procedure escape_dollars(s)
+  r := ""
+  s ? {
+    while r ||:= tab(upto('$')) do { ="$"; r ||:= "$$" }
+    return r || tab(0)
+  }
+end
+@
+\section{Semantic functions}
+[[binop]] implements the semantics of binary operators.
+It modifies its inputs and returns [[e1]], 
+so it should be used only during parsing. 
+<<*>>=
+procedure binop(e1, op, e2) 
+  e1 := term2table(e1)
+  e2 := term2table(e2)
+  case op of {
+    "+" : every v := key(e2) do e1[v] +:= e2[v]
+    "-" : every v := key(e2) do e1[v] -:= e2[v]
+    "*" : if n2 := constant(e2) then {
+              every !e1 *:= n2
+          } else if n1 := constant(e1) then {
+              every !e2 *:= n1
+              e1 := e2
+          } else error("multiplication must be by constants only")
+    "/" : error("division is not permitted in this language")
+  }
+  return e1
+end
+<<*>>=
+procedure term2table(x)
+  return case type(x) of {
+    "table"   : x
+    "integer" : 1(e := table(0), e[1] := x)
+    default   : 1(e := table(0), e[x] := 1)
+  }
+end
+@
+[[addconst]] is nondestructive.
+<<*>>=
+procedure addconst(e, n)
+  if n = 0 then return e
+  if type(e) == "table" then
+    t := copy(e)
+  else {
+    t := table(0)
+    if type(t) == "integer" then t[1] := e else t[e] := 1
+  }
+  t[1] +:= n
+  return t
+end
+@
+It is necessary to identify a constant in normal form.
+<<*>>=
+procedure constant(e)
+  if type(c := untable(e)) == "integer" then return c
+end
+@
+<<*>>=
+procedure untable(e)
+  return if type(e) ~== "table" then e else {
+    n := 0
+    every k := key(e) & e[k] ~= 0 do n +:= 1
+    case n of {
+      0       : 0
+      1       : if k := key(e) & e[k] = 1 then k 
+                else if e[1] ~= 0 then e[1]
+                else e
+      default : e
+    }
+  } 
+end
+@
+\section{Creation}
+[[mkslice]] is used only to create slices from actual specifications,
+in which the bit numbering could change.
+\change{26}
+<<*>>=
+procedure mkslice(x, lo, hi)
+  local n # size of range
+  if lo < 0 then error("Can't take negative bit slice!!")
+  if hi <= lo then error(expimage(x), "[", lo, ":", hi - 1, "] has no bits!")
+  if hi > bitsizeof(x) then
+    error(if type(f := symtab[x]) == "field" then "Field " || f.name 
+          else "Host machine", 
+             " has only ", bitsizeof(x), " bits")
+  bit_numbering_used := 1
+  <<if needed, flip [[lo]] and [[hi]]>>
+  return Eslice(x, lo, hi - lo)
+end
+<<if needed, flip [[lo]] and [[hi]]>>=
+if /bit_zero_is_lsb then {
+  lo := bitsizeof(x) - hi
+  hi := bitsizeof(x) - lo
+}
+<<*>>=
+procedure bitsizeof(f)
+  return case type(symtab[f]) of {
+      "field" : fwidth(symtab[f])
+      default : wordsize
+    }
+end
+<<*>>=
+procedure fwidth(f)
+  return f.hi - f.lo
+end
+<<*>>=
+procedure mkshift(x, n)
+  return if n = 0 then x else 
+         ishift(\simp & constant(x), n) | Eshift(x, n)
+end
+<<*>>=
+record bogus(e) # ditch invalid field name complaint
+@ 
+[[flatten]] is used to flatten the argument lists of binary
+associative operators like [[Eorb]] and [[Eand]].
+<<*>>=
+procedure flatten(e, ty, l)
+  /l := []
+  return if type(e) == ty then 
+    flatten(e.x, ty, flatten(e.y, ty, l))
+  else
+    push(l, e)
+end
+@ 
+Unflatten takes the list and the operator and turns it back into a tree.
+<<*>>=   
+procedure unflatten(l, rator, zero)
+  if *l = 0 then return zero
+  else {
+    x := l[1]
+    every x := rator(x, l[2 to *l])
+  }
+  return x
+end

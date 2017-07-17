@@ -1,0 +1,670 @@
+<html><head><title> tree.nw</title></head><body>
+<h1>Generating decision trees</h1>
+<p>
+The crux of the problem is to transform a <em>matching statement</em> into a
+<em>decision tree</em>.  A matching statement has a <em>value</em>, a sequence
+of <em>arms</em>, and a <em>trailer</em>.
+Each arm has a pattern, and code to be executed.
+When the matching statement is executed, it chooses the first arm whose
+pattern matches the value, then executes the corresponding code, then
+executes the trailer.
+I generate a <em>decision tree</em> to do the job.
+Each internal node of the decision tree tests a field of a word.
+<a name="NWD1">It then chooses an edge (child) based on what range constraints can be</a>
+satisfied by the value of that field, and it continues testing fields
+until it reaches a leaf, at which time it executes the code associated
+with that leaf.
+<p>
+The goal of tree generation is not to generate just any tree, but the
+tree with the fewest nodes.  This problem is NP-complete, so I apply
+a few heuristics.  The results, at least for the machine descriptions
+I use, seem to be as good as what I would come up with by hand.
+
+When a pattern is in normal form, it is not obvious what word is
+tested by a particular range constraint; one needs to know the
+position of the sequent containing the range constraint.
+To make the problem simpler, I put the patterns into a new <em>absolute normal form</em>, which is described by the following rules:
+<ol>
+<li><a name="NWD2">Each disjunction contains not a list of sequents but a set of</a>
+range constraints and field bindings.
+<li>The range constraints and field bindings are made ``absolute'' by
+using an <code><a href="#NWD2">absolute_field</a></code> in place of a <code>field</code>.
+The <code><a href="#NWD2">absolute_field</a></code> gives the bit offset of the word containing the
+field (its size is available from the field's class).
+</ol>
+In support of this scheme, we use ``absolute disjuncts.''
+<pre><a name="NWtre7-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD4">-&gt;</a>]</b>
+record <a href="#NWD2">adisjunct</a>(aconstraints, name, conditions, length, patlabelbindings) 
+                                        # list of absolute constraints, name, conds
+record <a href="#NWD2">absolute_field</a>(field, offset)    # used to make absolute constraints
+</pre><blockquote>Defines <a href="#NWI-absolute_field"><code>absolute_field</code></a>, <a href="#NWI-adisjunct"><code>adisjunct</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD3">We have to store the length explicitly in an </a><code><a href="#NWD2">adisjunct</a></code>, because sequents that 
+constrain no fields are lost.  The <code>patlabelbindings</code> binds label
+names to offsets, which are expressed in PC units, not bits.
+
+<h2><a name="NWD4">Transformation to absolute normal form</a></h2>
+The transformation is simply a matter of adding up word sizes to
+compute offsets.  I cache absolute fields to avoid allocating
+gazillions of them.
+<pre><a name="NWtre7-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWD4">anf</a>(p)
+  return pattern(maplist(<a href="#NWD4">anfd</a>, p.disjuncts), p.name)
+end
+
+procedure <a href="#NWD4">anfd</a>(d)
+  local offset
+  offset := 0
+  l := []
+  t := table()
+  every s := !d.sequents do
+    case type(s) of {
+      &quot;sequent&quot;  : { every put(l, <a href="#NWD6">aconstraint</a>(!s.constraints, offset))
+                     offset +:= s.class.size    
+                   }
+      &quot;patlabel&quot; : t[\s.name] := bits_to_pcunits(offset)
+      &quot;latent_patlabel&quot; : &amp;null
+      default    : impossible(&quot;sequent type&quot;)
+    }
+  a := <a href="#NWD2">adisjunct</a>(l, d.name, d.conditions, offset, if *t &gt; 0 then t else &amp;null)
+  return gsubst(a, <a href="#NWD5">Epatlabel_to_Epc_by_table</a>, t, a)
+end
+</pre><blockquote>Defines <a href="#NWI-anf"><code>anf</code></a>, <a href="#NWI-anfd"><code>anfd</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">During decoding we eliminate the pattern label offsets by using a</a>
+table of bindings.  If the label is already bound, of course, we need
+do nothing.
+<pre><a name="NWtre7-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">Epatlabel_to_Epc_by_table</a>(x, t, a)
+  if type(x) == &quot;Epatlabel&quot; then 
+    return if /x.l.name then Epatlabel_to_Epc(x)
+           else {
+  write(\mdebug, &quot;====&gt; RESORTED TO TABLE in &quot;, expimage(x))
+  binop(the_global_pc, &quot;+&quot;, \t[\x.l.name]) | 
+                impossible(&quot;in &quot;, expimage(a), &quot;---Label &quot;, x.l.name, 
+                           &quot; not used yet, but is not in table:&quot;,
+                           envimage(t, &quot;pattern_table&quot;))   
+            }
+end
+</pre><blockquote>Defines <a href="#NWI-Epatlabel_to_Epc_by_table"><code>Epatlabel_to_Epc_by_table</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">I don't cache constraints, but I do cache fields.</a>
+I have absolutely no measurements to justify either decision, but it simplifies
+the code to make absolute fields unique (as fields are) because they can be 
+inserted into sets.
+<pre><a name="NWtre7-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWtre7-*-5">-&gt;</a>]</b>
+procedure <a href="#NWD6">aconstraint</a>(c, offset)
+  return case type(c) of {
+    &quot;constraint&quot;   : constraint(<a href="#NWtre7-*-5">afield</a>(c.field, offset), c.lo, c.hi)
+    &quot;fieldbinding&quot; : 
+       if x := constant(super_simplify(c.code)) then
+         constraint(<a href="#NWtre7-*-5">afield</a>(c.field, offset), x, x+1)
+       else
+         fieldbinding(<a href="#NWtre7-*-5">afield</a>(c.field, offset), c.code)
+    default : impossible(&quot;constraint type&quot;)
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-aconstraint"><code>aconstraint</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-5">afield</a>(f, offset)
+  static tables
+  initial tables := table()
+  /tables[offset] := table()
+  /tables[offset][f] := <a href="#NWD2">absolute_field</a>(f, offset)
+  return tables[offset][f]
+end
+</pre><blockquote>Defines <a href="#NWI-afield"><code>afield</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD7">Structure of matching statements and tree nodes</a></h2>
+The arms of the matching statement have some extra information.
+The file and line number help with error message and make it possible
+to generate <code>#line</code> statements that identify the source of the code.
+The original arm gives the arm from which the current arm is derived,
+and is useful for many of the heuristics.
+<pre><a name="NWtre7-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-5">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+record <a href="#NWD7">matching_stmt</a>(arms,valcode,succptr,trailer)
+                # case arms, code to compute value, id to set to end of p, trailing code
+record <a href="#NWD7">arm</a>(file, line, pattern, eqns, soln, imp_soln, patlen, name, code, original)
+                # line, file, original(pattern) are used for error reporting
+                # These fields are the original contents:
+                #   pattern (in absoslute normal form) is pattern to match
+                #   eqns are equations given explicitly with <a href="#NWD7">arm</a> (or else null)
+                #   name is identifier given in square brackets (or else null)
+                #   code is the list of code lines on the right hand side of the =&gt;
+</pre><blockquote>Defines <a href="#NWI-arm"><code>arm</code></a>, <a href="#NWI-matching_stmt"><code>matching_stmt</code></a> (links are to index).<p>
+</blockquote><p><code>imp_soln</code> gives answers and conditions associated with identifiers
+that appear as field bindings or constructor operands in the pattern.
+These identifiers are the <em>inputs</em> to the equations.
+This construct is a little odd, because the meanings of bound
+identifiers and the conditions that need to be satisfied are more
+naturally associated with disjuncts, not arms.
+We ``raise the differences'' by splitting arms until each arm as a
+unique such ``implicit solution.''
+We further guarantee the uniqueness of the <code>imp_soln</code> field.
+The reason for going to all this trouble is to simplify the task of
+<a name="NWD8">dagging the eventual decision tree: we'll be able to unify nodes just</a>
+by taking the <code>image()</code> of the <code>imp_soln</code> field (along with a few
+other goodies, of course).
+<p>
+If <code>succptr</code> was requested in the corresponding case statment, <code>patlen</code> 
+gives the length of the pattern in the arm.  We split arms as needed to 
+make lengths unique.
+If <code>succptr</code> wasn't requiested, <code>patlen</code> is null.
+<code>patlen</code> is assigned by <code>resolve_case_arms</code>.
+
+
+<a name="NWD9">Each node of the decision tree is associated with a particular matching</a>
+statement.
+Internal nodes have children, and a <code>field</code> and <code>offset</code> that say
+which field of which word
+we decided to test on.  The edges that point to the children record
+the interval of values for the particular child.
+Leaf nodes have a <code>name</code> that records the name of the pattern known
+to match at that leaf node.
+<pre><a name="NWtre7-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+record <a href="#NWD9">node</a>(cs, children, field, offset, name, parent)
+        # matching statement, list of edges to children, field chosen, pattern name
+        #       (name field used to support name operator, assigned only to leaves)
+record <a href="#NWD9">edge</a>(<a href="#NWD9">node</a>, lo, hi)
+        # <a href="#NWD9">node</a> pointed to and lo and hi interval of field for this <a href="#NWD9">edge</a>
+</pre><blockquote>Defines <a href="#NWI-edge"><code>edge</code></a>, <a href="#NWI-node"><code>node</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDA">To create a decision tree, I begin with a node containing the full,</a>
+original matching statement.  I then use a ``work queue'' approach to check
+each node and see if it needs to be split.
+If no pattern matches the node, or if the first pattern always matches
+(with a unique name), no further splitting needs to be done, and I
+assign a name to the leaf.<b>[</b>If the name isn't used, I assign
+the name <code>&quot;-unused-&quot;</code>, because that will make it easier to combine
+nodes in the dagging phase.<b>]</b>
+Otherwise, I split the node.
+<pre><a name="NWtre7-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+procedure <a href="#NWDA">needs_splitting</a>(n)
+    local name
+    if *n.cs.arms = 0 then fail
+    if not guard_always_satisfied(n.cs.arms[1].imp_soln.constraints) then 
+        return # first <a href="#NWD7">arm</a> can't always match.
+    p := n.cs.arms[1].pattern
+    name := \p.disjuncts[1].name | p.name
+    every d := !p.disjuncts do {
+        n := \d.name | p.name
+        if n ~=== name then
+          return   # needs splitting if names or answers are different
+        else if <a href="#NWDB">adalwaysmatches</a>(d) then 
+          fail  # always matches, needn't <a href="#NWDF">split</a>
+    }
+    return                      # pattern doesn't always match -&gt; <a href="#NWDF">split</a>
+end
+</pre><blockquote>Defines <a href="#NWI-needs_splitting"><code>needs_splitting</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDB">I need different procedures to check matching because the patterns</a>
+are in absolute normal form.
+<pre><a name="NWtre7-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+procedure <a href="#NWDB">aalwaysmatches</a>(p)
+    return <a href="#NWDB">adalwaysmatches</a>(!p.disjuncts)
+end
+procedure <a href="#NWDB">adalwaysmatches</a>(d)
+  if type(!d.aconstraints) == &quot;constraint&quot; then fail
+  else return guard_always_satisfied(d.conditions)
+end
+</pre><blockquote>Defines <a href="#NWI-aalwaysmatches"><code>aalwaysmatches</code></a>, <a href="#NWI-adalwaysmatches"><code>adalwaysmatches</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDC" href="#NWDC">tree</a></code> converts a matching statement into a decision tree. 
+<pre><a name="NWtre7-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWDC">tree</a>(cs)
+    local armcount, <a href="#NWD7">arm</a>, armname, nodename
+    static heuristics
+    initial {
+       heuristics := [<a href="#NWDJ">leafarms</a>, <a href="#NWtre7-*-I">childarms</a>, <a href="#NWtre7-*-J">nomatch</a>, <a href="#NWtre7-*-K">childdisjuncts</a>, <a href="#NWtre7-*-L">branchfactor</a>]
+    }
+    root := <a href="#NWD9">node</a>(copy(cs), [])  # need empty children in case root not <a href="#NWDF">split</a>
+    work := [<a href="#NWD9">edge</a>(root)]        # work queue of edges (nodes) to be expanded
+    while n := get(work).<a href="#NWD9">node</a> do
+        if (<a href="#NWDA">needs_splitting</a>(n) &amp; *(afields := <a href="#NWDL">mentions</a>(n.cs)) &gt; 0) then {
+            <a name="NWtre7-*-A-u1" href="#NWDE"><i>&lt;split node <code>n</code> and add children to work queue&gt;</i></a>
+        } else {
+            write(\sdebug, &quot;Not splitting &quot;, 
+                  commaseparate(maplist(expimage, n.cs.arms), &quot;\n&quot;))
+            armcount := *n.cs.arms
+            <a href="#NWtre7-*-O">trim_impossible_arms</a>(n.cs)
+            n.name := case *n.cs.arms of {
+                        0 : &quot;-NOMATCH-&quot;
+                        default: <a href="#NWDD">get_nodename</a>(n)
+                      }
+            if \lc_pat_names then n.name := map(\n.name)
+            if armcount &gt; *n.cs.arms then
+              write(\sdebug, &quot;Trimmed <a href="#NWD9">node</a> is &quot;,
+                  commaseparate(maplist(expimage, n.cs.arms), &quot;\n&quot;))
+       }
+    return root
+end
+</pre><blockquote>Defines <a href="#NWI-tree"><code>tree</code></a> (links are to index).<p>
+</blockquote><p>
+We want to assign each leaf node a name, which is derived 
+from the names of the pattern arms that the node matches.
+If all pattern arms in the node have the same name <i>N</i> or
+are the null string, i.e., they do not specify a name, 
+<a name="NWDD">then the node's name is simply </a><i>N</i>.  
+This case always holds when the node matches exactly one arm; 
+one arm and a default (wildcard) arm; or multiple arms that
+all match the same constructor (possibly applied to different arguments).
+If the names of the pattern arms in the node are not the same, 
+then the node's name is ambiguous, because no single
+name exists for all possible matches. 
+An ambiguous node name will cause an error in <code>genarm</code>, 
+if any of the node's pattern arms attempts to bind a <code> [name] </code>.
+<pre><a name="NWtre7-*-B" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWtre7-*-C">-&gt;</a>]</b>
+procedure <a href="#NWDD">get_nodename</a>(n)
+local nodename, armname
+    nodename := armname := &amp;null
+    every <a href="#NWD7">arm</a> := !n.cs.arms do 
+      if (armname := \(<a name="NWtre7-*-B-u1" href="#NWtre7-GetT-1"><i>&lt;Get name from pattern <code>arm</code>&gt;</i></a>)) then {
+        write(\sdebug, &quot;[&quot;, image(<a href="#NWD7">arm</a>.name),&quot;] = &quot;, 
+             image(armname), &quot; for &quot;,expimage(<a href="#NWD7">arm</a>.pattern))
+        if (\nodename ~== armname) then 
+          nodename := <a name="NWtre7-*-B-u2" href="#NWtre7-AmbM-1"><i>&lt;Ambiguous name warning&gt;</i></a>
+        else nodename := armname
+      }
+    return nodename
+end
+</pre><blockquote>Defines <a href="#NWI-get_nodename"><code>get_nodename</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-GetT-1" href="#NWtre7-GetT-1"><dfn>&lt;Get name from pattern <code>arm</code>&gt;=</dfn></a> <b>(<a href="#NWDD">&lt;-U</a>)</b>
+if \<a href="#NWD7">arm</a>.name then {
+  \<a href="#NWD7">arm</a>.pattern.disjuncts[1].name | \<a href="#NWD7">arm</a>.pattern.name | &amp;null
+# &quot;-unnamed-&quot;
+} else &amp;null
+</pre><pre><a name="NWtre7-AmbM-1" href="#NWtre7-AmbM-1"><dfn>&lt;Ambiguous name warning&gt;=</dfn></a> <b>(<a href="#NWDD">&lt;-U</a>)</b>
+(warning(&quot;ambiguous name for pattern <a href="#NWD7">arm</a> at &quot;, <a href="#NWD7">arm</a>.original.file, &quot;, line &quot;,
+         <a href="#NWD7">arm</a>.original.line, &quot;: &quot;, commaseparate(maplist(expimage, n.cs.arms), 
+         &quot;\nAre you trying to decode a synthetic instruction?\n&quot;)), 
+&amp;null)
+</pre><p>
+Splitting a node involves choosing a field, finding out which intervals
+of values of that field are interesting, and creating a child node for
+each such interval of values.  The patterns in the matching statement of the
+<a name="NWDE">child node reflect the knowledge of the value interval of the tested</a>
+field.
+<p>
+I make the decision by splitting the node on <em>each</em> field
+mentioned in the matching statement.  I then compute some heuristic
+functions of the children from each splitting and use the
+best-scoring field.
+<p>
+Some debugging information may be written to <code>hdebug</code> or <code>sdebug</code>.
+<pre><a name="NWtre7-spll-1" href="#NWDE"><dfn>&lt;split node <code>n</code> and add children to work queue&gt;=</dfn></a> <b>(<a href="#NWDC">U-&gt;</a>)</b>
+afields := <a href="#NWDL">mentions</a>(n.cs)
+*afields &gt; 0 | impossible(&quot;internal <a href="#NWD9">node</a> <a href="#NWDL">mentions</a> no fields&quot;)
+candidates := table()
+every f := !afields do
+    candidates[f] := <a href="#NWDF">split</a>(n, f)
+<a name="NWtre7-spll-1-u1" href="#NWtre7-if*Y-1"><i>&lt;if debugging, split all and report&gt;</i></a>
+*afields &gt; 1 &amp; write(\hdebug, &quot;Choosing one of &quot;, patimage(afields))
+every h := !heuristics do {
+    if *afields = 1 then break
+    afields := <a href="#NWDI">findmaxima</a>(h, candidates, afields)
+write(\hdebug, image(h), &quot; chose &quot;, patimage(afields))
+}
+*afields &gt; 0 | impossible(&quot;no fields&quot;)
+*afields = 1 | write(\hdebug, &quot;tie among fields&quot;, patimage(afields), &quot; near &quot;,
+                      image(n.cs.arms[1].original.file), &quot;, line &quot;,
+                      n.cs.arms[1].original.line)
+work |||:= n.children := candidates[n.field := ?afields]
+*afields = 1 | write(\hdebug, &quot;arbitrarily chose &quot;, patimage(n.field))
+</pre><p>
+<pre><a name="NWtre7-*-C" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-C">parentchoices</a>(n)
+  l := []
+  n := n.parent
+  while \n do { push(l, n.field); n := n.parent }
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-parentchoices"><code>parentchoices</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-if*Y-1" href="#NWtre7-if*Y-1"><dfn>&lt;if debugging, split all and report&gt;=</dfn></a> <b>(<a href="#NWDE">&lt;-U</a>)</b>
+if \tryall &amp; \hdebug &amp; *afields &gt; 1 then     {
+  write(\hdebug, repl(&quot;=&quot;,10), &quot; Splitting &quot;, repl(&quot;=&quot;, 10))
+  every <a href="#NWDI">findmaxima</a>(!heuristics, candidates, afields) do write(\hdebug)
+  write(\hdebug, repl(&quot;=&quot;, 30), &quot;\n&quot;)
+}
+</pre><p>
+<a name="NWDF">To split a node, I look at each interval of values that might be</a>
+interesting.  I apply that interval to the matching statement, and if there
+can be any match, I create and add a new child node.
+<code>f</code> is an absolute field.
+<pre><a name="NWtre7-*-D" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-C">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+procedure <a href="#NWDF">split</a>(n, f)
+    local vals,v,d,val,c,p,j,i,newd,cst,child,newp, xxx
+
+    patterns := []
+    children := []
+    every put(patterns, (!n.cs.arms).pattern)
+    r := <a href="#NWDK">intervals</a>(patterns, f)
+    <a name="NWtre7-*-D-u1" href="#NWtre7-if*j-1"><i>&lt;if debugging, write about splitting this node&gt;</i></a>
+
+    every i := 1 to *r - 1 do
+        put(children, <a href="#NWD9">edge</a>(<a href="#NWD9">node</a>(<a href="#NWDG">apply</a>(n.cs, f, r[i], r[i+1]),[]), r[i], r[i+1]))
+
+    write(\sdebug, &quot;Done splitting.\n&quot;)
+    every (!children).<a href="#NWD9">node</a>.parent := n
+    return children
+end    
+</pre><blockquote>Defines <a href="#NWI-split"><code>split</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtre7-if*j-1" href="#NWtre7-if*j-1"><dfn>&lt;if debugging, write about splitting this node&gt;=</dfn></a> <b>(<a href="#NWDF">&lt;-U</a>)</b>
+writes(\sdebug, &quot;Splitting &quot;)
+outpattern(\sdebug, patterns[1])
+every i := 2 to *patterns do { writes(\sdebug, &quot; | &quot;); outpattern(\sdebug, patterns[i])}
+write(\sdebug, &quot; on &quot;, f.field.name, &quot; at &quot;, f.offset)
+</pre><p>
+<a name="NWDG">What is the new matching statement that results from applying </a>
+<i><tt>lo &lt;=f &lt; hi</tt></i> to <code>cs</code>?
+For each arm, I match the pattern against the interval.
+If it succeeds, I create a new arm for the new matching statement,
+containing the reduced pattern.
+<code>f</code> is an absolute field.
+<pre><a name="NWtre7-*-E" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDF">&lt;-</a>D<a href="#NWDH">-&gt;</a>]</b>
+procedure <a href="#NWDG">apply</a>(cs, f, lo, hi)
+    local newarm
+    result := copy(cs)
+    result.arms := []
+    write(\sdebug, &quot;    Applying &quot;, stringininterval(patimage(f), lo, hi))
+    every a := !cs.arms do {
+        newarm := copy(a)
+        put(result.arms, if newarm.pattern := <a href="#NWDH">pmatch</a>(a.pattern, f, lo, hi) then newarm)
+    }
+    if *result.arms &gt; 1 &amp; <a href="#NWDB">aalwaysmatches</a>(result.arms[1].pattern) &amp;
+       guard_always_satisfied(result.arms[1].imp_soln.constraints) then { # change 21
+        write(\sdebug, &quot;    Trimming results of <a href="#NWDG">apply</a> to &quot;, expimage(result.arms[1]))
+        result.arms := [result.arms[1]]
+    }
+    return result
+end
+</pre><blockquote>Defines <a href="#NWI-apply"><code>apply</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDH" href="#NWDH">pmatch</a></code> both tests to see whether <i><tt>lo &lt;=f &lt; hi</tt></i> and, if so, returns
+the new&nbsp;<code>p</code>.
+<code>f</code> is an absolute field.
+<pre><a name="NWtre7-*-F" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+procedure <a href="#NWDH">pmatch</a>(p, f, lo, hi)
+    result := pattern([], p.name)
+    every d := !p.disjuncts do 
+        if c := !d.aconstraints &amp; c.field === f &amp; type(c) == &quot;constraint&quot; then 
+                                                        # disjunct <a href="#NWDL">mentions</a> f
+            if c.lo &lt;= lo &amp; hi &lt;= c.hi then {           # this constraint is matched
+                newd := <a href="#NWD2">adisjunct</a>([], d.name, d.conditions, d.length,d.patlabelbindings)
+                every c := !d.aconstraints &amp; c.field ~=== f do 
+                    put(newd.aconstraints, c)
+                put(result.disjuncts, newd)
+            } else
+                c.hi &lt;= lo | c.lo &gt;= hi | impossible(&quot;bad <a href="#NWDK">intervals</a>&quot;)
+        else                                             # disjunct does not mention f
+            put(result.disjuncts, d)
+    <a name="NWtre7-*-F-u1" href="#NWtre7-if*l-1"><i>&lt;if debugging, write about results of <code>pmatch</code>&gt;</i></a>
+    if *result.disjuncts &gt; 0 then return result
+end
+</pre><blockquote>Defines <a href="#NWI-pmatch"><code>pmatch</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtre7-if*l-1" href="#NWtre7-if*l-1"><dfn>&lt;if debugging, write about results of <code>pmatch</code>&gt;=</dfn></a> <b>(<a href="#NWDH">U-&gt;</a>)</b>
+if *result.disjuncts &gt; 0 then writes(\sdebug, &quot;        ===&gt; &quot;) &amp; outpattern(\sdebug, p)
+# else writes(\sdebug, &quot;             &quot;) &amp; outpattern(\sdebug, p)
+
+if *result.disjuncts &gt; 0 then write(\sdebug, &quot; matches&quot;) 
+# else write(\sdebug, &quot; does not match&quot;)
+</pre><p>
+<h2><a name="NWDI">Tree-minimization heuristics</a></h2>
+First, the boilerplate that takes a heuristic <code>h</code>, candidate
+splittings, and a set of fields, and returns the set of fields with
+the largest score on <code>h</code>.
+<pre><a name="NWtre7-*-G" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDH">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+procedure <a href="#NWDI">findmaxima</a>(h, candidates, afields)
+    local max
+    S := []
+    every f := !afields do {
+        score := h(candidates[f], f)
+        write(\hdebug,&quot;Field &quot;, patimage(f), &quot; scores &quot;, score, &quot; on &quot;, image(h))
+        /max := score - 1
+        if score &gt; max then {
+            max := score
+            S := [f]
+        } else if score = max then
+            put(S, f)
+    }
+    return set(S)
+end
+</pre><blockquote>Defines <a href="#NWI-findmaxima"><code>findmaxima</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDJ">Here's a big pile of heuristics.</a>
+I'm not sure I've ever needed more than the first two, but they're
+amusing and easy enough to write.
+<pre><a name="NWtre7-*-H" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWtre7-*-I">-&gt;</a>]</b>
+# <a href="#NWDJ">leafarms</a>: prefer candidate with most arms that appear at leaf
+#           nodes.  Each original <a href="#NWD7">arm</a> counted only once.
+#           Not matching is also counted as an <a href="#NWD7">arm</a>.
+
+procedure <a href="#NWDJ">leafarms</a>(children, f) 
+    arms := set()
+    every n := (!children).<a href="#NWD9">node</a> &amp; *n.cs.arms &gt; 0 do
+       if not <a href="#NWDA">needs_splitting</a>(n) then 
+           insert(arms, n.cs.arms[1].original)
+    return *arms + if *(!children).<a href="#NWD9">node</a>.cs.arms = 0 then 1 else 0
+end
+</pre><blockquote>Defines <a href="#NWI-leafarms"><code>leafarms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-I" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWtre7-*-J">-&gt;</a>]</b>
+# <a href="#NWtre7-*-I">childarms</a>: prefer the candidate with the fewest arms in children
+
+procedure <a href="#NWtre7-*-I">childarms</a>(children, f)
+    sum := 0
+    every sum -:= *(!children).<a href="#NWD9">node</a>.cs.arms
+    return sum
+end
+</pre><blockquote>Defines <a href="#NWI-childarms"><code>childarms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-J" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-I">&lt;-</a>D<a href="#NWtre7-*-K">-&gt;</a>]</b>
+# <a href="#NWtre7-*-J">nomatch</a>: if tied on <a href="#NWDJ">leafarms</a> and <a href="#NWtre7-*-I">childarms</a>, take candidate
+#          with real leaf in preference to <a href="#NWtre7-*-J">nomatch</a> leaf
+
+procedure <a href="#NWtre7-*-J">nomatch</a>(children, f)
+    return if *(!children).<a href="#NWD9">node</a>.cs.arms = 0 then -1 else 0
+end
+</pre><blockquote>Defines <a href="#NWI-nomatch"><code>nomatch</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-K" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-J">&lt;-</a>D<a href="#NWtre7-*-L">-&gt;</a>]</b>
+# <a href="#NWtre7-*-K">childdisjuncts</a>: prefer the candidate with the fewest disjuncts in children
+
+procedure <a href="#NWtre7-*-K">childdisjuncts</a>(children, f)
+    sum := 0
+    every sum -:= *(!(!children).<a href="#NWD9">node</a>.cs.arms).pattern.disjuncts
+    return sum
+end
+</pre><blockquote>Defines <a href="#NWI-childdisjuncts"><code>childdisjuncts</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-L" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-K">&lt;-</a>D<a href="#NWDK">-&gt;</a>]</b>
+# <a href="#NWtre7-*-L">branchfactor</a>:  prefer the candidate with the fewest children
+
+procedure <a href="#NWtre7-*-L">branchfactor</a>(children, f)
+    return - *children
+end
+</pre><blockquote>Defines <a href="#NWI-branchfactor"><code>branchfactor</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDK">Utility functions</a></h2>
+If an absolute field <code>f</code> is  to be used to split patterns, 
+<code><a href="#NWDK">intervals</a></code> returns a sorted list defining the intervals that need to be considered.
+<pre><a name="NWtre7-*-M" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-L">&lt;-</a>D<a href="#NWDL">-&gt;</a>]</b>
+procedure <a href="#NWDK">intervals</a>(patterns, f)
+    cuts := set([0, 2^fwidth(f.field)])
+    every p := !patterns &amp; d := !p.disjuncts &amp; c := !d.aconstraints &amp; c.field === f &amp;
+          type(c) == &quot;constraint&quot;
+    do
+        every insert(cuts, c.lo | c.hi)
+    return sort(cuts)
+end
+</pre><blockquote>Defines <a href="#NWI-intervals"><code>intervals</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWDL" href="#NWDL">mentions</a></code> produces the set containing all
+absolute fields mentioned in a matching statement.
+Mentions in field bindings <em>don't</em> count; this information is for
+building decision trees only.
+<b>[</b>The original design had no field bindings and omitting them seems to be
+the best migration path.<b>]</b>
+<pre><a name="NWtre7-*-N" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDK">&lt;-</a>D<a href="#NWtre7-*-O">-&gt;</a>]</b>
+procedure <a href="#NWDL">mentions</a>(cs) 
+    result := set()
+    every a := !cs.arms &amp; d := !a.pattern.disjuncts &amp; c := !d.aconstraints &amp;
+          type(c) == &quot;constraint&quot;
+    do
+       insert(result, c.field)
+    return result
+end
+</pre><blockquote>Defines <a href="#NWI-mentions"><code>mentions</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtre7-*-O" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWtre7-*-P">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-O">trim_impossible_arms</a>(cs)
+  l := []
+  every a := !cs.arms do 
+    if <a href="#NWtre7-*-P">arm_conditions_always_satisfied</a>(a) then {
+      put(l, a)
+      if *l &lt; *cs.arms then cs.arms := l
+      return cs
+    } else if member(a.imp_soln.constraints, 0) |
+           constant(!(\a.soln).constraints) = 0 then {
+      cs.arms := l
+      return cs
+    } else {
+      put(l, a)
+    }
+  return cs
+end
+</pre><blockquote>Defines <a href="#NWI-trim_impossible_arms"><code>trim_impossible_arms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-P" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-O">&lt;-</a>D<a href="#NWtre7-*-Q">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-P">arm_conditions_always_satisfied</a>(a)
+  return guard_always_satisfied(a.imp_soln.constraints) &amp;
+         /a.soln | guard_always_satisfied(a.soln.constraints)
+end
+</pre><blockquote>Defines <a href="#NWI-arm_conditions_always_satisfied"><code>arm_conditions_always_satisfied</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-Q" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-P">&lt;-</a>D<a href="#NWDM">-&gt;</a>]</b>
+# <a href="#NWtre7-*-Q">find_id</a>: tab to and past identifier id, returning its position
+# ignores quotes, comment brackets
+
+procedure <a href="#NWtre7-*-Q">find_id</a>(id)
+    static notlnum
+    initial notlnum := ~ (&amp;letters ++ &amp;digits ++ '_')
+    tab(p := find(id)) &amp; p = 1 | (move(-1) &amp; any(notlnum) &amp; move(1)) &amp;
+               =id &amp; pos(0) | any(notlnum) &amp; suspend p
+end
+</pre><blockquote>Defines <a href="#NWI-find_id"><code>find_id</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDM">Tree checking</a></h2>
+Once the tree is generated, it's useful to check it for redundant arms
+and for arms that never match.  These checks will help users catch
+mistakes in their specifications.  Note that I must check the
+``original'' arms; that's why they're there.
+<pre><a name="NWtre7-*-R" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-Q">&lt;-</a>D<a href="#NWtre7-*-S">-&gt;</a>]</b>
+procedure <a href="#NWDM">checktree</a>(n, cs)
+    originals := set()
+    every insert(originals, (!cs.arms).original)
+    <a href="#NWtre7-*-S">deletematching</a>(n, originals)
+    every <a href="#NWDN">show_unmatched</a>(n, !originals)
+    if <a href="#NWtre7-*-T">hasnomatch</a>(n) then
+        warning(&quot;Matching statement at &quot;, image(cs.arms[1].file), &quot;, line &quot;,
+                n.cs.arms[1].line - 1, &quot; doesn't cover all cases&quot;)
+    return n
+end
+</pre><blockquote>Defines <a href="#NWI-checktree"><code>checktree</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtre7-*-S" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDM">&lt;-</a>D<a href="#NWtre7-*-T">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-S">deletematching</a>(n, originals)
+    if *originals = 0 then return
+    else if *n.children &gt; 0 then every <a href="#NWtre7-*-S">deletematching</a>((!n.children).<a href="#NWD9">node</a>, originals)
+    else every delete(originals, (!n.cs.arms).original)
+end
+</pre><blockquote>Defines <a href="#NWI-deletematching"><code>deletematching</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWtre7-*-T" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-S">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+procedure <a href="#NWtre7-*-T">hasnomatch</a>(n)
+    if *n.children &gt; 0 then return <a href="#NWtre7-*-T">hasnomatch</a>((!n.children).<a href="#NWD9">node</a>)
+    else if *n.cs.arms = 0 then return  # found it
+end
+</pre><blockquote>Defines <a href="#NWI-hasnomatch"><code>hasnomatch</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDN">If an arm never matches, I push its</a>
+pattern through the tree and find out combinations of arms do match
+that pattern.
+<pre><a name="NWtre7-*-U" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWtre7-*-T">&lt;-</a>D<a href="#NWtre7-*-V">-&gt;</a>]</b>
+procedure <a href="#NWDN">show_unmatched</a>(n, a)
+  warning(&quot;No word matches pattern at &quot;, image(a.file), &quot;, line &quot;, a.line, &quot;.&quot;)
+  write(&amp;errout,&quot;    Covered by patterns at&quot;)
+  every <a href="#NWDN">find_covering_arms</a>(n, a, !a.pattern.disjuncts)
+  return
+end
+
+procedure <a href="#NWDN">find_covering_arms</a>(n, a, ad)
+  if *n.children = 0 then
+    every a := !n.cs.arms do
+      write(&amp;errout, &quot;\t&quot;, image(a.file), &quot;, line &quot;, a.line)
+  else {
+    c := <a href="#NWtre7-*-V">find_or_invent_constraint</a>(n.field, ad)
+    every e := !n.children &amp; <a href="#NWtre7-*-V">intervals_intersect</a>(c.lo, c.hi, e.lo, e.hi) do
+      <a href="#NWDN">find_covering_arms</a>(e.<a href="#NWD9">node</a>, a, ad)
+  }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-find_covering_arms"><code>find_covering_arms</code></a>, <a href="#NWI-show_unmatched"><code>show_unmatched</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWtre7-*-V" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDN">&lt;-</a>D]</b>
+procedure <a href="#NWtre7-*-V">intervals_intersect</a>(lo1, hi1, lo2, hi2)
+  if hi1 &lt;= lo2 | hi2 &lt;= lo1 then fail else return
+end
+
+# absolute disjuncts!
+procedure <a href="#NWtre7-*-V">find_or_invent_constraint</a>(f, d)
+  return if type(c := !d.aconstraints) == &quot;constraint&quot; &amp; c.field === f then c
+         else constraint(f, 0, 2^fwidth(f.field))
+end
+</pre><blockquote>Defines <a href="#NWI-find_or_invent_constraint"><code>find_or_invent_constraint</code></a>, <a href="#NWI-intervals_intersect"><code>intervals_intersect</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD4">D2</a>, <a href="#NWD5">D3</a>, <a href="#NWD6">D4</a>, <a href="#NWtre7-*-5">D5</a>, <a href="#NWD7">D6</a>, <a href="#NWD9">D7</a>, <a href="#NWDA">D8</a>, <a href="#NWDB">D9</a>, <a href="#NWDC">D10</a>, <a href="#NWDD">D11</a>, <a href="#NWtre7-*-C">D12</a>, <a href="#NWDF">D13</a>, <a href="#NWDG">D14</a>, <a href="#NWDH">D15</a>, <a href="#NWDI">D16</a>, <a href="#NWDJ">D17</a>, <a href="#NWtre7-*-I">D18</a>, <a href="#NWtre7-*-J">D19</a>, <a href="#NWtre7-*-K">D20</a>, <a href="#NWtre7-*-L">D21</a>, <a href="#NWDK">D22</a>, <a href="#NWDL">D23</a>, <a href="#NWtre7-*-O">D24</a>, <a href="#NWtre7-*-P">D25</a>, <a href="#NWtre7-*-Q">D26</a>, <a href="#NWDM">D27</a>, <a href="#NWtre7-*-S">D28</a>, <a href="#NWtre7-*-T">D29</a>, <a href="#NWDN">D30</a>, <a href="#NWtre7-*-V">D31</a>
+<li><a href="#NWtre7-AmbM-1"><i>&lt;Ambiguous name warning&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWtre7-AmbM-1">D2</a>
+<li><a href="#NWtre7-GetT-1"><i>&lt;Get name from pattern <code>arm</code>&gt;</i></a>: <a href="#NWDD">U1</a>, <a href="#NWtre7-GetT-1">D2</a>
+<li><a href="#NWtre7-if*Y-1"><i>&lt;if debugging, split all and report&gt;</i></a>: <a href="#NWDE">U1</a>, <a href="#NWtre7-if*Y-1">D2</a>
+<li><a href="#NWtre7-if*l-1"><i>&lt;if debugging, write about results of <code>pmatch</code>&gt;</i></a>: <a href="#NWDH">U1</a>, <a href="#NWtre7-if*l-1">D2</a>
+<li><a href="#NWtre7-if*j-1"><i>&lt;if debugging, write about splitting this node&gt;</i></a>: <a href="#NWDF">U1</a>, <a href="#NWtre7-if*j-1">D2</a>
+<li><a href="#NWDE"><i>&lt;split node <code>n</code> and add children to work queue&gt;</i></a>: <a href="#NWDC">U1</a>, <a href="#NWDE">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-aalwaysmatches" href="#NWDB">aalwaysmatches</a>: <a href="#NWDB">D1</a>, <a href="#NWDG">U2</a>
+<li><a name="NWI-absolute_field" href="#NWD2">absolute_field</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWtre7-*-5">U3</a>
+<li><a name="NWI-aconstraint" href="#NWD6">aconstraint</a>: <a href="#NWD4">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-adalwaysmatches" href="#NWDB">adalwaysmatches</a>: <a href="#NWDA">U1</a>, <a href="#NWDB">D2</a>
+<li><a name="NWI-adisjunct" href="#NWD2">adisjunct</a>: <a href="#NWD2">D1</a>, <a href="#NWD4">U2</a>, <a href="#NWDH">U3</a>
+<li><a name="NWI-afield" href="#NWtre7-*-5">afield</a>: <a href="#NWD6">U1</a>, <a href="#NWtre7-*-5">D2</a>
+<li><a name="NWI-anf" href="#NWD4">anf</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-anfd" href="#NWD4">anfd</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-apply" href="#NWDG">apply</a>: <a href="#NWDF">U1</a>, <a href="#NWDG">D2</a>
+<li><a name="NWI-arm" href="#NWD7">arm</a>: <a href="#NWD7">D1</a>, <a href="#NWDA">U2</a>, <a href="#NWDC">U3</a>, <a href="#NWDD">U4</a>, <a href="#NWtre7-GetT-1">U5</a>, <a href="#NWtre7-AmbM-1">U6</a>, <a href="#NWDJ">U7</a>
+<li><a name="NWI-arm_conditions_always_satisfied" href="#NWtre7-*-P">arm_conditions_always_satisfied</a>: <a href="#NWtre7-*-O">U1</a>, <a href="#NWtre7-*-P">D2</a>
+<li><a name="NWI-branchfactor" href="#NWtre7-*-L">branchfactor</a>: <a href="#NWDC">U1</a>, <a href="#NWtre7-*-L">D2</a>
+<li><a name="NWI-checktree" href="#NWDM">checktree</a>: <a href="#NWDM">D1</a>
+<li><a name="NWI-childarms" href="#NWtre7-*-I">childarms</a>: <a href="#NWDC">U1</a>, <a href="#NWtre7-*-I">D2</a>, <a href="#NWtre7-*-J">U3</a>
+<li><a name="NWI-childdisjuncts" href="#NWtre7-*-K">childdisjuncts</a>: <a href="#NWDC">U1</a>, <a href="#NWtre7-*-K">D2</a>
+<li><a name="NWI-deletematching" href="#NWtre7-*-S">deletematching</a>: <a href="#NWDM">U1</a>, <a href="#NWtre7-*-S">D2</a>
+<li><a name="NWI-edge" href="#NWD9">edge</a>: <a href="#NWD9">D1</a>, <a href="#NWDC">U2</a>, <a href="#NWDF">U3</a>
+<li><a name="NWI-Epatlabel_to_Epc_by_table" href="#NWD5">Epatlabel_to_Epc_by_table</a>: <a href="#NWD4">U1</a>, <a href="#NWD5">D2</a>
+<li><a name="NWI-find_covering_arms" href="#NWDN">find_covering_arms</a>: <a href="#NWDN">D1</a>
+<li><a name="NWI-find_id" href="#NWtre7-*-Q">find_id</a>: <a href="#NWtre7-*-Q">D1</a>
+<li><a name="NWI-findmaxima" href="#NWDI">findmaxima</a>: <a href="#NWDE">U1</a>, <a href="#NWtre7-if*Y-1">U2</a>, <a href="#NWDI">D3</a>
+<li><a name="NWI-find_or_invent_constraint" href="#NWtre7-*-V">find_or_invent_constraint</a>: <a href="#NWDN">U1</a>, <a href="#NWtre7-*-V">D2</a>
+<li><a name="NWI-get_nodename" href="#NWDD">get_nodename</a>: <a href="#NWDC">U1</a>, <a href="#NWDD">D2</a>
+<li><a name="NWI-hasnomatch" href="#NWtre7-*-T">hasnomatch</a>: <a href="#NWDM">U1</a>, <a href="#NWtre7-*-T">D2</a>
+<li><a name="NWI-intervals" href="#NWDK">intervals</a>: <a href="#NWDF">U1</a>, <a href="#NWDH">U2</a>, <a href="#NWDK">D3</a>
+<li><a name="NWI-intervals_intersect" href="#NWtre7-*-V">intervals_intersect</a>: <a href="#NWDN">U1</a>, <a href="#NWtre7-*-V">D2</a>
+<li><a name="NWI-leafarms" href="#NWDJ">leafarms</a>: <a href="#NWDC">U1</a>, <a href="#NWDJ">D2</a>, <a href="#NWtre7-*-J">U3</a>
+<li><a name="NWI-matching_stmt" href="#NWD7">matching_stmt</a>: <a href="#NWD7">D1</a>
+<li><a name="NWI-mentions" href="#NWDL">mentions</a>: <a href="#NWDC">U1</a>, <a href="#NWDE">U2</a>, <a href="#NWDH">U3</a>, <a href="#NWDL">D4</a>
+<li><a name="NWI-needs_splitting" href="#NWDA">needs_splitting</a>: <a href="#NWDA">D1</a>, <a href="#NWDC">U2</a>, <a href="#NWDJ">U3</a>
+<li><a name="NWI-node" href="#NWD9">node</a>: <a href="#NWD9">D1</a>, <a href="#NWDC">U2</a>, <a href="#NWDE">U3</a>, <a href="#NWDF">U4</a>, <a href="#NWDJ">U5</a>, <a href="#NWtre7-*-I">U6</a>, <a href="#NWtre7-*-J">U7</a>, <a href="#NWtre7-*-K">U8</a>, <a href="#NWtre7-*-S">U9</a>, <a href="#NWtre7-*-T">U10</a>, <a href="#NWDN">U11</a>
+<li><a name="NWI-nomatch" href="#NWtre7-*-J">nomatch</a>: <a href="#NWDC">U1</a>, <a href="#NWtre7-*-J">D2</a>
+<li><a name="NWI-parentchoices" href="#NWtre7-*-C">parentchoices</a>: <a href="#NWtre7-*-C">D1</a>
+<li><a name="NWI-pmatch" href="#NWDH">pmatch</a>: <a href="#NWDG">U1</a>, <a href="#NWDH">D2</a>
+<li><a name="NWI-show_unmatched" href="#NWDN">show_unmatched</a>: <a href="#NWDM">U1</a>, <a href="#NWDN">D2</a>
+<li><a name="NWI-split" href="#NWDF">split</a>: <a href="#NWDA">U1</a>, <a href="#NWDC">U2</a>, <a href="#NWDE">U3</a>, <a href="#NWDF">D4</a>
+<li><a name="NWI-tree" href="#NWDC">tree</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-trim_impossible_arms" href="#NWtre7-*-O">trim_impossible_arms</a>: <a href="#NWDC">U1</a>, <a href="#NWtre7-*-O">D2</a>
+</ul>
+</body></html>
+

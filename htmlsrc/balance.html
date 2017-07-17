@@ -1,0 +1,394 @@
+<html><head><title> balance.nw</title></head><body>
+
+
+
+
+
+
+<h1>Balancing out nonlinear expressions</h1>
+This code uses the ``balance'' mechanism defined in the solver to define the 
+relationships among extensions and slices in a set of equations.
+<p>
+<i>This was the old story:
+<blockquote> 
+Slices make things tricky, since we needn't always have a complete set of them.
+We therefore have to find the slices first, so that we substitute variables in 
+only when we have a complete set.
+This isn't too hard, because the original source of equations is the parser, so
+slices can be applied to variables only.
+<p>
+Extensions are simpler since there's no such thing as an incomplete set,
+so they're computed on the fly by <code>balexp</code>.
+</blockquote>
+</i>
+<p>
+In the new world, things are harder because the parser is no longer
+the sole source of equations.  Instead, we may be asked to take a
+solution and invert it (for decoding).
+Instead of using only variables that appear in the spec, we have to
+discover new opportunities and introduce balancing variables.
+We do this with a procedure called <code><a href="#NWDE">var_for</a></code>, which has the property
+that if <code>exps_eq(e1, e2)</code> then
+<code><a href="#NWDE">var_for</a>(e1) == <a href="#NWDE">var_for</a>(e2)</code>.
+<code><a href="#NWDE">var_for</a></code> takes a couple of extra arguments: <code>varaux</code> to keep track of
+its state, and <code>varmap</code> to provide an inverting map (from variables to
+expressions). 
+<p>
+We create balances in three passes:
+<ol>
+<li>Find all slices, extensions, 
+narrows, divs, mods, and their arguments.
+Introduce variables in opportune cases, and salt everything away in 
+preliminary sets and tables.
+<li>Go through the accumulated sets and tables, and create balances
+whenever we have accumulated enough pieces to be able to do so.
+For example, if we see <code>e MOD 4</code>, we don't have enough to create a
+balance, but if we see <code>e MOD 4</code> and <code>e DIV 4</code>, we
+do.
+<a name="NWD1">When we do introduce a balance, add entries to </a><code>balmap</code>, which maps
+expressions to variables of the balance.
+Sometimes introducing balances also requires introducing new
+equations.
+<li>Substitute the variables of the balance in the equations.
+This requires an odd form of top-down substitution; see 
+<code><a href="#NWbalA-*-3">balsub_f</a></code> for more information.
+</ol>
+<p>
+
+<h2><a name="NWD2">Superstructure</a></h2>
+This code shows the implementation of the three-pass method
+given above.  The first pass is made using the expression-walking
+function <code><a href="#NWD2">balpass1</a></code>.
+<pre><a name="NWbalA-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">balpass1</a>(e, varaux, varmap <a name="NWbalA-*-1-u1" href="#NWbalA-**,G-1"><i>&lt;<code>,</code> aux tables&gt;</i></a>)
+  case type(e) of {
+    <a name="NWbalA-*-1-u2" href="#NWD5"><i>&lt;cases for identifying candidates&gt;</i></a>
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-balpass1"><code>balpass1</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">The second pass we do right in line, and the third pass relies on the</a>
+recursive-substition procedure <code><a href="#NWbalA-*-3">balsub_f</a></code>, about which more below.
+<pre><a name="NWbalA-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWbalA-*-3">-&gt;</a>]</b>
+procedure <a href="#NWD3">balance_eqns</a>(eqns)
+  local width
+  if *eqns = 0 then return <a href="#NWD3">balanced_eqns</a>(eqns, []) # common short cut
+  debug (&quot;$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$&quot;)
+  pushtrace(&quot;BALANCE&quot;)
+  every <a name="NWbalA-*-2-u1" href="#NWD4"><i>&lt;aux tables <code>|</code>&gt;</i></a> varaux | varmap := table()
+  expwalk(eqns, <a href="#NWD2">balpass1</a>, varaux, varmap <a name="NWbalA-*-2-u2" href="#NWbalA-**,G-1"><i>&lt;<code>,</code> aux tables&gt;</i></a>)
+  balances := []
+  neweqns := copy(eqns)
+  balmap := table()
+  <a name="NWbalA-*-2-u3" href="#NWD7"><i>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;</i></a>
+  neweqns := gsubst(neweqns, <a href="#NWbalA-*-3">balsub_f</a>, balmap)
+  poptrace()
+  <a name="NWbalA-*-2-u4" href="#NWbalA-braA-1"><i>&lt;brain dump&gt;</i></a>
+  return <a href="#NWD3">balanced_eqns</a>(neweqns, balances)
+end
+record <a href="#NWD3">balanced_eqns</a>(eqns, balances)
+</pre><blockquote>Defines <a href="#NWI-balanced_eqns"><code>balanced_eqns</code></a>, <a href="#NWI-balance_eqns"><code>balance_eqns</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWbalA-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWbalA-*-3">balsub_f</a>(e, balmap)
+  return gsubst(\balmap[e], <a href="#NWbalA-*-3">balsub_f</a>, balmap)
+end
+</pre><blockquote>Defines <a href="#NWI-balsub_f"><code>balsub_f</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Balancing out DIV and MOD</h2>
+Each balancing act has some substitutions, a balance, and some equations.
+For DIV and MOD we have
+
+
+
+
+
+<blockquote><i>
+<a name="NWD4">e </a><tt>DIV</tt>n  |--&gt; q<br>e <tt>MOD</tt>n  |--&gt; m<br>d = q *n + m  |&gt;&lt;|  q = d <tt>DIV</tt>n, m = d <tt>MOD</tt>n<br>d  =  e<br></i></blockquote>
+
+<p>
+I use two auxiliary tables, one to save DIV expressions and one to
+save MOD expressions.
+<pre><a name="NWbalA-auxG-1" href="#NWD4"><dfn>&lt;aux tables <code>|</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[D<a href="#NWD9">-&gt;</a>]</b>
+divs | mods |
+</pre><pre><a name="NWbalA-**,G-1" href="#NWbalA-**,G-1"><dfn>&lt;<code>,</code> aux tables&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a> <a href="#NWD3">&lt;-U</a>)</b> <b>[D<a href="#NWbalA-**,G-2">-&gt;</a>]</b>
+, divs, mods
+</pre><p>
+<a name="NWD5">The </a><code>divs</code> table represents a mapping; when <code>d = e MOD n</code>, we have
+<blockquote>
+<code>divs: <a href="#NWDE">var_for</a>(e) -&gt; n -&gt; e</code>
+</blockquote>
+and analogously for <code>mods</code>.
+<pre><a name="NWbalA-casW-1" href="#NWD5"><dfn>&lt;cases for identifying candidates&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b> <b>[D<a href="#NWbalA-casW-2">-&gt;</a>]</b>
+&quot;Ediv&quot; : <a href="#NWD6">addnset</a>(divs, <a href="#NWDE">var_for</a>(e.x, varaux, varmap), e)
+&quot;Emod&quot; : <a href="#NWD6">addnset</a>(mods, <a href="#NWDE">var_for</a>(e.x, varaux, varmap), e)
+</pre><p>
+<a name="NWD6">(Actually, to tell the truth, the result of the mapping is the set of </a>
+expressions equivalent to <code>e</code>, not just <code>e</code> itself.)
+<pre><a name="NWbalA-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWbalA-*-3">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+procedure <a href="#NWD6">addnset</a>(t, vx, e)
+  /t[vx] := table()
+  /t[vx, e.n] := set()
+  return insert(t[vx, e.n], e)
+end
+</pre><blockquote>Defines <a href="#NWI-addnset"><code>addnset</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD7">To create balances, we look for dividends </a><code>vd</code> that also appear in
+<code>mods</code> with the same <code>n</code>, and we create a balance for each one.
+If needed, we also introduce the equation making the dividend equal to
+the variable we introduced.
+<pre><a name="NWbalA-use15-1" href="#NWD7"><dfn>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[D<a href="#NWDA">-&gt;</a>]</b>
+every vd := key(divs) &amp; n := key(divs[vd]) do
+  if ms := \(\mods[vd])[n] &amp; qs := divs[vd, n] then {
+    vq := <a href="#NWDE">var_for</a>(!qs, varaux, varmap)
+    vm := <a href="#NWDE">var_for</a>(!ms, varaux, varmap)
+    # vq = vd div n, vm = vd mod n, vd = vq * n + vm
+    put(balances, balance([balitem(vd, <a href="#NWD8">n_times_q_plus_r</a>(n, vq, vm))],
+                          [balitem(vq, Ediv(vd, n)), balitem(vm, Emod(vd, n))]))
+    debug(&quot;==&gt; New balance:&quot;, <a href="#NWDF">balimage</a>(balances[-1]))
+    put(neweqns, eqn(vd, &quot;=&quot;, vd ~=== varmap[vd])) &amp;
+debug(&quot;New balancing equation &quot;, vd, &quot; = &quot;, expimage(varmap[vd]))
+    every balmap[!qs] := vq
+    every balmap[!ms] := vm
+  }  
+</pre><p>
+<a name="NWD8">Here's a convenient function to compute the sum that forms one side of </a>
+balances introduced for DIV and MOD:
+<pre><a name="NWbalA-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWbalA-*-6">-&gt;</a>]</b>
+procedure <a href="#NWD8">n_times_q_plus_r</a>(d, q, r)
+  local xtab
+  xtab := table(0); xtab[q] := d; xtab[r] := 1
+  return xtab
+end
+</pre><blockquote>Defines <a href="#NWI-n_times_q_plus_r"><code>n_times_q_plus_r</code></a> (links are to index).<p>
+</blockquote><p>
+<h2>Balancing out narrows and widens</h2>
+Here we have two schemata that could introduce isomorphic balances.
+They are:
+ 
+<blockquote><i>
+<a name="NWD9">e_n  |--&gt; w</a><br>w = n_n |&gt;&lt;| n = w_n<br>n  =  e<br></i></blockquote>
+and
+<blockquote><i>
+e_n  |--&gt; n<br>w = n_n |&gt;&lt;| n = w_n<br>w  =  e<br></i></blockquote>
+
+The trick here is to avoid introducing the same balance twice for the
+case where the relevant stuff appears in a seperate narrow and widen.
+<pre><a name="NWbalA-auxG-2" href="#NWD4"><dfn>&lt;aux tables <code>|</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+extensions | narrows |
+</pre><pre><a name="NWbalA-**,G-2" href="#NWbalA-**,G-1"><dfn>&lt;<code>,</code> aux tables&gt;+=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a> <a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWbalA-**,G-1">&lt;-</a>D<a href="#NWbalA-**,G-3">-&gt;</a>]</b>
+, extensions, narrows
+</pre><pre><a name="NWbalA-casW-2" href="#NWD5"><dfn>&lt;cases for identifying candidates&gt;+=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWbalA-casW-3">-&gt;</a>]</b>
+&quot;Ewiden&quot;   : <a href="#NWD6">addnset</a>(extensions, <a href="#NWDE">var_for</a>(e.x, varaux, varmap), e)
+&quot;Enarrows&quot; : <a href="#NWD6">addnset</a>(narrows,    <a href="#NWDE">var_for</a>(e.x, varaux, varmap), e)
+</pre><pre><a name="NWbalA-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+</pre><p>
+<a name="NWDA">Here we have the special problem that, if we weren't careful, we could introduce</a>
+the same balance from both an extension and a narrow.  
+<code>baln2w</code> maps <code>vn</code> to the list of <code>vw</code>'s in every balance using a narrow <code>vn</code>,
+so we don't ever create the same balance twice.
+<pre><a name="NWbalA-use15-2" href="#NWD7"><dfn>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWbalA-use15-3">-&gt;</a>]</b>
+baln2w := table()
+every vn := key(extensions) &amp; width := key(extensions[vn]) do {
+  ws := extensions[vn, width]
+  vw := <a href="#NWDE">var_for</a>(!ws, varaux, varmap) | impossible(&quot;no extensions&quot;)
+  # vw := vn! &gt;&lt; vn := vw[]
+  if member(\baln2w[vn], vw) then {
+    debug(&quot;DUPLICATE balance &quot;, vn, &quot; |&gt;&lt;| &quot;, vw)
+  } else {
+    <a name="NWbalA-use15-2-u1" href="#NWbalA-addT-1"><i>&lt;add new balance to <code>baln2w</code>&gt;</i></a>
+    put(balances, balance([balitem(vw, Ewiden  (vn, width))], 
+                          [balitem(vn, Enarrows(vw, width))]))
+    debug(&quot;==&gt; New balance:&quot;, <a href="#NWDF">balimage</a>(balances[-1]))
+  }
+  put(neweqns, eqn(vn, &quot;=&quot;, vn ~=== varmap[vn])) # could tighten (1-element table)
+#####  *ws # seems to be needed to work around bug in icont!
+  every balmap[!ws] := vw
+}  
+</pre><pre><a name="NWbalA-use15-3" href="#NWD7"><dfn>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWbalA-use15-4">-&gt;</a>]</b>
+every vw := key(narrows) &amp; width := key(narrows[vw]) do {
+  ns := narrows[vw, width]
+  vn := <a href="#NWDE">var_for</a>(!ns, varaux, varmap) | impossible(&quot;no narrows&quot;)
+  # vw := vn! &gt;&lt; vn := vw[]
+  if member(\baln2w[vn], vw) then {
+    debug(&quot;DUPLICATE balance &quot;, vn, &quot; |&gt;&lt;| &quot;, vw)
+  } else {
+    <a name="NWbalA-use15-3-u1" href="#NWbalA-addT-1"><i>&lt;add new balance to <code>baln2w</code>&gt;</i></a>
+    put(balances, balance([balitem(vw, Ewiden  (vn, width))], 
+                          [balitem(vn, Enarrows(vw, width))]))
+    debug(&quot;==&gt; New balance:&quot;, <a href="#NWDF">balimage</a>(balances[-1]))
+  }
+  put(neweqns, eqn(vw, &quot;=&quot;, vw ~=== varmap[vw])) # could tighten (1-element table)
+#####  *ns # seems to be needed to work around bug in icont!
+  every balmap[!ns] := vn
+}
+baln2w := &amp;null # make it possible to garbage-collect the memory
+</pre><pre><a name="NWbalA-addT-1" href="#NWbalA-addT-1"><dfn>&lt;add new balance to <code>baln2w</code>&gt;=</dfn></a> <b>(<a href="#NWDA">&lt;-U</a> <a href="#NWbalA-use15-3">&lt;-U</a>)</b>
+/baln2w[vn] := set()
+insert(baln2w[vn], vw)
+</pre><p>
+<h2><a name="NWDB">Balancing out slices</a></h2>
+Here things are a bit odd, because we can have slices nested within
+slices.
+I ignore that problem for the time being (although I have some code);
+instead I describe the simple case:
+<blockquote><i>
+e[r_1] |--&gt; s_1<br> ... <br>e[r_n] |--&gt; s_n<br>w = _i 2^l_i *s_i |&gt;&lt;| s_1 = w[r_1], ..., s_n = w[r_n]<br>w  =  e<br></i></blockquote>
+<p>
+<pre><a name="NWbalA-auxG-3" href="#NWD4"><dfn>&lt;aux tables <code>|</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWD9">&lt;-</a>D]</b>
+slices |
+</pre><pre><a name="NWbalA-**,G-3" href="#NWbalA-**,G-1"><dfn>&lt;<code>,</code> aux tables&gt;+=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a> <a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWbalA-**,G-2">&lt;-</a>D]</b>
+, slices
+</pre><pre><a name="NWbalA-casW-3" href="#NWD5"><dfn>&lt;cases for identifying candidates&gt;+=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b> <b>[<a href="#NWbalA-casW-2">&lt;-</a>D]</b>
+&quot;Eslice&quot; : { vx := <a href="#NWDE">var_for</a>(e.x, varaux, varmap)
+             /slices[vx] := set()
+             insert(slices[vx], e)
+           }
+</pre><p>
+<pre><a name="NWbalA-use15-4" href="#NWD7"><dfn>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWbalA-use15-3">&lt;-</a>D]</b>
+every vx := key(slices) &amp; xslices := slices[vx] do
+  <a href="#NWDC">slicetree</a>(vx, xslices, varaux, varmap, 0, bitsizeof(varmap[vx]),
+            neweqns, balances, balmap)
+</pre><p>
+<a name="NWDC">I'm not sure I'll be introducing equations properly when it gets to be time</a>
+to slice a tree...
+<pre><a name="NWbalA-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWbalA-*-6">&lt;-</a>D<a href="#NWDD">-&gt;</a>]</b>
+procedure <a href="#NWDC">slicetree</a>(vw, xslices, varaux, varmap, lo, hi, neweqns, balances, balmap)
+  return <a href="#NWDC">do_slicetree</a>(vw, copy(xslices), varaux, varmap, lo, hi, 
+                      neweqns, balances, balmap)
+end
+
+procedure <a href="#NWDC">do_slicetree</a>(vw, xslices, varaux, varmap, lo, hi, neweqns, balances, balmap)
+  sibs := set()
+  sum := table(0)
+  leftbal := []
+  debug(&quot;Slicing &quot;, expimage(sort(xslices)), &quot; from &quot;, lo, &quot; to &quot;, hi)
+  while lo &lt; hi do {
+    kids := set()
+    <a name="NWbalA-*-7-u1" href="#NWbalA-mak1H-1"><i>&lt;make <code>first</code> the largest slice at <code>lo</code> (<code>fail</code> if not there and leftmost)&gt;</i></a>
+    insert(sibs, first)
+    delete(xslices, first)   
+    firstv := <a href="#NWDE">var_for</a>(first, varaux, varmap)
+    sum[if lo = 0 then firstv else Eshift(firstv, lo)] +:= 1
+    put(leftbal, balitem(firstv, Eslice(vw, first.lo, first.n)))
+    every slice := !xslices do
+      if slice.lo + slice.n &lt;= first.lo + first.n then {
+        insert(kids, slice)
+        delete(xslices, slice)
+      } else if slice.lo &lt; first.lo + first.n then
+        error(&quot;Overlapping slices: &quot;, expimage(subst_tab(first, varmap)), &quot; and &quot;, 
+                                      expimage(subst_tab(slice, varmap)))
+    if *kids &gt; 0 then
+      <a href="#NWDC">do_slicetree</a>(firstv, kids, varaux, varmap, first.lo, first.lo + first.n,
+                   neweqns, balances, balmap)
+    lo +:= first.n
+  }
+  *xslices = 0 | 
+      impossible(&quot;leftover slices: &quot;, expimage(subst_tab(sort(xslices), varmap)))
+  put(balances, balance(leftbal, [balitem(vw, sum)]))
+  debug(&quot;==&gt; New balance:&quot;, <a href="#NWDF">balimage</a>(balances[-1]))
+  every slice := !sibs do
+    balmap[slice] := <a href="#NWDE">var_for</a>(slice, varaux, varmap)
+  put(neweqns, eqn(vw, &quot;=&quot;, vw ~=== varmap[vw])) &amp;
+debug(&quot;New balancing equation &quot;, vw, &quot; = &quot;, expimage(varmap[vw]))
+end
+</pre><blockquote>Defines <a href="#NWI-do_slicetree"><code>do_slicetree</code></a>, <a href="#NWI-slicetree"><code>slicetree</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWbalA-mak1H-1" href="#NWbalA-mak1H-1"><dfn>&lt;make <code>first</code> the largest slice at <code>lo</code> (<code>fail</code> if not there and leftmost)&gt;=</dfn></a> <b>(<a href="#NWDC">&lt;-U</a>)</b>
+first := &amp;null
+every slice := !xslices do
+  if slice.lo &lt; lo then fail
+  else if slice.lo = lo &amp; not ((\first).n &gt; slice.n) then
+    first := slice
+\first | fail
+</pre><p>
+<h2><a name="NWDD">Utilities</a></h2>
+There are now all sorts of places we introduce fresh variables.
+Maintaining the global set of fresh variables might be a bit of a waste of memory,
+but it's a convenient way to avoid putting these auxiliary variables where they
+aren't needed.
+<pre><a name="NWbalA-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWbalA-*-9">-&gt;</a>]</b>
+global <a href="#NWDD">fresh_variables</a>
+procedure <a href="#NWDD">fresh_variable</a>(name)
+  static n
+  initial n := 0
+  insert(<a href="#NWDD">fresh_variables</a>, s := <a href="#NWbalA-*-9">fresh_base</a>(name) || &quot;#&quot; || (n +:= 1))
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-fresh_variable"><code>fresh_variable</code></a>, <a href="#NWI-fresh_variables"><code>fresh_variables</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWbalA-*-9" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+procedure <a href="#NWbalA-*-9">fresh_base</a>(name)
+  static tail
+  initial tail := '#' ++ &amp;digits
+  name ? return 1(tab(upto('#')|0), tab(many(tail)) | &quot;&quot;, pos(0))
+end
+</pre><blockquote>Defines <a href="#NWI-fresh_base"><code>fresh_base</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDE">The procedure </a><code><a href="#NWDE">var_for</a></code> produces a fresh variable to stand in for the
+expression <code>e</code>.  Its special property is that 
+<code><a href="#NWDE">var_for</a>(e1) == <a href="#NWDE">var_for</a>(e2)</code> whenever <code>exps_eq(e1, e2)</code>.
+<pre><a name="NWbalA-*-A" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWbalA-*-9">&lt;-</a>D<a href="#NWDF">-&gt;</a>]</b>
+procedure <a href="#NWDE">var_for</a>(e, aux, var2exp)
+  e := untableexp(e)
+  if type(e) == &quot;string&quot; then
+    return var2exp[e] := e
+  /aux[type(e)] := table()
+  t := aux[type(e)]
+  return \t[e] | {
+    every k := key(t) do
+      if exps_eq(e, k) then {
+        t[e] := t[k]
+        break
+      }
+    var2exp[/t[e] := <a href="#NWDD">fresh_variable</a>(free_variables(e) | &quot;???&quot;)] := e
+    t[e]
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-var_for"><code>var_for</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWDF">Debugging support</a></h2>
+<pre><a name="NWbalA-*-B" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDE">&lt;-</a>D]</b>
+procedure <a href="#NWDF">balimage</a>(b) 
+  s := &quot;&quot;
+  every ii := !b.left do 
+    s ||:= &quot;\n  &lt;&lt;&lt; &quot; || ii.v || &quot; = &quot; || expimage(ii.value)
+  s ||:= &quot;\n  -----------------------&quot;
+  every ii := !b.right do 
+    s ||:= &quot;\n  &gt;&gt;&gt; &quot; || ii.v || &quot; = &quot; || expimage(ii.value)
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-balimage"><code>balimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWbalA-braA-1" href="#NWbalA-braA-1"><dfn>&lt;brain dump&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+debug(&quot;Old equations:&quot;)
+every debug(&quot; &quot;, expimage(!eqns))
+write(\baldebug, &quot;After substituting:&quot;, envimage(balmap, &quot;balmap&quot;))
+debug(&quot;New equations:&quot;)
+every debug(&quot; &quot;, expimage(!neweqns))
+debug()
+</pre>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWbalA-*-3">D3</a>, <a href="#NWD6">D4</a>, <a href="#NWD8">D5</a>, <a href="#NWbalA-*-6">D6</a>, <a href="#NWDC">D7</a>, <a href="#NWDD">D8</a>, <a href="#NWbalA-*-9">D9</a>, <a href="#NWDE">D10</a>, <a href="#NWDF">D11</a>
+<li><a href="#NWbalA-**,G-1"><i>&lt;<code>,</code> aux tables&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWD3">U2</a>, <a href="#NWbalA-**,G-1">D3</a>, <a href="#NWbalA-**,G-2">D4</a>, <a href="#NWbalA-**,G-3">D5</a>
+<li><a href="#NWbalA-addT-1"><i>&lt;add new balance to <code>baln2w</code>&gt;</i></a>: <a href="#NWDA">U1</a>, <a href="#NWbalA-use15-3">U2</a>, <a href="#NWbalA-addT-1">D3</a>
+<li><a href="#NWD4"><i>&lt;aux tables <code>|</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWD4">D2</a>, <a href="#NWD9">D3</a>, <a href="#NWDB">D4</a>
+<li><a href="#NWbalA-braA-1"><i>&lt;brain dump&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWbalA-braA-1">D2</a>
+<li><a href="#NWD5"><i>&lt;cases for identifying candidates&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWD5">D2</a>, <a href="#NWbalA-casW-2">D3</a>, <a href="#NWbalA-casW-3">D4</a>
+<li><a href="#NWbalA-mak1H-1"><i>&lt;make <code>first</code> the largest slice at <code>lo</code> (<code>fail</code> if not there and leftmost)&gt;</i></a>: <a href="#NWDC">U1</a>, <a href="#NWbalA-mak1H-1">D2</a>
+<li><a href="#NWD7"><i>&lt;use auxiliaries to add to <code>balances</code>, <code>neweqns</code>, and <code>balmap</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWD7">D2</a>, <a href="#NWDA">D3</a>, <a href="#NWbalA-use15-3">D4</a>, <a href="#NWbalA-use15-4">D5</a>
+</ul>
+<ul>
+<li><a name="NWI-addnset" href="#NWD6">addnset</a>: <a href="#NWD5">U1</a>, <a href="#NWD6">D2</a>, <a href="#NWbalA-casW-2">U3</a>
+<li><a name="NWI-balanced_eqns" href="#NWD3">balanced_eqns</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-balance_eqns" href="#NWD3">balance_eqns</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-balimage" href="#NWDF">balimage</a>: <a href="#NWD7">U1</a>, <a href="#NWDA">U2</a>, <a href="#NWbalA-use15-3">U3</a>, <a href="#NWDC">U4</a>, <a href="#NWDF">D5</a>
+<li><a name="NWI-balpass1" href="#NWD2">balpass1</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWD3">U3</a>
+<li><a name="NWI-balsub_f" href="#NWbalA-*-3">balsub_f</a>: <a href="#NWD3">U1</a>, <a href="#NWbalA-*-3">D2</a>
+<li><a name="NWI-do_slicetree" href="#NWDC">do_slicetree</a>: <a href="#NWDC">D1</a>
+<li><a name="NWI-fresh_base" href="#NWbalA-*-9">fresh_base</a>: <a href="#NWDD">U1</a>, <a href="#NWbalA-*-9">D2</a>
+<li><a name="NWI-fresh_variable" href="#NWDD">fresh_variable</a>: <a href="#NWDD">D1</a>, <a href="#NWDE">U2</a>
+<li><a name="NWI-fresh_variables" href="#NWDD">fresh_variables</a>: <a href="#NWDD">D1</a>
+<li><a name="NWI-n_times_q_plus_r" href="#NWD8">n_times_q_plus_r</a>: <a href="#NWD7">U1</a>, <a href="#NWD8">D2</a>
+<li><a name="NWI-slicetree" href="#NWDC">slicetree</a>: <a href="#NWbalA-use15-4">U1</a>, <a href="#NWDC">D2</a>
+<li><a name="NWI-var_for" href="#NWDE">var_for</a>: <a href="#NWD5">U1</a>, <a href="#NWD7">U2</a>, <a href="#NWbalA-casW-2">U3</a>, <a href="#NWDA">U4</a>, <a href="#NWbalA-use15-3">U5</a>, <a href="#NWbalA-casW-3">U6</a>, <a href="#NWDC">U7</a>, <a href="#NWDE">D8</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,332 @@
+<html><head><title> output.nw</title></head><body><!-- -*- mode: Noweb; noweb-code-mode: icon-mode -*--->
+
+
+<h1><a name="NWD1">Output</a></h1>
+Routines for producing ASCII and &quot;dag&quot; representations
+of patterns and decision trees.
+<pre><a name="NWout9-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWout9-*-2">-&gt;</a>]</b>
+global <a href="#NWD1">equivclasses</a>, <a href="#NWD1">symtab</a>
+
+procedure <a href="#NWD1">outspec</a>(file)
+    every c := !<a href="#NWD1">equivclasses</a> do {
+        writes(file, &quot;fields(&quot;, c.size, &quot;) &quot;)
+        every f := !c.fields do writes(file, <a href="#NWout9-*-3">fieldimage</a>(f))
+        write(file)
+    }
+    <a href="#NWout9-*-4">outpatterndefs</a>(file, w := set())
+    every c := kept_constructors() do
+      write(file, &quot;constructor &quot;, c.name, &quot; &quot;, <a href="#NWout9-*-2">outinputs</a>(c), 
+            &quot; : &quot; || (instructionctype ~=== c.type).name | &quot;&quot;)
+    write(file, &quot;%%&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-equivclasses"><code>equivclasses</code></a>, <a href="#NWI-outspec"><code>outspec</code></a>, <a href="#NWI-symtab"><code>symtab</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWout9-*-3">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-2">outinputs</a>(cons)
+  s := &quot;(&quot;
+  p := &quot;&quot;
+  every i := inputs_of(cons) do {
+    s ||:= p || i.name
+    p := &quot;, &quot;
+  }
+  return s || &quot;)&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-outinputs"><code>outinputs</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWout9-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-2">&lt;-</a>D<a href="#NWout9-*-4">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-3">fieldimage</a>(f) 
+    return f.name || &quot; &quot; || f.lo || &quot;:&quot; || f.hi || &quot; &quot;
+end
+</pre><blockquote>Defines <a href="#NWI-fieldimage"><code>fieldimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-3">&lt;-</a>D<a href="#NWout9-*-5">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-4">outpatterndefs</a>(file, written)
+    /written := <a href="#NWout9-*-7">patnames</a>()
+    pats := sort(<a href="#NWD1">symtab</a>)
+    # first do patterns that don't depend on other patterns, then catch as catch can
+    every pair := !pats &amp; name := pair[1] &amp; p := pair[2] &amp; type(p) == &quot;pattern&quot; do {
+        if not ((!p.disjuncts).name ~== name) then # doesn't depend on others
+            <a href="#NWout9-*-5">outpatterndef</a>(file, name, p, written)
+    }
+    every pair := !pats &amp; type(pair[2]) == &quot;pattern&quot; do
+        <a href="#NWout9-*-5">outpatterndef</a>(file, pair[1], pair[2], written)
+    return 
+end
+</pre><blockquote>Defines <a href="#NWI-outpatterndefs"><code>outpatterndefs</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-4">&lt;-</a>D<a href="#NWout9-*-6">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-5">outpatterndef</a>(file, name, p, written)
+    if not member(written, name) then {
+        every d := !p.disjuncts &amp; name ~== \d.name do 
+            <a href="#NWout9-*-5">outpatterndef</a>(file, d.name, lookup(d.name), written)
+        writes(file, &quot;pattern &quot;, name, &quot; : &quot;)
+        write(file, <a href="#NWout9-*-8">patternimage</a>(p, written))
+        insert(written, name)
+    }
+    return 
+end
+</pre><blockquote>Defines <a href="#NWI-outpatterndef"><code>outpatterndef</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-5">&lt;-</a>D<a href="#NWout9-*-7">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-6">outpattern</a>(file, p, written)
+    /written := <a href="#NWout9-*-7">patnames</a>()
+    return writes(file, <a href="#NWout9-*-8">patternimage</a>(p, written))
+end
+</pre><blockquote>Defines <a href="#NWI-outpattern"><code>outpattern</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-6">&lt;-</a>D<a href="#NWout9-*-8">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-7">patnames</a>()
+  static s
+  initial { s := set(); every insert(s, key(<a href="#NWD1">symtab</a>)) } # cheat
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-patnames"><code>patnames</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-7">&lt;-</a>D<a href="#NWout9-*-9">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-8">patternimage</a>(p, written)
+    /written := emptyset
+    return if member(written, p.name) then # temporary hack
+        p.name
+    else {
+        l := []; every put(l, <a href="#NWout9-*-A">disjunctimage</a>(!p.disjuncts, p.name))
+        if *l &gt; 0 then commaseparate(l, &quot; | &quot;) else &quot;&lt;NOMATCH&gt;&quot;
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-patternimage"><code>patternimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-8">&lt;-</a>D<a href="#NWout9-*-A">-&gt;</a>]</b>
+link commafy
+</pre><pre><a name="NWout9-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-9">&lt;-</a>D<a href="#NWout9-*-B">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-A">disjunctimage</a>(d, name)
+    return if \name == \d.name | /d.name then
+        case type(d) of {
+            &quot;disjunct&quot; : <a href="#NWout9-*-B">sequenceimage</a>(d.sequents)
+            &quot;adisjunct&quot; : 
+               if adalwaysmatches(d) then &quot;&lt;ELSE&gt;&quot;
+               else commaseparate(maplist(<a href="#NWout9-*-D">constraintimage</a>, d.aconstraints), &quot; &amp; &quot;)
+            default : impossible(&quot;disjunct type&quot;)
+        }
+    else
+        d.name
+end
+</pre><blockquote>Defines <a href="#NWI-disjunctimage"><code>disjunctimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-A">&lt;-</a>D<a href="#NWout9-*-C">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-B">sequenceimage</a>(l)
+  return if *l = 0 then &quot;&lt;EPSILON&gt;&quot;
+         else if l[1] === dots then &quot;... &quot; || <a href="#NWout9-*-B">sequenceimage</a>(l[2:0])
+         else if l[-1] === dots then <a href="#NWout9-*-B">sequenceimage</a>(l[1:-1]) || &quot; ...&quot;
+         else commaseparate(maplist(<a href="#NWout9-*-C">sequentimage</a>, l), &quot;; &quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-sequenceimage"><code>sequenceimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-B">&lt;-</a>D<a href="#NWout9-*-D">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-C">sequentimage</a>(s)
+  return if s === dots then impossible(&quot;image of dots&quot;)
+         else if type(s) == (&quot;patlabel&quot; | &quot;latent_patlabel&quot;) then expimage(s)
+         else if *s.constraints = 0 then &quot;&lt;Impossible ELSE?&gt;&quot;
+         else commaseparate(maplist(<a href="#NWout9-*-D">constraintimage</a>, s.constraints), &quot; &amp; &quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-sequentimage"><code>sequentimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-C">&lt;-</a>D<a href="#NWout9-*-E">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-D">constraintimage</a>(c)
+    local bitcount
+    s := &quot;&quot;
+    case type(c) of {
+    &quot;constraint&quot;: {
+        bitcount := <a href="#NWout9-*-E">fieldbitcount</a>(c.field)
+        if c.lo + 1 = c.hi then
+            s ||:= <a href="#NWout9-*-F">patimage</a>(c.field) || &quot; == &quot; || c.lo
+        else if c.lo = 0 &amp; c.hi = 2^bitcount then
+            s ||:= &quot;&lt;ANY &quot; || bitcount || &quot;-bit &quot; || <a href="#NWout9-*-F">patimage</a>(c.field)|| &quot;&gt;&quot;
+        else if c.lo &gt;= c.hi then
+            s ||:= &quot;&lt;IMPOSSIBLE &quot; || <a href="#NWout9-*-F">patimage</a>(c.field) || &quot;&gt;&quot;
+        else {
+            if c.lo &gt; 0 then s ||:= <a href="#NWout9-*-F">patimage</a>(c.field) || &quot; &gt;= &quot; || c.lo
+            if c.lo &gt; 0 &amp; c.hi &lt; 2^bitcount then s ||:= &quot; &amp; &quot;
+            if            c.hi &lt; 2^bitcount then 
+                        s ||:=  <a href="#NWout9-*-F">patimage</a>(c.field) || &quot; &lt; &quot; || c.hi
+        }
+    }
+    &quot;fieldbinding&quot; : s ||:= <a href="#NWout9-*-F">patimage</a>(c.field) || &quot; = &quot; || image(c.code)
+    default : impossible(&quot;constraint type&quot;)
+    }
+    return s
+end
+</pre><blockquote>Defines <a href="#NWI-constraintimage"><code>constraintimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-D">&lt;-</a>D<a href="#NWout9-*-F">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-E">fieldbitcount</a>(f)
+   return case type(f) of {
+     &quot;absolute_field&quot; : <a href="#NWout9-*-E">fieldbitcount</a>(f.field)
+     &quot;field&quot; : fwidth(f)
+     default : impossible(&quot;field type&quot;)
+   }
+end
+</pre><blockquote>Defines <a href="#NWI-fieldbitcount"><code>fieldbitcount</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-E">&lt;-</a>D<a href="#NWout9-*-G">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-F">patimage</a>(v)
+    return case type(v) of {
+        &quot;list&quot; | &quot;set&quot; :  &quot;[&quot; || commaseparate(maplist(<a href="#NWout9-*-F">patimage</a>, v)) || &quot;]&quot;
+        &quot;matching_stmt&quot; : &quot;MATCH &quot; || <a href="#NWout9-*-F">patimage</a>(v.arms) || &quot;ENDMATCH&quot;
+        &quot;arm&quot; : image(v.file) || &quot;, line &quot; || string(v.line) || &quot;: &quot; ||
+                       <a href="#NWout9-*-F">patimage</a>(v.pattern) || &quot; =&gt; &quot; || v.code
+        &quot;pattern&quot; : commaseparate(maplist(<a href="#NWout9-*-F">patimage</a>, v.disjuncts), &quot; | &quot;)
+        &quot;disjunct&quot; : if *v.sequents = 0 then &quot;epsilon&quot;
+                     else commaseparate(maplist(<a href="#NWout9-*-F">patimage</a>, v.sequents), &quot;; &quot;)
+        &quot;adisjunct&quot;: if *v.aconstraints = 0 then &quot;&lt;MATCH&gt;&quot;
+                     else commaseparate(maplist(<a href="#NWout9-*-F">patimage</a>, v.aconstraints), &quot; &amp; &quot;)
+        &quot;sequent&quot; : if *v.constraints = 0 then &quot;some &quot; || v.class.name
+                    else commaseparate(maplist(<a href="#NWout9-*-F">patimage</a>, v.constraints), &quot; &amp; &quot;)
+        &quot;constraint&quot; : <a href="#NWout9-*-G">stringininterval</a>(<a href="#NWout9-*-F">patimage</a>(v.field), v.lo, v.hi)
+        &quot;fieldbinding&quot; : <a href="#NWout9-*-F">patimage</a>(v.field) || &quot; = &quot; || image(v.code)
+        &quot;field&quot; : v.name
+        &quot;absolute_field&quot; : &quot;{&quot; || <a href="#NWout9-*-F">patimage</a>(v.field) || &quot; at &quot; || v.offset || &quot;}&quot;
+        default : image(v)
+    }
+end
+</pre><blockquote>Defines <a href="#NWI-patimage"><code>patimage</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-F">&lt;-</a>D<a href="#NWout9-*-H">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-G">stringininterval</a>(name, lo, hi)
+    local r, result
+    if type(lo) == &quot;set&quot; then {
+        r := sort(lo ++ hi)
+        if *r = 0 then return &quot;&lt;EMPTY RANGE??&gt;&quot;
+        result := &quot;( &quot; ; result ||:= <a href="#NWout9-*-G">stringininterval</a>(name, get(r), get(r))
+        while result ||:= &quot; | &quot; || <a href="#NWout9-*-G">stringininterval</a>(name, get(r), get(r))
+        return result || &quot; )&quot;
+    } else if lo + 1 = hi then return name || &quot; == &quot; || <a href="#NWout9-*-H">fnum</a>(lo)
+    else return <a href="#NWout9-*-H">fnum</a>(lo) || &quot; &lt;= &quot; || name || &quot;  &lt; &quot; || <a href="#NWout9-*-H">fnum</a>(hi)
+end 
+</pre><blockquote>Defines <a href="#NWI-stringininterval"><code>stringininterval</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-G">&lt;-</a>D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWout9-*-H">fnum</a>(n)
+    n := string(n) | impossible(&quot;format&quot;)
+    if *n &lt; 2 then n := right(n, 2)
+    return n
+end
+</pre><blockquote>Defines <a href="#NWI-fnum"><code>fnum</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD2">Writing trees in ascii format</a></h2>
+<pre><a name="NWout9-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWout9-*-H">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">outtree</a>(file, n, prefix, shownode)
+  if /prefix then write(file, &quot;TREE &quot;, image(n.name))
+  else write(image(n.name))
+  if *n.children &gt; 0 then {
+    span := *<a href="#NWout9-*-F">patimage</a>(n.field) + 14
+    every e := !n.children do
+      <a href="#NWD2">outtree</a>(file, e.node, (\prefix || &quot; &amp; &quot; | &quot;  &quot;) \ 1 || 
+        right(<a href="#NWout9-*-G">stringininterval</a>(<a href="#NWout9-*-F">patimage</a>(n.field), e.lo, e.hi),span), shownode)
+  } else {
+    if *n.cs.arms = 0 then write(file, \prefix | &quot;  &quot;, &quot; : NO MATCH&quot;)
+    else 
+      every write(file, (\prefix | &quot;  ANY?  &quot;)\1, &quot; : &quot;, expimage(!n.cs.arms))
+  }
+  if /prefix then write(file, &quot;END TREE\n&quot;)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-outtree"><code>outtree</code></a> (links are to index).<p>
+</blockquote><p>
+<h2><a name="NWD3">Writing trees and dags in </a><tt>dot(1)</tt> format</h2>
+<pre><a name="NWout9-*-J" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWout9-*-K">-&gt;</a>]</b>
+global <a href="#NWD3">pagesize</a>
+procedure <a href="#NWD3">dotouttree</a>(file, root)
+    write(file, &quot;digraph decisions {&quot;)    
+    write(file, &quot;  page=&quot;, image(<a href="#NWD3">pagesize</a>), &quot;;&quot;)
+    write(file, &quot;  ratio=compress;&quot;)
+    <a href="#NWD3">dotoutnode</a>(file, root, table(), create(seq()))
+    write(file, &quot;}&quot;)
+end
+
+procedure <a href="#NWD3">dotoutnode</a>(file, n, known, number)
+    if /known[n] then {
+        if *n.children &gt; 0 then {
+            if alt := alternates(n) then {
+                writes(file, &quot;N&quot;, known[n] := @number, &quot; [label=\&quot;&quot;)
+                every i := 1 to *alt.constraints do {
+                   if i &gt; 1 then writes(file, &quot;,&quot;)
+                   writes(file, alt.constraints[i].field.field.name)
+                   writes(file, &quot;@&quot;, 0 &lt; alt.constraints[i].field.offset)
+                }
+                write(file, &quot;\&quot;];&quot;)
+                every <a href="#NWD3">dotoutnode</a>(file, alt.thennode | alt.elsenode, known, number)
+                <a name="NWout9-*-J-u1" href="#NWout9-makn-1"><i>&lt;make <code>s</code> a label string for <code>alt.constraints</code>&gt;</i></a>
+                write(file, &quot;N&quot;, known[n], &quot; -&gt; N&quot;, known[alt.thennode], &quot; [label=&quot;,
+                             image(s), &quot;];&quot;)
+                write(file, &quot;N&quot;, known[n], &quot; -&gt; N&quot;, known[alt.elsenode], 
+                            &quot; [label=\&quot;else\&quot;];&quot;)
+            } else {
+                write(file, &quot;N&quot;, known[n] := @number,
+                            &quot; [label=\&quot;&quot;, n.field.field.name, 
+                            &quot;@&quot; || (0 &lt; n.field.offset) | &quot;&quot;, &quot;\&quot;];&quot;)
+                every e := !n.children do {
+                    <a href="#NWD3">dotoutnode</a>(file, e.node, known, number)
+                    r := sort(e.lo ++ e.hi)
+                    lo := get(r) &amp; hi := get(r)
+                    s := &quot;&quot;
+                    s ||:= if lo+1 = hi then lo else lo || &quot;-&quot; || (hi - 1)
+                    while lo := get(r) &amp; hi := get(r) do
+                      s ||:= &quot;, &quot; || if lo+1 = hi then lo else lo || &quot;-&quot; || (hi - 1)
+                    write(file, &quot;N&quot;, known[n], &quot; -&gt; N&quot;, known[e.node], &quot; [label=&quot;,
+                          image(commaseparate(<a href="#NWout9-*-K">split10</a>(s), &quot;\n&quot;)), &quot;];&quot;)
+                }
+            }
+        } else if *n.cs.arms = 0 then 
+            write(file, &quot;N&quot;, known[n] := @number, &quot; [label=&quot;, image(&quot;NO MATCH&quot;), &quot;];&quot;)
+        else { 
+            writes(file, &quot;N&quot;, known[n] := @number, &quot; [label=\&quot;&quot;)
+#           <a href="#NWout9-*-6">outpattern</a>(file, n.cs.arms[1].original.pattern)
+            writes(file, \n.cs.arms[1].original.pattern.name | 
+                        &quot;[&quot; || n.cs.arms[1].original.line || &quot;]&quot;)
+            write(file, &quot;\&quot;];&quot;)
+        }
+    }
+    return
+end
+</pre><blockquote>Defines <a href="#NWI-dotoutnode"><code>dotoutnode</code></a>, <a href="#NWI-dotouttree"><code>dotouttree</code></a>, <a href="#NWI-pagesize"><code>pagesize</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWout9-makn-1" href="#NWout9-makn-1"><dfn>&lt;make <code>s</code> a label string for <code>alt.constraints</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b>
+s := &quot;&quot;
+every i := 1 to *alt.constraints do {
+   if i &gt; 1 then s ||:= &quot;,&quot;
+   c := alt.constraints[i]
+   if *c.lo &gt; 1 then s ||:= &quot;...&quot;
+   else if ?c.lo + 1 = ?c.hi then s ||:= ?c.lo
+   else s ||:= ?c.lo || &quot;-&quot; || (?c.hi - 1)
+}
+s := <a href="#NWout9-*-K">split10</a>(s)
+</pre><pre><a name="NWout9-*-K" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D]</b>
+procedure <a href="#NWout9-*-K">split10</a>(s)
+  static N
+  local k
+  initial N := 18  
+  if *s &gt; N &amp; find(&quot;, &quot;, s) &lt;= N then {
+     every k := N &gt;= find(&quot;, &quot;, s)
+     return s[1:k+1] || &quot;\n&quot; || <a href="#NWout9-*-K">split10</a>(s[k+2:0]) # keep comma, drop space 
+  } else {
+    return s
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-split10"><code>split10</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWout9-*-2">D2</a>, <a href="#NWout9-*-3">D3</a>, <a href="#NWout9-*-4">D4</a>, <a href="#NWout9-*-5">D5</a>, <a href="#NWout9-*-6">D6</a>, <a href="#NWout9-*-7">D7</a>, <a href="#NWout9-*-8">D8</a>, <a href="#NWout9-*-9">D9</a>, <a href="#NWout9-*-A">D10</a>, <a href="#NWout9-*-B">D11</a>, <a href="#NWout9-*-C">D12</a>, <a href="#NWout9-*-D">D13</a>, <a href="#NWout9-*-E">D14</a>, <a href="#NWout9-*-F">D15</a>, <a href="#NWout9-*-G">D16</a>, <a href="#NWout9-*-H">D17</a>, <a href="#NWD2">D18</a>, <a href="#NWD3">D19</a>, <a href="#NWout9-*-K">D20</a>
+<li><a href="#NWout9-makn-1"><i>&lt;make <code>s</code> a label string for <code>alt.constraints</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWout9-makn-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-constraintimage" href="#NWout9-*-D">constraintimage</a>: <a href="#NWout9-*-A">U1</a>, <a href="#NWout9-*-C">U2</a>, <a href="#NWout9-*-D">D3</a>
+<li><a name="NWI-disjunctimage" href="#NWout9-*-A">disjunctimage</a>: <a href="#NWout9-*-8">U1</a>, <a href="#NWout9-*-A">D2</a>
+<li><a name="NWI-dotoutnode" href="#NWD3">dotoutnode</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-dotouttree" href="#NWD3">dotouttree</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-equivclasses" href="#NWD1">equivclasses</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-fieldbitcount" href="#NWout9-*-E">fieldbitcount</a>: <a href="#NWout9-*-D">U1</a>, <a href="#NWout9-*-E">D2</a>
+<li><a name="NWI-fieldimage" href="#NWout9-*-3">fieldimage</a>: <a href="#NWD1">U1</a>, <a href="#NWout9-*-3">D2</a>
+<li><a name="NWI-fnum" href="#NWout9-*-H">fnum</a>: <a href="#NWout9-*-G">U1</a>, <a href="#NWout9-*-H">D2</a>
+<li><a name="NWI-outinputs" href="#NWout9-*-2">outinputs</a>: <a href="#NWD1">U1</a>, <a href="#NWout9-*-2">D2</a>
+<li><a name="NWI-outpattern" href="#NWout9-*-6">outpattern</a>: <a href="#NWout9-*-6">D1</a>, <a href="#NWD3">U2</a>
+<li><a name="NWI-outpatterndef" href="#NWout9-*-5">outpatterndef</a>: <a href="#NWout9-*-4">U1</a>, <a href="#NWout9-*-5">D2</a>
+<li><a name="NWI-outpatterndefs" href="#NWout9-*-4">outpatterndefs</a>: <a href="#NWD1">U1</a>, <a href="#NWout9-*-4">D2</a>
+<li><a name="NWI-outspec" href="#NWD1">outspec</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-outtree" href="#NWD2">outtree</a>: <a href="#NWD2">D1</a>
+<li><a name="NWI-pagesize" href="#NWD3">pagesize</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-patimage" href="#NWout9-*-F">patimage</a>: <a href="#NWout9-*-D">U1</a>, <a href="#NWout9-*-F">D2</a>, <a href="#NWD2">U3</a>
+<li><a name="NWI-patnames" href="#NWout9-*-7">patnames</a>: <a href="#NWout9-*-4">U1</a>, <a href="#NWout9-*-6">U2</a>, <a href="#NWout9-*-7">D3</a>
+<li><a name="NWI-patternimage" href="#NWout9-*-8">patternimage</a>: <a href="#NWout9-*-5">U1</a>, <a href="#NWout9-*-6">U2</a>, <a href="#NWout9-*-8">D3</a>
+<li><a name="NWI-sequenceimage" href="#NWout9-*-B">sequenceimage</a>: <a href="#NWout9-*-A">U1</a>, <a href="#NWout9-*-B">D2</a>
+<li><a name="NWI-sequentimage" href="#NWout9-*-C">sequentimage</a>: <a href="#NWout9-*-B">U1</a>, <a href="#NWout9-*-C">D2</a>
+<li><a name="NWI-split10" href="#NWout9-*-K">split10</a>: <a href="#NWD3">U1</a>, <a href="#NWout9-makn-1">U2</a>, <a href="#NWout9-*-K">D3</a>
+<li><a name="NWI-stringininterval" href="#NWout9-*-G">stringininterval</a>: <a href="#NWout9-*-F">U1</a>, <a href="#NWout9-*-G">D2</a>, <a href="#NWD2">U3</a>
+<li><a name="NWI-symtab" href="#NWD1">symtab</a>: <a href="#NWD1">D1</a>, <a href="#NWout9-*-4">U2</a>, <a href="#NWout9-*-7">U3</a>
+</ul>
+</body></html>
+

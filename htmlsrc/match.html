@@ -1,0 +1,318 @@
+<html><head><title> match.nw</title></head><body>
+<h1>Support for pattern-matching statements</h1>
+<p>
+Much of what happens here is the dual of what is done in
+<tt>constructors.nw</tt>.
+Abstract syntax is converted to patterns, but this time the free variables
+<a name="NWD1">must be discovered, and they become the inputs to, not the outputs from, the</a>
+equation-solving process.
+<p>
+<h2>Pattern syntax in decoding</h2>
+Free variables induce field or constructor bindings (although we have no support
+yet for constructor bindings).
+What we really want is for all the constructor stuff to DWIM.
+Whatever that is.
+All patterns are resolved into absolute normal form (q.v.).
+<pre><a name="NWmat8-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWD1">resolve_case_patterns</a>(cs)
+  a := []
+  every put(a, <a href="#NWD2">new_matching_arms</a>(!cs.arms, cs.succptr))
+  cs.arms := a
+  return cs
+end
+</pre><blockquote>Defines <a href="#NWI-resolve_case_patterns"><code>resolve_case_patterns</code></a> (links are to index).<p>
+</blockquote><p>
+In resolving an arm, the first step is to find all the free identifiers, so we can 
+do some suitable injection with them.  
+We'll also identify the subset of those identifiers that become the binding instances 
+that might be used in equations.
+We can then put the pattern first into normal form, then into absolute normal form.
+<p>
+At that point, we have our usual encoding-type pattern, with fields bound to 
+expressions, which is emphatically no good for decoding.
+The next step is to introduce fresh variables to the field bindings for which we need
+expressions, creating a set of equations used solely to invert the field bindings. 
+We'll solve that set of equations, giving us our goo solely in 
+terms of the absolute fields. 
+We'll then be able to apply it to any conditions.
+<p>
+Eventually we'll also have to deal with any explicit equations, including
+identifying any additional binding instances 
+of identifiers that appear only in such equations.
+<p>
+<a name="NWD2">Only identifiers that are bound in every disjunct can reliably be used in code or in </a>
+equations.
+<p>
+<em>old: In principle, an identifier
+could  be bound to different fields in different disjuncts.
+I resolve that problem by forbidding the construct; a single
+identifier must always be bound to the same field, although it may
+appear in different positions and therefore in different absolute</em>
+fields.
+<pre><a name="NWmat8-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWmat8-*-3">-&gt;</a>]</b>
+procedure <a href="#NWD2">new_matching_arms</a>(a, succptr)
+  local idents, Ii, id, patlabeltab, freevars
+  pp := PPnew(\mdebug)
+###  idents := set(); every insert(idents, pattern_free_variables(a.pattern))
+###  rho := newscope(globals)
+###  &lt;inject [[idents]] into [[rho]]&gt;
+###  patlabeltab := table()
+###  every n := pattern_label_names(a.pattern) do
+###    patlabeltab[n] := n
+###  push(rho, patlabeltab)
+  freevars := table()
+  x := pnf(a.pattern, globals, freevars)
+  PPxwrite(\pp, &quot;after pnf we have case arm $t$o&quot;, ppexpimage(x), &quot;$b&quot;)
+  x := bind_patlabel_names(x, 1)
+  PPxwrite(\pp, &quot;after binding patlabel names we have case arm $t$o&quot;, ppexpimage(x), &quot;$b&quot;)
+  every set_patlabel_offsets(!x.disjuncts)
+  PPxwrite(\pp, &quot;after setting offsets we have case arm $t$o&quot;, ppexpimage(x), &quot;$b&quot;)
+  a.pattern := anf(x)
+  a.pattern := gsubst(a.pattern, <a href="#NWmat8-*-3">always_fail</a>)   # remove wildcards and instances,
+                                                # turn latent to real labels
+  PPxwrite(\pp, &quot;after anf+subst we have case arm $t$o&quot;, ppexpimage(a.pattern), &quot;$b&quot;)
+  <a name="NWmat8-*-2-u1" href="#NWmat8-rem13-1"><i>&lt;remove from <code>freevars</code> names of pattern labels in <code>a.pattern</code>&gt;</i></a>
+  if *freevars &gt; 0 then
+    write(\mdebug, &quot;caught free variables:&quot;, envimage(freevars, &quot;freevars&quot;))
+  <a name="NWmat8-*-2-u2" href="#NWmat8-dumi-1"><i>&lt;dump image of case arm before simplification&gt;</i></a>
+  x := simplify(a.pattern)
+  if not exps_eq(x, a.pattern) then {
+    a.pattern := x
+    <a name="NWmat8-*-2-u3" href="#NWmat8-dumh-1"><i>&lt;dump image of case arm after simplification&gt;</i></a>
+  } else
+    write(\mdebug, &quot;Case arm doesn't simplify&quot;)
+  idents := all_disjuncts_ids(a.pattern, <a href="#NWmat8-*-4">free_var_or_patlabelbinding_name</a>, 
+                              &quot;Ignoring bound identifier &quot;, 
+                              &quot; because it doesn't appear in every disjunct&quot;)
+  if *idents &gt; 0 then 
+    write(\mdebug, &quot;Saw binding instances of &quot;, commafy(sort(idents)))
+  else                
+    write(\mdebug, &quot;No binding instances&quot;)
+  a.soln := solve(balance_eqns(\a.eqns), idents)  
+  <a name="NWmat8-*-2-u4" href="#NWmat8-con1D-1"><i>&lt;convert field bindings to answers, split arm as needed, and suspend results&gt;</i></a>
+end
+</pre><blockquote>Defines <a href="#NWI-new_matching_arms"><code>new_matching_arms</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmat8-rem13-1" href="#NWmat8-rem13-1"><dfn>&lt;remove from <code>freevars</code> names of pattern labels in <code>a.pattern</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+every delete(freevars, key(\(!a.pattern.disjuncts).patlabelbindings))
+</pre><pre><a name="NWmat8-dumi-1" href="#NWmat8-dumi-1"><dfn>&lt;dump image of case arm before simplification&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+PPxwrites(\pp, &quot;Before simplification, case arm is $t${$c&quot;, ppexpimage(a.pattern))
+PPxwrites(\pp, &quot;$o{ &quot;, ppexpimage(\a.eqns), &quot; }&quot;)
+PPxwrite(\pp, &quot;$}$b&quot;)
+</pre><pre><a name="NWmat8-dumh-1" href="#NWmat8-dumh-1"><dfn>&lt;dump image of case arm after simplification&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+PPxwrites(\pp, &quot;After simplification, case arm is $t${$c&quot;, ppexpimage(a.pattern))
+PPxwrites(\pp, &quot;$o{ &quot;, ppexpimage(\a.eqns), &quot; }&quot;)
+PPxwrite(\pp, &quot;$}$b&quot;)
+
+</pre><p>
+<a name="NWD3">Note that we're letting field names be used either to stand for patterns or to be</a>
+binding instances of integers (just like predefined identifiers).
+We think it's OK to allow both, but we're not sure.  In any case, it was too
+annoying not to allow filed names as binding instances in constructor applications.
+<pre><a name="NWmat8-injU-1" href="#NWD3"><dfn>&lt;inject <code>idents</code> into <code>rho</code>&gt;=</dfn></a>
+every i := !idents do 
+  case type(symtab[i]) of {
+    &quot;field&quot;    : add_to_rho(i, inject(constraints2pattern(fieldbinding(symtab[i], i)),
+                                      i, &amp;null), rho)
+    &quot;pattern&quot;  : add_to_rho(i, inject(symtab[i], &amp;null, &amp;null), rho)
+    &quot;constype&quot; : 
+       add_to_rho(
+          i, 
+          inject(seqpx(label2pattern(i),
+                       consinput_pattern(ipt := input(Ewildcard(i), symtab[i]))),
+                 &amp;null, 
+                 ipt), 
+          rho)
+    &quot;null&quot;     : add_to_rho(i, inject(&amp;null, i, &amp;null), rho)
+    default    : error(&quot;I can't make sense of &quot;, image(i), &quot; (a &quot;, type(symtab[i]), 
+                       &quot;) within a pattern&quot;)
+  }
+</pre><pre><a name="NWmat8-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWmat8-*-4">-&gt;</a>]</b>
+procedure <a href="#NWmat8-*-3">always_fail</a>()
+  fail
+end
+</pre><blockquote>Defines <a href="#NWI-always_fail"><code>always_fail</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWmat8-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmat8-*-3">&lt;-</a>D<a href="#NWmat8-*-5">-&gt;</a>]</b>
+procedure <a href="#NWmat8-*-4">free_var_or_patlabelbinding_name</a>(d)
+  suspend free_variables(d) | key(\d.patlabelbindings)
+end
+</pre><blockquote>Defines <a href="#NWI-free_var_or_patlabelbinding_name"><code>free_var_or_patlabelbinding_name</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmat8-con1D-1" href="#NWmat8-con1D-1"><dfn>&lt;convert field bindings to answers, split arm as needed, and suspend results&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+acount := 0
+lasta := &amp;null
+every d := !a.pattern.disjuncts do {
+  s := <a href="#NWD4">fieldbindings_to_soln</a>(d, idents)
+  l := if \succptr then d.length else &amp;null
+  if (\lasta).imp_soln === s &amp; lasta.patlen === l &amp;
+     <a href="#NWmat8-*-5">patlabelbindings_match</a>(lasta.pattern.disjuncts[1].patlabelbindings, 
+                            d.patlabelbindings) 
+  then
+    put(lasta.pattern.disjuncts, d)
+  else {
+    <a name="NWmat8-con1D-1-u1" href="#NWmat8-shoW-1"><i>&lt;show last answers and conditions&gt;</i></a>
+    suspend \lasta
+    lasta := copy(a)
+    lasta.pattern := copy(a.pattern)
+    lasta.pattern.disjuncts := [d]
+    lasta.imp_soln := s
+    lasta.patlen := l
+    acount +:= 1
+  }
+}
+if acount &gt; 1 then 
+  write(\mdebug, &quot;split case arm at &quot;, image(a.file), &quot;, line &quot;, a.line, 
+                 &quot; because of varying implicit solutions or pattern lengths&quot;)
+<a name="NWmat8-con1D-1-u2" href="#NWmat8-shoW-1"><i>&lt;show last answers and conditions&gt;</i></a>
+suspend \lasta
+</pre><pre><a name="NWmat8-shoW-1" href="#NWmat8-shoW-1"><dfn>&lt;show last answers and conditions&gt;=</dfn></a> <b>(<a href="#NWmat8-con1D-1">&lt;-U</a>)</b>
+write(\mdebug, &quot;Answers and conditions (&quot;, image(\lasta), &quot;) at length &quot;, 
+               (\lasta).patlen,
+               &quot; (&quot;, image((\lasta).imp_soln), &quot;):&quot;, solnimage((\lasta).imp_soln))
+</pre><pre><a name="NWmat8-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmat8-*-4">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWmat8-*-5">patlabelbindings_match</a>(t1, t2)
+  if      /t1 then return (/t2 | *t2 = 0, t1)
+  else if /t2 then return (/t1 | *t1 = 0, t1) 
+  else if k := key(t1) &amp; (/t2[k] | t1[k] ~= t2[k]) then fail
+  else if k := key(t2) &amp; (/t1[k] | t1[k] ~= t2[k]) then fail 
+  else return t1
+end
+</pre><blockquote>Defines <a href="#NWI-patlabelbindings_match"><code>patlabelbindings_match</code></a> (links are to index).<p>
+</blockquote><p>
+For each disjunct, we turn field bindings into answers and conditions, using the
+following steps:
+<ol>
+<li>Remove all the field bindings from the constraints, making a new
+equation for each field binding.
+Because the solve works with variables, use the function
+<code><a href="#NWmat8-*-7">afield_var</a></code> to map each absolute field to its corresponding
+variable.
+The table <code><a href="#NWmat8-*-7">afield_vars_inverse</a></code> is used later to perform the
+inverse mapping.
+The variables introduced by <code><a href="#NWmat8-*-7">afield_var</a></code> stand for the absolute
+<a name="NWD4">fields in the bindings, and they are exactly the variables that are</a>
+the inputs to the equations.
+<li>Solve the equations, and build the answers table by using
+the values they give to the identifiers in <code>idents</code>.
+At this point we inverse-map the variables, so the results are free
+in absolute fields, not in these auxiliary variables.
+<li>Add any constraints produced by the equations to the conditions of the
+disjunct, performing the same inverse mapping.
+</ol>
+<pre><a name="NWmat8-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmat8-*-5">&lt;-</a>D<a href="#NWmat8-*-7">-&gt;</a>]</b>
+procedure <a href="#NWD4">fieldbindings_to_soln</a>(d, idents)
+  local newconstraints, newconditions, eqns, soln, inputs, x, result
+  every newconstraints | eqns := []
+  inputs := set()
+  every insert(inputs, key(\d.patlabelbindings))
+  <a href="#NWmat8-*-7">afield_vars</a> := table()
+  every c := !d.aconstraints do 
+    case type(c) of {
+      &quot;constraint&quot;   : put(newconstraints, c)
+      &quot;fieldbinding&quot; : {
+         insert(inputs, x := <a href="#NWmat8-*-7">afield_var</a>(c.field))
+         put(eqns, eqn(x, &quot;=&quot;, c.code))
+      }
+      default : impossible(&quot;constraint type&quot;)
+    }
+  d.aconstraints := newconstraints
+  newconditions := set()
+  every e := !\d.conditions do
+    case type(e) of {
+      &quot;eqn&quot;   : put(eqns, e)
+      default : insert(newconditions, e)
+    }
+  d.conditions := if *newconditions &gt; 0 then newconditions else &amp;null
+  soln := solve(balance_eqns(eqns), inputs)
+    # soln.answers : bound [[idents]] -&gt; exps in <a href="#NWmat8-*-7">afield_vars</a>
+  result := solution(table(), set())
+  <a name="NWmat8-*-6-u1" href="#NWmat8-makz-1"><i>&lt;make sure there's an answer for every non-label in <code>idents</code>&gt;</i></a>
+  every id := !idents do
+    result.answers[id] := 
+      if member(\d.patlabelbindings, id) then
+        binop(the_global_pc, &quot;+&quot;, d.patlabelbindings[id])
+      else
+        super_simplify(subst_tab(soln.answers[id], <a href="#NWmat8-*-7">afield_vars_inverse</a>, 1))
+            # is super_simplify really safe here?  dunno...
+  every insert_condition(result.constraints,
+           super_simplify(subst_tab(!soln.constraints, <a href="#NWmat8-*-7">afield_vars_inverse</a>, 1)))
+  return <a href="#NWmat8-*-8">unique_soln</a>(result)
+end
+</pre><blockquote>Defines <a href="#NWI-fieldbindings_to_soln"><code>fieldbindings_to_soln</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmat8-makz-1" href="#NWmat8-makz-1"><dfn>&lt;make sure there's an answer for every non-label in <code>idents</code>&gt;=</dfn></a> <b>(<a href="#NWD4">&lt;-U</a>)</b>
+if (id := !idents, not member(\d.patlabelbindings, id), /soln.answers[id]) then {
+  PPxwrite(PPnew(&amp;errout),&quot;Error: trouble with disjunct ${$t$o&quot;, ppexpimage(d), &quot;$b$}&quot;)
+  <a name="NWmat8-makz-1-u1" href="#NWD5"><i>&lt;make <code>l</code> list of <code>idents</code> not in <code>soln.answers</code>&gt;</i></a>
+  error(&quot;Can't solve for &quot;, commafy(sort(l)), envimage(soln.answers, &quot;soln.answers&quot;))
+}
+</pre><p>
+<a name="NWD5">Better error message:</a>
+<pre><a name="NWmat8-makr-1" href="#NWD5"><dfn>&lt;make <code>l</code> list of <code>idents</code> not in <code>soln.answers</code>&gt;=</dfn></a> <b>(<a href="#NWmat8-makz-1">&lt;-U</a>)</b>
+l := []
+every /soln.answers[x := !idents] &amp; not member(\d.patlabelbindings, x) do 
+  put(l, x)
+</pre><p>
+<pre><a name="NWmat8-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWmat8-*-8">-&gt;</a>]</b>
+global <a href="#NWmat8-*-7">afield_vars</a>, <a href="#NWmat8-*-7">afield_vars_inverse</a>
+procedure <a href="#NWmat8-*-7">afield_var</a>(af)
+  initial {
+    every <a href="#NWmat8-*-7">afield_vars</a> | <a href="#NWmat8-*-7">afield_vars_inverse</a> := table()
+  }
+  <a href="#NWmat8-*-7">afield_vars_inverse</a>[/<a href="#NWmat8-*-7">afield_vars</a>[af] := fresh_variable(af.field.name)] := af
+  return <a href="#NWmat8-*-7">afield_vars</a>[af]
+end
+</pre><blockquote>Defines <a href="#NWI-afield_var"><code>afield_var</code></a>, <a href="#NWI-afield_vars"><code>afield_vars</code></a>, <a href="#NWI-afield_vars_inverse"><code>afield_vars_inverse</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmat8-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmat8-*-7">&lt;-</a>D<a href="#NWmat8-*-9">-&gt;</a>]</b>
+procedure <a href="#NWmat8-*-8">unique_soln</a>(soln)
+  static cache
+  initial cache := table()
+  /cache[*soln.constraints] := table()
+  t := cache[*soln.constraints]
+  l := sort(soln.answers)
+  k := &quot;&quot;; 
+  every p := !sort(soln.answers) do k ||:= p[1] || &quot; &quot; || type(p[2]) || &quot; &quot;
+  /t[k] := set()
+  if s := !t[k] &amp; <a href="#NWmat8-*-9">answers_eq</a>(s.answers, soln.answers) &amp;
+     exps_eq(s.constraints, soln.constraints) then
+    return s
+  else {
+    insert(t[k], soln)
+    return soln
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-unique_soln"><code>unique_soln</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWmat8-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWmat8-*-8">&lt;-</a>D]</b>
+procedure <a href="#NWmat8-*-9">answers_eq</a>(a1, a2)
+  if a1 === a2 then return
+  *a1 = *a2 | fail
+  if id := key(a1) &amp; not exps_eq(a1[id], \a2[id]) then fail
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-answers_eq"><code>answers_eq</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>, <a href="#NWmat8-*-3">D3</a>, <a href="#NWmat8-*-4">D4</a>, <a href="#NWmat8-*-5">D5</a>, <a href="#NWD4">D6</a>, <a href="#NWmat8-*-7">D7</a>, <a href="#NWmat8-*-8">D8</a>, <a href="#NWmat8-*-9">D9</a>
+<li><a href="#NWmat8-con1D-1"><i>&lt;convert field bindings to answers, split arm as needed, and suspend results&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-con1D-1">D2</a>
+<li><a href="#NWmat8-dumh-1"><i>&lt;dump image of case arm after simplification&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-dumh-1">D2</a>
+<li><a href="#NWmat8-dumi-1"><i>&lt;dump image of case arm before simplification&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-dumi-1">D2</a>
+<li><a href="#NWD3"><i>&lt;inject <code>idents</code> into <code>rho</code>&gt;</i></a>: <a href="#NWD3">D1</a>
+<li><a href="#NWD5"><i>&lt;make <code>l</code> list of <code>idents</code> not in <code>soln.answers</code>&gt;</i></a>: <a href="#NWmat8-makz-1">U1</a>, <a href="#NWD5">D2</a>
+<li><a href="#NWmat8-makz-1"><i>&lt;make sure there's an answer for every non-label in <code>idents</code>&gt;</i></a>: <a href="#NWD4">U1</a>, <a href="#NWmat8-makz-1">D2</a>
+<li><a href="#NWmat8-rem13-1"><i>&lt;remove from <code>freevars</code> names of pattern labels in <code>a.pattern</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-rem13-1">D2</a>
+<li><a href="#NWmat8-shoW-1"><i>&lt;show last answers and conditions&gt;</i></a>: <a href="#NWmat8-con1D-1">U1</a>, <a href="#NWmat8-shoW-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-afield_var" href="#NWmat8-*-7">afield_var</a>: <a href="#NWD4">U1</a>, <a href="#NWmat8-*-7">D2</a>
+<li><a name="NWI-afield_vars" href="#NWmat8-*-7">afield_vars</a>: <a href="#NWD4">U1</a>, <a href="#NWmat8-*-7">D2</a>
+<li><a name="NWI-afield_vars_inverse" href="#NWmat8-*-7">afield_vars_inverse</a>: <a href="#NWD4">U1</a>, <a href="#NWmat8-*-7">D2</a>
+<li><a name="NWI-always_fail" href="#NWmat8-*-3">always_fail</a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-*-3">D2</a>
+<li><a name="NWI-answers_eq" href="#NWmat8-*-9">answers_eq</a>: <a href="#NWmat8-*-8">U1</a>, <a href="#NWmat8-*-9">D2</a>
+<li><a name="NWI-fieldbindings_to_soln" href="#NWD4">fieldbindings_to_soln</a>: <a href="#NWmat8-con1D-1">U1</a>, <a href="#NWD4">D2</a>
+<li><a name="NWI-free_var_or_patlabelbinding_name" href="#NWmat8-*-4">free_var_or_patlabelbinding_name</a>: <a href="#NWD2">U1</a>, <a href="#NWmat8-*-4">D2</a>
+<li><a name="NWI-new_matching_arms" href="#NWD2">new_matching_arms</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>
+<li><a name="NWI-patlabelbindings_match" href="#NWmat8-*-5">patlabelbindings_match</a>: <a href="#NWmat8-con1D-1">U1</a>, <a href="#NWmat8-*-5">D2</a>
+<li><a name="NWI-resolve_case_patterns" href="#NWD1">resolve_case_patterns</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-unique_soln" href="#NWmat8-*-8">unique_soln</a>: <a href="#NWD4">U1</a>, <a href="#NWmat8-*-8">D2</a>
+</ul>
+</body></html>
+

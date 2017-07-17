@@ -1,0 +1,1236 @@
+% -*- mode: Noweb; noweb-code-mode: latex-mode -*-
+% l2h ignore change {
+% This document should never be woven; it is tangled to produce a manual.
+<<version>>=
+0.5a
+<<refman.tex>>=
+\documentclass{book}
+%\usepackage{draftcopy}
+\usepackage{nchicago,array,longtable,fields,tabularx,alltt,makeidx,noweb}
+\title{New Jersey Machine-Code Toolkit\\Reference Manual\\Version <<version>>}
+\author{Norman Ramsey \and Mary Fernandez}
+\pagestyle{headings}
+\makeindex 
+
+\overfullrule=10pt  % uncomment this line to get ugly black blots on
+	 	     % overfull hboxes 
+
+
+\def\remark#1{\marginpar{\raggedright\hbadness=10000
+        \def\baselinestretch{0.8}\normalsize\scriptsize
+        \let\tt=\rm % eliminate warning about no \tt in this size
+        \it #1\par}}
+
+
+\makeatletter
+\newcommand\missing[2][Stuff]
+  {\@latex@warning{#1 is missing}%
+   \marginpar{\small\itshape\raggedright #1 is missing here.}%
+   \textsl{#2}}
+\newcommand\bogon[1]
+  {\@latex@warning{Don't ship this --- there's a bogon}\textsf{#1}}
+\makeatother
+
+\newcommand\secn[1]{Section~\ref{section:#1}}
+
+
+\newcommand\refman{This is the reference manual.  Some {\TeX} code
+might do different things depending on whether this symbol is defined.}
+
+%%% ignore change tags
+
+\newcommand\change[1]{\relax}
+
+
+% all this goo is for writing grammars.  first symbols
+\newcommand{\lit}{\begingroup\catcode`\_=12\relax\dolit}
+\newcommand{\dolit}[1]{\texttt{\textup{#1}}\endgroup}
+\newcommand{\term}[1]{\textsl{#1}}
+\newcommand{\nt}[1]{\textit{#1}}
+\newcommand\litbar{\texttt{|}}
+% now the metasymbols
+\newcommand{\produces}{\mbox{$\Rightarrow$}}
+\newcommand{\gdelim}{\big}
+\newcommand{\vbar}{\mbox{$\gdelim|$}}
+\newcommand{\makevbar}{}
+{\catcode`\|=\active \gdef\makevbar{\begingroup\catcode`\|=\active \let|=\vbar}}
+\newcommand{\sequence}{\makevbar\dosequence}
+\newcommand{\optional}{\makevbar\dooptional}
+\newcommand{\alternate}{\makevbar\doalternate}
+\newcommand{\dosequence}[1]{\mbox{$\gdelim\{$}#1\mbox{$\gdelim\}$}\endgroup}
+\newcommand{\dooptional}[1]{\mbox{$\gdelim[$}#1\mbox{$\gdelim]$}\endgroup}
+\newcommand{\doalternate}[1]{\mbox{$\gdelim($}#1\mbox{$\gdelim)$}\endgroup}
+% \specindex is used to index stuff in the specification -- I'll have
+% to read up on makeindex to get the font to come out right.
+\newcommand{\indexlit}{\begingroup\catcode`\_=12\relax\doindexlit}
+\newcommand{\doindexlit}[1]{\index{#1@\protect\lit{#1}}\endgroup}
+\newcommand{\indexedlit}{\begingroup\catcode`\_=12\relax\doindexedlit}
+\newcommand{\doindexedlit}[1]{\index{#1@\protect\lit{#1}}\dolit{#1}}
+\newcommand{\indexnt}[1]{\index{#1@\protect\nt{#1}}}
+\newcommand{\indexednt}[1]{\nt{#1}\indexnt{#1}}
+%
+\newcommand{\libindex}[1]{\index{#1@\protect\lit{#1}}}
+%
+\newcommand\commentstart{\relax}  % was \#~
+\newcommand{\comment}[1]{\commentstart #1}
+\newcommand{\lbr}{}
+\newcommand{\rbr}{}
+\chardef\lbr`\{
+\chardef\rbr`\}
+
+% Now for productions in the grammar: In the production environment, |
+% is active.
+
+\newcommand\productionvbar{\mbox{$|$}}
+\newcommand\productionor{\\&\productionvbar&}
+\newcommand\makeproductionvbar{}
+{\catcode`\|=\active 
+ \gdef\makeproductionvbar{\catcode`\|=\active \let|=\productionor}}
+
+\newenvironment{production}[1]
+  {\list{}{\leftmargin=\parindent}
+   \makeproductionvbar
+%   \renewcommand\arraystretch{1.10}
+   \item[]\begin{tabular}{l
+                   @{\hspace{0.5\tabcolsep}}c@{\hspace{0.5\tabcolsep}}
+                   l
+                   >{\commentstart}l}%
+   \indexednt{#1}&\produces&}
+  {\\\end{tabular}\endlist}
+
+% insert \productionglue between two consecutive production
+% environments
+
+\newcommand\productionglue{\vskip -1.1\baselineskip\relax}
+\renewcommand\productionglue{\kern -1.1\baselineskip\relax}
+
+
+
+%% membership testing
+
+\long\def\membertrue#1#2{#1}
+\long\def\memberfalse#1#2{#2}
+
+\def\ifmember#1#2{%
+  \let\memberfinal=\memberfalse
+  \ifx#1\relax\relax
+  \else\setmemberP#1\nil{#2}%
+  \fi
+  \memberfinal}
+\def\setmember#1#2{\ifx#1\relax\relax\else\setmemberP#1\nil{#2}\fi}
+\def\setmemberP#1#2\nil#3{%
+  \ifx#3\relax\relax
+  \else
+    \let\memberneedle=#1%
+    \membersearch#3\nil
+    \ifx\memberfinal\membertrue\else\setmember{#2}{#3}\fi
+  \fi}
+\def\membersearch#1#2\nil{%
+  \ifx#1\memberneedle\let\memberfinal=\membertrue
+  \else \ifx#2\relax\relax\else\membersearch#2\nil\fi
+  \fi}
+
+
+
+%\DeclareGraphicsRule{epsi}{eps}{epsi}{}  % not needed; killed epsi
+
+\newcommand\tkopt[1]{{\ttfamily -#1}}
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%	index stuff, especially synonyms
+%
+
+\index{solver|see{equation solver}}
+
+
+\pagestyle{empty}
+
+\maketitle
+\cleardoublepage
+
+\pagestyle{headings}
+\pagenumbering{roman}
+\tableofcontents
+
+\cleardoublepage
+
+\pagenumbering{arabic}
+
+\chapter{Introduction}
+\label{ch:intro}
+
+This is the reference manual for version~<<version>> of the New Jersey
+Machine-Code toolkit.
+New users should read our overview~\cite{ramsey:jersey} 
+and study our annotated descriptions of real
+machines~\cite{ramsey:tk-architecture} before tackling this manual.
+Our long paper on the specification language \cite{ramsey:specifying}
+is also worth reading. 
+Here you will find:
+{\hfuzz=1.8pt\par}
+\begin{trivlist}\item[]%
+\begin{tabularx}{\textwidth}{>{Chap.~}l>{\raggedright\let\.\\\arraybackslash}X}
+\ref{ch:intro}&Promises, cautions, and warnings.\\
+\ref{ch:speclang}&
+A grammar for
+the specification language, with a detailed description
+of each construct.\\
+\ref{ch:decoding}&
+How to write decoding applications.\.
+Describes matching statements.\\
+\ref{ch:library}&
+How to write encoding applications.
+Describes the toolkit library, 
+which provides support for
+emitting data into streams and relocating instructions.\\
+\ref{ch:generator}&
+How to run the generator and translator.\.
+Describes all their
+command-line options.\\
+\ref{ch:checker}&
+How to check the consistency of a specification 
+using a vendor's assembler and disassembler.
+\end{tabularx}
+\end{trivlist}
+
+\vskip 0pt plus 15pt  % eliminate underfull vbox
+
+
+
+\section{Caveat user}
+
+Version~0.5a has been exercised more heavily than other versions, but
+we believe that errors
+linger in both the manual and the code.
+ If you have a problem with the toolkit, please tell us.
+That's the only way we can make it right.
+Send email to {\tt toolkit@eecs.harvard.edu}.
+
+
+\section{Discussing the toolkit}
+
+Starting with the release of version~0.5a, the mailing lists related 
+to the toolkit have moved (with Ramsey) to Harvard University.
+{\tt toolkit-interest@lists.eecs.harvard.edu} goes to people who have expressed some interest
+in the toolkit, and it carries most general announcemnets about the toolkit.
+{\tt toolkit-users@lists.eecs.harvard.edu} goes to people who  are actually using the toolkit,
+and it carries discussion among users.
+It's still a good idea to report problems to  {\tt toolkit@eecs.harvard.edu}.
+
+
+
+\section{Multiple-language support}
+
+The toolkit currently has rudimentary support for multiple languages.
+For decoding applications,
+this support actually works; we use it both for C and for Modula-3.
+The support for encoding applications is only partly in place; there are lots
+of little C-isms lurking around the declarations of encoding
+procedures and the results of typed constructors, and there is only
+one version of the toolkit's library, which is written in~C.
+We would be pleased to try to support users interested in other
+languages.
+We would probably ask such users to develop the library support, since
+that is a fairly straightforward and separable task.
+We would tackle
+the details of making the generator truly support multiple languages.
+
+
+\section{Known bugs}
+
+Almost all of the open bugs that actually bit people have been fixed
+in version~0.5a. 
+We still have plenty of open bugs that nobody has complained about yet.
+Pester us if you want them fixed.
+\begin{itemize}
+<<refman: list of known bugs>> 
+\item
+Field-width conditions don't show up in closures.
+\item
+Generated decoders assume that input streams go on forever---they
+have no way of coping with (or even indicating!) end of stream.
+\item
+We don't implement the obvious optimization that avoids creating
+closures for branches into the current relocatable block.%
+\footnote{OK, a missing feature is not a bug.  But it should be there.}
+\item
+The equation solver is shaky, particularly around bit slices.
+You should be OK if you make sure your slices partition the bit
+space---don't allow overlaps or gaps. 
+\item
+We don't solve the MIPS \lit{li} constructor on decoding 
+because the solver isn't quite bright enough to realize that if it knows
+{\tt n@[0:15]}, it also knows {\tt n@[15:15]}.
+We'll work on it.
+Meanwhile, there's a workaround: insert the equation 
+\mbox{\tt dummy = imm@[0:14]} in all three branches of the constructor.
+\item
+The toolkit dies on the first error, and
+our error messages are terrible.
+In particular, all messages are treated using the syntax-error
+mechanism,
+which means that semantic errors point to the end of the specification
+file in the most misleading way.
+Using the {\tt -impossible} option sometimes gives enough information
+to help track down the real source of an error.
+
+Real improvement in error handling will probably await
+re-implementation in a language better suited to the problem (like one
+that has exceptions!).
+\end{itemize}
+
+
+\section{Change history}
+
+\subsection{Changes in version 0.5a}
+
+\begin{itemize}
+\item
+Better generation of disassemblers.
+\item
+Toolkit library no longer depends on [[stdout]] being a static value.
+\item
+Other bug fixes lost in the mists of time.
+\end{itemize}
+
+\subsection{Changes in version 0.5}
+
+\begin{itemize}
+\item
+The distribution includes a specification of the Alpha, which we have
+tested against Digital's assembler.
+\item
+The toolkit no longer generates dead code in decoders.
+On the other hand, it also generates more common subexpressions.
+\item
+Field conditions are now used to distinguish branches.
+In a multi-branch constructor, if a value won't fit in the field to
+which it is bound, the toolkit goes on to the next branch.
+One consequence is that warnings of ``redundant disjuncts'' should now
+be taken much more seriously.
+\item
+We now permit one-integer specifications of one-bit fields, by analogy
+with one-integer specifications of one-bit slices.
+\item
+The toolkit issues a warning if it doesn't see the [[%]]$x$ escapes it
+expects in fetch templates.
+\item
+Fixed a bug in which generated decoders sometimes referred to variables before
+they were declared.
+\item
+Fixed a bug that prevented decoders from working when constructor
+types were nested, as on the Pentium.
+\item
+Fixed a flagrant bug in the big-endian bit numbering.
+\item
+Removed some redundant checks from generated encoding procedures.
+\item
+Closures are fewer and more efficient.
+\end{itemize}
+
+
+
+\subsection{Changes in version 0.4}
+
+The most notable change in version 0.4 is support
+for checking the consistency of a specification against 
+% the assembly and binary representations 
+% of instructions recognized by 
+a vendor's assembler and disassembler.
+See Chapter~\ref{ch:checker} for a description of the checker.
+
+\begin{itemize}
+\item 
+The toolkit can now validate a specification against an existing assembler
+ (Chapter~\ref{ch:checker}).
+\item
+We have validated our MIPS, SPARC, and Pentium specifications.
+We found and corrected a handful of errors.
+\item 
+The manual now describes assembly syntax specifications (\secn{assembly}).
+(Apparently it doesn't yet say how to use them?!)
+\item
+The examples directory now includes a rudimentary disassembler for
+the SPARC.  Thanks to Cristina Cifuentes for providing the impetus.
+\item
+It is now possible to use \verb@_@ in expressions as a true
+``wildcard'' value.  
+Unlike in previous releases, different instances of \verb@_@ are
+really different, even if they appear in the same arm of a matching statement.
+It works by representing a different, otherwise
+unnameable variable at each instance.
+Suggested uses include:
+\begin{itemize}
+\item
+Use it in matching statements for uninteresting arguments to constructors.
+\item
+To constrain \verb@n@ to be a multiple of 4, write the
+    equation \verb@n& = 4 * _@.
+\end{itemize}
+\item
+We have better diagnostics to help you figure out what is wrong
+when you write a matching statement and some arms never match.
+\item
+We have added a few procedures to the toolkit's library.
+\item
+We have fixed bugs:
+\begin{itemize}
+\item 
+We now believe that constructor names in matching
+statements (using the \texttt{[name]} binding statement) are bound correctly.
+\item
+If the placeholder \verb+_+ is used multiple times on the left of a
+matching statement, each instance is now distinct.
+\item
+Nested applications of constructors should work correctly in matching statements.
+\item
+The toolkit used to generate bad code when there were conditions 
+on decoding---some variables  
+were used before they were declared or initialized.
+We believe we fixed this bug on December 14, 1995.
+\item 
+And many more\ldots
+\end{itemize}
+\end{itemize}
+
+\subsection{Changes in version 0.3}
+
+\begin{itemize}
+\item
+Field bindings can now be full expressions.
+As a result, the syntax for bit slicing has changed.
+\item
+Patterns can now include labels.
+As a result, the ``{\tt\$pc} hack'' is no more.
+\item
+Dramatic improvements in our handling of closures; see \cite{ramsey:relocating}.
+\item
+Eliminated blanket warning about field-name literals in favor of
+warnings about particular literals that could cause trouble.
+\item
+In decoders, generate if statements instead of switch statements where
+reasonable, and prefer equality tests to range tests.
+\item
+Support for assembly-language syntax, encoders that emit assembly, and
+preliminary support for generating assembly-language grammars.
+\item 
+Other changes and improvements too numerous to mention.
+\end{itemize}
+
+
+
+\subsection{Changes in version 0.2}
+
+\begin{itemize} 
+\item
+The toolkit can now generate encoding procedures that emit assembly
+language.
+  New assembly-syntax specs can change form of this assembly language.
+\item
+It is now legal to use expressions, not just identifiers,
+in field bindings and constructor applications.
+\item
+To support wider use of expressions, we were forced to change the
+syntax of the bit-slicing operation from, e.g.,  \verb+n[0:4]+ to \verb+n@[0:4]+.
+\item
+We now support unary minus in expressions.
+\item
+\verb+$pc+ is gone, having been replaced with a more general
+mechanism: pattern labels.
+\item
+The toolkit now supports both little-endian and big-ending bit
+numbering (but big-ending hasn't been tested).
+\item
+Integer literals can be written in octal or binary formats as well as
+decimal and hexadecimal.
+\item
+Many bugs have been fixed.  Many more remain.
+\item
+We changed the precedence of the pattern operators so it more
+accurately reflects the normal form.
+\end{itemize}
+
+
+\chapter{The specification language}
+\label{ch:speclang}
+
+This chapter describes the language that the toolkit uses to describe
+the encodings of machine instructions.
+We write a grammar in which \nt{nonterminals} appear in italics,
+\term{terminals} appear slanted, and 
+\lit{keywords} and literal text appear in typewriter font.
+Terminals ending in \term{-name} are identifiers.
+Terminals with no special names are integer literals unless otherwise stated.
+
+To describe the specification language, we use an EBNF grammar.
+We use the standard
+EBNF metasymbols for 
+\begin{quote}
+\sequence{sequences},
+\optional{optional constructs},
+and 
+\alternate{alternative | choices}.
+\end{quote}
+We use large metasymbols to make them easy to distinguish from literals.
+
+
+<<refman: spec>>
+
+\let\nextsection=\subsection
+
+\section{Tokens and fields}
+<<refman: spec: fields>>
+
+\section{Patterns}
+<<refman: spec: patterns>>
+
+\section{Pattern bindings}
+<<refman: spec: pattern bindings>>
+
+\section{Constructors}
+<<refman: constructors>>
+
+\section{Equations and expressions}
+<<refman: equations>>
+
+<<refman: expressions>>
+
+\section{Miscellaneous}
+
+<<refman: spec: misc>>
+
+\subsection{Declaring identifiers relocatable}
+<<refman: misc: relocatable>>
+
+\subsection{Discarding constructors}
+<<refman: misc: discard and keep>>
+
+\section{Assembly syntax}
+\label{section:assembly}
+<<refman: assembly syntax>>
+
+\section{Lexical details}
+\label{section:following-asm-syntax}
+
+<<refman: lexical structure>>
+
+Comments in SLED specifications begin with \verb+#+ and go to the end of
+the line.
+Comments in matching statements are the comments of the target
+programming language, and they may appear only where target-language
+code may appear.
+
+\chapter[Decoding applications, matching statements]
+        {Decoding applications and matching statements}
+\label{ch:decoding}
+
+Decoding applications are written using ordinary C or Modula-3 with
+embedded {\em matching statements}.
+The matching statements are like case statements, except that the arms
+are labelled with patterns, not with values.
+The toolkit's translator transforms the matching statement into
+ordinary code, which is then compiled as usual.
+Supposing that the file \verb+decode.m+ is part of a decoding
+application and contains one or more matching statements,
+this transformation can be specified in a Makefile as follows:
+\begin{verbatim}
+decode.c: decode.m
+        tools -decoder decode.c -matcher decode.m m.spec i.spec
+\end{verbatim}
+where \verb+m.spec+ contains a machine description and 
+\verb+i.spec+ contains instruction-stream templates (see
+Section~\ref{section:templates}). 
+Typically the \verb+m.spec+ file can be shared among a variety of
+applications, but different applications may use different
+representations of instruction streams, and therefore different
+\verb+i.spec+ files.
+
+The toolkit works by computing a {\em decision tree} for each matching
+statement.
+Each internal node of the tree tests a particular field of a token from the
+input stream.
+No field is tested more than once, and no token is fetched more than
+once.
+The leaves of the tree contain single arms of the matching statement.%
+\footnote{If two arms match the same pattern, but with different
+equations, they are both assigned to the same leaf, and the equations
+have to be tested to distinguish them.}
+At each leaf, the toolkit solves equations to compute the values of
+free variables in the matching pattern; the inputs to these equations
+are the values of the fields tested.
+The toolkit turns the tree into a dag by combining identical leaves;
+this process can eliminate unnecessary tests.
+Finally, the toolkit generates C or Modula-3 code from the dag.
+
+The rest of this chapter explains the syntax of matching statements
+and the way to specify the representation of instruction streams using
+templates. 
+
+
+\section {Matching statements}
+
+<<refman: matching grammar>>
+
+\section{Access to instruction streams during decoding}
+\label{section:templates}
+
+<<refman: fetching templates>>
+
+\section{Debugging generated decoders}
+
+% l2h argblock tkopt <tt>- </tt>
+
+It can be tricky to understand the structure of a decoder by looking
+at the generated code.
+The \tkopt{ascii-dag} and \tkopt{ascii-tree} options dump complete
+listings of decision dags and trees, but it can be difficult to
+understand these dumps.
+The toolkit can also generate Icon code that you can use to explore
+trees, viewing one path at a time.
+This Icon code, when combined with a suitable main program, can act as
+a CGI script on the World-Wide Web, and you can explore the trees
+using your favorite Web browser.
+This section shows how to set up that facility.
+
+Let's suppose you have a SLED specification called
+\texttt{problem.spec}, and you've written one or more matching
+statements in the file \texttt{problem.m}.
+\begin{enumerate}
+\item
+Create the Icon file used to describe the matching statements:
+\begin{verbatim}
+tools -icon-dag problem.icn -matcher problem.m problem.spec
+\end{verbatim}
+The writes a description of the generated matchers into
+\texttt{problem.icn}.
+\item
+Combine this Icon file with the \texttt{htmltree.icn} file supplied
+with the toolkit distribution, and call the resulting program
+\texttt{problem}:
+\begin{verbatim}
+icont -o problem problem.icn htmltree.icn
+\end{verbatim}
+\item
+Put the resulting executable where it can be executed as a CGI script.
+You'll probably need help from your friendly local systems
+administrator.
+Here's what I had to do at my site, which runs the Apache 1.0.3
+server; your mileage may vary: 
+\begin{enumerate}
+\item
+Put the executable Icon program in the directory
+\verb+/home/nr/public_html/cgi-bin/trees/+.
+The corresponding URL is 
+\verb=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/=.
+\item
+The code in \texttt{htmltree.icn} uses the environment variables
+\verb+SERVER_NAME+ and \verb+SCRIPT_NAME+ to reconstruct the URL.
+With luck, these will be independent of server.  Ha ha.
+\item 
+For some unknown reason, Icon programs won't run as CGI scripts at my
+site, so I had to wrap things in this shell script:
+\begin{verbatim}
+#!/bin/sh
+tree="$1"
+shift
+SCRIPT_NAME="${SCRIPT_NAME}?$tree"
+export SCRIPT_NAME
+exec /home/nr/public_html/cgi-bin/trees/$tree "$@"
+\end{verbatim}
+\end{enumerate}
+\item
+Use the URL to explore the matching statements.
+You can see matcher for the sample SPARC disassembler at
+\verb=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?sparcdis=.
+\end{enumerate}
+
+
+
+
+
+
+\input{manlibrary}
+
+
+\chapter{The generator and translator}
+\label{ch:generator}
+
+Although we describe the generator and translator as separate
+entities, they actually are implemented by a single
+program, named {\tt tools}.
+{\tt tools} parses one or more files containing specifications and reports any
+syntactic or semantic errors.
+It is not unusual to decompose a machine specification into multiple
+files.
+{\tt mld}, for example, generates encoding procedures using a ``core''
+specification, a specification of ``synthetic'' instructions, and a
+specification of constructors used only by {\tt mld}.
+Command-line options are used to ask {\tt tools} to run the generator
+or translator or to perform other functions.
+Given no options, {\tt tools} simply looks for syntactic and simple
+semantic errors in a specification.
+
+
+
+\newcommand{\optarg}[1]{{\normalfont\itshape #1}}
+\newcommand{\file}{\optarg{file}}
+\newcommand{\warning}{\textit}
+
+\makeatletter
+\newcommand\tkoptionsec[1]{\@startsection{tkoptionsection}{9}{\z@}%
+                                     {-3.25ex\@plus -1ex \@minus -.2ex}%
+                                     {1.5ex \@plus .2ex}%
+                                     {\reset@font\normalsize\ttfamily}*{-#1}}
+
+\newcommand\tkoptions[1]{\def\@tksections{#1}}
+ 
+\newif\iftkopttable
+
+\long\def\tkoption#1#2#3#4\endtkoption
+  {\iftkopttable#2&#1&#3\\
+   \else
+     \edef\next{\noexpand\ifmember{#1}{\@tksections}}%
+     \next{\tkoptionsec{#2}{\advance\leftskip 2em\noindent
+                            \indextkoption{#2}\ignorespaces#4\par}}{}
+   \fi}
+
+\def\indextkoption#1{\index{#1@{\protect\tt -#1}}}
+
+\makeatother
+
+\let\optcattab=\sffamily
+\let\optcat=\textsf
+
+
+
+\iftrue
+
+% this is now too long for one page
+% but I can't get longtable to work
+
+\begin{table}
+\small
+\tkopttabletrue
+\begin{tabularx}{\hsize}{>{\tt -}l>{\optcattab}l>{\raggedright\arraybackslash}X}
+\omit Option\hfil&\omit\phantom{DE}\llap{Category}&Usage\\
+<<refman: options>>
+\end{tabularx}
+\caption{Alphabetical list of all the options}
+\label{table:options}
+\end{table}
+
+\else
+
+
+{
+\tkopttabletrue
+\begin{longtable}{>{\tt -}l>{\optcattab}l>{\raggedright\arraybackslash}p{3in}}
+\omit Option\hfil&\omit\phantom{DE}\llap{Category}&Usage\\
+\endhead
+\caption[]{Alphabetical list of all the options}\\
+\endfoot
+\caption{Alphabetical list of all the options}\\
+\label{table:options}
+\endlastfoot
+<<refman: options>>
+\end{longtable}
+}
+
+\fi
+
+The options recognized by {\tt tools} are grouped into five
+categories:
+\begin{quote}
+\begin{tabular}{>{\optcat}ll}
+E&Encoding\\
+D&Decoding\\
+d&Debugging decoding\\
+V&Verbosity\\
+A&Analysis\\
+\end{tabular}
+\end{quote}
+Table~\ref{table:options} shows all the options in alphabetical order.
+
+
+
+\section{\optcat{E}: Encoding options}
+\tkoptions{E}
+<<refman: options>>
+
+\section{\optcat{D}: Decoding options}
+\tkoptions{D}
+<<refman: options>>
+
+\section{\optcat{d}: Options for debugging decoders}
+These options provide different kinds of diagnostic information that
+shows how the toolkit is building a decoder.
+
+\tkoptions{d}
+<<refman: options>>
+
+\section{\optcat{V}: Verbosity options}
+These options control the verbosity of the messages printed by the toolkit.
+
+\tkoptions{V}
+<<refman: options>>
+
+\section{\optcat{A}: Analysis options}
+These options support neither encoding nor decoding; instead,
+they offer various kinds of analysis of what's in the toolkit specification.
+In fact, it's even possible to run {\tt tools} without any options at all,
+just to check the syntax of a specification.
+\tkoptions{A}
+<<refman: options>>
+
+<<refman: tools examples>>
+\chapter{Validating a specification}
+\label{ch:checker}
+
+It doesn't do any good to generate tricky bit-fiddling code from a specification
+unless the specification itself is accurate.
+The toolkit warns users of certain suspicious specifications, like forgetting to use 
+an operand in a constructor definition, 
+and it balks at outright erroneous specificiations, operations, like 
+conjoining overlapping fields or by assigning a
+field two different values, but
+the toolkit does not and \emph{cannot} guarantee that a specification 
+accurately describes the target machine.
+Errors that cannot be caught be the toolkit include getting opcodes out of order 
+in a table or getting the order of operands wrong in a constructor definition.
+To catch these kinds of errors, the toolkit provides a facility to \emph{validate} 
+a specification against an existing assembler or disassembler.
+We suggest that you validate new specifications before using
+toolkit-generated
+code in an application, 
+because debugging a specification in the context of a large
+application is tedious.
+
+To identify possible errors in a specification, the toolkit 
+can generate a specification ``checker.''
+Figure~\ref{fig:checker} depicts the mappings performed by a checker. 
+For each untyped constructor, i.e., instruction, 
+in a specification, a checker emits 
+its representation in assembly
+({\em A.instructions})
+and its representation in binary ({\em A.data}).
+A constructor's assembly representation is derived
+from its left-hand side and from assembly-language syntax specifications 
+as described in \secn{assembly}.
+%specified using the \texttt{assembly opcode}, 
+%\texttt{assembly component}, \texttt{assembly operand}, and \texttt{assembly syntax}.
+For convenience, the checker emits each constructor's ``binary'' representation 
+in assembly language, using directives like {\tt.byte} and
+{\tt.word}.
+This trick enables the checker to
+write both representations in one assembly file.
+For example, a checker for the Pentium emits the 
+code in the left column 
+of Table~\ref{tab:checker} to test the instruction \texttt{addb}.
+The ``assembly'' version of the instruction uses the usual syntax, and the ``binary 
+version,'' which occupies two 8-bit tokens, is specified 
+with two {\tt .byte} directives. 
+
+%\begin{center}
+\begin{figure}
+
+\setlength{\unitlength}{0.01in}%
+\hspace*{0.65in}  %% ``center'' the figure. arrived at by careful trial and error.
+\begin{picture}(340,250)(70,507)
+\put(260,720){\vector( 2,-3){ 50}}
+\put(220,720){\vector(-2,-3){ 50}}
+\put(170,625){\vector( 0,-1){ 42}}
+\put(310,625){\vector( 0,-1){ 42}}
+\put(170,565){\vector( 0,-1){ 42}}
+\put(310,565){\vector( 0,-1){ 42}}
+\put(245,727){\makebox(0,0)[b]{%
+   \itshape\begin{tabular}{c}instruction\\(constructor)\end{tabular}}}
+\put(300,685){\makebox(0,0)[l]{emit ``binary''}}
+\put(180,685){\makebox(0,0)[r]{{emit assembly}}}
+\put(310,635){\makebox(0,0){{\textit{$A$.data}}}}
+\put(170,635){\makebox(0,0){{\textit{$A$.instructions}}}}
+\put(315,605){\makebox(0,0)[l]{{assemble}}}
+\put(165,605){\makebox(0,0)[r]{{assemble}}}
+\put(170,575){\makebox(0,0){{\textit{$B'$.instructions}}}}
+\put(310,575){\makebox(0,0){{\textit{$B''$.instructions}}}}
+\put(315,545){\makebox(0,0)[l]{{disassemble}}}
+\put(165,545){\makebox(0,0)[r]{{disassemble}}}
+\put(170,515){\makebox(0,0){{\textit{$A'$.instructions}}}}
+\put(310,515){\makebox(0,0){{\textit{$A''$.instructions}}}}
+\end{picture}
+
+\caption{Mappings performed by toolkit specification checker.}
+\label{fig:checker}
+\end{figure}
+%\end{center}
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l|l|l}
+Emitted&Assembled to&Dissassembled to\\ \hline
+\verb|addb $127,%al| & 0x047f & \verb|addb $127,%al| \\
+\verb|.byte 0x4|     & 0x047f & \verb|addb $127,%al| \\
+\verb|.byte 0x7f|    &        & \\
+\end{tabular}
+\end{center}
+\caption{Output of toolkit checker.}
+\label{tab:checker}
+\end{table}
+
+The assembly code is assembled by a vendor's assembler into 
+object code, which produces two binary representations 
+of each constructor
+({\em $B'$.instructions} and {\em $B''$.instructions},
+center column in Table~\ref{tab:checker}).
+% contains these values for {\tt addb}.
+This binary representation is good enough to detect errors---the
+checker could compare binary representations in an object file---but
+just knowing that two binary representations differ doesn't provide
+any useful hints about the likely cause of the error.
+To help users understand errors,
+the checker invokes a vendor's disassembler to 
+disassemble the object code into pairs of assembly instructions
+({\em $A'$.instructions} and {\em $A''$.instructions}, 
+right column in Table~\ref{tab:checker}).
+If the specification is consistent with the assembler,
+the output from the disassembler should contain pairs of matching instructions;
+a matched pair indicates that the assembler's binary encoding
+of an instruction matches the toolkit's encoding.
+% For example, the instructions above disassemble into the code in the 
+% right  column of Table~\ref{tab:checker}.
+The shell script \texttt{chkrfilter} compares pairs of instructions and flags
+any mismatched pairs.
+Because  mismatched pairs are displayed in assembly language, 
+the user can easily identify the inconsistency in
+ the specification.  
+
+The operand values used to test constructors are generated
+automatically by the toolkit.
+For each branch of each constructor, 
+the toolkit attempts to generate one tuple of operand values
+that satisfies that branch.
+% each one of which  of the constructor.
+The checker program applies the constructor to 
+each generated tuple of operand values, with the goal of 
+exercising each branch once.
+In general, it is not possible to guarantee that
+every branch will be exercised, for example
+% For example, it is possible that no operand values exist
+% that satisfy a branch's constraints, , when the 
+when a branch's equations contain mutually unsatisfiable constraints,
+such as \verb|{rd = 1, rd = 2}|.
+Even if a tuple of operand values satisfies
+the $i$-th branch, $B_i$, in the ordered set of a constructor's 
+branches, it is possible $B_i$ will not be exercised,
+% for example, 
+when the tuple also satisfies some branch
+that occurs before $B_i$, i.e., $B_1...B_{i-1}$.
+% in the ordered set of branches.
+\iffalse
+The general problem of guaranteeing that an operand tuple
+satisfies a branch $B_i$ and does not satisfy any branch in
+$B_1...B_{i-1}$ is undecideable. 
+\bogon{\em reduction from what? reference?}.
+
+mff: this can't be true; here's a decision proceudre: generate all
+possible tuples, now try each one on the branch conditions and see if
+it takes.
+
+nr: you're right. what i *meant* to say is the problem is NP-complete, i.e.,
+"generate all possible tuples" => generate exponential number of
+tuples and try them => in NP.  but i still need a reduction.
+
+"The general problem of determining that there exists an operand tuple
+that satisfies a branch $B_i$ and that does not satisfy any branch in
+$B_1...B_{i-1}$ is NP-complete."
+\fi
+Although the toolkit cannot guarantee that every branch will be
+exercised, it does flag those branches for which it cannot compute
+a operand tuple guaranteed to exercise that branch. 
+
+\section{Generating a checker program}
+We have validated  the MIPS and SPARC specifications and
+the 32-bit subset of  the Pentium specification that 
+are distributed with the toolkit. 
+Validation found several errors in each target's specification.
+To generate and run a checker for one of the supported targets,
+execute \texttt{make} {\em target} 
+in the \texttt{base-checker} directory.
+The \texttt{makefile} contains the rules for building 
+and running a checker.
+The rest of this section describes how a checker
+is built and run. 
+
+The toolkit-generated program ``checks'' a specification
+by applying pairs of constructors for each instruction.
+The first constructor emits the instruction's binary code.
+For convenience, a constructor's binary representation is 
+emitted using assembly directives (e.g., 
+\texttt{.byte, .word, .long}), which allows the checker to 
+emit both representations in one assembly file.
+The second constructor in a pair emits the 
+the assembly-language representation of the instruction.
+When executed, the checker program emits its output 
+into an assembly file, which is then assembled by a vendor's
+assembler.
+This technique assumes that the vendors's assembler
+permits both instructions and data in the text segment;
+the SGI-Irix assembler is the only one that 
+we have found that prohibits this mix.
+
+The resulting object file is disassembled using a native
+disassembler or debugger.
+We use \texttt{gdb -batch} to disassemble the object file.
+\texttt{gdb} reads the files \verb|gdb-{asm,bin}output|, 
+which disassemble the instructions generated by the checker.
+
+If the specification's assembly-to-binary mappings are correct,
+the disassembled output should contain pairs of matching instructions;
+a matched pair indicates that the assembler's binary encoding
+of an instruction matches the toolkit's encoding.
+The script \texttt{chkrfilter} compares pairs of instructions and flags
+any mismatched pairs.
+Because the checker emits mismatched pairs in assembly, 
+the user can easily identify the source of the 
+discrepancy in the original specification.
+
+The sample \texttt{makefile} shows all the steps necessary to build and run
+a checker. 
+A checker requires an assembly emitter ({\em target}\texttt{-asm.c}), 
+a binary emitter ({\em target}\texttt{-bin.c}), 
+target-specific code to emit bytes in assembly pseudo-ops ({\em
+target}\texttt{-bits.c}),
+the checker program ({\em target}\texttt{-check.c}), 
+and the toolkit library.\\
+The checker program accesses the binary and assembly emitters 
+indirectly via the interfaces {\em target}\verb|_asm| and 
+{\em target}\verb|_bin|.
+
+To check instructions that take relocatable operands, we use a trick
+to guarantee that the address assigned by the assembler matches that
+used by the binary emitter.
+The address in the file \texttt{chkraddr} is the entry point for \texttt{main};
+we get that value before building the checker program, then use it
+to assign known addresses to relocatable operands.
+The assembly directives for emitting bytes on the supported targets 
+are in \texttt{emitbits.nw}.\\
+\moddef{sample rules to build checker}\plusendmoddef
+{\hfuzz=2pt\begin{verbatim}
+<<rules to build check address>>
+\end{verbatim}}
+
+A specification is checked in several steps.
+All of these steps appear in the \texttt{base-checker}'s makefile.
+First, the checker program emits assembly code in the file {\em
+\_target.s}.  
+The assembly file is assembled into the binary file {\em
+\_target.out}. 
+Then the \texttt{chkrfilter} shell script disassembles the binary file and
+compares the two representations.  Any differences are printed to
+standard output.
+
+\section{Building a checker for a supported target}
+To try a checker program, execute 
+\texttt{make }{\em target}, e.g., \texttt{make sparc}, using the 
+version 0.4 \texttt{makefile} in the directory \texttt{base-checker}.
+% The file \texttt{makefile.checker} is extracted from \texttt{src/checker.nw}
+An executable checker will be created in {\em target}\texttt{-checker}.
+That program is executed and its output is checked for
+inconsistencies. 
+You {\em must} have \texttt{gdb} to disassemble the output.
+If you don't have \texttt{gdb}, any disassembler will probably do, but you
+will have to edit \texttt{chkrfilter} and make the appropriate
+substitutions for \texttt{gdb}.
+% the available disassembler for 
+
+The MIPS and SPARC specs can be checked in their entirety.
+The Pentium spec takes too long to process so at once,
+so we check it in parts: several sets of instructions in alphabetical
+order, then the arithmetic, and then the floating-point instructions.
+\iffalse
+% By default, only the arithmetic constructors are checked.  
+To check other parts of the spec, replace the use of
+\LA{}arithmetic constructors\RA{} in the Pentium's \texttt{tiny.spec} chunk
+with the chunks \LA{}alphabetical constructors A-F\RA{}, etc.
+\fi
+\appendix
+
+\include{vapor}
+
+\newpage
+
+\bibliographystyle{nchicago}
+\bibliography{cs,ramsey,ml}
+
+{\catcode`\_=\active  % hackt o allow underscores in index
+\let_=\_
+\printindex
+}
+
+\end{document}
+@
+<<refman: description of pattern operators>>=
+
+\subsection{Internal form of patterns}
+
+Patterns constrain both the way in which streams are divided into
+tokens and the values of the fields in those tokens.
+Internally,
+patterns are composed from {\em range constraints} and
+{\em field bindings}.
+A range constraint limits the acceptable values of a field to a range
+known at compile time.
+Often this range contains only a single element, e.g., as fixed by the constraint
+\verb+op = 1+.
+A field binding forces a field to have a particular value, but that
+value may not be known at compile time---in general, it depends on the
+values of operands passed to a constructor.
+The binding \hbox{\verb+offset = (target - L)[2:17]+} is an example.
+
+The toolkit represents range constraints
+in the form $\mathit{lo} \le f < \mathit{hi}$.
+The toolkit uses its knowledge of field widths to map relational
+expressions into range constraints.  For example, \lit{f = 9} maps
+into $9 \le f < 10$, and \lit{f > 3} maps into
+$4 \le f < 2^{\mathit{width}(f)}$.
+
+The toolkit represents field bindings in the form 
+$f = \mbox{\textit{expression}}$. 
+Expressions may be written explicitly, or they may be identifier's
+whose values are determined by the toolkit's equation solver.
+Depending on whether an application does encoding or decoding, the
+solver may compute field values as a function of constructor operands
+or vice versa.
+
+Range constraints and field bindings form the basis for patterns,
+which are represented internally in ``disjunctive'' normal
+form.\index{patterns!normal form of}
+Patterns are disjunctions. 
+Each disjunct is a sequence.
+Each sequent applies to tokens of a particular class, and it is a
+(possibly empty) collection of constraints of fields in that class.%
+\footnote{By ``constraint'' we mean either a range constraint or a field binding.}
+Many interesting patterns are single disjuncts; for example,
+\lit{epsilon} is the empty sequence, and \lit{some}~\term{class-name}
+is a sequence with one element (sequent), that element containing no
+constraints. 
+The pattern \mbox{\tt f = 0} is a sequence with one element, that
+element containing the single range constraint $0 \le f < 1$.
+The inequality operator is an exception to this happy rule.
+In general, an inequality can't be represented as a single range constraint, so
+\lit{f != n} is syntactic sugar for a disjunction:
+\begin{quote}
+$0 \le \mathtt f < \mathtt n$ \lit| 
+$\mathtt n + 1 \le \mathtt f < 2^{\mathit{width}(\mathtt f)}$,
+\end{quote}
+Since a disjunction almost never makes sense when encoding, using
+inequality constraints is
+asking for trouble.  
+We get away with it in a few cases where $\mathtt n$~is~zero, in which case one of
+the disjuncts is vacuous and is discarded.
+% note to mff --- we've never used $2^width - 1$, and we shouldn't
+% encourage others.
+
+
+
+
+<<refman: description of pattern operators>>=
+
+\subsection{Pattern matching and the meanings of the operators}
+
+The basic patterns and 
+pattern operators can be described in terms of their effect on the
+normal form, but it is easier to consider how they affect
+matching.\index{pattern operators!meaning of}\index{matching
+rules}\index{patterns!matching rules for}
+The constraint $\mathit{lo} \le \mathtt f < \mathit{hi}$ matches an input token
+if the \verb+f+ field of that token falls in the range defined by $\mathit{lo}$
+and $\mathit{hi}$.
+\verb+f+ is declared as a field of a particular class of tokens, which
+determines the size of the token matched. 
+The wild-card constraint
+``{\tt some} \term{class}'' matches any token of class \term{class}, for
+example, on the SPARC, ``\verb+some itoken+'' matches any 32-bit token.
+A conjunction ``\verb+p & q+'' matches if both \verb+p+ and \verb+q+ match.
+A concatenation ``\verb+p; q+'' matches if \verb+p+ matches an initial
+sequence of input tokens and \verb+q+ matches the following tokens.
+A disjunction ``\hbox{\verb+p | q+}'' matches if either \verb+p+ or \verb+q+
+matches.
+
+\subsection{Pattern shapes and the ellipsis}
+
+Concatenation and conjunction distribute over disjunction, so it is
+usually convenient to talk about operations on disjuncts (sequences).
+Each disjunct (sequence) has a unique {\em shape}, which is obtained by taking the
+class of each element of the sequence.
+So, for example, on the Intel~486, a 32-bit displacement addressing
+mode defined by the pattern
+\begin{quote}
+\verb+mod = 2 & r_m != 4; i32 = d+%
+\footnote{The \lit{!=} relational operator is a cheat.  Don't use it.}
+\end{quote}
+has the shape \lit{modr_m; I32}.
+
+The toolkit uses shapes to restrict conjunctions; two patterns may be
+conjoined if and only if they have the same shape.
+For example, on the 486, the pattern \verb+mod = 0 & r_m = 5+ is
+permitted, but the pattern \verb+mod = 0 & index = 2+ is not.
+The latter conjunction attempts to combine patterns of shape
+\lit{modr_m} and \lit{sib}.
+
+The ellipsis operator provides a way to loosen this
+restriction.\index{ellipsis!use of to permit conjunction}
+``\lit{p ...}'' creates a pattern that is equivalent to
+\lit{p}, except it is OK to write \mbox{\lit{p ... \& q}} whenever
+\lit{p}'s shape is a prefix of \lit{q}'s shape.
+Examples can be found in the description of the Intel~486 by
+\authorcite{ramsey:tk-architecture}. 
+The ellipsis may also be used as a prefix operator on patterns, in
+which case \lit{... p \& q} is permissible whenever \lit{p}'s shape is a
+suffix of \lit{q}'s shape.
+We haven't had occasion to use the prefix ellipsis in machine descriptions,
+because most hardware decodes complex instructions from left to right.
+
+Be careful to surround the ellipsis operator with
+whitespace.
+ The dot is just like a letter for purposes of lexical analysis, so
+\begin{quote}
+\lit{p...}
+\end{quote}
+is a four-character identifier name, not the pattern \lit p followed
+by the ellipsis.
+
+<<refman: list of known bugs>>=
+@
+<<refman: summary of matching grammar>>=
+Wildly abusing notation, we could summarize the matching
+statement as follows:
+\begin{quote}
+\lit{match} \term{code} \lit{to}\\
+\sequence{\litbar \nt{pattern} \optional{\lit\lbr \nt{equations} \lit\rbr} 
+                   \optional{\lit[ \term{name} \lit]} \lit{=>} \term{code}}\\
+\optional{\lit{else} \term{code}}\\
+\lit{endmatch}
+\end{quote}
+That's not quite the whole story, however.
+It's common to want to know how many tokens are consumed by a
+matching statement.
+One can do this by adding, e.g., \lit{; tail: epsilon} to every
+pattern, and by saving \lit{tail} in every arm, but the bookkeeping
+gets old quickly.
+It's possible instead to put an identifier in square brackets
+immediately after \lit{match}; the toolkit will assign the address of
+the first unread token to that identifier.
+The syntax is therefore
+\begin{quote}
+\lit{match} \optional{\lit[ \term{var-name} \lit]} \term{code} \lit{to}\\
+\sequence{\litbar \nt{pattern} \optional{\lit\lbr \nt{equations} \lit\rbr} 
+                   \optional{\lit[ \term{name} \lit]} \lit{=>} \term{code}}\\
+\optional{\lit{else} \term{code}}\\
+\lit{endmatch}
+\end{quote}
+\term{var-name} should be declared as a variable of address type
+(\emph{outside} the matching statement).
+@

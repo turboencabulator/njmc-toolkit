@@ -1,0 +1,77 @@
+SPEC=../../specs/sparc.spec
+CC=gcc -ansi -pedantic
+CFLAGS=-I../../src
+MDEBUG=-debug-match mdebug -debug-split sdebug
+MDEBUG=
+
+all:V: selfdis
+
+################################################################
+#
+#	making a distribution
+
+distfiles:V: driver.html sparcdis.html 
+
+dist:V: distfiles
+	mk distclean
+distclean:V:
+	mk clean cleanaux
+
+%.html: %.nw
+	noweave -filter l2h -autodefs c -index -html $prereq > $target
+
+################################################################
+#
+#	cleanup
+
+clean:V: 
+	/bin/rm -f sample *.[choms] *~ sparcdis.spec *.dvi *.log
+	/bin/rm -f *.tex *.defs *.sml *.out *.blg
+
+cleanaux:V:
+	/bin/rm -f *.aux *.bbl *.ind *.idx *.ilg *.nwi *.toc
+
+clobber:V: clean
+	/bin/rm -f *.ps driver.html sparcdis.html
+
+minimal:V: clobber cleanaux
+
+
+################################################################
+#
+#	building a disassembler
+
+%.c: %.nw
+	notangle -L $prereq | cpif $target
+
+%.h: %.nw
+	notangle -R$target $prereq | cpif $target
+
+spec:V: 
+	cd `dirname $SPEC`; mk `basename $SPEC`
+
+$SPEC:
+	cd `dirname $SPEC`; mk `basename $SPEC`
+
+
+sparc-names.c sparc-names.h: $SPEC
+	tools -fieldnames sparc-names $prereq
+
+sparcdis.m: sparcdis.nw
+	notangle -L -R$target $prereq | cpif $target
+
+sparcdis.spec: sparcdis.nw
+	notangle -L -R$target $prereq | cpif $target
+
+sparcdis.c: sparcdis.m sparcdis.spec $SPEC
+	tools $MDEBUG -c -lc-pat-names -matcher sparcdis.m -decoder $target $SPEC sparcdis.spec
+
+sparcdis.icn: sparcdis.m sparcdis.spec $SPEC
+	tools $MDEBUG -lc-pat-names -matcher sparcdis.m -icon-dag $target $SPEC sparcdis.spec
+
+sparcdis.o: sparc-names.h sparcdis.h
+
+driver.o: sparcdis.h
+
+selfdis: sparcdis.o driver.o sparc-names.o
+	$CC -o $target $LDFLAGS $prereq

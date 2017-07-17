@@ -1,0 +1,379 @@
+<html><head><title> expwalk.nw</title></head><body>
+<h2><a name="NWD1">Visiting every term of an expression</a></h2>
+<code><a href="#NWD1">expwalk</a></code> suspends <em>every</em> result of applying <code>f</code> to each node
+in a bottom-up tree walk.
+<pre><a name="NWexpA-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD1">expwalk</a>(e, f, closure[])
+  suspend <a href="#NWD1">do_expwalk</a>(e, f, closure)
+end
+
+procedure <a href="#NWD1">do_expwalk</a>(e, f, closure)
+  suspend case type(e) of {
+           <a name="NWexpA-*-1-u1" href="#NWexpA-casO-1"><i>&lt;cases for <code>do_expwalk</code>&gt;</i></a>
+           default : impossible(&quot;expression type in expression walking&quot;)
+          } | f ! ([e] ||| closure)
+         
+end
+</pre><blockquote>Defines <a href="#NWI-do_expwalk"><code>do_expwalk</code></a>, <a href="#NWI-expwalk"><code>expwalk</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-casO-1" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+&quot;pattern&quot;         : <a href="#NWD1">do_expwalk</a>(!e.disjuncts, f, closure)
+&quot;disjunct&quot;        : <a href="#NWD1">do_expwalk</a>(!\e.conditions | !e.sequents, f, closure)
+&quot;adisjunct&quot;       : <a href="#NWD1">do_expwalk</a>(!\e.conditions | !e.aconstraints, f, closure)
+&quot;sequent&quot;         : <a href="#NWD1">do_expwalk</a>(!e.constraints, f, closure)
+&quot;dots_sequent&quot;    : &amp;fail
+&quot;patlabel&quot;        : &amp;fail
+</pre><p><code><a name="NWD2">e.instance</a></code> can be <code>null</code> when a pattern label is ``vanishing,'' 
+and we wouldn't want to walk a null.
+<pre><a name="NWexpA-casO-2" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-1">&lt;-</a>D<a href="#NWexpA-casO-3">-&gt;</a>]</b>
+&quot;latent_patlabel&quot; : <a href="#NWD1">do_expwalk</a>((vanishing_latent_patlabel ~=== e).instance, f, closure)
+&quot;constraint&quot;      : <a href="#NWD1">do_expwalk</a>(e.field, f, closure)
+&quot;fieldbinding&quot;    : <a href="#NWD1">do_expwalk</a>(e.code | e.field, f, closure)
+&quot;absolute_field&quot;  : <a href="#NWD1">do_expwalk</a>(e.field, f, closure)
+&quot;field&quot;           : &amp;fail
+</pre><pre><a name="NWexpA-casO-3" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWexpA-casO-4">-&gt;</a>]</b>
+&quot;list&quot; | &quot;set&quot;    : <a href="#NWD1">do_expwalk</a>(!e, f, closure)
+&quot;eqn&quot;             : <a href="#NWD1">do_expwalk</a>(e.left | e.right, f, closure)
+&quot;table&quot;           : <a href="#NWD1">do_expwalk</a>(key(e), f, closure)
+</pre><pre><a name="NWexpA-casO-4" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-3">&lt;-</a>D<a href="#NWexpA-casO-5">-&gt;</a>]</b>
+&quot;Eorb&quot; | &quot;Eand&quot;   : <a href="#NWD1">do_expwalk</a>(e.x | e.y, f, closure)
+&quot;Eslice&quot; | &quot;Eshift&quot; | &quot;Enarrowu&quot; | &quot;Enarrows&quot; | &quot;Ewiden&quot; | 
+&quot;Ediv&quot; | &quot;Emod&quot; | &quot;Semit&quot; | &quot;Stoken&quot; | &quot;Efitsu&quot; | &quot;Efitss&quot; | 
+  &quot;Einstance_input&quot; | &quot;Einstance_tagged&quot; :
+                    <a href="#NWD1">do_expwalk</a>(e.x, f, closure) 
+&quot;Epatlabel&quot;       : <a href="#NWD1">do_expwalk</a>(e.l, f, closure)
+&quot;Eforce&quot; | &quot;Eforceable&quot; | &quot;Enot&quot; | &quot;Enosimp&quot; | &quot;Sstmts&quot; : 
+                    <a href="#NWD1">do_expwalk</a>(e.x, f, closure) 
+&quot;Epc&quot; | &quot;Epc_known&quot; : &amp;fail
+&quot;Einstance&quot;       : <a href="#NWD1">do_expwalk</a>(!e.argt, f, closure)
+&quot;Ebinding_instance&quot; : <a href="#NWD1">do_expwalk</a>(e.name, f, closure)
+&quot;Eapp&quot;            : <a href="#NWD1">do_expwalk</a>(!e.args, f, closure)
+&quot;Eclosure_loc&quot;  : &amp;fail
+&quot;Eclosure_addr&quot; : &amp;fail
+&quot;Eclosure_val&quot;  : &amp;fail
+</pre><pre><a name="NWexpA-casO-5" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-4">&lt;-</a>D<a href="#NWexpA-casO-6">-&gt;</a>]</b>
+&quot;Sif&quot;             : <a href="#NWD1">do_expwalk</a>(!e.arms, f, closure)
+&quot;Sguarded&quot;        : <a href="#NWD1">do_expwalk</a>(e.guard | e.x, f, closure)
+&quot;Sepsilon&quot;        : &amp;fail
+&quot;Stagcase&quot;        : <a href="#NWD1">do_expwalk</a>(e.x | !e.arms, f, closure)
+&quot;Sfail&quot;           : &amp;fail
+&quot;integer&quot; | &quot;string&quot; | &quot;literal&quot; : &amp;fail
+&quot;Efail&quot;           : &amp;fail
+&quot;Sclosure&quot;        : <a href="#NWD1">do_expwalk</a>(e.disjunct | \e.conditions | \e.creation, f, closure)
+</pre><pre><a name="NWexpA-casO-6" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-5">&lt;-</a>D<a href="#NWexpA-casO-7">-&gt;</a>]</b>
+&quot;balance&quot;         : <a href="#NWD1">do_expwalk</a>(e.left | e.right, f, closure)
+&quot;balitem&quot;         : <a href="#NWD1">do_expwalk</a>(e.v | e.value, f, closure)
+</pre><pre><a name="NWexpA-casO-7" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-6">&lt;-</a>D<a href="#NWexpA-casO-8">-&gt;</a>]</b>
+&quot;Glines&quot;          : &amp;fail
+&quot;Gresynch&quot;        : &amp;fail
+&quot;Gblock&quot;          : <a href="#NWD1">do_expwalk</a>(!e.decls | !e.stmts, f, closure)
+&quot;Gdecl&quot;           : <a href="#NWD1">do_expwalk</a>(e.init, f, closure)
+&quot;Gcase&quot;           : <a href="#NWD1">do_expwalk</a>(e.x | !e.arms, f, closure)
+&quot;Gcasearm&quot;        : <a href="#NWD1">do_expwalk</a>(e.x, f, closure)
+&quot;Ginrange&quot;        : <a href="#NWD1">do_expwalk</a>(e.x, f, closure)
+&quot;Gsetname&quot;        : &amp;fail
+&quot;Gnomatch&quot;        : &amp;fail
+&quot;Gasgn&quot;           : <a href="#NWD1">do_expwalk</a>(e.x, f, closure)
+&quot;Tunsigned&quot;       : &amp;fail
+&quot;Gcomment&quot;        : &amp;fail
+&quot;Gcommented&quot;      : <a href="#NWD1">do_expwalk</a>(e.e, f, closure)
+</pre><pre><a name="NWexpA-casO-8" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-7">&lt;-</a>D<a href="#NWexpA-casO-9">-&gt;</a>]</b>
+&quot;inject&quot;          : <a href="#NWD1">do_expwalk</a>(\e.pattern | \e.integer, f, closure)
+</pre><pre><a name="NWexpA-casO-9" href="#NWexpA-casO-1"><dfn>&lt;cases for <code>do_expwalk</code>&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casO-8">&lt;-</a>D]</b>
+&quot;Eclosure&quot; : <a href="#NWD1">do_expwalk</a>(!e.values | !e.addresses, f, closure)
+&quot;Elambda&quot;  : <a href="#NWD1">do_expwalk</a>(e.body, f, closure)
+</pre><p>
+<h2><a name="NWD3">Generalized substitution</a></h2>
+<pre><a name="NWexpA-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWexpA-*-3">-&gt;</a>]</b>
+procedure <a href="#NWD3">gsubst</a>(e, f, closure[])
+  return <a href="#NWD3">do_gsubst</a>(e, f, closure)
+end
+
+procedure <a href="#NWD3">do_gsubst</a>(e, f, closure)
+  local args
+  return f ! ([e] ||| closure) |
+         case type(e) of {
+           <a name="NWexpA-*-2-u1" href="#NWexpA-casN-1"><i>&lt;cases for <code>do_gsubst</code>&gt;</i></a>
+           default : impossible(&quot;expression type in generalized substition&quot;)
+         }
+end
+
+procedure <a href="#NWD3">do_gsubst_children</a>(e, f, closure)
+  local args
+  return case type(e) of {
+           <a name="NWexpA-*-2-u2" href="#NWexpA-casN-1"><i>&lt;cases for <code>do_gsubst</code>&gt;</i></a>
+           default : impossible(&quot;expression type in generalized substition&quot;)
+         }
+end
+</pre><blockquote>Defines <a href="#NWI-do_gsubst"><code>do_gsubst</code></a>, <a href="#NWI-do_gsubst_children"><code>do_gsubst_children</code></a>, <a href="#NWI-gsubst"><code>gsubst</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWexpA-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWexpA-*-4">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-3">maplistn</a>(f, l, closure)
+  local result, x
+  result := []
+  every x := !l do
+    put(result, f ! ([x] ||| closure) | fail)
+  return result
+end
+</pre><blockquote>Defines <a href="#NWI-maplistn"><code>maplistn</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-casN-1" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[D<a href="#NWexpA-casN-2">-&gt;</a>]</b>
+&quot;pattern&quot;  : if l := <a href="#NWexpA-*-3">maplistn</a>(<a href="#NWD3">do_gsubst</a>, e.disjuncts, [f, closure]) &amp; 
+                <a href="#NWexpA-*-8">lists_match</a>(l, e.disjuncts) then e else {
+                  ll := []; 
+                  every d := !l do 
+                    if not member(\d.conditions, 0) then put(ll, d)
+                pattern(ll, e.name)
+             }
+&quot;disjunct&quot; : { fclosure := [f, closure]
+               c := <a href="#NWexpA-*-4">do_gsubst_conditions</a>(e.conditions, f, closure)
+               s := []  # this code vanishes dead latent pattern labels
+               every x := <a href="#NWD3">do_gsubst</a>(!e.sequents, f, closure) do
+                 put(s, vanishing_latent_patlabel ~=== x)
+               if <a href="#NWexpA-*-8">lists_match</a>(s, e.sequents) &amp; c === e.conditions then
+                 e
+               else 
+                 disjunct(s, e.name, c)
+             }
+</pre><pre><a name="NWexpA-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-3">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-4">do_gsubst_conditions</a>(e, f, closure)
+  if \(c := e) then {
+     c := set(); 
+     every <a href="#NWexpA-*-6">insert_condition</a>(c, <a href="#NWD3">do_gsubst</a>(!e, f, closure))
+     if <a href="#NWexpA-*-9">sets_match</a>(c, e) then c := e
+  }
+  return c
+end
+
+procedure <a href="#NWexpA-*-4">gsubst_conditions</a>(e, f, closure[])
+  return <a href="#NWexpA-*-4">do_gsubst_conditions</a>(e, f, closure)
+end
+</pre><blockquote>Defines <a href="#NWI-do_gsubst_conditions"><code>do_gsubst_conditions</code></a>, <a href="#NWI-gsubst_conditions"><code>gsubst_conditions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-casN-2" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-1">&lt;-</a>D<a href="#NWexpA-casN-3">-&gt;</a>]</b>
+&quot;adisjunct&quot; : { 
+               if \(c := e.conditions) then {
+                 c := set(); 
+                 every <a href="#NWexpA-*-6">insert_condition</a>(c, <a href="#NWD3">do_gsubst</a>(!e.conditions, f, closure))
+                 if <a href="#NWexpA-*-9">sets_match</a>(c, e.conditions) then c := e.conditions
+               }
+               if \(p := e.patlabelbindings) then
+                 p := do_gsubst_values_in_table(p, f, closure)
+               s := <a href="#NWexpA-*-3">maplistn</a>(<a href="#NWD3">do_gsubst</a>, e.aconstraints, [f, closure])
+               if <a href="#NWexpA-*-8">lists_match</a>(s, e.aconstraints) &amp; c === e.conditions &amp;
+                  p === e.patlabelbindings 
+               then 
+                 e
+               else 
+                 adisjunct(s, e.name, c, e.length, p)
+             }
+&quot;sequent&quot;  : if l := <a href="#NWexpA-*-3">maplistn</a>(<a href="#NWD3">do_gsubst</a>, e.constraints, [f, closure]) &amp; 
+                <a href="#NWexpA-*-8">lists_match</a>(l, e.constraints) then e else sequent(l, e.class)
+</pre><p>
+<pre><a name="NWexpA-casN-3" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-2">&lt;-</a>D<a href="#NWexpA-casN-4">-&gt;</a>]</b>
+&quot;patlabel&quot;        : e
+&quot;latent_patlabel&quot; : if (x := <a href="#NWD3">do_gsubst</a>(e.instance, f, closure)) === e.instance then e
+                    else latent_patlabel(x)
+&quot;dots_sequent&quot; : e
+&quot;constraint&quot;   : e
+&quot;fieldbinding&quot; : if (x := <a href="#NWD3">do_gsubst</a>(e.code, f, closure)) === e.code then e 
+                 else fieldbinding(e.field, x)
+&quot;absolute_field&quot; : e
+</pre><pre><a name="NWexpA-casN-4" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-3">&lt;-</a>D<a href="#NWexpA-casN-5">-&gt;</a>]</b>
+&quot;list&quot;       : if <a href="#NWexpA-*-8">lists_match</a>(l := <a href="#NWexpA-*-3">maplistn</a>(<a href="#NWD3">do_gsubst</a>, e, [f, closure]), e) then e else l
+&quot;eqn&quot;        : if l := <a href="#NWD3">do_gsubst</a>(e.left, f, closure) &amp; 
+                  r := <a href="#NWD3">do_gsubst</a>(e.right, f, closure) &amp;
+                  l === e.left &amp; r === e.right then e else eqn(l, e.op, r)
+&quot;table&quot;      : if (t := <a href="#NWD4">do_gsubst_sumprod_table</a>(e, f, closure)) === e then e else t
+&quot;set&quot;        : {s := set()
+                every insert(s, <a href="#NWD3">do_gsubst</a>(!e, f, closure))
+                if x := !s &amp; not member(e, x) then s else e
+               }                   
+&quot;string&quot;     : e
+&quot;literal&quot;    : e
+&quot;integer&quot;    : e
+&quot;null&quot;       : e
+</pre><pre><a name="NWexpA-casN-5" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-4">&lt;-</a>D<a href="#NWexpA-casN-6">-&gt;</a>]</b>
+&quot;Eorb&quot;       : if x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure) &amp; y := <a href="#NWD3">do_gsubst</a>(e.y, f, closure) &amp;
+                  x === e.x &amp; y === e.y then e else Eorb(x, y)
+&quot;Eand&quot;       : if x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure) &amp; y := <a href="#NWD3">do_gsubst</a>(e.y, f, closure) &amp;
+                  x === e.x &amp; y === e.y then e else Eand(x, y)
+&quot;Eslice&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+               else Eslice(x, e.lo, e.n)
+&quot;Eshift&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Eshift(x, e.n)
+&quot;Enarrowu&quot;   : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Enarrowu(x, e.n)
+&quot;Enarrows&quot;   : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Enarrows(x, e.n)
+&quot;Ewiden&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Ewiden(x, e.n)
+&quot;Ediv&quot;       : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Ediv(x, e.n)
+&quot;Emod&quot;       : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Emod(x, e.n)
+&quot;Efitsu&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Efitsu(x, e.n)
+&quot;Efitss&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Efitss(x, e.n)
+&quot;Epatlabel&quot;  : if (l := <a href="#NWD3">do_gsubst</a>(e.l, f, closure)) === e.l then e else Epatlabel(l)
+&quot;Eforce&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Eforce(x)
+&quot;Eforceable&quot; : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Eforceable(x)
+&quot;Epc&quot; | &quot;Epc_known&quot; : e
+&quot;Enot&quot;       : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Enot(x)
+&quot;Enosimp&quot;    : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Enosimp(x)
+&quot;Sstmts&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Sstmts(x)
+&quot;Semit&quot;      : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e else Semit(x)
+&quot;Stoken&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+               else Stoken(x, e.n, e.offset)
+</pre><p>
+<pre><a name="NWexpA-casN-6" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-5">&lt;-</a>D<a href="#NWexpA-casN-7">-&gt;</a>]</b>
+&quot;Einstance&quot;  :  e # suppress warning --- will confuse users
+                  # --- and we do this with eliminate_instances now
+                  # { warning(&quot;escaping Einstance: &quot;, expimage(e)); e}
+&quot;Ebinding_instance&quot; : e
+&quot;Einstance_input&quot; :
+  if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+  else Einstance_input(x, e.cons, e.name)
+&quot;Einstance_tagged&quot; :   
+  if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+  else Einstance_tagged(x, e.cons, e.uid)
+</pre><pre><a name="NWexpA-casN-7" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-6">&lt;-</a>D<a href="#NWexpA-casN-8">-&gt;</a>]</b>
+&quot;Eapp&quot;  : 
+  if (args := <a href="#NWD3">do_gsubst</a>(e.args, f, closure)) === e.args then e else Eapp(e.f, args)
+&quot;Eclosure_loc&quot;  : e
+&quot;Eclosure_addr&quot; : e
+&quot;Eclosure_val&quot;  : e
+</pre><pre><a name="NWexpA-casN-8" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-7">&lt;-</a>D<a href="#NWexpA-casN-9">-&gt;</a>]</b>
+&quot;Sif&quot;      : if (arms := <a href="#NWD3">do_gsubst</a>(e.arms, f, closure)) === e.arms then e 
+             else Sif(arms)
+&quot;Sguarded&quot; : if (guard := <a href="#NWD3">do_gsubst</a>(e.guard, f, closure), 
+                 x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure),
+                 guard === e.guard, x === e.x) then e 
+             else Sguarded(guard, x)
+&quot;Sepsilon&quot; : e
+&quot;Sfail&quot; : e
+&quot;Stagcase&quot; : if (arms := do_gsubst_vals(e.arms, f, closure), 
+                 x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure),
+                 arms === e.arms, x === e.x) then e
+             else {
+write(&amp;errout, &quot;TAGCASE: &quot;, expimage(e.x))
+write(&amp;errout, &quot;TAGCASE: &quot;, expimage(e.arms))
+write(&amp;errout, &quot;TAGCASE: &quot;, expimage(x))
+write(&amp;errout, &quot;TAGCASE: &quot;, expimage(arms))
+             Stagcase(x, e.type, arms)
+}
+&quot;Efail&quot;    : e
+</pre><pre><a name="NWexpA-casN-9" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-8">&lt;-</a>D<a href="#NWexpA-casN-A">-&gt;</a>]</b>
+&quot;balance&quot;  : if l := <a href="#NWD3">do_gsubst</a>(e.left, f, closure) &amp; 
+                r := <a href="#NWD3">do_gsubst</a>(e.right, f, closure) &amp;
+                l === e.left &amp; r === e.right then e else balance(l, r)
+&quot;balitem&quot;  : if l := <a href="#NWD3">do_gsubst</a>(e.v, f, closure) &amp; 
+                r := <a href="#NWD3">do_gsubst</a>(e.value, f, closure) &amp;
+                l === e.v &amp; r === e.value then e else balitem(l, r)
+</pre><pre><a name="NWexpA-casN-A" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-9">&lt;-</a>D<a href="#NWexpA-casN-B">-&gt;</a>]</b>
+&quot;Glines&quot;    : e
+&quot;Gresynch&quot;  : e
+&quot;Gblock&quot;    : if (decls := <a href="#NWD3">do_gsubst</a>(e.decls, f, closure),
+                  stmts := <a href="#NWD3">do_gsubst</a>(e.stmts, f, closure),
+                  decls === e.decls, stmts === e.stmts) then e 
+              else Gblock(decls, stmts)
+&quot;Gdecl&quot;     : if (init := <a href="#NWD3">do_gsubst</a>(e.init, f, closure)) === e.init then e 
+              else Gdecl(e.name, e.type, init)
+&quot;Gcase&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure), arms := <a href="#NWD3">do_gsubst</a>(e.arms, f, closure),
+                  x === e.x, arms === e.arms) then e 
+              else Gcase(x, arms)
+&quot;Gcasearm&quot;  : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+              else Gcasearm(e.tags, x)
+&quot;Ginrange&quot;  : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+              else Ginrange(e.lo, x, e.hi)
+&quot;Gsetname&quot;  : e
+&quot;Gnomatch&quot;  : e
+&quot;Gasgn&quot;     : if (x := <a href="#NWD3">do_gsubst</a>(e.x, f, closure)) === e.x then e 
+              else Gasgn(e.lhs, x)
+&quot;Tunsigned&quot; : e
+&quot;Gcomment&quot;  : e
+&quot;Gcommented&quot;: if (x := <a href="#NWD3">do_gsubst</a>(e.e, f, closure)) === e.e then e 
+              else Gcommented(x, e.comment)
+</pre><pre><a name="NWexpA-casN-B" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-A">&lt;-</a>D<a href="#NWexpA-casN-C">-&gt;</a>]</b>
+&quot;inject&quot;    : if (p := <a href="#NWD3">do_gsubst</a>(\e.pattern, f, closure) | &amp;null, 
+                  i := <a href="#NWD3">do_gsubst</a>(\e.integer, f, closure) | &amp;null, 
+                  p === e.pattern, i === e.integer) then e 
+              else inject(p, i, e.consop)
+</pre><pre><a name="NWexpA-casN-C" href="#NWexpA-casN-1"><dfn>&lt;cases for <code>do_gsubst</code>&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWexpA-casN-B">&lt;-</a>D]</b>
+&quot;Eclosure&quot; : if (v := <a href="#NWD3">do_gsubst</a>(e.values, f, closure),
+                 a := <a href="#NWD3">do_gsubst</a>(e.addresses, f, closure),
+                 v === e.values, a === e.addresses)
+             then e
+             else Eclosure(e.ty, e.fun, e.headertype, v, a)
+&quot;Elambda&quot;  : if (x := <a href="#NWD3">do_gsubst</a>(e.body, f, closure)) === e.body then e
+             else Elambda(e.formals, x)
+</pre><p>
+<a name="NWD4">Making a new ``sum of products'' table involves substituting all the keys.</a>
+The only trick comes in when one of the new keys is itself a table.
+In that case, we have a sum of terms in which one of the terms is itself a sum
+of terms, and by distributing the outer coefficient over the inner terms,
+we can wind up with a single sum (that is, a single table).
+Using <code>+:=</code> to assign the coefficients makes it all work like magic, even
+when substitution causes duplicate keys.
+<pre><a name="NWexpA-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-4">&lt;-</a>D<a href="#NWexpA-*-6">-&gt;</a>]</b>
+procedure <a href="#NWD4">do_gsubst_sumprod_table</a>(e, f, closure)
+  t := table(0)
+  every k := key(e) &amp; kk := <a href="#NWD3">do_gsubst</a>(k, f, closure) do
+    <a href="#NWexpA-*-7">add_to_table</a>(t, kk, e[k])
+  every k := key(t) &amp; t[k] = 0 do delete(t, k) # delete zeroes
+  return if <a href="#NWexpA-*-A">tables_match</a>(e, t) then e else t
+end
+</pre><blockquote>Defines <a href="#NWI-do_gsubst_sumprod_table"><code>do_gsubst_sumprod_table</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWexpA-*-7">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-6">insert_condition</a>(s, c)
+  if c ~=== 1 &amp; not exps_eq(c, !s) then insert(s, c)
+  return s
+end
+</pre><blockquote>Defines <a href="#NWI-insert_condition"><code>insert_condition</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-6">&lt;-</a>D<a href="#NWexpA-*-8">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-7">add_to_table</a>(t, k, multiplier)
+  case type(k) of {
+    &quot;table&quot;   : every v := key(k) do t[v] +:= k[v] * multiplier
+    &quot;integer&quot; : t[1] +:= k * multiplier
+    default   : t[k] +:= multiplier
+  }
+  return t
+end
+</pre><blockquote>Defines <a href="#NWI-add_to_table"><code>add_to_table</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-7">&lt;-</a>D<a href="#NWexpA-*-9">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-8">lists_match</a>(l1, l2)
+  if n := *l1 = *l2 then
+    if l1[i := 1 to n] ~=== l2[i] then fail
+    else return l2
+  else fail
+end
+</pre><blockquote>Defines <a href="#NWI-lists_match"><code>lists_match</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-8">&lt;-</a>D<a href="#NWexpA-*-A">-&gt;</a>]</b>
+procedure <a href="#NWexpA-*-9">sets_match</a>(s1, s2)
+  if n := *s1 = *s2 then {
+    s := set()
+    every insert(s, expimage(!s1 | !s2))
+    if *s = n then return s1 else fail
+  } else fail
+end
+</pre><blockquote>Defines <a href="#NWI-sets_match"><code>sets_match</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWexpA-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWexpA-*-9">&lt;-</a>D]</b>
+procedure <a href="#NWexpA-*-A">tables_match</a>(t1, t2)
+  if k := key(t1 | t2) &amp; t1[k] ~= t2[k] then fail else return t1
+end
+</pre><blockquote>Defines <a href="#NWI-tables_match"><code>tables_match</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWexpA-*-3">D3</a>, <a href="#NWexpA-*-4">D4</a>, <a href="#NWD4">D5</a>, <a href="#NWexpA-*-6">D6</a>, <a href="#NWexpA-*-7">D7</a>, <a href="#NWexpA-*-8">D8</a>, <a href="#NWexpA-*-9">D9</a>, <a href="#NWexpA-*-A">D10</a>
+<li><a href="#NWexpA-casO-1"><i>&lt;cases for <code>do_expwalk</code>&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWexpA-casO-1">D2</a>, <a href="#NWD2">D3</a>, <a href="#NWexpA-casO-3">D4</a>, <a href="#NWexpA-casO-4">D5</a>, <a href="#NWexpA-casO-5">D6</a>, <a href="#NWexpA-casO-6">D7</a>, <a href="#NWexpA-casO-7">D8</a>, <a href="#NWexpA-casO-8">D9</a>, <a href="#NWexpA-casO-9">D10</a>
+<li><a href="#NWexpA-casN-1"><i>&lt;cases for <code>do_gsubst</code>&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWexpA-casN-1">D2</a>, <a href="#NWexpA-casN-2">D3</a>, <a href="#NWexpA-casN-3">D4</a>, <a href="#NWexpA-casN-4">D5</a>, <a href="#NWexpA-casN-5">D6</a>, <a href="#NWexpA-casN-6">D7</a>, <a href="#NWexpA-casN-7">D8</a>, <a href="#NWexpA-casN-8">D9</a>, <a href="#NWexpA-casN-9">D10</a>, <a href="#NWexpA-casN-A">D11</a>, <a href="#NWexpA-casN-B">D12</a>, <a href="#NWexpA-casN-C">D13</a>
+</ul>
+<ul>
+<li><a name="NWI-add_to_table" href="#NWexpA-*-7">add_to_table</a>: <a href="#NWD4">U1</a>, <a href="#NWexpA-*-7">D2</a>
+<li><a name="NWI-do_expwalk" href="#NWD1">do_expwalk</a>: <a href="#NWD1">D1</a>, <a href="#NWexpA-casO-1">U2</a>, <a href="#NWD2">U3</a>, <a href="#NWexpA-casO-3">U4</a>, <a href="#NWexpA-casO-4">U5</a>, <a href="#NWexpA-casO-5">U6</a>, <a href="#NWexpA-casO-6">U7</a>, <a href="#NWexpA-casO-7">U8</a>, <a href="#NWexpA-casO-8">U9</a>, <a href="#NWexpA-casO-9">U10</a>
+<li><a name="NWI-do_gsubst" href="#NWD3">do_gsubst</a>: <a href="#NWD3">D1</a>, <a href="#NWexpA-casN-1">U2</a>, <a href="#NWexpA-*-4">U3</a>, <a href="#NWexpA-casN-2">U4</a>, <a href="#NWexpA-casN-3">U5</a>, <a href="#NWexpA-casN-4">U6</a>, <a href="#NWexpA-casN-5">U7</a>, <a href="#NWexpA-casN-6">U8</a>, <a href="#NWexpA-casN-7">U9</a>, <a href="#NWexpA-casN-8">U10</a>, <a href="#NWexpA-casN-9">U11</a>, <a href="#NWexpA-casN-A">U12</a>, <a href="#NWexpA-casN-B">U13</a>, <a href="#NWexpA-casN-C">U14</a>, <a href="#NWD4">U15</a>
+<li><a name="NWI-do_gsubst_children" href="#NWD3">do_gsubst_children</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-do_gsubst_conditions" href="#NWexpA-*-4">do_gsubst_conditions</a>: <a href="#NWexpA-casN-1">U1</a>, <a href="#NWexpA-*-4">D2</a>
+<li><a name="NWI-do_gsubst_sumprod_table" href="#NWD4">do_gsubst_sumprod_table</a>: <a href="#NWexpA-casN-4">U1</a>, <a href="#NWD4">D2</a>
+<li><a name="NWI-expwalk" href="#NWD1">expwalk</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-gsubst" href="#NWD3">gsubst</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-gsubst_conditions" href="#NWexpA-*-4">gsubst_conditions</a>: <a href="#NWexpA-*-4">D1</a>
+<li><a name="NWI-insert_condition" href="#NWexpA-*-6">insert_condition</a>: <a href="#NWexpA-*-4">U1</a>, <a href="#NWexpA-casN-2">U2</a>, <a href="#NWexpA-*-6">D3</a>
+<li><a name="NWI-lists_match" href="#NWexpA-*-8">lists_match</a>: <a href="#NWexpA-casN-1">U1</a>, <a href="#NWexpA-casN-2">U2</a>, <a href="#NWexpA-casN-4">U3</a>, <a href="#NWexpA-*-8">D4</a>
+<li><a name="NWI-maplistn" href="#NWexpA-*-3">maplistn</a>: <a href="#NWexpA-*-3">D1</a>, <a href="#NWexpA-casN-1">U2</a>, <a href="#NWexpA-casN-2">U3</a>, <a href="#NWexpA-casN-4">U4</a>
+<li><a name="NWI-sets_match" href="#NWexpA-*-9">sets_match</a>: <a href="#NWexpA-*-4">U1</a>, <a href="#NWexpA-casN-2">U2</a>, <a href="#NWexpA-*-9">D3</a>
+<li><a name="NWI-tables_match" href="#NWexpA-*-A">tables_match</a>: <a href="#NWD4">U1</a>, <a href="#NWexpA-*-A">D2</a>
+</ul>
+</body></html>
+

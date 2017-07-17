@@ -1,0 +1,817 @@
+<!-- this file was generated automatically by noweave --- better not edit it-->
+<h2><a name="conten00">Contents</a></h2>
+<p>
+<tableofcontents>
+<ul compact>
+<li><a href="#conten00">Contents</a>
+<li><a href="#sparci00">SPARC instruction-set specification</a>
+<ul compact>
+<li><a href="#fields00">Fields</a>
+<li><a href="#opcode00">Opcodes</a>
+<li><a href="#struct00">Structured operands and typed constructors</a>
+<li><a href="#NWDI">Load and store, read and write</a>
+<li><a href="#NWDR">Shift, logic, and arithmetic</a>
+<li><a href="#NWDS">Branches and call</a>
+<li><a href="#floati00">Floating point</a>
+<li><a href="#NWDa">Miscellany</a>
+<li><a href="#synthe00">Synthetic instructions</a>
+<li><a href="#NWDg">Application-specific specifications for the </a><tt>lcc</tt> compiler
+<li><a href="#NWDl">Application-specific specifications for the </a><tt>mld</tt> linker
+<li><a href="#NWDs">Validating against the SPARC assembler</a>
+</ul>
+</ul>
+</tableofcontents>
+<p>
+<h2><a name="sparci00">SPARC instruction-set specification</a></h2>
+This section specifies the SPARC instruction set.
+It uses two specification techniques not needed in the
+simpler MIPS specification.
+Operands of some SPARC instructions contain more than one field; we
+use <em>typed constructors</em> to specify them.
+We also use the extended pattern declaration
+<blockquote>
+<em>p</em> <code>is any of [</code>  <i>p_0</i> <i>p_1</i> <i>...</i> <i>p_n</i> <code>], which is</code> <em>generating expression</em>,
+</blockquote>
+which not only defines patterns <i>p_0</i> through <i>p_n</i>, but also defines
+<i>p</i> to be their disjunction.
+<p>
+We can factor 
+the SPARC instruction in much the same
+way as we did the MIPS;
+instructions with identical assembly syntax are grouped using
+disjunction and defined in one constructor declaration.
+<p>
+The SPARC assembly language contains overloaded instructions, the
+encodings of which depend on the number and types of the operands.
+Overloading is easy to handle in a textual assembler because
+a parser can use information about operands to resolve overloaded names.
+The toolkit, however, generates encoding procedures written in&nbsp;C,
+which does not permit users to overload procedures.
+For that reason, the toolkit does not permit overloading of
+<a name="NWD1">constructor names; the specification writer must choose a distinct name</a>
+for each variant of an overloaded instruction.
+It's also possible to use constructor types to play games with
+overloaded instructions; we show an example in
+Section&nbsp;<a href="#overloading-trick">[-&gt;]</a>. 
+<p>
+<h3><a name="fields00">Fields</a></h3>
+The SPARC is a RISC architecture and thus uses
+a single token class for all of its fields.
+<p><pre><a name="NWspa8-spaF-1" href="#NWD1"><dfn>&lt;sparc-core.spec&gt;=</dfn></a>
+fields of instruction (32) <a name="NWspa8-spaF-1-u1" href="#NWD2"><i>&lt;field specifications&gt;</i></a>
+<a name="NWspa8-spaF-1-u2" href="#NWspa8-**fS-1"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>
+<a name="NWspa8-spaF-1-u3" href="#NWD3"><i>&lt;pattern and constructor specifications&gt;</i></a>
+</pre><p>
+<a name="NWD2">Information about instruction formats and fields is taken from</a>
+Chapter&nbsp;5 of the SPARC architecture manual.
+<p><pre><a name="NWspa8-fieK-1" href="#NWD2"><dfn>&lt;field specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWDK">-&gt;</a>]</b>
+inst 0:31 op 30:31 disp30 0:29 rd 25:29 op2 22:24 imm22 0:21 a 29:29 cond 25:28
+disp22 0:21 op3 19:24 rs1 14:18 i 13:13 asi 5:12 rs2 0:4 simm13 0:12 opf 5:13
+</pre><p>
+<h3><a name="opcode00">Opcodes</a></h3>
+The following opcode tables are derived from the tables in Appendix&nbsp;F
+of the SPARC manual&nbsp;<b>[cite&nbsp;<a href="#NWcite-sparc:architecture">sparc:architecture</a>]</b>.
+<p>
+Where an entry in a table refers to another table, we define a pattern
+with the name of that table (e.g., <code>TABLE_F2</code>).
+That pattern is not useful by itself, but is used to define more
+opcodes in a pattern-binding statement that resembles the eponymous
+table.
+These strange ``opcodes'' actually play the same role as the
+<a name="NWD3">``</a><code>special</code>'' and ``<code>bcond</code>'' opcodes on the MIPS architecture,
+but the SPARC people have a different way of naming such things.
+<p>
+The SPARC opcode tables are organized hierarchically; the first table
+in Appendix&nbsp;F is at the top of the hierarchy, and it has four entries
+corresponding to the four possible values of the (two-bit) <code>op</code>
+field.
+Only one of these entries (<code>CALL</code>) is an opcode; the others refer
+the reader to subsequent tables.
+<p><pre><a name="NWspa8-patc-1" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWD4">-&gt;</a>]</b>
+patterns
+ [ TABLE_F2 CALL TABLE_F3 TABLE_F4 ] is op  = {0 to 3}
+</pre><p>
+<a name="NWD4">Table F-2 is short, but it presents an oddity: an opcode with two names.</a>
+<code>SETHI</code> means <code>NOP</code> when <code>rd</code> and <code>imm22</code> are zero.
+On the MIPS, no-ops were treated as synthetic instructions, but here
+we define  <code>NOP</code> as a separate opcode, reflecting
+the presentation in the manual.
+<p><pre><a name="NWspa8-patc-2" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+patterns
+ [ UNIMP Bicc SETHI FBfcc CBccc ] is TABLE_F2 &amp; op2 = [0 2 4 6 7]
+ NOP                              is SETHI &amp; rd = 0 &amp; imm22 = 0
+</pre><p>
+<a name="NWD5">Table&nbsp;F-3 includes most of the arithmetic and logical opcodes.</a>
+It must be specified slightly differently from the MIPS tables because
+the values of the <code>op3</code> field are
+``counted down'' instead of ``counted across.''
+That is, the codes corresponding to <code>op = 0, 1, 2, ...</code>
+are <code>ADD, AND, OR, ...</code>, not <code>ADD, ADDcc, TADDcc, ...</code>.
+To get the proper numbering, we use the generating expression
+<code>{0 to 63 columns 4}</code>, which generates the integers from
+0&nbsp;to&nbsp;63 in the order <i>(0, 16, 32, 48, 1, ..., 63)</i>.
+<p><pre><a name="NWspa8-patc-3" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+patterns
+ [ ADD  ADDcc  TADDcc   WRxxx
+   AND  ANDcc  TSUBcc   WRPSR
+   OR   ORcc   TADDccTV WRWIM
+   XOR  XORcc  TSUBccTV WRTBR
+   SUB  SUBcc  MULScc   FPop1
+   ANDN ANDNcc SLL      FPop2
+   ORN  ORNcc  SRL      CPop1
+   XNOR XNORcc SRA      CPop2
+   ADDX ADDXcc RDxxx    JMPL
+   _    _      RDPSR    RETT
+   UMUL UMULcc RDWIM    Ticc
+   SMUL SMULcc RDTBR    FLUSH
+   SUBX SUBXcc _        SAVE
+   _    _      _        RESTORE
+   UDIV UDIVcc _        _
+   SDIV SDIVcc _        _       ] is TABLE_F3 &amp; op3 = {0 to 63 columns 4}
+</pre><p><a name="NWD6">We have used </a><code>WRxxx</code> and <code>RDxxx</code> to stand for the groups of
+opcodes that appear in the corresponding positions in Table&nbsp;F-3.
+These opcodes define variants of  the
+<code>wr</code> and <code>rd</code> instructions, which are overloaded.
+The overloading is resolved by looking at the values of operands, as
+shown by the footnotes to Table&nbsp;F-3.
+It probably would have been simpler to specify these purely as
+synthetic instructions, but we've chosen to be slaves to the SPARC
+manual. 
+<p><pre><a name="NWspa8-patc-4" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+patterns
+  WRASR          is WRxxx &amp; rd != 0   # should be rdi != 0
+  WRY            is WRxxx &amp; rd = 0
+  RDASR          is RDxxx &amp; rs1 != 0  # should be rs1i != 0
+  RDY            is RDxxx &amp; rs1 = 0
+  STBAR          is RDxxx &amp; rs1 = 15 &amp; rd = 0
+</pre><p>These patterns show a use of the inequality operator to specify 
+constraints on a field value.
+The inequality constraint is a crock that just happens to work in
+these examples.
+The toolkit can't represent an inequality constraint directly, so
+<code>f != n</code> is syntactic sugar for:
+<blockquote>
+<i><tt><a name="NWD7">0</a></tt> &lt;=f &lt; n</i> <code>|</code> <i><tt>n</tt> &lt; f &lt;=<tt>f</tt>_max</i>,
+</blockquote>
+where <i><tt>f</tt>_max</i> is the largest value the field can hold.
+Since a disjunction almost never makes sense as an opcode, this is
+asking for trouble.  Luckily, in these cases <code>n</code> is either 0 or
+<i><tt>f</tt>_max</i>, so at most one of the disjuncts ever matches
+anything, and what is left is equivalent to a real inequality
+constraint.
+We hope one day to remove this ugly wart from the toolkit.
+<p>
+<a name="NWD8">Table F-4 includes the load and store opcodes.</a>
+<p><pre><a name="NWspa8-patc-5" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+patterns
+ [ LD     LDA     LDF   LDC
+   LDUB   LDUBA   LDFSR LDCSR
+   LDUH   LDUHA   _ _
+   LDD    LDDA    LDDF  LDDC
+   ST     STA     STF   STC
+   STB    STBA    STFSR STCSR
+   STH    STHA    STDFQ STDCQ
+   STD    STDA    STDF  STDC
+   _      _       _     _
+   LDSB   LDSBA   _     _
+   LDSH   LDSHA   _     _
+   _      _       _     _
+   _      _       _     _
+   LDSTUB LDSTUBA _     _
+   _      _       _     _
+   SWAP.  SWAPA   _     _  ]  is TABLE_F4 &amp; op3 = {0 to 63 columns 4}
+</pre><p>
+Table&nbsp;F-5 includes the floating-point arithmetic and conversion opcodes.
+Following Table&nbsp;F-5, we list all the opcodes with their corresponding
+<a name="NWD9">names, instead of using a complete table.</a>
+We've also chosen to divide the opcodes into two groups:
+two-operand and three-operand instructions.
+<p>
+We further divide the opcodes based on their operand types.
+This division makes it easy to use the names <code>float2</code>, <code>float3s</code>, etc.
+to refer to the groups, without having to re-enumerate the members of
+each group; these names are used later in the specification to specify
+complete instructions. 
+<p><pre><a name="NWspa8-patc-6" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWDB">-&gt;</a>]</b>
+patterns
+  float2 is any of [ FMOVs FNEGs FABSs FSQRTs FSQRTd FSQRTq
+                     FiTOs FdTOs FqTOs FiTOd  FsTOd  FqTOd
+                     FiTOq FsTOq FdTOq FsTOi  FdTOi  FqTOi ],
+  which is FPop1 &amp; opf =  
+                   [ 0x1   0x5   0x9   0x29   0x2a   0x2b
+                     0xc4  0xc6  0xc7  0xc8   0xc9   0xcb
+                     0xcc  0xcd  0xce  0xd1   0xd2   0xd3 ]
+  float2s is FMOVs | FNEGs | FABSs | FSQRTs
+  FTOs    is FiTOs | FsTOi
+  FTOd    is FiTOd | FsTOd 
+  FTOq    is FiTOq | FsTOq 
+  FdTO    is FdTOi | FdTOs 
+  FqTO    is FqTOs | FqTOi
+
+  float3 is any of [ FADDs FADDd FADDq FSUBs FSUBd FSUBq  FMULs
+                     FMULd FMULq FDIVs FDIVd FDIVq FsMULd FdMULq ],
+    which is FPop1 &amp; opf =
+                   [ 0x41  0x42  0x43  0x45  0x46  0x47   0x49
+                     0x4a  0x4b  0x4d  0x4e  0x4f  0x69   0x6e ]
+  float3s is  FADDs | FSUBs | FMULs | FDIVs
+  float3d is  FADDd | FSUBd | FMULd | FDIVd
+  float3q is  FADDq | FSUBq | FMULq | FDIVq
+</pre><p>
+<a name="NWDA">This syntactic shorthand, which defines patterns and disjoins them at</a>
+one blow, reduces the possibility
+of errors due to miscopying.
+We didn't need this idiom to describe the MIPS because it uses just a
+few tables, and the grouping of MIPS instructions doesn't correspond
+to the organization of the tables.
+We'll see it again, however, in specifying the rest of the SPARC, and
+also on the Pentium and the Alpha.
+<p>
+<a name="NWDB">Table F-6 includes the floating-point comparison opcodes.</a>
+Again, we write down the codes rather than use a table.
+<p><pre><a name="NWspa8-patc-7" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWDC">-&gt;</a>]</b>
+patterns
+ fcompares is any of      [ FCMPs FCMPEs ],
+   which is FPop2 &amp; opf = [ 0x51  0x55 ]
+ fcompared is any of      [ FCMPd FCMPEd ],
+   which is FPop2 &amp; opf = [ 0x52  0x56 ]
+ fcompareq is any of      [ FCMPq FCMPEq ],
+   which is FPop2 &amp; opf = [ 0x53  0x57 ]
+</pre><p>
+<a name="NWDC">Table&nbsp;F-7 includes the branch and trap opcodes.</a>
+It is strange for a different reason; it is actually four tables in
+one.
+The rows of each table vary with the values of the <code>cond</code> field, but
+the columns are described by four different patterns.
+We can't create such a single table with the toolkit, nor would we
+want to---we just split it into the four underlying tables, which
+correspond to three kinds of conditional branches and one of
+conditional traps.
+<p><pre><a name="NWspa8-patc-8" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDB">&lt;-</a>D<a href="#NWDE">-&gt;</a>]</b>
+patterns
+  ibranch is any of [ BN BE  BLE BL  BLEU BCS BNEG BVS
+                      BA BNE BG  BGE BGU  BCC BPOS BVC ],
+    which is Bicc &amp; cond = {0 to 15}
+
+  fbranch is any of [ FBN FBNE FBLG FBUL FBL   FBUG FBG   FBU
+                      FBA FBE  FBUE FBGE FBUGE FBLE FBULE FBO ],
+    which is FBfcc &amp; cond = {0 to 15}
+
+  cbranch is any of [ CBN CB123 CB12 CB13 CB1   CB23 CB2   CB3
+                      CBA CB0   CB03 CB02 CB023 CB01 CB013 CB012 ],
+    which is CBccc &amp; cond = {0 to 15}
+
+  trap is any of    [ TN TE  TLE TL  TLEU TCS TNEG TVS
+                      TA TNE TG  TGE TGU  TCC TPOS TVC ],
+    which is Ticc &amp; cond = {0 to 15}
+
+  branch is ibranch | fbranch | cbranch
+</pre><p><a name="NWDD">We group the three kinds of branches into the pattern </a><code>branch</code>.
+<p>
+People can never agree on the names of conditional branch
+instructions.
+We include a few of the most common synonyms, which are used in the
+definition of
+synthetic instructions.
+<p><pre><a name="NWspa8-spaG-1" href="#NWDD"><dfn>&lt;sparc-synth.spec&gt;=</dfn></a> <b>[D<a href="#NWDc">-&gt;</a>]</b>
+patterns
+  B    is BA
+  BGEU is BCC
+  BLU  is BCS
+  BNZ  is BNE
+  branch.synonyms is B | BGEU | BLU | BNZ
+</pre><p>
+
+<h3><a name="struct00">Structured operands and typed constructors</a></h3>
+Unlike the MIPS, the SPARC has instructions whose
+operands are not simple integers or fields.
+For example, 
+the integer-arithmetic instructions take an operand that may be a register 
+or an immediate value, 
+and
+<a name="NWDE">the load and store instructions take an operand that computes an address.</a>
+The formats for these operands appear on page&nbsp;84 in Appendix A
+of the SPARC manual.
+<p>
+We specify such operands by creating a constructor type for them, giving
+a constructor for each format.
+We use the ``operand syntax'' name in the SPARC manual as the name of
+the type; for example, 
+the constructors for a ``register or immediate'' operand are:
+<p><pre><a name="NWspa8-patc-9" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDC">&lt;-</a>D<a href="#NWDG">-&gt;</a>]</b>
+constructors
+  imode simm13! : reg_or_imm  is  i = 1 &amp; simm13
+  rmode rs2     : reg_or_imm  is  i = 0 &amp; rs2
+</pre><p>The type <code>reg_or_imm</code> is <em>defined</em> by these declarations.
+<a name="NWDF">Used elsewhere, an operand of type </a><code>reg_or_imm</code> always denotes a
+pattern created by the application of one of these two constructors.
+Unlike the encoding procedures for ordinary untyped constructors,
+the encoding procedures generated for these typed constructors
+have no side effects;
+they simply return values that can be passed to other constructors
+requiring an operand of type <code>reg_or_imm</code>.
+Such constructors, notably the arithmetic constructors, appear
+below.
+<p>
+<a name="NWDG">Specifying addresses is a bit problematic because it's not clear what</a>
+convention to follow.
+The underlying general mechanism is that a register is added to a
+value of type <code>reg_or_imm</code>, but there are many useful
+abbreviations:
+ <b>[</b>As far as <tt>lcc</tt> goes, we could revert to the original mechanism<b>]</b> 
+<p><pre><a name="NWspa8-patc-A" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDE">&lt;-</a>D<a href="#NWDI">-&gt;</a>]</b>
+constructors
+  generalA  rs1 + reg_or_imm : address_
+  dispA     rs1 + simm13!    : address_  is  generalA(rs1, imode(simm13!))
+  absoluteA simm13!          : address_  is  generalA(0,   imode(simm13!))
+  indexA    rs1 + rs2        : address_  is  generalA(rs1, rmode(rs2))
+  indirectA rs1              : address_  is  generalA(rs1, rmode(0))
+</pre><p><a name="NWDH">Unfortunately We can't call the type </a><code>address</code> 
+because <code>address</code> is reserved for the toolkit 
+to describe the treatment of addresses in decoding specifications.
+Another ugly wart.
+<p>
+<h3><a name="NWDI">Load and store, read and write</a></h3>
+<p>
+We group the load and store opcodes by their assembly syntax.
+These groupings reflect the information provided on pages&nbsp;90 and 92
+for the load instructions and pages&nbsp;95 and 97 for the stores.
+Each group uses a different set of names for their register operands.
+Those names are defined below.
+<p><pre><a name="NWspa8-patc-B" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDG">&lt;-</a>D<a href="#NWDJ">-&gt;</a>]</b>
+patterns 
+  loadg  is LDSB  | LDSH  | LDUB  | LDUH  | LD  | LDSTUB  | SWAP.
+  loada  is LDSBA | LDSHA | LDUBA | LDUHA | LDA | LDSTUBA | SWAPA
+  storeg is STB   | STH  | ST 
+  storea is STBA  | STHA | STA
+</pre><p>
+The constructors for the load and store instructions illustrate
+the use of the typed constructor <code>address_</code> as an operand.
+Addresses are bracketed, as in SPARC assembly language.
+<a name="NWDJ">Because the constructors' output patterns are the</a>
+conjunctions of the opcodes and operands, they can be omitted.
+<p>
+Loads and stores of double words require even-odd register
+pairs for the destination and source registers; their equations
+specify that constraint. 
+For performance reasons, these equations don't appear in an ordinary
+spec, but we want them when we validate the spec, so I have arranged
+for the command <code>sed 's/# {/{/'</code> to uncomment them
+<p><pre><a name="NWspa8-patc-C" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDI">&lt;-</a>D<a href="#NWDL">-&gt;</a>]</b>
+constructors
+  loadg  [address_], rd
+  LDD    [address_], rd    # { rd = 2 * _ }
+  LDF    [address_], fd
+  LDDF   [address_], fd    # { fd = 2 * _ }
+  LDC    [address_], cd
+  LDDC   [address_], cd    # { cd = 2 * _ }
+
+  storeg rd, [address_]
+  STD    rd, [address_]    # { rd = 2 * _ }
+  STF    fd, [address_]
+  STDF   fd, [address_]    # { fd = 2 * _ }
+  STC    cd, [address_]
+  STDC   cd, [address_]    # { cd = 2 * _ }
+</pre><p><a name="NWDK">We use the synonyms </a><code>fd</code> and <code>cd</code> for the destination register
+<code>rd</code> when the affected register is a floating-point or 
+coprocessor register; same trick applies to <code>fs1</code> and <code>fs2</code>.
+This trick enables us to use different names for different registers,
+which is helpful in generating a disassembler from these specifications.
+<p><pre><a name="NWspa8-fieK-2" href="#NWD2"><dfn>&lt;field specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWDQ">-&gt;</a>]</b>
+fd 25:29 cd 25:29 fs1 14:18 fs2 0:4
+</pre><p>
+The <code>loada</code> and <code>storea</code> only accept address operands constructed
+<a name="NWDL">from registers.  </a>
+As in the SPARC manual, we introduce the constructor type <code>regaddr</code>
+to describe this
+operand. <b>[</b>In fact, <code>address_</code> is a subtype of <code>regaddr</code>.
+The constructors <code>indexA</code> and <code>indirectA</code> are equivalent to
+<code>indexR</code> and <code>indirectR</code>. We could specify these addresses by
+adding a constructor to create an <code>address_</code> from a <code>regaddr</code>,
+but that pollutes the name space. 
+It would be better to have subtypes.<b>]</b> 
+<p><pre><a name="NWspa8-patc-D" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDJ">&lt;-</a>D<a href="#NWDN">-&gt;</a>]</b>
+constructors
+  indexR    rs1 + rs2     : regaddr  is  i = 0 &amp; rs1 &amp; rs2
+  indirectR rs1           : regaddr  is  i = 0 &amp; rs2 = 0 &amp; rs1
+
+  loada  [regaddr]asi, rd
+  LDDA   [regaddr]asi, rd # { rd = 2 * _ }
+  storea rd, [regaddr]asi
+  STDA   rd, [regaddr]asi # { rd = 2 * _ }
+</pre><p>
+<a name="NWDM">Here are the names associated with the different registers.</a>
+They have to be quoted because the toolkit doesn't think the <code>%</code> character 
+can be part of an identifier.
+<p><pre><a name="NWspa8-prob-1" href="#NWDM"><dfn>&lt;properties of integer-register fields&gt;=</dfn></a> <b>(<a href="#NWspa8-**fS-1">U-&gt;</a>)</b>
+names [ &quot;%g0&quot;  &quot;%g1&quot;  &quot;%g2&quot;  &quot;%g3&quot;  &quot;%g4&quot;  &quot;%g5&quot;  &quot;%g6&quot;  &quot;%g7&quot;
+        &quot;%o0&quot;  &quot;%o1&quot;  &quot;%o2&quot;  &quot;%o3&quot;  &quot;%o4&quot;  &quot;%o5&quot;  &quot;%sp&quot;  &quot;%o7&quot;
+        &quot;%l0&quot;  &quot;%l1&quot;  &quot;%l2&quot;  &quot;%l3&quot;  &quot;%l4&quot;  &quot;%l5&quot;  &quot;%l6&quot;  &quot;%l7&quot;
+        &quot;%i0&quot;  &quot;%i1&quot;  &quot;%i2&quot;  &quot;%i3&quot;  &quot;%i4&quot;  &quot;%i5&quot;  &quot;%fp&quot;  &quot;%i7&quot; ]
+</pre><pre><a name="NWspa8-proc-1" href="#NWspa8-proc-1"><dfn>&lt;properties of floating-point registers&gt;=</dfn></a> <b>(<a href="#NWspa8-**fS-1">U-&gt;</a>)</b>
+names [ &quot;%f0&quot;  &quot;%f1&quot;  &quot;%f2&quot;  &quot;%f3&quot;  &quot;%f4&quot;  &quot;%f5&quot;  &quot;%f6&quot;  &quot;%f7&quot;
+        &quot;%f8&quot;  &quot;%f9&quot;  &quot;%f10&quot; &quot;%f11&quot; &quot;%f12&quot; &quot;%f13&quot; &quot;%f14&quot; &quot;%f15&quot;
+        &quot;%f16&quot; &quot;%f17&quot; &quot;%f18&quot; &quot;%f19&quot; &quot;%f20&quot; &quot;%f21&quot; &quot;%f22&quot; &quot;%f23&quot;
+        &quot;%f24&quot; &quot;%f25&quot; &quot;%f26&quot; &quot;%f27&quot; &quot;%f28&quot; &quot;%f29&quot; &quot;%f30&quot; &quot;%f31&quot; ]
+</pre><pre><a name="NWspa8-prok-1" href="#NWspa8-prok-1"><dfn>&lt;properties of coprocessor destination register&gt;=</dfn></a> <b>(<a href="#NWspa8-**fS-1">U-&gt;</a>)</b>
+names [ &quot;%c0&quot;  &quot;%c1&quot;  &quot;%c2&quot;  &quot;%c3&quot;  &quot;%c4&quot;  &quot;%c5&quot;  &quot;%c6&quot;  &quot;%c7&quot;
+        &quot;%c8&quot;  &quot;%c9&quot;  &quot;%c10&quot; &quot;%c11&quot; &quot;%c12&quot; &quot;%c13&quot; &quot;%c14&quot; &quot;%c15&quot;
+        &quot;%c16&quot; &quot;%c17&quot; &quot;%c18&quot; &quot;%c19&quot; &quot;%c20&quot; &quot;%c21&quot; &quot;%c22&quot; &quot;%c23&quot;
+        &quot;%c24&quot; &quot;%c25&quot; &quot;%c26&quot; &quot;%c27&quot; &quot;%c28&quot; &quot;%c29&quot; &quot;%c30&quot; &quot;%c31&quot; ]
+</pre><pre><a name="NWspa8-**fS-1" href="#NWspa8-**fS-1"><dfn>&lt;<code>fieldinfo</code> specifications&gt;=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[D<a href="#NWDT">-&gt;</a>]</b>
+fieldinfo
+[ rd rs1 rs2 ] is [ <a name="NWspa8-**fS-1-u1" href="#NWDM"><i>&lt;properties of integer-register fields&gt;</i></a> ]
+[ fd fs1 fs2 ] is [ <a name="NWspa8-**fS-1-u2" href="#NWspa8-proc-1"><i>&lt;properties of floating-point registers&gt;</i></a> ]
+            cd is [ <a name="NWspa8-**fS-1-u3" href="#NWspa8-prok-1"><i>&lt;properties of coprocessor destination register&gt;</i></a> ]
+</pre><p>
+<a name="NWDN">The SPARC also has several specialized load and store instructions.</a>
+The registers loaded and stored are implicit in the opcodes,
+but we put them into the specifications as ``assembly-language
+syntax.''
+This technique helps us generate a disassembler, but more
+importantly, it makes the specification easier to read and understand.
+<p><pre><a name="NWspa8-patc-E" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDL">&lt;-</a>D<a href="#NWDO">-&gt;</a>]</b>
+constructors
+  LDFSR  [address_], &quot;%fsr&quot;
+  LDCSR  [address_], &quot;%csr&quot;
+  STFSR  &quot;%fsr&quot;, [address_]
+  STCSR  &quot;%csr&quot;, [address_]
+  STDFQ  &quot;%fq&quot;,  [address_]
+  STDCQ  &quot;%cq&quot;,  [address_]
+</pre><p>
+<a name="NWDO">A similar group of instructions modify a different set of registers.</a>
+Perhaps because they move information between special-purpose
+registers and general-purpose registers, instead of special-purpose
+registers and memory, they are called ``read'' and ``write''
+instructions instead of ``load'' and ``store'' instructions.
+<p><pre><a name="NWspa8-patc-F" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDN">&lt;-</a>D<a href="#NWDP">-&gt;</a>]</b>
+constructors
+  RDY    &quot;%y&quot;,   rd
+  RDPSR  &quot;%psr&quot;, rd
+  RDWIM  &quot;%wim&quot;, rd
+  RDTBR  &quot;%tbr&quot;, rd
+  WRY    rs1, reg_or_imm, &quot;%y&quot;
+  WRPSR  rs1, reg_or_imm, &quot;%psr&quot;
+  WRWIM  rs1, reg_or_imm, &quot;%wim&quot;
+  WRTBR  rs1, reg_or_imm, &quot;%tbr&quot;
+</pre><p>
+<a name="NWDP">Finally, the instructions that read and write the ancillary state</a>
+register (<code>asr</code>) have their own special syntax.
+<p><pre><a name="NWspa8-patc-G" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDO">&lt;-</a>D<a href="#NWDR">-&gt;</a>]</b>
+constructors
+  RDASR   &quot;%asr&quot;rs1i, rd
+  WRASR   rs1, reg_or_imm, &quot;%asr&quot;rdi
+  STBAR
+</pre><p><a name="NWDQ">The registers </a><code>rs1i</code> and <code>rdi</code> are versions of <code>rs1</code> and <code>rd</code> that print
+as integers.
+<p><pre><a name="NWspa8-fieK-3" href="#NWD2"><dfn>&lt;field specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDK">&lt;-</a>D]</b>
+rs1i 14:18 rdi 25:29
+</pre><p>
+<h3><a name="NWDR">Shift, logic, and arithmetic</a></h3>
+<p>
+The logical, shift, and arithmetic
+instructions share identical assembly language syntax,
+so we can get away with  only a single constructor declaration.
+Including the shift instructions with the logical and arithmetic
+instructions is a cheat,
+but it's a cheat that works because the immediate field, if used, must be zero
+in the high-order 8 bits.
+<p><pre><a name="NWspa8-patc-H" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDP">&lt;-</a>D<a href="#NWDS">-&gt;</a>]</b>
+patterns 
+  logical is AND | ANDcc | ANDN | ANDNcc | OR | ORcc | ORN | ORNcc |
+             XOR | XORcc | XNOR | XNORcc
+  shift   is SLL | SRL   | SRA
+  arith   is ADD | ADDcc | ADDX | ADDXcc | TADDcc | TADDccTV |
+             SUB | SUBcc | SUBX | SUBXcc | TSUBcc | TSUBccTV |
+             MULScc | UMUL | SMUL | UMULcc | SMULcc |
+             UDIV | SDIV | UDIVcc | SDIVcc |
+             SAVE | RESTORE
+  alu     is logical | shift | arith
+
+constructors
+  alu rs1, reg_or_imm, rd
+</pre><p>
+<h3><a name="NWDS">Branches and call</a></h3>
+<p>
+As on the MIPS, a placeholder pattern must be specified before
+the declaration of any constructor that refers to relocatable
+addresses;
+such a constructor may emit a placeholder in lieu of the relocated instruction.
+We choose the <code>UNIMP</code> instruction because it causes an
+illegal-instruction trap if executed. 
+<p><pre><a name="NWspa8-patc-I" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDR">&lt;-</a>D<a href="#NWDU">-&gt;</a>]</b>
+placeholder for instruction is UNIMP &amp; imm22 = 0xbad
+</pre><p>
+<a name="NWDT">Branch instructions come in two variants depending on the setting of the</a>
+annul (<code>a</code>) bit.
+In the assembly language, the <code>a</code>&nbsp;bit is notated with the suffix
+<code>,a</code> when set, and with no suffix when clear.
+We can work this notation into the toolkit specification by making
+these suffixes the names of the values of the <code>a</code> bit:
+<p><pre><a name="NWspa8-**fS-2" href="#NWspa8-**fS-1"><dfn>&lt;<code>fieldinfo</code> specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWspa8-**fS-1">&lt;-</a>D]</b>
+fieldinfo a is [ names [ &quot;&quot; &quot;,a&quot; ] ]
+</pre><p><a name="NWDU">We then use </a><code>a</code> as a suffix to the branch instruction:
+<p><pre><a name="NWspa8-patc-J" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDS">&lt;-</a>D<a href="#NWDX">-&gt;</a>]</b>
+relocatable reloc
+constructors
+  branch^a reloc  { reloc = L + 4 * disp22! } is L: branch &amp; a &amp; disp22
+</pre><p><a name="NWDV">This declaration creates 96&nbsp;constructors, two for each disjunct of</a>
+the <code>branch</code> pattern.
+<p>
+<a name="NWDW">As on the MIPS, all of the branch instructions take a relocatable</a>
+address and emit a PC-relative displacement 
+in the output pattern.
+To relate them,
+we have simply used the equation that appears
+on page&nbsp;120 of the SPARC manual.
+<p>
+
+<a name="NWDX">The </a><code>call</code> instruction is like the branches, except it uses a
+30-bit displacement, and there is no annul bit.
+<p><pre><a name="NWspa8-patc-K" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDU">&lt;-</a>D<a href="#NWDZ">-&gt;</a>]</b>
+constructors
+  call  reloc   { reloc = L + 4 * disp30! } is L: CALL &amp; disp30
+</pre><p><a name="NWDY">We write the constructor name with two trailing underscores because</a>
+we play overloading games below.
+<p>
+
+<h3><a name="floati00">Floating point</a></h3>
+<a name="NWDZ">Floating-point arithmetic instructions include two-operand</a>
+and three-operand variants.
+Their output patterns are the implicit conjunctions of their opcodes
+and operands so the output pattern is omitted.
+Equations enforce that the register specified for a 
+double-word operand is even-numbered (i.e., specifies the first
+member of an even-odd pair) and that the register for a quad-word operand
+is a multiple of four (i.e., specifies the first in a four-register set).
+As usual, those equations are commented out for speed.
+<p><pre><a name="NWspa8-patc-L" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDX">&lt;-</a>D<a href="#NWDa">-&gt;</a>]</b>
+constructors
+  float2s fs2, fd 
+  FSQRTd  fs2, fd # { fs2 = 2 * _, fd = 2 * _ }
+  FSQRTq  fs2, fd # { fs2 = 4 * _, fd = 4 * _ }
+
+  FTOs fs2, fd
+  FTOd fs2, fd  # { fd = 2 * _ }
+  FTOq fs2, fd  # { fd = 4 * _ }
+  FdTO fs2, fd  # { fs2 = 2 * _ }
+  FqTO fs2, fd  # { fs2 = 4 * _ }
+  FqTOd fs2, fd  # { fs2 = 4 * _, fd = 2 * _ }
+  FdTOq fs2, fd  # { fs2 = 2 * _, fd = 4 * _ }
+
+  float3s  fs1, fs2, fd
+  float3d  fs1, fs2, fd # { fs1 = 2 * _, fs2 = 2 * _, fd = 2 * _ }
+  float3q  fs1, fs2, fd # { fs1 = 4 * _, fs2 = 4 * _, fd = 4 * _ }
+  FsMULd   fs1, fs2, fd # { fd = 4 * _ }
+  FdMULq   fs1, fs2, fd # { fs1 = 2 * _, fs2 = 2 * _, fd = 4 * _ }
+
+  fcompares fs1, fs2
+  fcompared fs1, fs2 # { fs1 = 2 * _, fs2 = 2 * _ }
+  fcompareq fs1, fs2 # { fs1 = 4 * _, fs2 = 4 * _ }
+</pre><p>
+<h3><a name="NWDa">Miscellany</a></h3>
+The remaining instructions don't belong to any particular grouping.
+<p><pre><a name="NWspa8-patc-M" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDZ">&lt;-</a>D<a href="#NWDb">-&gt;</a>]</b>
+constructors
+  NOP
+  FLUSH address_
+  JMPL  address_, rd
+  RETT  address_
+  trap  address_
+  UNIMP imm22
+</pre><p>
+The SPARC architecture manual defines <code>sethi</code> such that 
+it destroys the least significant ten bits on encoding.
+<a name="NWDb">Therefore, no single bi-directional defintion of </a><code>sethi</code>
+can be written without loss of information.
+Our solution is to provide two constructors:
+<code>sethi</code> and <code>decode_sethi</code>.
+<code>sethi</code> encodes a <code>SETHI</code> instruction by ignoring the
+10 low-order bits of <code>val</code>; <code>sethi</code> should be used for encoding.
+The toolkit requires that all bits in a pattern be
+constrained; <code>decode_sethi</code> constrains the 10 low-order
+bits of <code>val</code> and should be used for decoding. 
+<p><pre><a name="NWspa8-patc-N" href="#NWD3"><dfn>&lt;pattern and constructor specifications&gt;+=</dfn></a> <b>(<a href="#NWD1">&lt;-U</a>)</b> <b>[<a href="#NWDa">&lt;-</a>D]</b>
+constructors
+  sethi        &quot;%hi(&quot;val&quot;)&quot;, rd                   is  SETHI &amp; rd &amp; imm22 = val@[10:31]
+  decode_sethi &quot;%hi(&quot;val&quot;)&quot;, rd { val@[0:9] = 0 } is  SETHI &amp; rd &amp; imm22 = val@[10:31]
+</pre><p>
+<h3><a name="synthe00">Synthetic instructions</a></h3>
+<a name="sec:sparc-synth"><b><a name="NWDc">[*]</a></b></a>
+The synthetic instructions are defined on pages&nbsp;84--85 in the SPARC
+manual; their definitions appear below.
+When dealing with  overloaded
+instructions like <code>call</code>, <code>mov</code>, and <code>clr</code>, we've reserved  the
+standard name (e.g., <code>call</code>) for the most common variant, using
+either semi-mnemonic names (e.g., <code>movr</code> fopr move-register or
+<code>clrw</code> for clear-word, <code>calla</code> for call-address) or names with trailing underscores (e.g.,
+<code>???_</code>) for other variants. 
+<p><pre><a name="NWspa8-spaG-2" href="#NWDD"><dfn>&lt;sparc-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDD">&lt;-</a>D<a href="#NWDe">-&gt;</a>]</b>
+constructors
+  cmp rs1, reg_or_imm   is SUBcc(rs1, reg_or_imm, &quot;%g0&quot;)
+  jmp address_          is JMPL (address_, &quot;%g0&quot;)
+  calla address_        is JMPL (address_, &quot;%o7&quot;)
+  tst  rs2              is ORcc (&quot;%g0&quot;, rmode(rs2), &quot;%g0&quot;)
+  ret                   is JMPL (dispA(&quot;%i7&quot;,8), &quot;%g0&quot;)
+  retl                  is JMPL (dispA(&quot;%o7&quot;,8), &quot;%g0&quot;)
+  restore_              is RESTORE (&quot;%g0&quot;, rmode(&quot;%g0&quot;), &quot;%g0&quot;)
+  save_                 is SAVE(&quot;%g0&quot;, rmode(&quot;%g0&quot;), &quot;%g0&quot;)
+  not   rd              is XNOR(rd,    rmode(&quot;%g0&quot;), rd)
+  not2  rs1, rd         is XNOR(rs1,   rmode(&quot;%g0&quot;), rd)
+  neg   rd              is SUB (&quot;%g0&quot;, rmode(rd),    rd)
+  neg2  rs2, rd         is SUB (&quot;%g0&quot;, rmode(rs2),   rd)
+  inc   val, rd         is ADD (rd, imode(val), rd)
+  inccc val, rd         is ADDcc (rd, imode(val), rd)
+  dec   val, rd         is SUB (rd, imode(val), rd)
+  deccc val, rd         is SUBcc (rd, imode(val), rd)
+  btst reg_or_imm, rs1  is ANDcc(rs1, reg_or_imm, &quot;%g0&quot;)
+  bset reg_or_imm, rd   is OR  (rd, reg_or_imm, rd)
+  bclr reg_or_imm, rd   is ANDN(rd, reg_or_imm, rd)
+  btog reg_or_imm, rd   is XOR (rd, reg_or_imm, rd)
+  clr  rd               is OR  (&quot;%g0&quot;, rmode(&quot;%g0&quot;), rd)
+  clrw [address_]       is ST  (&quot;%g0&quot;, address_)
+  clrb [address_]       is STB (&quot;%g0&quot;, address_)
+  clrh [address_]       is STH (&quot;%g0&quot;, address_)
+  mov  reg_or_imm, rd   is OR  (&quot;%g0&quot;, reg_or_imm, rd)
+  movr rs2, rd          is OR  (&quot;%g0&quot;, rmode(rs2),   rd)
+</pre><p><a name="NWDd">Some of the constructors applied in</a>
+the output patterns use <code>reg_or_imm</code> or <code>address_</code> 
+operands.  
+When such a value is a literal constant (e.g., register&nbsp;<code>%g0</code>), we
+apply either the <code>imode</code> or <code>rmode</code> constructor to it to get a
+value of type <code>reg_or_imm</code> (e.g., <code>rmode(&quot;%g0&quot;)</code>).
+<p>
+The SPARC has only one conditionally assembled instruction.
+<a name="NWDe">The </a><code>set</code>  instruction has three ways to load
+an  immediate value <code>val</code> into the register <code>rd</code>.
+If the low-order 10 bits of <code>val</code> are zero,
+use <code>sethi</code> to load the high-order 20 bits.
+If <code>val</code> fits in 13 signed bits,
+<code>OR</code> it with register <code>%g0</code>, which 
+is always zero.
+In the general case, use <code>sethi</code> to load the high-order bits
+into <code>rd</code> and <code>OR</code> to or in the low-order bits.
+<p><pre><a name="NWspa8-spaG-3" href="#NWDD"><dfn>&lt;sparc-synth.spec&gt;+=</dfn></a> <b>[<a href="#NWDc">&lt;-</a>D]</b>
+constructors
+  set val, rd  
+    when { val@[0:9] = 0 }  is  sethi(val, rd)
+    otherwise               is  OR(&quot;%g0&quot;, imode(val), rd)
+    otherwise               is  sethi(val, rd); OR(rd, imode(val@[0:9]), rd)
+</pre><p>
+<a name="NWDf">Again, because </a><code>set</code> loses information, we must specify
+<code>decode_set</code> for use in matching statements. 
+This is really gross.  Can anything be done?
+Having tried to use it in a SPARC disassembler, NR is now convinced
+that this constructor is always useless, and he has deleted it from
+the spec.
+<p><pre><a name="NWspa8-useC-1" href="#NWDf"><dfn>&lt;useless junk&gt;=</dfn></a>
+constructors
+  decode_set val, rd  
+    when { val@[0:9] = 0 }     is  decode_sethi(val, rd)
+    when { val = val@[0:12]! } is  OR(&quot;%g0&quot;, imode(val), rd)
+    otherwise                  is  decode_sethi(val, rd); OR(rd, imode(val@[0:9]), rd)
+</pre><p>
+<h3><a name="NWDg">Application-specific specifications for the </a><tt>lcc</tt> compiler</h3>
+<p>
+<code><a name="NWDh">lcc</a></code> uses set, load, and store constructors that operate on
+relocatable addresses instead of SPARC operands of type <code>address_</code>.
+<p><pre><a name="NWspa8-lccE-1" href="#NWDh"><dfn>&lt;lcc-sparc.spec&gt;=</dfn></a> <b>[D<a href="#NWDi">-&gt;</a>]</b>
+constructors
+  setr reloc, rd  is  set(reloc, rd)
+#  ldr  reloc, rd  is  sethi(reloc, &quot;%g1&quot;); ld(dispA(&quot;%g1&quot;, reloc@[0:9]), rd)
+#  str  rd, reloc  is  sethi(reloc, &quot;%g1&quot;); st(rd, dispA(&quot;%g1&quot;, reloc@[0:9]))
+</pre><p>
+<tt><a name="NWDi">lcc</a></tt> also supports a synthetic doubleword load and store
+operating on base-displacement addresses only.
+<p><pre><a name="NWspa8-lccE-2" href="#NWDh"><dfn>&lt;lcc-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDh">&lt;-</a>D<a href="#NWDj">-&gt;</a>]</b>
+constructors
+  ld2f [rs1+disp!], fd  is  ldf(dispA(rs1, disp), fd); ldf(dispA(rs1, disp+4), fd+1)
+  st2f fd, [rs1+disp!]  is  stf(fd, dispA(rs1, disp)); stf(fd+1, dispA(rs1, disp+4))
+</pre><p>
+<a name="NWDj">The following constructor is used to emit relocatable addresses.</a>
+It is the same as that defined for the MIPS.
+<p><pre><a name="NWspa8-lccE-3" href="#NWDh"><dfn>&lt;lcc-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDi">&lt;-</a>D]</b>
+fields of addrtoken (32) addr32 0:31
+placeholder for addrtoken is addr32 = 7
+constructors
+  emit_raddr reloc is addr32 = reloc
+</pre><p>
+<a name="NWDk">As on the MIPS, </a><tt>mld</tt> doesn't want to pay the overhead of checking
+register numbers:
+<p><pre><a name="NWspa8-spaF.2-1" href="#NWDk"><dfn>&lt;sparc-regs.spec&gt;=</dfn></a> <b>[D<a href="#NWDr">-&gt;</a>]</b>
+fieldinfo [ rs1 rs2 rd fd fs1 fs2 cd ] is [ guaranteed ]
+</pre><p>
+<h3><a name="NWDl">Application-specific specifications for the </a><tt>mld</tt> linker</h3>
+<p>
+<code><a name="NWDm">mld</a></code>, defines set, load, and store constructors that operate on
+relocatable addresses instead of SPARC operands of type <code>address_</code>.
+<p><pre><a name="NWspa8-mldE-1" href="#NWDm"><dfn>&lt;mld-sparc.spec&gt;=</dfn></a> <b>[D<a href="#NWDn">-&gt;</a>]</b>
+constructors
+  setr reloc, rd  is  set(reloc, rd)
+  ldr  reloc, rd  is  sethi(reloc, &quot;%o2&quot;); ld(dispA(&quot;%o2&quot;, reloc@[0:9]), rd)
+  str  rd, reloc  is  sethi(reloc, &quot;%o2&quot;); st(rd, dispA(&quot;%o2&quot;, reloc@[0:9]))
+</pre><p>
+<tt><a name="NWDn">mld</a></tt> uses the synonyms we've defined for the branch instructions.
+<p><pre><a name="NWspa8-mldE-2" href="#NWDm"><dfn>&lt;mld-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDm">&lt;-</a>D<a href="#NWDo">-&gt;</a>]</b>
+constructors
+  branch.synonyms^a reloc  { reloc = L + 4 * disp22! }  is
+        L: branch.synonyms &amp; a &amp; disp22
+</pre><p>
+<a name="overloading-trick"><b>[*]</b></a>
+
+Like the load and store instructions,
+the SPARC call instruction is overloaded;
+it accepts either a relocatable address or an SPARC-style <code>address_</code>.
+<a name="NWDo">The first style, which we've named </a><code>call</code>, uses the real <code>CALL</code>
+instruction, the second, which we've named <code>calla</code>, uses <code>JMPL</code>.
+Because <tt>mld</tt> generates code using a bottom-up tree walk,
+it decides which kind of call instruction it
+wants before it's actually ready to emit the call.
+<tt>mld</tt> wants to make up a cookie identifying the call, but doesn't
+emit the call until the cookie is eaten.
+The toolkit supports this trick using typed constructors; the cookie
+is a value of type <code>Function</code>.
+<p><pre><a name="NWspa8-mldE-3" href="#NWDm"><dfn>&lt;mld-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDn">&lt;-</a>D<a href="#NWDp">-&gt;</a>]</b>
+constructors
+  relocfun reloc    : Function  is  call(reloc)
+  addrfun  address_ : Function  is  calla(address_)
+</pre><p><code><a name="NWDp">relocfun</a></code> and <code>addrfun</code> create the cookies.
+It looks like these constructors emit the calls, but actually they
+don't have any side effects; the just return patterns representing the
+instructions to be emitted.  
+Actually emitting such an instruction is the job of the <code>_call</code>
+constructor:
+<p><pre><a name="NWspa8-mldE-4" href="#NWDm"><dfn>&lt;mld-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDo">&lt;-</a>D<a href="#NWDq">-&gt;</a>]</b>
+constructors
+  _call Function is Function
+</pre><p>
+<a name="NWDq">The following constructor is used to emit relocatable addresses.</a>
+It is the same as that defined for the MIPS.
+<p><pre><a name="NWspa8-mldE-5" href="#NWDm"><dfn>&lt;mld-sparc.spec&gt;+=</dfn></a> <b>[<a href="#NWDp">&lt;-</a>D]</b>
+fields of addrtoken (32) addr32 0:31
+placeholder for addrtoken is addr32 = 7
+constructors
+  emit_raddr reloc is addr32 = reloc
+</pre><p>
+<a name="NWDr">As on the MIPS, </a><tt>mld</tt> doesn't want to pay the overhead of checking
+register numbers:
+<p><pre><a name="NWspa8-spaF.2-2" href="#NWDk"><dfn>&lt;sparc-regs.spec&gt;+=</dfn></a> <b>[<a href="#NWDk">&lt;-</a>D]</b>
+fieldinfo [ rs1 rs2 rd fd fs1 fs2 cd ] is [ guaranteed ]
+</pre><p>
+<h3><a name="NWDs">Validating against the SPARC assembler</a></h3>
+As on the MIPS, the same assembly name is used for integer and floating-point
+variants of an instruction.  The assembler uses the operand names
+to disambiguate.
+<p><pre><a name="NWspa8-spaG.2-1" href="#NWDs"><dfn>&lt;sparc-names.spec&gt;=</dfn></a> <b>[D<a href="#NWDt">-&gt;</a>]</b>
+assembly component
+  decode_{*}             is $1
+  {LDF,LDFSR,LDC,LDCSR}  is LD
+  {LDDF,LDDC}            is LDD
+  {STF,STFSR,STC,STCSR}  is ST
+  {STDF,STDFQ,STDC,STDCQ} is STD
+  {RDY,RDASR,RDPSR,RDWIM,RDTBR} is RD
+  {WRY,WRASR,WRPSR,WRWIM,WRTBR} is WR
+  {not,neg}2             is $1
+  {set,ld,st,mov}r       is $1
+  {ld2,st2}f             is $1  
+  {call}a                is $1
+  SWAP.                  is SWAP
+  {*}{_,__}              is $1
+  _{*}                   is $1
+</pre><p><a name="NWDt">We need the extra syntax so that unbracketed </a><code>address</code> operands 
+are accepted by the assembler.
+<p><pre><a name="NWspa8-spaG.2-2" href="#NWDs"><dfn>&lt;sparc-names.spec&gt;+=</dfn></a> <b>[<a href="#NWDs">&lt;-</a>D]</b>
+assembly syntax
+  absoluteA &quot;%g0 + &quot; simm13!
+</pre><p>
+<a name="NWDu">The suggested assembly syntax for </a>
+several SPARC instructions is not recognized by the 
+SunOS assembler, so those instructions are discarded.
+<code>emit_raddr</code>, <code>ldr</code>, and <code>str</code> are application-specific
+and are not in the SPARC assembly language.
+<p><pre><a name="NWspa8-spaG.3-1" href="#NWDu"><dfn>&lt;sparc-check.spec&gt;=</dfn></a>
+discard FLUSH RDASR WRASR STBAR RETT emit_raddr ldr str decode_sethi 
+</pre><p>
+<a name="NWDv">We don't have to put any special headers in assembly source used by</a>
+the checker.
+<p><pre><a name="NWspa8-spaF.3-1" href="#NWDv"><dfn>&lt;sparc-checker.s&gt;=</dfn></a>
+</pre><p>
+
+
+<ul>
+<li><a href="#NWD2"><i>&lt;field specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>, <a href="#NWDK">D3</a>, <a href="#NWDQ">D4</a>
+<li><a href="#NWspa8-**fS-1"><i>&lt;<code>fieldinfo</code> specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWspa8-**fS-1">D2</a>, <a href="#NWDT">D3</a>
+<li><a href="#NWDh"><i>&lt;lcc-sparc.spec&gt;</i></a>: <a href="#NWDh">D1</a>, <a href="#NWDi">D2</a>, <a href="#NWDj">D3</a>
+<li><a href="#NWDm"><i>&lt;mld-sparc.spec&gt;</i></a>: <a href="#NWDm">D1</a>, <a href="#NWDn">D2</a>, <a href="#NWDo">D3</a>, <a href="#NWDp">D4</a>, <a href="#NWDq">D5</a>
+<li><a href="#NWD3"><i>&lt;pattern and constructor specifications&gt;</i></a>: <a href="#NWD1">U1</a>, <a href="#NWD3">D2</a>, <a href="#NWD4">D3</a>, <a href="#NWD5">D4</a>, <a href="#NWD6">D5</a>, <a href="#NWD8">D6</a>, <a href="#NWD9">D7</a>, <a href="#NWDB">D8</a>, <a href="#NWDC">D9</a>, <a href="#NWDE">D10</a>, <a href="#NWDG">D11</a>, <a href="#NWDI">D12</a>, <a href="#NWDJ">D13</a>, <a href="#NWDL">D14</a>, <a href="#NWDN">D15</a>, <a href="#NWDO">D16</a>, <a href="#NWDP">D17</a>, <a href="#NWDR">D18</a>, <a href="#NWDS">D19</a>, <a href="#NWDU">D20</a>, <a href="#NWDX">D21</a>, <a href="#NWDZ">D22</a>, <a href="#NWDa">D23</a>, <a href="#NWDb">D24</a>
+<li><a href="#NWspa8-prok-1"><i>&lt;properties of coprocessor destination register&gt;</i></a>: <a href="#NWspa8-prok-1">D1</a>, <a href="#NWspa8-**fS-1">U2</a>
+<li><a href="#NWspa8-proc-1"><i>&lt;properties of floating-point registers&gt;</i></a>: <a href="#NWspa8-proc-1">D1</a>, <a href="#NWspa8-**fS-1">U2</a>
+<li><a href="#NWDM"><i>&lt;properties of integer-register fields&gt;</i></a>: <a href="#NWDM">D1</a>, <a href="#NWspa8-**fS-1">U2</a>
+<li><a href="#NWDv"><i>&lt;sparc-checker.s&gt;</i></a>: <a href="#NWDv">D1</a>
+<li><a href="#NWDu"><i>&lt;sparc-check.spec&gt;</i></a>: <a href="#NWDu">D1</a>
+<li><a href="#NWD1"><i>&lt;sparc-core.spec&gt;</i></a>: <a href="#NWD1">D1</a>
+<li><a href="#NWDs"><i>&lt;sparc-names.spec&gt;</i></a>: <a href="#NWDs">D1</a>, <a href="#NWDt">D2</a>
+<li><a href="#NWDk"><i>&lt;sparc-regs.spec&gt;</i></a>: <a href="#NWDk">D1</a>, <a href="#NWDr">D2</a>
+<li><a href="#NWDD"><i>&lt;sparc-synth.spec&gt;</i></a>: <a href="#NWDD">D1</a>, <a href="#NWDc">D2</a>, <a href="#NWDe">D3</a>
+<li><a href="#NWDf"><i>&lt;useless junk&gt;</i></a>: <a href="#NWDf">D1</a>
+</ul>
+

@@ -1,0 +1,376 @@
+<html><head><title> rewrite.nw</title></head><body><!-- -*- mode: Noweb; noweb-code-mode: icon-mode -*--->
+
+<h1><a name="NWD1">Generator for expression rewrite rules</a></h1>
+Record types are <code><a href="#NWD1">special</a></code> if handled by hand-written code.
+<code><a href="#NWD1">expargs</a></code> holds the names of arguments (fields) known to be 
+expressions, and which therefore need to be simplified recursively.
+<pre><a name="NWrewA-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWrewA-*-2">-&gt;</a>]</b>
+global <a href="#NWD1">records</a>, <a href="#NWD1">rules</a>, <a href="#NWD1">special</a>, <a href="#NWD1">expargs</a>, <a href="#NWD1">simp_name</a>
+link commafy
+procedure <a href="#NWD1">main</a>(args)
+  every <a href="#NWD1">special</a> | <a href="#NWD1">expargs</a> := set()
+  every <a href="#NWD1">records</a> | <a href="#NWD1">rules</a> := table()
+  <a href="#NWD1">simp_name</a> := &quot;simfun&quot;
+  if args[1] == &quot;-s&quot; then <a href="#NWD1">simp_name</a> := args[2]
+  lex()
+  P_Spec()
+  every r := !<a href="#NWD1">records</a> &amp; not(member(<a href="#NWD1">special</a>, r.name)) do {
+    if not <a href="#NWrewA-*-2">always_matches</a>(r, !<a href="#NWD1">rules</a>[r.name]) then
+      put(<a href="#NWD1">rules</a>[r.name], <a href="#NWD8">Rule</a>(<a href="#NWD7">App</a>(r.name, <a href="#NWD6">ignoredargs</a>(r.args)), &quot;e&quot;))  # default rule
+    <a href="#NWD2">emit_tests</a>(r)
+  }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-expargs"><code>expargs</code></a>, <a href="#NWI-main"><code>main</code></a>, <a href="#NWI-records"><code>records</code></a>, <a href="#NWI-rules"><code>rules</code></a>, <a href="#NWI-simp_name"><code>simp_name</code></a>, <a href="#NWI-special"><code>special</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWrewA-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD2">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-2">always_matches</a>(r, rule)
+  local lhs
+  lhs := rule.lhs
+  l := []; every !lhs.args do put(l, &quot;dummy&quot;)
+  return r.name == lhs.fun &amp; *<a href="#NWD4">matching_conditions</a>(lhs, l) = 0
+end
+</pre><blockquote>Defines <a href="#NWI-always_matches"><code>always_matches</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD2">To test a possibility, we first simplify expression arguments, then</a>
+check each rule in turn.
+If we ever get to a rule that always matches, we win.
+If we every run out of rules, we lose.
+<pre><a name="NWrewA-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-2">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">emit_tests</a>(r)
+  local sargs, sa, before_if
+  <a href="#NWrewA-*-I">iwrite</a>(0, image(r.name), &quot; : {&quot;)      # case label
+  <a name="NWrewA-*-3-u1" href="#NWrewA-emi1B-1"><i>&lt;emit simplifying assignments, making <code>sargs</code> name simplified <code>r.args</code>&gt;</i></a>
+  if member(<a href="#NWD1">expargs</a>, !r.args) then
+    {<a name="NWrewA-*-3-u2" href="#NWrewA-emip-1"><i>&lt;emit assignment making <code>e</code> its simplified version&gt;</i></a>}
+  before_if := &quot;&quot;
+  while x := get(<a href="#NWD1">rules</a>[r.name]) do {
+    c := <a href="#NWD4">matching_conditions</a>(x.lhs, sargs)
+    if *c = 0 then
+      {<a name="NWrewA-*-3-u3" href="#NWrewA-emiP-1"><i>&lt;emit last case and return&gt;</i></a>}
+    else 
+      {<a name="NWrewA-*-3-u4" href="#NWrewA-emiE-1"><i>&lt;emit this case&gt;</i></a>}
+    before_if := &quot;} else &quot;
+  }
+  stop(&quot;This can't happen -- ran out of <a href="#NWD1">rules</a> before finding one that always matched&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_tests"><code>emit_tests</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-emip-1" href="#NWrewA-emip-1"><dfn>&lt;emit assignment making <code>e</code> its simplified version&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+<a name="NWrewA-emip-1-u1" href="#NWrewA-maku-1"><i>&lt;make <code>c</code> a list of conditions required to re-use <code>e</code>&gt;</i></a>
+if *c &gt; 0 then {
+  write(&quot;  if not (&quot;, commaseparate(c), &quot;) then&quot;)
+  write(&quot;    e := &quot;, r.name, &quot;(&quot;, commaseparate(sargs), &quot;)&quot;)
+}
+</pre><pre><a name="NWrewA-maku-1" href="#NWrewA-maku-1"><dfn>&lt;make <code>c</code> a list of conditions required to re-use <code>e</code>&gt;=</dfn></a> <b>(<a href="#NWrewA-emip-1">&lt;-U</a>)</b>
+c := []
+every i := 1 to *r.args &amp; member(<a href="#NWD1">expargs</a>, r.args[i]) do
+  put(c, sargs[i] || &quot; === e.&quot; || r.args[i])
+</pre><p>
+<pre><a name="NWrewA-emiE-1" href="#NWrewA-emiE-1"><dfn>&lt;emit this case&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+<a href="#NWrewA-*-I">iwrite</a>(2, before_if, &quot;if (&quot;, commaseparate(c), &quot;) then {&quot;)
+<a href="#NWD3">write_binding_assignments</a>(x.lhs, sargs, 4)
+every o := !x.code &amp; *o &gt; 0 do 
+  <a href="#NWrewA-*-I">iwrite</a>(4, o)
+</pre><pre><a name="NWrewA-emiP-1" href="#NWrewA-emiP-1"><dfn>&lt;emit last case and return&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+<a href="#NWrewA-*-I">iwrite</a>(2, before_if, &quot;{&quot;)
+<a href="#NWD3">write_binding_assignments</a>(x.lhs, sargs, 4)
+every o := !x.code &amp; *o &gt; 0 do 
+  <a href="#NWrewA-*-I">iwrite</a>(4, o)
+<a href="#NWrewA-*-I">iwrite</a>(2, &quot;}&quot;)
+<a href="#NWrewA-*-I">iwrite</a>(0, &quot;}&quot;)
+write(&amp;errout, &quot;Warning: &quot;, 0 &lt; *<a href="#NWD1">rules</a>[r.name], &quot; extra <a href="#NWD1">rules</a> for &quot;, r.name)
+return
+</pre><pre><a name="NWrewA-emi1B-1" href="#NWrewA-emi1B-1"><dfn>&lt;emit simplifying assignments, making <code>sargs</code> name simplified <code>r.args</code>&gt;=</dfn></a> <b>(<a href="#NWD2">&lt;-U</a>)</b>
+sargs := []
+every a := !r.args do
+  if member(<a href="#NWD1">expargs</a>, a) then {
+    sa := &quot;_a&quot; || *sargs
+    <a href="#NWrewA-*-I">iwrite</a>(2, sa, &quot; := &quot;, <a href="#NWD1">simp_name</a>, &quot;(e.&quot;, a, &quot;)&quot;)
+    put(sargs, sa)
+  } else
+    put(sargs, &quot;e.&quot; || a)
+</pre><p>
+<a name="NWD3">We discover binding assignments by a tree walk.</a>
+<pre><a name="NWrewA-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWrewA-*-5">-&gt;</a>]</b>
+procedure <a href="#NWD3">write_binding_assignments</a>(lhs, sargs, indent)
+  type(lhs) == &quot;<a href="#NWD7">App</a>&quot; | stop(&quot;Left-hand side of rule must be an application&quot;)
+  every i := 1 to *sargs do
+    <a href="#NWrewA-*-5">bind_arg</a>(lhs.args[i], sargs[i], indent)
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-write_binding_assignments"><code>write_binding_assignments</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-*-5" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-5">bind_arg</a>(lhs, e, indent)
+  local sargs
+  l := []
+  while type(lhs) == &quot;<a href="#NWD7">Binding</a>&quot; do {
+    put(l, lhs.id)
+    lhs := lhs.exp
+  }
+  if *l &gt; 0 then {put(l, e); <a href="#NWrewA-*-I">iwrite</a>(indent, commaseparate(l, &quot; := &quot;))}
+  case type(lhs) of {
+    &quot;<a href="#NWD7">App</a>&quot; : {
+      r := <a href="#NWD1">records</a>[lhs.fun]
+      *r.args = *lhs.args | stop(&quot;This can't happen -- args&quot;)
+      sargs := []; every put(sargs, e || &quot;.&quot; || !r.args)
+      <a href="#NWD3">write_binding_assignments</a>(lhs, sargs, indent)
+    }
+    &quot;string&quot; : if lhs ~== &quot;_&quot; then <a href="#NWrewA-*-I">iwrite</a>(indent, lhs, &quot; := &quot;, e)
+    &quot;integer&quot; : &amp;null
+    default : stop(&quot;impossible lhs&quot;)
+  }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-bind_arg"><code>bind_arg</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD4">A similar walk suffices to recover matching conditions.</a>
+<pre><a name="NWrewA-*-6" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-5">&lt;-</a>D<a href="#NWrewA-*-7">-&gt;</a>]</b>
+procedure <a href="#NWD4">matching_conditions</a>(lhs, sargs, conds)
+  /conds := []
+  type(lhs) == &quot;<a href="#NWD7">App</a>&quot; | stop(&quot;Left-hand side of rule must be an application&quot;)
+  every i := 1 to *sargs do
+    <a href="#NWrewA-*-7">add_conditions</a>(lhs.args[i], sargs[i], conds)
+  return conds
+end
+</pre><blockquote>Defines <a href="#NWI-matching_conditions"><code>matching_conditions</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-*-7" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWrewA-*-8">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-7">add_conditions</a>(lhs, e, conds)
+  local sargs
+  static intlets, uppernum
+  initial { intlets := 'IJKLMN'; uppernum := &amp;ucase ++ &amp;digits }
+  while type(lhs) == &quot;<a href="#NWD7">Binding</a>&quot; do
+    lhs := lhs.exp
+  case type(lhs) of {
+    &quot;<a href="#NWD7">App</a>&quot; : {
+      put(conds, &quot;type(&quot; || e || &quot;) == &quot; || image(lhs.fun))
+      r := <a href="#NWD1">records</a>[lhs.fun]
+      sargs := []; every put(sargs, e || &quot;.&quot; || !r.args)
+      <a href="#NWD4">matching_conditions</a>(lhs, sargs, conds)
+    }
+    &quot;string&quot; : 
+      if lhs ? (any(intlets), tab(many(uppernum)), pos(0)) then
+        put(conds, &quot;type(&quot; || e || &quot;) == &quot; || image(&quot;integer&quot;))
+    &quot;integer&quot; : put(conds, e || &quot; === &quot; || lhs)
+    default : stop(&quot;impossible lhs&quot;)
+  }
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-add_conditions"><code>add_conditions</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWrewA-*-8" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-7">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-8">newrule</a>(lhs, code)
+  type(lhs) == &quot;<a href="#NWD7">App</a>&quot; | error(&quot;must be an application on lhs&quot;)
+  every put(<a href="#NWD1">rules</a>[lhs.fun], <a href="#NWD8">Rule</a>(<a href="#NWD7">App</a>(lhs.fun, <a href="#NWD5">insert_comments</a>(lhs.args)), code))
+  return
+end  
+</pre><blockquote>Defines <a href="#NWI-newrule"><code>newrule</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD5">We automatically insert </a><code>Gcommented</code> into nested applications, so that
+<code>Gcommented</code> never prevents anything from matching.
+<pre><a name="NWrewA-*-9" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-8">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">insert_comments</a>(e, i)
+  case type(e) of {
+    &quot;list&quot; : {
+       /i := 1
+       if i &lt;= *e then 
+         every l := <a href="#NWD5">insert_comments</a>(e, i+1) &amp; x := <a href="#NWD5">insert_comments</a>(e[i]) do {
+           push(l, x); suspend copy(l); pop(l)
+         }
+       else suspend []
+     }
+     &quot;<a href="#NWD7">Binding</a>&quot; : suspend <a href="#NWD7">Binding</a>(e.id, <a href="#NWD5">insert_comments</a>(e.exp))
+     &quot;<a href="#NWD7">App</a>&quot; : {
+        suspend <a href="#NWD7">App</a>(e.fun, <a href="#NWD5">insert_comments</a>(e.args))
+        suspend <a href="#NWD7">App</a>(&quot;Gcommented&quot;, [<a href="#NWD7">App</a>(e.fun, <a href="#NWD5">insert_comments</a>(e.args)), &quot;_&quot;])
+      }
+     &quot;string&quot; | &quot;integer&quot; : suspend e
+     default : impossible(&quot;bad type in <a href="#NWD5">insert_comments</a>: &quot;, image(e))
+  }
+end    
+</pre><blockquote>Defines <a href="#NWI-insert_comments"><code>insert_comments</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">We make ignored arguments in the default rule.</a>
+<pre><a name="NWrewA-*-A" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWD7">-&gt;</a>]</b>
+procedure <a href="#NWD6">ignoredargs</a>(args)
+  l := []
+  every i := 1 to *args do put(l, &quot;_&quot;)
+  return l
+end
+</pre><blockquote>Defines <a href="#NWI-ignoredargs"><code>ignoredargs</code></a> (links are to index).<p>
+</blockquote><p>
+<h3><a name="NWD7">Grammar</a></h3>
+An expression is an integer, an identifier (string), a binding, or an application.
+<pre><a name="NWrewA-*-B" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D<a href="#NWD8">-&gt;</a>]</b>
+record <a href="#NWD7">App</a>(fun, args)
+record <a href="#NWD7">Binding</a>(id, exp)
+</pre><blockquote>Defines <a href="#NWI-App"><code>App</code></a>, <a href="#NWI-Binding"><code>Binding</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD8">Each record type has a list of arguments.</a>
+A rule has a matching expression on the left and code on the right.
+<pre><a name="NWrewA-*-C" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD7">&lt;-</a>D<a href="#NWrewA-*-D">-&gt;</a>]</b>
+record <a href="#NWD8">Record</a>(name, args)
+record <a href="#NWD8">Rule</a>(lhs, code)
+</pre><blockquote>Defines <a href="#NWI-Record"><code>Record</code></a>, <a href="#NWI-Rule"><code>Rule</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-proB-1" href="#NWrewA-proB-1"><dfn>&lt;productions&gt;=</dfn></a> <b>(<a href="#NWrewA-gra7-1">U-&gt;</a>)</b>
+Spec : {Directive} &quot;%%&quot; {<a href="#NWD8">Rule</a>};
+Directive: <a href="#NWD8">Record</a>
+         | &quot;<a href="#NWD1">special</a>&quot;
+               ( &quot;hoist&quot;    {Ident} &quot;.&quot;
+               | &quot;simplify&quot; {Ident} &quot;.&quot; /* every insert(<a href="#NWD1">special</a>, !ii2) */
+               )
+         | &quot;<a href="#NWD1">expargs</a>&quot; {Ident} &quot;.&quot; /* every insert(<a href="#NWD1">expargs</a>, !ii2) */
+         ;
+<a href="#NWD8">Rule</a>: Exp {<a href="#NWDA">CODE</a>} /* <a href="#NWrewA-*-8">newrule</a>(ii1, ii2) */;
+Exp : Ident
+         (   &quot;as&quot; Exp      /* <a href="#NWD7">Binding</a>(&amp;null, ii2) */
+
+         |   &quot;(&quot; Args &quot;)&quot;  /* <a href="#NWD7">App</a>(&amp;null, ii2) */
+         |                 /* &amp;null */
+         )  /* <a name="NWrewA-proB-1-u1" href="#NWrewA-attk-1"><i>&lt;attach identifier <code>ii1</code> to remainder <code>ii2</code>&gt;</i></a> */
+    | <a href="#NWDA">INT</a>
+    ;
+Args: [ Exp {&quot;,&quot; Exp} /* push(ii2, ii1) */] /* \ii1 | [] */;
+
+<a href="#NWD8">Record</a>: &quot;record&quot; Ident &quot;(&quot; [Ident {&quot;,&quot; Ident} /* push(ii2, ii1) */] &quot;)&quot;
+        /* <a href="#NWD1">records</a>[ii2] := <a href="#NWD8">Record</a>(ii2, \ii4 | []); <a href="#NWD1">rules</a>[ii2] := [] */
+      ;
+Ident : <a href="#NWDA">IDENT</a> | &quot;_&quot;;
+</pre><pre><a name="NWrewA-attk-1" href="#NWrewA-attk-1"><dfn>&lt;attach identifier <code>ii1</code> to remainder <code>ii2</code>&gt;=</dfn></a> <b>(<a href="#NWrewA-proB-1">&lt;-U</a>)</b>
+case type(ii2) of {
+  &quot;<a href="#NWD7">Binding</a>&quot; : {ii2.id  := ii1;          ii2             }
+  &quot;<a href="#NWD7">App</a>&quot;     : {ii2.fun := ii1;          <a href="#NWrewA-*-D">checkapp</a>(ii2)   }
+  &quot;null&quot;    : {                         ii1             }
+  default : stop(&quot;impossible goo&quot;)
+}
+</pre><pre><a name="NWrewA-*-D" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD8">&lt;-</a>D<a href="#NWD9">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-D">checkapp</a>(a)
+  if /<a href="#NWD1">records</a>[a.fun] then
+     error(&quot;<a href="#NWD8">Record</a> type &quot;, a.fun, &quot; not known&quot;)
+  else if *<a href="#NWD1">records</a>[a.fun].args ~= *a.args then
+     error(a.fun, &quot; takes &quot;, *<a href="#NWD1">records</a>[a.fun].args, &quot; arguments&quot;)
+  else
+     return a
+end
+</pre><blockquote>Defines <a href="#NWI-checkapp"><code>checkapp</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-gra7-1" href="#NWrewA-gra7-1"><dfn>&lt;grammar&gt;=</dfn></a>
+%term <a href="#NWDA">INT</a>
+%term <a href="#NWDA">IDENT</a>
+%term <a href="#NWDA">CODE</a>
+%%
+<a name="NWrewA-gra7-1-u1" href="#NWrewA-proB-1"><i>&lt;productions&gt;</i></a>
+</pre><p>
+<h3><a name="NWD9">Lexical analysis</a></h3>
+<code><a href="#NWD9">token</a></code> describes the category of the token, and <code><a href="#NWD9">tval</a></code> is its value.
+<code><a href="#NWD9">token</a> == <a href="#NWD9">tval</a></code> except for integers and identifiers.
+<code><a href="#NWD9">file</a></code> and <code><a href="#NWD9">line</a></code> describe the source file and line number from which 
+the token came.
+<pre><a name="NWrewA-*-E" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-D">&lt;-</a>D<a href="#NWDA">-&gt;</a>]</b>
+global <a href="#NWD9">token</a>, <a href="#NWD9">tval</a>, <a href="#NWD9">file</a>, <a href="#NWD9">line</a>
+</pre><blockquote>Defines <a href="#NWI-file"><code>file</code></a>, <a href="#NWI-line"><code>line</code></a>, <a href="#NWI-token"><code>token</code></a>, <a href="#NWI-tval"><code>tval</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWDA">There are three special tokens.</a>
+<pre><a name="NWrewA-*-F" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD9">&lt;-</a>D<a href="#NWrewA-*-G">-&gt;</a>]</b>
+global <a href="#NWDA">EOF</a>, <a href="#NWDA">IDENT</a>, <a href="#NWDA">INT</a>, <a href="#NWDA">CODE</a>
+</pre><blockquote>Defines <a href="#NWI-CODE"><code>CODE</code></a>, <a href="#NWI-EOF"><code>EOF</code></a>, <a href="#NWI-IDENT"><code>IDENT</code></a>, <a href="#NWI-INT"><code>INT</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-iniL-1" href="#NWrewA-iniL-1"><dfn>&lt;initialize <code>tokens</code>&gt;=</dfn></a> <b>(<a href="#NWrewA-*-G">U-&gt;</a>)</b>
+<a href="#NWDA">CODE</a>    := &quot; code  &quot;
+<a href="#NWDA">EOF</a>    := &quot; end of <a href="#NWD9">file</a> &quot;
+<a href="#NWDA">IDENT</a>  := &quot; identifier &quot;
+<a href="#NWDA">INT</a>    := &quot; integer &quot;
+</pre><pre><a name="NWrewA-*-G" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWDA">&lt;-</a>D<a href="#NWrewA-*-H">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-G">scantokens</a>(eol)
+  static alphanum, hexdigits, multichar
+  initial { 
+    alphanum   := &amp;letters ++ &amp;digits ++ '_'
+    hexdigits  := &amp;digits ++ 'abcdefABCDEF'
+    multichar  := set([&quot;-&gt;&quot;, &quot;%%&quot;])
+    <a name="NWrewA-*-G-u1" href="#NWrewA-iniL-1"><i>&lt;initialize <code>tokens</code>&gt;</i></a>
+  }
+  if pos(1) &amp; tab(many(' \t')) then {
+    <a href="#NWD9">tval</a> := tab(0)
+    return <a href="#NWD9">token</a> := <a href="#NWDA">CODE</a>
+  } else if {<a href="#NWrewA-*-H">white</a>(); not pos(0)} then {
+    thispos := &amp;pos
+    if =&quot;#&quot; then tab(0) &amp; fail 
+    else if <a href="#NWD9">tval</a> := integer(((=&quot;0x&quot; &amp; &quot;16r&quot;) || tab(many(hexdigits))) | 
+                              ((=&quot;-&quot; | &quot;&quot;) || tab(many(&amp;digits)))) then {
+      <a href="#NWD9">token</a> := <a href="#NWDA">INT</a>
+    } else if <a href="#NWD9">tval</a> := (any(&amp;letters), tab(many(alphanum))) then {
+      <a href="#NWD9">token</a> := reserved(<a href="#NWD9">tval</a>) | <a href="#NWDA">IDENT</a>
+    } else if <a href="#NWD9">tval</a> := =&quot;-&gt;&quot; then {
+      <a href="#NWrewA-*-H">white</a>()
+      <a href="#NWD9">tval</a> := tab(0)
+      <a href="#NWD9">token</a> := <a href="#NWDA">CODE</a>
+    } else if <a href="#NWD9">tval</a> := =!multichar then {
+      <a href="#NWD9">token</a> := <a href="#NWD9">tval</a>
+    } else {
+      <a href="#NWD9">token</a> := <a href="#NWD9">tval</a> := move(1)
+    }
+    return <a href="#NWD9">token</a>
+  }
+end
+</pre><blockquote>Defines <a href="#NWI-scantokens"><code>scantokens</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-*-H" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-G">&lt;-</a>D<a href="#NWrewA-*-I">-&gt;</a>]</b>
+procedure <a href="#NWrewA-*-H">white</a>()
+  suspend tab(many(' \t'))
+end
+</pre><blockquote>Defines <a href="#NWI-white"><code>white</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWrewA-*-I" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWrewA-*-H">&lt;-</a>D]</b>
+procedure <a href="#NWrewA-*-I">iwrite</a>(indent, L[])
+  return write!(push(L,left(&quot;&quot;, indent)))
+end
+
+procedure <a href="#NWrewA-*-I">iwrites</a>(indent, L[])
+  return writes!(push(L,left(&quot;&quot;, indent)))
+end
+</pre><blockquote>Defines <a href="#NWI-iwrite"><code>iwrite</code></a>, <a href="#NWI-iwrites"><code>iwrites</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWrewA-*-2">D2</a>, <a href="#NWD2">D3</a>, <a href="#NWD3">D4</a>, <a href="#NWrewA-*-5">D5</a>, <a href="#NWD4">D6</a>, <a href="#NWrewA-*-7">D7</a>, <a href="#NWrewA-*-8">D8</a>, <a href="#NWD5">D9</a>, <a href="#NWD6">D10</a>, <a href="#NWD7">D11</a>, <a href="#NWD8">D12</a>, <a href="#NWrewA-*-D">D13</a>, <a href="#NWD9">D14</a>, <a href="#NWDA">D15</a>, <a href="#NWrewA-*-G">D16</a>, <a href="#NWrewA-*-H">D17</a>, <a href="#NWrewA-*-I">D18</a>
+<li><a href="#NWrewA-attk-1"><i>&lt;attach identifier <code>ii1</code> to remainder <code>ii2</code>&gt;</i></a>: <a href="#NWrewA-proB-1">U1</a>, <a href="#NWrewA-attk-1">D2</a>
+<li><a href="#NWrewA-emip-1"><i>&lt;emit assignment making <code>e</code> its simplified version&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWrewA-emip-1">D2</a>
+<li><a href="#NWrewA-emiP-1"><i>&lt;emit last case and return&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWrewA-emiP-1">D2</a>
+<li><a href="#NWrewA-emi1B-1"><i>&lt;emit simplifying assignments, making <code>sargs</code> name simplified <code>r.args</code>&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWrewA-emi1B-1">D2</a>
+<li><a href="#NWrewA-emiE-1"><i>&lt;emit this case&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWrewA-emiE-1">D2</a>
+<li><a href="#NWrewA-gra7-1"><i>&lt;grammar&gt;</i></a>: <a href="#NWrewA-gra7-1">D1</a>
+<li><a href="#NWrewA-iniL-1"><i>&lt;initialize <code>tokens</code>&gt;</i></a>: <a href="#NWrewA-iniL-1">D1</a>, <a href="#NWrewA-*-G">U2</a>
+<li><a href="#NWrewA-maku-1"><i>&lt;make <code>c</code> a list of conditions required to re-use <code>e</code>&gt;</i></a>: <a href="#NWrewA-emip-1">U1</a>, <a href="#NWrewA-maku-1">D2</a>
+<li><a href="#NWrewA-proB-1"><i>&lt;productions&gt;</i></a>: <a href="#NWrewA-proB-1">D1</a>, <a href="#NWrewA-gra7-1">U2</a>
+</ul>
+<ul>
+<li><a name="NWI-add_conditions" href="#NWrewA-*-7">add_conditions</a>: <a href="#NWD4">U1</a>, <a href="#NWrewA-*-7">D2</a>
+<li><a name="NWI-always_matches" href="#NWrewA-*-2">always_matches</a>: <a href="#NWD1">U1</a>, <a href="#NWrewA-*-2">D2</a>
+<li><a name="NWI-App" href="#NWD7">App</a>: <a href="#NWD1">U1</a>, <a href="#NWD3">U2</a>, <a href="#NWrewA-*-5">U3</a>, <a href="#NWD4">U4</a>, <a href="#NWrewA-*-7">U5</a>, <a href="#NWrewA-*-8">U6</a>, <a href="#NWD5">U7</a>, <a href="#NWD7">D8</a>, <a href="#NWrewA-proB-1">U9</a>, <a href="#NWrewA-attk-1">U10</a>
+<li><a name="NWI-bind_arg" href="#NWrewA-*-5">bind_arg</a>: <a href="#NWD3">U1</a>, <a href="#NWrewA-*-5">D2</a>
+<li><a name="NWI-Binding" href="#NWD7">Binding</a>: <a href="#NWrewA-*-5">U1</a>, <a href="#NWrewA-*-7">U2</a>, <a href="#NWD5">U3</a>, <a href="#NWD7">D4</a>, <a href="#NWrewA-proB-1">U5</a>, <a href="#NWrewA-attk-1">U6</a>
+<li><a name="NWI-checkapp" href="#NWrewA-*-D">checkapp</a>: <a href="#NWrewA-attk-1">U1</a>, <a href="#NWrewA-*-D">D2</a>
+<li><a name="NWI-CODE" href="#NWDA">CODE</a>: <a href="#NWrewA-proB-1">U1</a>, <a href="#NWrewA-gra7-1">U2</a>, <a href="#NWDA">D3</a>, <a href="#NWrewA-iniL-1">U4</a>, <a href="#NWrewA-*-G">U5</a>
+<li><a name="NWI-emit_tests" href="#NWD2">emit_tests</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>
+<li><a name="NWI-EOF" href="#NWDA">EOF</a>: <a href="#NWDA">D1</a>, <a href="#NWrewA-iniL-1">U2</a>
+<li><a name="NWI-expargs" href="#NWD1">expargs</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWrewA-maku-1">U3</a>, <a href="#NWrewA-emi1B-1">U4</a>, <a href="#NWrewA-proB-1">U5</a>
+<li><a name="NWI-file" href="#NWD9">file</a>: <a href="#NWD9">D1</a>, <a href="#NWrewA-iniL-1">U2</a>
+<li><a name="NWI-IDENT" href="#NWDA">IDENT</a>: <a href="#NWrewA-proB-1">U1</a>, <a href="#NWrewA-gra7-1">U2</a>, <a href="#NWDA">D3</a>, <a href="#NWrewA-iniL-1">U4</a>, <a href="#NWrewA-*-G">U5</a>
+<li><a name="NWI-ignoredargs" href="#NWD6">ignoredargs</a>: <a href="#NWD1">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-insert_comments" href="#NWD5">insert_comments</a>: <a href="#NWrewA-*-8">U1</a>, <a href="#NWD5">D2</a>
+<li><a name="NWI-INT" href="#NWDA">INT</a>: <a href="#NWrewA-proB-1">U1</a>, <a href="#NWrewA-gra7-1">U2</a>, <a href="#NWDA">D3</a>, <a href="#NWrewA-iniL-1">U4</a>, <a href="#NWrewA-*-G">U5</a>
+<li><a name="NWI-iwrite" href="#NWrewA-*-I">iwrite</a>: <a href="#NWD2">U1</a>, <a href="#NWrewA-emiE-1">U2</a>, <a href="#NWrewA-emiP-1">U3</a>, <a href="#NWrewA-emi1B-1">U4</a>, <a href="#NWrewA-*-5">U5</a>, <a href="#NWrewA-*-I">D6</a>
+<li><a name="NWI-iwrites" href="#NWrewA-*-I">iwrites</a>: <a href="#NWrewA-*-I">D1</a>
+<li><a name="NWI-line" href="#NWD9">line</a>: <a href="#NWD9">D1</a>
+<li><a name="NWI-main" href="#NWD1">main</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-matching_conditions" href="#NWD4">matching_conditions</a>: <a href="#NWrewA-*-2">U1</a>, <a href="#NWD2">U2</a>, <a href="#NWD4">D3</a>, <a href="#NWrewA-*-7">U4</a>
+<li><a name="NWI-newrule" href="#NWrewA-*-8">newrule</a>: <a href="#NWrewA-*-8">D1</a>, <a href="#NWrewA-proB-1">U2</a>
+<li><a name="NWI-Record" href="#NWD8">Record</a>: <a href="#NWD8">D1</a>, <a href="#NWrewA-proB-1">U2</a>, <a href="#NWrewA-*-D">U3</a>
+<li><a name="NWI-records" href="#NWD1">records</a>: <a href="#NWD1">D1</a>, <a href="#NWrewA-*-5">U2</a>, <a href="#NWrewA-*-7">U3</a>, <a href="#NWrewA-proB-1">U4</a>, <a href="#NWrewA-*-D">U5</a>
+<li><a name="NWI-Rule" href="#NWD8">Rule</a>: <a href="#NWD1">U1</a>, <a href="#NWrewA-*-8">U2</a>, <a href="#NWD8">D3</a>, <a href="#NWrewA-proB-1">U4</a>
+<li><a name="NWI-rules" href="#NWD1">rules</a>: <a href="#NWD1">D1</a>, <a href="#NWD2">U2</a>, <a href="#NWrewA-emiP-1">U3</a>, <a href="#NWrewA-*-8">U4</a>, <a href="#NWrewA-proB-1">U5</a>
+<li><a name="NWI-scantokens" href="#NWrewA-*-G">scantokens</a>: <a href="#NWrewA-*-G">D1</a>
+<li><a name="NWI-simp_name" href="#NWD1">simp_name</a>: <a href="#NWD1">D1</a>, <a href="#NWrewA-emi1B-1">U2</a>
+<li><a name="NWI-special" href="#NWD1">special</a>: <a href="#NWD1">D1</a>, <a href="#NWrewA-proB-1">U2</a>
+<li><a name="NWI-token" href="#NWD9">token</a>: <a href="#NWD9">D1</a>, <a href="#NWrewA-*-G">U2</a>
+<li><a name="NWI-tval" href="#NWD9">tval</a>: <a href="#NWD9">D1</a>, <a href="#NWrewA-*-G">U2</a>
+<li><a name="NWI-white" href="#NWrewA-*-H">white</a>: <a href="#NWrewA-*-G">U1</a>, <a href="#NWrewA-*-H">D2</a>
+<li><a name="NWI-write_binding_assignments" href="#NWD3">write_binding_assignments</a>: <a href="#NWrewA-emiE-1">U1</a>, <a href="#NWrewA-emiP-1">U2</a>, <a href="#NWD3">D3</a>, <a href="#NWrewA-*-5">U4</a>
+</ul>
+</body></html>
+

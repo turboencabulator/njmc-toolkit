@@ -1,0 +1,77 @@
+<html><head><title> disassemble.nw</title></head><body>
+<h1><a name="NWD1">Generation of disassembler</a></h1>
+We can reuse the encoding interface, since the assembly stuff is an
+implementation of it.
+<pre><a name="NWdisE-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+link pretty
+procedure <a href="#NWD1">emit_disassembler</a>(outfilename)
+  local constypes, constype
+  verbose(&quot;Emitting disassemblers&quot;)
+  f := openfile(outfilename, &quot;w&quot;) |
+    error(&quot;Could not open &quot;, image(outfilename), &quot; for writing&quot;)
+  pp := PPnew(f)
+
+  pushtrace(&quot;DIS&quot;)
+  every create_input_print_proc(pp, inputs_of(kept_constructors()))
+  PPxwrite(pp, &quot;$t&quot;)
+  constypes := set([&amp;null])
+  every insert(constypes, kept_constructors().type)
+  every constype := !constypes do {
+    PPwrite(pp, &quot;match pc to&quot;)
+    l := []
+    every push(l, kept_constructors(constype)) # reverse order
+    every <a href="#NWD2">emit_disassembler_match</a>(pp, !l)
+    PPwrite(pp, &quot;endmatch&quot;)
+  }
+  PPwrite(pp)   # flush prettyprinter
+  return
+end
+</pre><blockquote>Defines <a href="#NWI-emit_disassembler"><code>emit_disassembler</code></a> (links are to index).<p>
+</blockquote><p>
+<code><a name="NWD2" href="#NWD2">emit_disassembler_match</a></code> emits a line in a matching statement for
+constructor <code>cons</code>.  
+Right now we emit a bunch of print statments flagrantly borrowed from
+the assembler encoding stuff.  
+Eventually, we will just want indirect calls on encoding procedures.
+<pre><a name="NWdisE-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D]</b>
+procedure <a href="#NWD2">emit_disassembler_match</a>(pp, cons) 
+  local asmname
+  PPxwrites(pp, &quot;| $t$t$t${&quot;, cons.name, &quot;(&quot;)
+  <a name="NWdisE-*-2-u1" href="#NWdisE-emiX-1"><i>&lt;emit operands separated by commas&gt;</i></a>
+  PPxwrites(pp, &quot;)$} =&gt; $b$o&quot;)
+  asmname := consname2asm(cons)
+  if *asmname &gt; 0 &amp; /postfix then
+    emit_asm_printf(pp, &quot;%s&quot;, image(asmname))
+  every o := !asmoperands(cons) do
+    case type(o) of {
+      &quot;literal&quot; : emit_asm_printf(pp, &quot;%s&quot;, image(o.s))
+      &quot;input&quot;  : 
+          PPxwrites(pp, &quot;$n&quot;, 
+                        create_input_print_proc(pp, o), &quot;(&quot;, Cnoreserve(o.name), &quot;);&quot;)
+      default : impossible(&quot;operand type&quot;)
+    }
+  if *asmname &gt; 0 &amp; \postfix then
+    emit_asm_printf(pp, &quot;%s&quot;, image(asmname))
+  if cons.type === instructionctype then
+    emit_asm_printf(pp, &quot;\n&quot;)
+  PPxwrite(pp, &quot;$b$b&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-emit_disassembler_match"><code>emit_disassembler_match</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWdisE-emiX-1" href="#NWdisE-emiX-1"><dfn>&lt;emit operands separated by commas&gt;=</dfn></a> <b>(<a href="#NWD2">U-&gt;</a>)</b>
+pfx := &quot;&quot;
+every ipt := inputs_of(cons) do {
+  PPxwrites(pp, pfx, ipt.name)
+  pfx := &quot;, $o&quot;
+}
+</pre>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>
+<li><a href="#NWdisE-emiX-1"><i>&lt;emit operands separated by commas&gt;</i></a>: <a href="#NWD2">U1</a>, <a href="#NWdisE-emiX-1">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-emit_disassembler" href="#NWD1">emit_disassembler</a>: <a href="#NWD1">D1</a>
+<li><a name="NWI-emit_disassembler_match" href="#NWD2">emit_disassembler_match</a>: <a href="#NWD1">U1</a>, <a href="#NWD2">D2</a>
+</ul>
+</body></html>
+

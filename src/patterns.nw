@@ -1,0 +1,862 @@
+% l2h ignore change {
+\chapter{Patterns}
+
+\section{Semantics, constructors, and mutators}
+Patterns are built up from {\em constraints} by applying [[;]], [[&]] and [[|]]
+(sequence, conjunction and disjunction), and are represented in disjunctive normal form.  
+A constraint restricts a field's value
+to be within a certain interval: $lo \le f < hi$.
+Patterns consisting solely of constraints are created with [[conspat]],
+which relates a field to a value.  The only relational operators now
+supported are equality and inequality, but others could easily be
+added by adding cases to [[conspat]].
+
+A field [[f]] is that part of a word from bits [[f.lo]] through bits [[f.hi-1]]
+inclusive.  Notice that this is {\em not} the syntax used in the input, which is 
+like what's used in architecture manuals.
+
+If a pattern contains field bindings with free variables, it may have
+conditions attached to its disjuncts.  A condition is an expression over those same
+free variables.
+<<*>>=
+record field(name, lo, hi, class)       # field is bits lo..hi-1 (note NOT like input)
+record equivclass(name, fields, size, holder)   # equivalence class of fields
+
+record pattern(disjuncts, name)              # list of disjuncts, name of pattern
+record disjunct(sequents, name, conditions)  # list of sequents, name of disjunct, 
+					     #		set of expressions
+record sequent(constraints, class)           # list of contraints, class
+record patlabel(name, original_name, offset) # marks a location in a sequence
+record latent_patlabel(instance)	     # could become a patlabel or vanish
+record constraint(field, lo, hi)             # constrain lo <= field.value < hi
+record fieldbinding(field, code)             # code to compute field 
+
+# invariant: constraints of the same sequent have distinct fields
+@ N.B. [[patlabel]] offsets are in PC units, not in bits.
+@
+During the specification process, names may be bound to a particular pattern.
+In that way, a pattern and its disjuncts are associated with a name.
+The name information is saved so it can be referred to by code that appears in
+case statements.
+The procedure [[patbind]] also saves the pattern and name in the current 
+environment.
+<<*>>=
+procedure patbind(name, p, env)
+    if name == "_" then return
+    if *p.disjuncts = 1 & \p.disjuncts[1].name then
+        p := pattern([disjunct(p.disjuncts[1].sequents)])	# copy w/o names
+    add_to_rho(name, p, env)
+    /p.name := name
+    every d := !p.disjuncts & /d.name & d.name := name
+   return
+end
+@ 
+\subsection{Explanation of pattern labels}
+A label [[L:]] in any sequence makes [[L]] available for use in field
+bindings throughout that sequence.  However, we wish to limit the
+scope of [[L]] to the literal sequence in which it appears; when we
+reuse a pattern by using a name bound with [[patterns]] or 
+by applying a constructor, labels in the pattern so denoted should not
+be visible.
+In other words, the scope of a label [[L]] is the enclosing pattern or
+constructor definition.
+
+Conjoining two sequences preserves labels.
+This is a pain to implement (see [[merge_sequences]], especially the chunk
+[[<<suck initial labels into [[l]]>>]]).
+
+
+
+In a single [[when]] clause of a constructor definition, a label [[L]]
+can be used as inputs to the set of equations as long as it appears in
+all disjuncts of the associated pattern.  (This is, of course, one way
+of propagating the label into field bindings.)
+
+We enforce the scoping of labels by substituting [[Epatlabel]]
+expressions for variables that refer to labels.
+(We do this after running the solver, when binding patterns into what
+we might call ``top-level normal form.''  Of course this has nothing
+to do with patterns themselves; it's a property of the expressions in
+field bindings, but we do null out the [[name]] field of a
+[[patlabel]] so it can mark the location without interfering with
+other labels that are differently scoped but identically named.)
+At the emission level (untyped constructor), 
+we'll rewrite [[patlabel]] expressions into the form [[Epc() + offset]].
+At the recognition level, we'll insert a binding of the name of the
+label to an expression of the same form.
+
+
+The invariant on [[patlabel]]s is that the [[name]] field is non-null
+during parsing and conversion to normal form, but the [[name]] field
+must be null in any pattern that results from a [[lookup]] or a
+[[crhs]] call.
+We might actually be able to do something with this in ML by
+parameterising the type by [[unit]] or [[string]].
+
+Another invariant we want to maintain is that no [[patlabel]] should
+appear in more than one sequence.  Conjunction can't do it, because it
+destroys all labels.  Disjunction can't do it, because collecting a
+larger group of sequences together can't violate the invariant.
+But concatentation can do it, because we replicate sequences to get an
+outer product.  So we have to be careful in [[seqpx]].
+We exploit the invariant by setting [[name]] fields null 
+when binding label names.
+
+A [[latent_patlabel]] is used to implement label binding of free
+constructor-typed arguments in matching statements.
+The label has to be associated with the constructor-input pattern, but
+making it a label at constructor-input time will just put it in the
+wrong scope.
+Instead, we keep the latent pattern label around until we know whether
+it will refer to a real instance [[Einstance(name)]] or a binding
+instance [[Ebinding_instance(name)]].  In the former case it
+vanishes; in the latter, it turns into a real label.
+[[eliminate_instances]] does the work.
+
+<<*>>=
+procedure bind_and_remove_patlabel_names(p, keepname, free_vars_ok)
+  if type(!(!p.disjuncts).sequents) == "patlabel" then &null else return p  # prem opt
+  q := pattern([], p.name)
+  every put(q.disjuncts, barpm_d(!p.disjuncts, keepname, free_vars_ok))
+  return q
+end
+
+procedure barpm_d(d, keepname, free_vars_ok)
+  t := table()
+  every s := !d.sequents & type(s) == "patlabel" & \s.name do {
+    (/t[s.name] := Epatlabel(s)) |
+      error("Duplicate labels ", s.name, " in disjunct ", expimage(d))
+    if s.name == free_variables(d) then &null
+    else \free_vars_ok | 
+         warning("Label ", s.name, " not used in disjunct ", expimage(d))
+    if /keepname then s.name := &null
+  } 
+  return subst_tab(d, t)
+end
+
+procedure bind_patlabel_names(p, free_vars_ok)
+  return bind_and_remove_patlabel_names(p, 1, free_vars_ok)
+end
+<<*>>=
+procedure all_disjuncts_ids(p, idgen, warningmsg, warning2)
+  local alld
+  alld := set()
+  every insert(alld, idgen(p.disjuncts[1]))
+  every d := p.disjuncts[2 to *p.disjuncts] do {
+    s := set()
+    every i := idgen(d) do
+      if member(alld, i) then
+        insert(s, i)
+      else 
+        <<warn of discarding [[i]]>>
+    if *s < *alld then
+      every i := !alld & not member(s, i) do
+	<<warn of discarding [[i]]>>
+    alld := s
+  } 
+  return alld
+end
+<<warn of discarding [[i]]>>=
+if \warningmsg then
+  verbose(warningmsg, image(i), warning2)
+<<*>>=
+procedure patlabels_defined_in_all_disjuncts_of(p)
+  s := all_disjuncts_ids(p, patlabels_defined_in)
+  suspend !s
+end
+
+procedure patlabels_defined_in(d)
+  suspend (seq := !d.sequents, type(seq) == "patlabel", seq.name)
+end  
+<<*>>=
+procedure set_patlabel_offsets(d)
+  local offset
+  offset := 0
+  every i := 1 to *d.sequents do
+    case type (s := d.sequents[i]) of {
+      "patlabel" : s.offset := bits_to_pcunits(offset)
+      "sequent"  : offset +:= s.class.size
+      "dots_sequent" | "latent_patlabel" : &null
+      default                            : impossible("sequent type")
+    }
+  return
+end
+@ 
+We sometimes have to make fresh pattern labels (as with constructor application).
+<<*>>=
+procedure freshen_patlabels(p)
+  t := table()
+  every l := subterms_matching(p, "patlabel") do
+    /t[l] := copy(l)
+  return if *t = 0 then p else subst_table_elements(p, t)
+end
+@
+\subsection{Pattern constructor functions}
+The constructors build the basic patterns.
+<<*>>=
+procedure label2pattern(name)
+    return pattern([disjunct([patlabel(name, name)])])
+end
+<<*>>=
+procedure latent_label2pattern(name)
+    return pattern([disjunct([latent_patlabel(name)])])
+end
+<<*>>=
+procedure constraints2pattern(L[])
+    return pattern([disjunct([sequent(L, L[1].field.class)])])
+end
+procedure conspat(f, op, val)
+    local max, p, q
+    type(val) == "integer" | impossible("non-integer constraint")
+    max := 2 ^ fwidth(f)
+    return case op of {
+        "="  : constraints2pattern(constraint(f, val, val+1))
+        "<"  : { if val <= 0 then warning("Impossible constraint ", f.name, " < ", val)
+                 if val > max then
+                   error("Constraint value too large in ", f.name, " < ",val)
+                 constraints2pattern(constraint(f, 0, val))
+               }
+        "<=" : { if val >= max then
+                   error("Constraint value too large in ", f.name, " <= ", val)
+                 constraints2pattern(constraint(f, 0, val+1))
+               }
+        ">"  : { if val >= max-1 then
+                   warning("Impossible constraint ", f.name, " > ", val)
+                 if val < 0 then
+                   error("Constraint value too small in ", f.name, " > ",val)
+                 constraints2pattern(constraint(f, val+1, max))
+               }
+        ">="  : { if val >= max then
+                   warning("Impossible constraint ", f.name, " >= ", val)
+                 if val < 0 then
+                   error("Constraint value too small in ", f.name, " >= ",val)
+                 constraints2pattern(constraint(f, val, max))
+               }
+        "!=" : {
+            if val > 0       then p := constraints2pattern(constraint(f, 0, val))
+            if val + 1 < max then q := constraints2pattern(constraint(f, val+1, max))
+            orpx(\p, \q) | \p | \q | impossible("lost inequality")
+        }
+    }
+end
+<<*>>=
+procedure wildcard(class)    # return a pattern that matches anything in class
+    return constraints2pattern(constraint(f := class.fields[1], 0, 2^fwidth(f)))
+end
+<<*>>=
+procedure epsilon()	# pattern with shape of length 0
+    static e
+    initial e := pattern([disjunct([], "epsilon")], "epsilon")
+    return e
+end
+@
+A special kind of sequent, ``[[dots]],'' is used to implement the ellipsis.
+Only one instance is ever used.  
+An invariant property is that [[dots]] may appear only at the ends of a sequence.
+The invariant is maintained by the concatenation mutator, which forces [[dots]] to 
+disappear ``in the middle.''
+The purpose of dots is to relax the shape-matching rules used in conjunction (q.v.).
+<<*>>=
+record dots_sequent()		# a very special sequent
+global dots
+procedure dots_pattern()
+    static d
+    initial d := pattern([disjunct([dots := dots_sequent()], "...")], "...")
+    return d
+end  
+@
+\subsection{Pattern mutator functions}
+The mutators [[&]], [[|]], and [[;]], combine patterns.
+When generators are used in the specification, they are represented
+as lists of patterns.  It is therefore necessary to be able to combine
+(with [[andp]], [[orp]], and [[seqp]]) not just two patterns, but a pattern
+and a list.  [[mix]] does the job.
+<<*>>=
+procedure andp(p1, p2)
+    return mix(andpx, p1, p2) 
+end
+
+procedure orp(p1, p2) 
+    return mix(orpx, p1, p2) 
+end
+
+procedure seqp(p1, p2)
+    return mix(seqpx, p1, p2)
+end
+<<*>>=
+procedure mix(op, p1, p2) # can destroy its list argument because
+                          # lists are never saved or bound to names
+    return case type(p1) || "," || type(p2) of {
+        "pattern,pattern" : op(p1, p2)
+        "list,pattern"    : { every i := 1 to *p1 do p1[i] := op(p1[i], p2) ; p1 }
+        "pattern,list"    : { every i := 1 to *p2 do p2[i] := op(p1, p2[i]) ; p2 }
+        "list,list"       : { l := []; every put(l, op(!p1, !p2)); l }
+        default           : error("Invalid combination of patterns.")
+    }
+end
+<<*>>=
+procedure orpx(p1, p2)
+    return pattern(p1.disjuncts ||| p2.disjuncts)
+end
+@ 
+The responsibility for maintaining the no-multiple-appearance
+invariant over [[patlabel]]s is here.
+The key features is that, by the invariant, we can count on the same
+label not appearing in both [[d1]] and [[d2]].
+Therefore, when we combine them, we can get away with simply
+freshening the pattern labels.  And if there's only one disjunct on
+each side, we don't even have to do that.
+<<*>>=
+procedure seqpx(p1, p2)
+    local p, count1, count2
+    p := pattern([])
+    count1 := *p1.disjuncts
+    count2 := *p2.disjuncts
+    every d1 := !p1.disjuncts & d2 := !p2.disjuncts do {
+      d := disjunct(concat_sequences(d1.sequents, d2.sequents), &null, 
+                    conjoin_conditions(d1.conditions, d2.conditions))
+      if count1 > 1 | count2 > 1 then # d1 or d2 will be reused
+        d := freshen_patlabels(d)
+      put(p.disjuncts, d)
+    }
+    return p
+end
+@
+<<*>>=
+procedure bits_to_pcunits(n)
+  if n % pc_unit_bits ~= 0 then
+    error("pc is incremented in units of ", pc_unit_bits, ", but some pattern is ", n,
+          " bits wide")
+  else
+     return n / pc_unit_bits
+end
+<<*>>=
+procedure conjoin_conditions(c1, c2)
+  return if /c1 then c2 
+         else if /c2 then c1
+         else c1 ++ c2
+end
+@
+[[concat_sequences]] maintains the invariant on [[dots]].
+<<*>>=
+procedure concat_sequences(s1, s2)
+  local seq
+  seq := if s1[-1] === dots & *s1 > 1 then
+           if s2[1] === dots & *s2 > 1 then 
+             s1[1:-1] ||| s2[2:0]
+           else
+             s1[1:-1] ||| s2
+         else 
+           if s2[1] === dots & *s2 > 1 then 
+             s1       ||| s2[2:0]
+           else
+             s1       ||| s2
+  return seq
+end
+@
+It is desirable to preserve names when patterns are combined with field bindings
+in pattern-matching statements.  Because it's late at night and I'm lazy, I'm making
+this work only when field bindings are anded in on the right.
+<<*>>=
+procedure andpx(p1, p2)
+    local keepname
+    <<make [[keepname]] name of [[p1]] if [[p2]] is field binding, null otherwise>>
+    p := pattern([], keepname)
+    every d1 := !p1.disjuncts & d2 := !p2.disjuncts do {
+        put(p.disjuncts, 
+            d := not_contradictory(
+                     disjunct(merge_sequences(d1.sequents, d2.sequents), &null,
+                              conjoin_conditions(d1.conditions, d2.conditions))))
+        if \keepname then d.name := d1.name
+    }
+    return p
+end
+<<make [[keepname]] name of [[p1]] if [[p2]] is field binding, null otherwise>>=
+if *p2.disjuncts  = 1 & d := p2.disjuncts[1] & 
+   *d.sequents    = 1 & s := d.sequents[1]   & type(s) == "sequent" &
+   *s.constraints = 1 & type(s.constraints[1]) == "fieldbinding" then
+  keepname := p1.name
+@
+[[merge_sequences]] merges from the left if neither sequence has a [[dots]] there;
+otherwise it merges from the right.  Direction is determined by [[inc]], which is
+added to a list index, and by [[add]], which is used to add a sequent to the result.
+<<set [[grab]], [[add]] and [[first]] for right-to-left>>=
+grab := pull
+add := push
+first := -1
+<<set [[grab]], [[add]] and [[first]] for left-to-right>>=
+grab := get
+add := put
+first := 1
+<<*>>=
+procedure merge_sequences(l1, l2)
+    local grab, first, add
+    l1 := copy(l1)
+    l2 := copy(l2)
+    if (l1|l2)[1] === dots then
+      if (l1|l2)[-1] === dots then
+        <<complain about dots>>
+      else {<<set [[grab]], [[add]] and [[first]] for right-to-left>>}
+    else {<<set [[grab]], [[add]] and [[first]] for left-to-right>>}
+
+    l := []
+    <<suck initial labels into [[l]]>>
+    # invariant: initial elements, if present, are not labels
+    while l1[first] ~=== dots & l2[first] ~=== dots do {
+      s1 := grab(l1)
+      s2 := grab(l2)
+      if s1.class ~=== s2.class then 
+        <<complain about class mismatch>>
+      else add(l, x := sequent(merge_constraints(s1.constraints, s2.constraints), 
+                          s1.class))
+      <<suck initial labels into [[l]]>>
+    }
+    # invariant: initial elements, if present, are not labels
+    if l1[first] === dots then
+      while add(l, dots ~=== grab(l2))
+    else if l2[first] === dots then
+      while add(l, dots ~=== grab(l1))
+    else if l1[first] then 
+      <<complain of right sequence too short>>
+    else if l2[first] then
+      <<complain of left sequence too short>>
+    # else they're an exact match; do nothing
+    return l
+end
+<<suck initial labels into [[l]]>>=
+every ll := l1 | l2 do
+  while type(ll[first]) == ("patlabel" | "latent_patlabel") do
+    add(l, grab(ll))
+<<complain of right sequence too short>>=
+error("Shapes differ for &; right-hand sequence (",
+       sequenceimage(l2), ") too short to conjoin with (", sequenceimage(l1), ")")
+<<complain of left sequence too short>>=
+error("Shapes differ for &; left-hand sequence (",
+       sequenceimage(l1), ") too short to conjoin with (", sequenceimage(l2), ")")
+<<complain about dots>>=
+error("Illegal conjunction; dots on both left and right of (",
+       sequenceimage(l1), ") & (", sequenceimage(l2), ")") 
+<<complain about class mismatch>>=
+error("Shapes differ for &; left sequent from class `", s1.class.name,
+      "'; right sequent from class `", s2.class.name, "', in\n\t(",
+      expimage(s1), ") & (", expimage(s2), ")") 
+@
+[[merge_constraints]] merges two sets of constraints, preserving the invariant
+that a field may appear at most once on any list of constraints.
+<<*>>=
+procedure merge_constraints(l1, l2)
+    local c1, c2, S1, S2, maxlo, minhi
+    S1 := set(l1)
+    S2 := set()
+    every c2 := !l2 do
+      if c1 := !S1 & c1.field === c2.field then { # doubly-constrained field
+          if type(c1) == type(c2) == "constraint" then {
+              delete(S1, c1)
+              <<merge [[c1]] and [[c2]], inserting result in [[S2]]>>
+          } else 
+             <<complain of constraint conflict>>
+      } else 
+          insert(S2, c2)
+    return sort(S1 ++ S2)
+end
+<<merge [[c1]] and [[c2]], inserting result in [[S2]]>>=
+maxlo := c1.lo < c2.lo | c1.lo
+minhi := c1.hi > c2.hi | c1.hi
+if maxlo >= minhi then maxlo := minhi := 0	# canonical impossible constraint
+insert(S2, constraint(c1.field, maxlo, minhi))
+<<complain of constraint conflict>>=
+error("Code and constraint (or inconsistent code) for field `", c1.field.name,
+      "\n\t", constraintimage(c1), "\n\t", constraintimage(c2))
+<<*>>=
+procedure strip_patlabels(s)
+  if type(!s) == "patlabel" then &null else return s
+  l := []
+  every put(l, 1(x := !s, type(x) ~== "patlabel"))
+  return l
+end
+@
+\section{Preparing patterns for emission}
+Fields within a sequent can be constrained either by field bindings or by range 
+constraints. 
+Given a sequent $S$ and a field $F$, $S$ may contain at most one
+field binding of $F$ and at most one constraint on $F$.
+(The old invariant didn't permit both.)  Here are the semantics:
+\begin{itemize}
+\item 
+  on output (encoding), a field binding is a string that is an rvalue
+        in the target language (e.g. C).  The rvalue will be assigned
+        to the field f in the output pattern
+\item 
+  on input (decoding), a field binding must be an identifier.  that
+        identifier will be declared as a readonly variable in an inner
+        scope, and it will be initialized to the value of the field
+\item 
+  on output, a constraint may determine the value of a field uniquely,
+        in which case that value is assigned to the field.  if the
+        constraint doesn't determine the value uniquely, there must be
+        a field binding that does.
+  on input, a constraint limits the number of word sequences that can match.
+\end{itemize}
+Priority:
+\begin{itemize}
+\item 
+  on input, there can never be a conflict between a constraint and a
+        field binding; they can be handled independently.
+\item 
+  on output, the conflict should be handled as follows: before handing
+        the pattern to an emit procedure, we run a transformation over
+        it that removes the constraint and turns it into a target-code
+        constraint which guarantees that the value in the binding
+        satisfies the constraint.
+        That transformation is [[sanitize_for_output]].
+\end{itemize}
+
+%  These target-code constraints are
+%        similar to constraints generated in the equation solved (as
+%        opposed to the pattern constraints we are discussing here,
+%        which are the components of sequents).  Note that the
+%        transformation doesn't really add extra conceptual overhead;
+%        we already need some sort of sanitize-before-emitting
+%        procedure to make sure the output pattern has exactly one
+%        disjunct.
+%
+
+@
+[[sanitize_for_output]] accepts a sequent and returns a smaller
+sequent in which at most one constraint is present for each field.
+Superfluous range constraints are transformed into conditions and
+bound to the disjunct [[d]].
+<<*>>=
+procedure sanitize_for_output(seq, conditions)
+    local fields, outconstraints
+    <<if no field is overconstrained, [[return seq]]>>
+    warning("Sanitizing ", expimage(seq))
+    fields := set()
+    outconstraints := []	# will be constraints of new sequent
+    every insert(fields, (!seq.constraints).field)
+    every f := !fields do {
+       ((fb := !seq.constraints).field == f, type(fb) == "fieldbinding") | (fb := &null)
+       ((rc := !seq.constraints).field == f, type(rc) == "constraint")   | (rc := &null)
+       if \fb & \rc then {
+         put(outconstraints, fb)
+         insert_constraint_conditions(conditions, rc, fb.code)
+       } else {
+         put(outconstraints, \fb | \rc)
+       }
+    }
+    return sequent(outconstraints, seq.class)
+end
+<<if no field is overconstrained, [[return seq]]>>=
+if type(seq) == "sequent" &
+   c1 := !seq.constraints & c2 := !seq.constraints & 
+   c1 ~=== c2 & c1.field === c2.field & type(c1) ~== type(c2) then &null 
+else 
+   return seq
+<<*>>=
+procedure insert_constraint_conditions(conditions, rc, code)
+  every insert_condition(conditions, eqn(                 0 < rc.lo, "<=", code) | 
+                                     eqn(2^fwidth(rc.field) > rc.hi, ">",  code))
+  return
+end
+@
+\section{Eliminating contradictions}
+On the Intel 486, some modifiers may be used only with certain opcodes,
+e.g., [[grp3.Eb | grp3.Ev]].  When such a disjunction is conjoined with a
+particular opcode, the result contains contradictions, e.g.
+$$\hbox{[[(grp3.Eb | grp3.Ev) & grp3.Eb]]} \equiv \hbox{[[grp3.Eb | ]]\it impossible}.$$
+[[not_contradictory]] can be applied to a disjunct; it succeeds if and
+only if the disjunct contains no impossible constraints.
+We might one day decide to use it to eliminate disjuncts with
+conditions that are evidently always false.
+<<*>>=
+procedure not_contradictory(d)
+ if s := !d.sequents    & type(s) == "sequent" & 
+    c := !s.constraints & type(c) == "constraint" & c.lo >= c.hi then fail
+ else return d
+end
+@ 
+[[eliminate_contradictions]] returns a pattern without any impossible
+disjuncts
+<<*>>=
+procedure eliminate_contradictions(p)
+  return if d := !p.disjuncts   & 
+            s := !d.sequents    & type(s) == "sequent" & 
+            c := !s.constraints & type(c) == "constraint" & c.lo >= c.hi then
+    {impossible("contradiction now eliminated at conjunction")
+     <<new pattern with contradictions eliminated>>}
+  else p
+end
+<<new pattern with contradictions eliminated>>=
+l := []
+every d := !p.disjuncts do 
+  if s := !d.sequents    & type(s) == "sequent" &
+     c := !s.constraints & type(c) == "constraint" & c.lo >= c.hi then
+    &null
+  else 
+    put(l, d)
+pattern(l, p.name)
+@
+\section{Functions on patterns}
+[[place_holder]] takes a disjunct and returns a disjunct that 
+may be used as a place holder for it.
+<<*>>=
+procedure place_holder(d)
+  local shape, class
+  shape := shapeof(d)
+  <<complain if some class in [[shape]] has no placeholder>>
+  p := epsilon()
+  every class := !shape do p := seqp(p, class.holder)
+  *p.disjuncts = 1 | impossible("Some placeholder has multiple disjuncts")
+  return p.disjuncts[1]
+end
+<<complain if some class in [[shape]] has no placeholder>>=
+if /(class := !shape).holder then
+    error("No placeholder is defined for class ", class.name)
+@ [[pattern_length]] computes the length in bits of a pattern in normal form.
+<<*>>=
+procedure pattern_length(p)
+  local shapes, class
+  shapes := maplist(disjunct_length, p.disjuncts)
+  *shapes > 0 | error("length of impossible pattern")
+  if !shapes ~= shapes[1] then error("Length of pattern ", patimage(p), " is not fixed")
+  return shapes[1]
+end
+<<*>>=
+procedure disjunct_length(d)
+  n := 0
+  every s := !d.sequents & type(s) == "sequent" do
+    n +:= s.class.size
+  return n
+end
+<<*>>=
+procedure shapeof(d)
+  l := []
+  every s := !d.sequents & type(s) == "sequent" do
+    put(l, s.class)
+  return l
+end
+@
+A pattern is a legitimate global pattern if it has no conditions and
+no field bindings and if no labels are named.
+<<*>>=
+procedure insist_global_pattern(p)
+  if d := !p.disjuncts & *\d.conditions > 0 then
+    error(patimage(p), " cannot be used on the right-hand side; there are conditions")
+  else if d := !p.disjuncts & type(s := !d.sequents) == "sequent" &
+       type(!s.constraints) == "fieldbinding" then
+    error(patimage(p), " cannot be used on the right-hand side; there are inputs")
+  else if d := !p.disjuncts & type(s := !d.sequents) == "patlabel" & \s.name then
+    error(patimage(p), " cannot be used on the right-hand side; there's a loose label")
+  else
+    return
+end
+@
+\section{Interpreting abstract syntax into normal form\kern-9.7pt\hbox{}}
+
+\subsection{Tree walking with free variables}
+This code is used on the decoding end, where free variables in
+patterns are OK---they become binding instances.
+[[pnf_recurse]] produces a pattern in normal form.
+If the [[free_env]] argument is non-null, then certain free variables
+are permitted, and the bindings of the free variables are planted in
+[[free_env]]. 
+In fact, only bindings of  constructor-typed constructor arguments
+really go into this environment---bindings of free variables in field
+bindings are handled by the equation-solving mechanism, and pattern
+identifiers are never permitted to be free variables (how could they
+be binding instances).
+What about labels????
+<<*>>=
+procedure pnf(p, rho, free_env)
+  return eliminate_instances(pnf_recurse(p, rho, free_env))
+end
+@
+[[pnf_recurse]] converts a pattern in abstract syntax into its normal
+form.  The meaning of an applied constructor depends on the environment 
+in which it is evaluated;  we use [[explode_apps]] to produce
+the application(s) denoted by a constructor application.
+<<*>>=
+procedure pnf_recurse(p, rho, free_env)
+  x := case type(p) of {
+    "pattern" : p
+    "Pident"  : project(x := lookup(p.name, rho), "pattern") |
+                   typeerror(x, "pattern or field operand", p.name, rho)
+                # can never be a free identifier
+    "Plabel"  : label2pattern(p.name)
+    "Pcon"    : { f := lookuptype(p.name, "field", rho)
+                  # free identifiers in constraint are always OK
+                  <<constraint or field binding, depending on the type of [[p.value]]>>
+                }
+    "Pand"    : pnfreduce(andp,  p.patterns, rho, free_env)
+    "Por"     : pnfreduce(orp,   p.patterns, rho, free_env)
+    "Pseq"    : pnfreduce(seqp,  p.patterns, rho, free_env)
+    "Papp"    : if (type(p.cons) == "list") then
+                  pnf_recurse(explode_apps(p.cons, p.args, rho), rho, free_env)
+                else apply_constructor(p.cons, p.args, rho, free_env)
+    "Plist"   : maplist3(pnf_recurse, p.patterns, rho, free_env)
+     default  : impossible("pnf_recurse")
+  }
+  if \showpnf then PPxwrite(PPnew(&output),
+     "pnf_recurse(", image(if type(p) == "Pident" then p.name else p),
+     ") returns: $t${ $o", ppexpimage(x), "$b$}")
+  return x
+end
+@
+Before trying to differentiate a field binding from a constraint, 
+we perform the appropriate mapping on lists of constraints (which we get when
+generators are used).
+We can take a short cut for the case of a list, because we know the suckers 
+are always integers---generators can't be used with expressions.
+<<constraint or field binding, depending on the type of [[p.value]]>>=
+case type(p.value) of {
+  "Glist"   : { l := []
+                every put(l, conspat(f, p.relop, !p.value.values))
+                l
+              }
+  default   : constraint_or_binding(f, p.relop, p.value, rho, free_env)
+}
+@
+Now we have to deal with an expression on the right-hand side of a binding.
+The distinction between a constraint and a binding hinges on whether the expression 
+is constant.
+Since identifiers in bindings could be free variables, field names, or `other',
+we begin with a substitution.
+<<*>>=
+procedure binding_subst_f(e, rho, free_env)
+  return if type(e) == "string" then
+    (if is_defined(e, rho) then
+       project(lookup(e, rho), "integer")
+     else 
+       new_binding_instance(e, e, "integer", \free_env)
+    ) | typeerror(lookup(e, rho), "integer", e, rho)
+end
+@
+Now we can make the distinction:
+<<*>>=
+procedure constraint_or_binding(f, relop, val, rho, free_env)
+  val := super_simplify(gsubst(val, binding_subst_f, fieldname_env_for(f) ||| rho, 
+                               free_env))
+  val := constant(val) # might fail if expression not constant
+  if type(val) == "integer" then 
+    return conspat(f, relop, val)
+  else if relop == "=" then
+    return constraints2pattern(fieldbinding(f, val))
+  else 
+    error("`", expimage(val), "' has free variables, ",
+          "so the only permissible constraint is equality")
+end
+@ Note that the error message lies; it might be possible to write a constraint in with 
+a pattern, because constraints are now part of patterns.  Must look into it.
+<<*>>=
+record binding_instance(val, type)
+procedure new_binding_instance(name, val, type, env)
+  if (/env[name] := binding_instance(val, type)) | env[name].type === type then
+    return val
+  else 
+    error(name, " was bound earlier as type ", expimage(env[name].type), 
+          " but it's used here as type ", expimage(type))
+end
+@
+[[pnfreduce(op, l, rho)]] applies [[pnf_recurse]] to each member of [[l]] 
+then reduces the list (in the APL sense) by applying [[op]].
+A special version is used when [[op === seqp]], because that requires
+updating the program counter.
+<<*>>=
+procedure pnfreduce(op, l, rho, free_env)
+  r := &null
+  every p := pnf_recurse(!l, rho, free_env) do
+     r := op(\r, p) | p
+  return r
+end
+<<*>>=
+procedure equals_pc(e)
+  return e === the_global_pc
+end
+@
+\subsection{Finding free variables in abstract syntax}
+As far as I know, this code is used only for def-use checking.
+<<*>>=
+procedure pattern_free_variables(p)
+    case type(p) of {
+        "pattern" : fail        # note free var of Pcon is field, not pattern
+        "Pident"  : return p.name
+	"Plabel"  : fail # name is a binding instance
+        "Pcon"    : suspend free_variables(p.value)
+        "Pand" | "Por" | "Pseq"  : 
+                    suspend pattern_free_variables(!p.patterns)
+        "Papp"    : suspend free_variables(!p.args)
+        "string"  : return p
+        "integer" : fail
+        "literal" : fail
+        default : impossible("pattern free variables")
+    }
+end
+@ 
+Here we need label names for entry into the environment.
+<<*>>=
+procedure pattern_label_names(p)
+    case type(p) of {
+        "pattern" : fail
+        "Pident"  : fail
+	"Plabel"  : return p.name
+        "Pcon"    : fail
+        "Pand" | "Por" | "Pseq" : suspend pattern_label_names(!p.patterns)
+        "Papp"    : fail
+        "string"  : fail
+        "integer" : fail
+        "literal" : fail
+        default : impossible("pattern label names")
+    }
+end
+@
+The tricky part of computing the constructors applied in a
+pattern is that the exact set is not known until [[pnf]] is applied to
+the pattern. 
+We make a conservative estimate by generating all possible
+applications using [[explode_apps]].
+We also have to handle nested stuff with [[Eapp]].\change{45}
+I'm sure this is bogus and there are plenty of examples that will send
+it to left field.
+<<*>>=
+procedure constructors_applied_in(p)
+    case type(p) of {
+        "pattern" | "Pident" | "Plabel" | "Pcon" | "string" | "integer" | "literal" :
+		 fail
+        "Pand" | "Por" | "Pseq"  : suspend constructors_applied_in(!p.patterns)
+        "Papp" : suspend (if type(p.cons) == "list" then
+                            constructors_applied_in(explode_apps(p.cons,p.args))
+                          else p.cons) |
+                          constructors_applied_in(
+                             1(a := !p.args, type(a) == ("Papp" | "Eapp")))
+	"Eapp" : suspend cons_named(p.f) | 
+                    (a := !p.args, type(a) == "Eapp", constructors_applied_in(a))
+        default : impossible("pattern AST")
+    }
+end
+@
+\section{Manipulations of conditions}
+I use a destructive [[bind_condition]] to add conditions.
+When I need something non-destructive, I use [[freshen_disjuncts]] to
+get a pattern with fresh disjuncts and conditions.
+<<*>>=
+procedure bind_condition(p, condition)
+  every bind_condition_d(!p.disjuncts, condition)
+  return p
+end
+
+procedure bind_condition_d(d, condition)
+  /d.conditions := set()
+  insert_condition(d.conditions, condition)
+  return d
+end
+<<*>>=
+procedure freshen_disjuncts(p) 
+  return pattern(maplist(freshen_disjunct, p.disjuncts), p.name)
+end
+link maplist
+
+procedure freshen_disjunct(d)
+  d := copy(d)
+  d.conditions := copy(d.conditions)
+  return d
+end

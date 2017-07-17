@@ -1,0 +1,1087 @@
+% -*- mode: Noweb; noweb-code-mode: c-mode -*-
+% l2h ignore change {
+
+\ifhtml\tableofcontents\fi
+
+\chapter{The library}
+This file implements the toolkit library.
+The declarations of exported procedures and types appear in {\tt library.nw}.
+Some procedures and types are exported here to help support exported macros, but users
+aren't supposed to know about them.
+
+Our goal in this implementation is to make 
+sequential emission of instructions very fast.
+
+\begin{figure}
+\setlength{\unitlength}{0.0082500in}%
+\begin{picture}(535,164)(110,490)
+\thicklines
+\put(140,500){\framebox(80,40){}}
+\put(280,500){\framebox(80,40){}}
+\put(420,500){\framebox(80,40){}}
+\put(560,500){\framebox(80,40){}}
+\put(220,520){\vector( 1, 0){ 55}}
+\put(360,520){\vector( 1, 0){ 55}}
+\put(500,520){\vector( 1, 0){ 55}}
+\put(470,635){\vector( 0,-1){ 95}}
+\put(145,580){\vector( 0,-1){ 40}}
+\put(225,580){\vector( 0,-1){ 40}}
+\put(420,640){\vector( 0,-1){ 35}}
+\put(110,490){\dashbox{4}(150,115){}}
+\put(275,490){\dashbox{4}(125,115){}}
+\put(415,490){\dashbox{4}(125,115){}}
+\put(555,490){\dashbox{4}(90,115){}}
+\put(145,585){\makebox(0,0)[b]{\raisebox{0pt}[0pt][0pt]{\tt data}}}
+\put(225,585){\makebox(0,0)[b]{\raisebox{0pt}[0pt][0pt]{\tt limit}}}
+\put(470,640){\makebox(0,0)[b]{\raisebox{0pt}[0pt][0pt]{\tt p}}}
+\put(240,525){\makebox(0,0)[b]{\raisebox{0pt}[0pt][0pt]{\tt next}}}
+\put(120,615){\makebox(0,0)[lb]{\raisebox{0pt}[0pt][0pt]{\tt firstbuf}}}
+\put(420,645){\makebox(0,0)[b]{\raisebox{0pt}[0pt][0pt]{\tt curbuf}}}
+\end{picture}
+
+\caption{Relocatable block with 4 buffers}
+\label{fig:block}
+\end{figure}
+
+
+\section{Relocatable Blocks}
+
+Figure~\ref{fig:block} shows the parts of a relocatable
+block that handle its [[contents]].
+The block uses a linked list of buffers.
+Each buffer is shown as a dashed box.
+Within the buffer,
+[[data]] points to the first byte of the data area (solid box), and
+[[limit]] points just beyond the last byte.
+<<exported data declarations>>=
+typedef struct rblock_buffer {
+  unsigned char *data, *limit;
+  struct rblock_buffer *next;
+  unsigned datalc;
+} *Buffer;
+@ [[datalc]] caches the value of the location counter [[lc]] that is
+associated with the beginning of the buffer, so that it doesn't always
+have to be recomputed by walking along the list.
+@
+
+Although a relocatable block has a location counter, we don't actually
+store it.  Instead, we store [[p]], which is a pointer into the
+current buffer, called [[curbuf]]; from that we can
+compute an integer location counter if we have to.%
+\footnote{Actually, as we show below, [[p]] needn't point into the
+current buffer, but its meaning is still relative to the start of the
+current buffer.}
+But what happens initially, before there's any data?  We want to be
+able to move the location counter around without allocating any buffer
+space, so we give every relocatable block an initial, empty buffer
+called [[firstbuf]].
+We can then move the location counter around by changing
+[[firstbuf.datalc]].
+Moreover, we can tell when the low water mark has been set by seeing
+when [[firstbuf.next]] is non-null, in which case [[firstbuf.datalc]]
+is the low water mark:
+<<exported data declarations>>=
+struct reloc_block { 
+  struct rblock_buffer firstbuf, *curbuf;
+  unsigned char *p;	/* points to current lc -- dirty */
+  unsigned size;   	/* highest lc ever -- dirty */
+  <<other fields of a relocatable block>>
+};
+@ A {\em dirty} field is one that is invalid in the presence of
+certain optimizations; we give more dirt below.
+<<initialize a new relocatable block [[rb]]>>=
+rb->curbuf = &rb->firstbuf;
+<<set [[data]] and [[limit]] in a new [[rb->firstbuf]]>>
+rb->p = rb->firstbuf.data;
+rb->firstbuf.next = (Buffer)0;
+rb->firstbuf.datalc = 0;	/* lc is initially 0 */
+@ Again because of sneaky optimizations, we won't tell you just how
+we're initializing [[data]] and [[limit]] in a new block, except to
+say they're equal (thus the first block is empty).
+@
+A relocatable block has three other properties: an address, a label,
+and associated register information.
+Some of this properties can be null, so I include some flags that
+indicate when values are null.  
+These flags are put in a structure called [[known]], so that they have the correct
+values (not known) if a relocatable block is initialized to all zeroes.
+This property makes an all-zeroes undefined relocatable block valid---the undefined
+block mustn't have a known [[address]] because that makes it possible 
+to see whether a label is defined with a simple check to see if the 
+address of the label's block is known.  
+Otherwise we would need an extra check to
+make sure the block wasn't the undefined block. 
+<<other fields of a relocatable block>>=
+struct { unsigned address:1, reg:1; } known;
+unsigned address; 	/* absolute address of block in memory */
+unsigned reg;		/* number of register pointing into this block */
+unsigned reglc;		/* when reg non-null, location to which it points */
+struct label *label;	/* (anonymous) label associated with this block */
+<<initialize a new relocatable block [[rb]]>>=
+rb->known.address = rb->known.reg = 0;
+rb->label = label_new("unnamed");
+rb->label->block = rb;
+rb->label->offset = 0;
+@
+\subsection{Optimizing sequential emission}
+Given the representation above, emitting an instruction becomes an
+elaborate business.
+We have to fetch the pointer [[rb->p]], add a size, and compare the
+result against [[rb->curbuf->limit]] before we can store the bytes and
+increment [[p]], and afterward we have to compute the location counter
+and see if [[rb->size]] needs to be updated.
+This is all far too expensive, but we can make it cheaper for the
+common case of sequential emission to the current relocatable block
+[[currb]].
+In this special case, we store [[p]] and [[limit]] pointers in global
+variables, and we don't bother to update [[rb->size]].
+[[rb->p]] and [[rb->size]] are {\em dirty} in that they don't reflect
+the truth; the truth is in global variables.%
+\footnote{We have to export these variables because they're used in
+exported macros.}
+<<exported data declarations>>=
+#define crb() currb
+extern RBlock currb;	          /* the current relocatable block */
+extern unsigned char *currb_p;	  /* the true version of currb->p */
+extern unsigned char *currb_safe; 
+	      /* the true version of currb->curbuf->limit - MARGIN */
+@ These variables must satisfy the two invariants:\label{lc-invariant}
+{\hfuzz=3.2pt
+\begin{eqnarray*}
+[[lc]] &=& [[currb_p]] - \hbox{[[currb->curbuf->data]]} +
+				 \hbox{[[currb->curbuf->datalc]]}\\
+[[currb_safe]] &=& \hbox{[[currb->curbuf->limit]]} - [[MARGIN]]\\
+\end{eqnarray*}
+They must be updated whenever [[currb]] or [[currb->curbuf]] changes.
+\par}
+
+Using a difference of [[MARGIN]] is a trick that, in most cases, means
+we needn't add anything to [[p]] before
+comparing it.
+[[MARGIN]] must be big enough to hold any integral value, and it must
+match the largest [[n]] accepted in the [[emitl]] and [[emitb]]
+procedures defined below.
+<<exported macro definitions>>=
+#define MARGIN 8
+@ We've made [[MARGIN]] 8 instead of 4 so we won't have to make changes 
+for 64-bit machines.
+@
+When we want the values in [[currb]] to tell the truth, such as when
+we are about to change blocks, we [[make_clean]].
+<<definitions>>=
+void make_clean() {
+  if (currb) {
+    unsigned curlc = lc();
+    currb->p = currb_p;
+    if (currb->size < curlc) currb->size = curlc;
+  }
+}
+@
+The other operation that has to make sure the global variables are
+consistent is changing the current block.
+<<definitions>>=
+void set_block(rb) RBlock rb; {
+  make_clean();
+  currb = rb;
+  currb_p = currb->p;
+  currb_safe = currb->curbuf->limit - MARGIN;
+}
+@ This tricky subtraction of [[MARGIN]], which will save us a
+comparison later on, makes initializing a [[firstbuf]] a nuisance---we
+can't set [[data]] and [[limit]] to zero, because then the subtraction
+would make the pointer wrap around, and we would try to fill our whole
+address space with garbage.
+Instead we go mega-compulsive, making sure it's OK by ANSI to subtract
+MARGIN:
+<<local declarations>>=
+static unsigned char bogus_buffer[MARGIN];
+<<set [[data]] and [[limit]] in a new [[rb->firstbuf]]>>=
+rb->firstbuf.data = rb->firstbuf.limit = bogus_buffer + MARGIN;
+@
+The rest of this section is boilerplate.
+<<definitions>>=
+RBlock currb = (RBlock) 0;
+unsigned char *currb_p, *currb_safe;
+<<exported procedure declarations>>=
+void make_clean(void);
+@
+\subsection{Emitting data into relocatable blocks}
+Having shown you our dirt, it seems only fair to dive right into the
+{\em raison d'\^etre} for that dirt---the emission optimization.
+We have emission procedures that work under any circumstances, plus
+some emission macros that work only when the alignments are just
+right.
+We use different strategies for the two---the procedures use a
+particular byte order, while the macros give you whatever byte order
+you happen to have on your machine.
+We begin with the procedures because they're slightly saner.
+
+@
+\subsubsection{Emission procedures for known endianness}
+We have an emission procedure for each endianness.
+The little-endian procedure is the sanest because the positions of the
+bytes don't depend on how many there are.  This fact lets us play
+awful games with a switch statement and macros.
+We number bytes, with byte~0 being the least significant, and
+we define a macro [[BYTE(N)]] that emits byte~[[N]] and then falls through 
+to emit bytes $[[N]]-1$ down to~0.
+<<definitions>>=
+void emitl(val, n) unsigned long val; unsigned n; {
+  if (currb_p <= currb_safe || currb_p + n <= currb->curbuf->limit) {
+    register unsigned char *p = currb_p;
+    <<emit [[n]] bytes of [[val]] at [[p]] (little-endian)>>
+    currb_p = p + n;
+  } else {
+    <<slow path for little-endian emission>>
+  }
+}
+<<emit [[n]] bytes of [[val]] at [[p]] (little-endian)>>=
+switch (n) {
+  #define BYTE(N) case N+1: p[N] = val >> 8*N; /* fall through */
+  BYTE(7) BYTE(6) BYTE(5) BYTE(4) BYTE(3) BYTE(2) BYTE(1) BYTE(0)
+  #undef BYTE
+  case 0: /* do nothing */
+    break;
+  default: assert(("unsigned long bigger than 8 bytes", 0));
+}
+@
+Big-endian machines suck.
+If we were willing to pay the run-time cost of computing [[n-N-1]], 
+which is the position of byte~[[N]] on a big-endian machine, we could
+use the exact code we've just shown you, with just a slightly
+different definition of [[BYTE]].
+Unfortunately, we're trying to squeeze every cycle we can out of these
+procedures, so we insist on doing the arithmetic at compile time (once for
+each possible value of~[[n]]).
+We use a macro [[S(POS, N)]] that stores byte~[[N]] in position~[[POS]].
+This makes [[emitb]] ugly.
+<<definitions>>=
+void emitb(val, n) unsigned long val; unsigned n; {
+  if (currb_p <= currb_safe || currb_p + n <= currb->curbuf->limit) {
+    register unsigned char *p = currb_p;
+    <<emit [[n]] bytes of [[val]] at [[p]] (big-endian)>>
+    currb_p = p + n;
+  } else {
+    <<slow path for big-endian emission>>
+  }
+}
+<<emit [[n]] bytes of [[val]] at [[p]] (big-endian)>>=
+switch (n) {
+  #define S(POS, N) (p[POS] = val >> 8*N)
+  case 0: break;
+  case 1: S(0,0); break;
+  case 2: S(0,1); S(1,0); break;
+  case 3: S(0,2); S(1,1); S(2,0); break;
+  case 4: S(0,3); S(1,2); S(2,1); S(3,0); break;
+  case 5: S(0,4); S(1,3); S(2,2); S(3,1); S(4,0); break;
+  case 6: S(0,5); S(1,4); S(2,3); S(3,2); S(4,1); S(5,0); break;
+  case 7: S(0,6); S(1,5); S(2,4); S(3,3); S(4,2); S(5,1); S(6,0); break;
+  case 8: S(0,7); S(1,6); S(2,5); S(3,4); S(4,3); S(5,2); S(6,1); S(7,0); break;
+  default: assert(("unsigned long bigger than 8 bytes", 0));
+}
+@
+@
+OK, what about the slow paths?
+We split the value into two pieces: one that will fit in the current
+buffer, and one that will have to go into the next buffer.
+Sometimes the next buffer has to be allocated.
+When computing [[roomhere]], the size of the code that will fit in the 
+current buffer, we have to be careful not to subtract pointers 
+where it doesn't make sense.
+In fact, we're playing fast and loose with the ANSI rules for pointer comparison and 
+arithmetic.
+<<slow path for little-endian emission>>=
+<<make sure [[currb->curbuf->next]] is non-null, allocating if necessary>>
+{ unsigned roomhere = 
+        currb_p < currb->curbuf->limit ? currb->curbuf->limit - currb_p : 0;
+  if (roomhere > 0) emitl(val, roomhere);
+  <<move [[currb->curbuf]] to the next buffer, updating globals>>
+  emitl(val >> 8*roomhere, n - roomhere);
+}
+@ We may follow this path to great depth if we are walking along a chain of buffers,%
+\footnote{The durn code ought to be tested to see if that works!}
+so it may one day be worth it to eliminate the tail recursion.
+@
+The only difference for big-endians is that is is the high bits which go in the
+current buffer.
+<<slow path for big-endian emission>>=
+<<make sure [[currb->curbuf->next]] is non-null, allocating if necessary>>
+{ unsigned roomhere = 
+        currb_p < currb->curbuf->limit ? currb->curbuf->limit - currb_p : 0;
+  if (roomhere > 0) emitb(val >> 8*(n-roomhere), roomhere);
+  <<move [[currb->curbuf]] to the next buffer, updating globals>>
+  emitb(val, n - roomhere);
+}
+@
+When changing [[curbuf]], 
+we must maintain the location-counter invariant on page~\pageref{lc-invariant}.
+<<move [[currb->curbuf]] to the next buffer, updating globals>>=
+{ unsigned templc = lc();
+  currb->curbuf = currb->curbuf->next;
+  currb_safe = currb->curbuf->limit - MARGIN;
+  currb_p = templc - currb->curbuf->datalc + currb->curbuf->data;
+}
+@ There's no need to make the block {\em clean} just because we're changing the buffer.
+\subsubsection{Emission procedures for closures}
+Applications have to provide emission procedures for closures, but most application 
+writers just want to do the standard thing, which is to emit into our ordinary
+relocatable blocks, so we had better give them procedures that do so.
+@
+The major difference in implementation is that we're not using the
+``current'' block or location counter; instead, we're emitting directly
+into a known block at a known location.  Also, since we're guaranteed that 
+placeholder tokens have already been emitted into these slots, we don't
+have to worry about maintaining low or high water marks or about allocating buffers.
+The code that actually spits out the bits (but not the slow path) can be
+re-used as the chunk [[<<emit [[n]] bytes of [[val]] at [[p]]>>]].
+<<local declarations>>=
+static void initial_cl_emitm(RBlock rb, unsigned lc, unsigned long bits, unsigned size);
+<<definitions>>=
+static void initial_cl_emitm(rb, lc, bits, size) 
+         RBlock rb; unsigned lc; unsigned long bits; unsigned size; 
+{
+  static union { unsigned u; unsigned char c[sizeof(unsigned)]; } u = { 0xaabbccdd };
+  switch (u.c[0]) {
+    case 0xaa: cl_emitm = &cl_emitb; break;
+    case 0xdd: cl_emitm = &cl_emitl; break;
+    default:   assert(("byte-order botch", 0));
+  }
+  (*cl_emitm)(rb, lc, bits, size);
+}
+void (*cl_emitm)(RBlock rb, unsigned lc, unsigned long, unsigned) = &initial_cl_emitm; 
+@ %def initial_cl_emitm
+<<definitions>>=
+void cl_emitl(rb, lc, val, n) RBlock rb; unsigned lc; unsigned long val; unsigned n; {
+  struct rblock_buffer *cb;
+  register unsigned char *p;
+  for (cb = &rb->firstbuf; cb->next && lc >= cb->next->datalc; cb = cb->next);
+  p = cb->data + (lc - cb->datalc);
+  if (p + n <= cb->limit) {<<emit [[n]] bytes of [[val]] at [[p]] (little-endian)>>}
+  else {<<slow path for little-endian closure emission>>}
+}
+<<definitions>>=
+void cl_emitb(rb, lc, val, n) RBlock rb; unsigned lc; unsigned long val; unsigned n; {
+  struct rblock_buffer *cb;
+  register unsigned char *p;
+  for (cb = &rb->firstbuf; cb->next && lc >= cb->next->datalc; cb = cb->next);
+  p = cb->data + (lc - cb->datalc);
+  if (p + n <= cb->limit) {<<emit [[n]] bytes of [[val]] at [[p]] (big-endian)>>}
+  else {<<slow path for big-endian closure emission>>}
+}
+<<slow path for little-endian closure emission>>=
+{ unsigned roomhere = cb->limit - p;
+  assert(roomhere > 0 && roomhere < n);
+  cl_emitl(rb, lc, val, roomhere);
+  cl_emitl(rb, lc+roomhere, val >> 8*roomhere, n - roomhere);
+}
+<<slow path for big-endian closure emission>>=
+{ unsigned roomhere = cb->limit - p;
+  assert(roomhere > 0 && roomhere < n);
+  cl_emitb(rb, lc, val >> 8*roomhere, roomhere);
+  cl_emitb(rb, lc+roomhere, val, n - roomhere);
+}
+@
+\subsubsection{Allocating new buffers}
+The only real question here is how big a buffer to allocate.
+We may use a size hint from the application, but we insist always on being able 
+to get to [[lc]] plus 32.%
+\footnote{Why 32?  I have no idea.  I'm just guessing.  It only
+matters when this allocation results from a big [[set_lc]].}
+The size hint, once used (or if never set), becomes [[BUFSZ]].
+<<other fields of a relocatable block>>=
+int size_hint;
+<<initialize a new relocatable block [[rb]]>>=
+rb->size_hint = BUFSZ;
+<<make sure [[currb->curbuf->next]] is non-null, allocating if necessary>>=
+if (!currb->curbuf->next) {
+  int curbufsize = (currb->curbuf->limit - currb->curbuf->data);
+  int minsize = 32 + (currb_p - currb->curbuf->data) - curbufsize;
+  int size = roundup(max(minsize, currb->size_hint), 8);
+  Buffer b = (Buffer) mc_alloc(roundup(sizeof(*b), 8) + size, RBlock_data_pool);
+
+  b->data = (unsigned char *)(b) + roundup(sizeof(*b), 8);
+  b->limit = b->data + size;
+  b->next = (Buffer)0;
+  b->datalc = currb->curbuf->datalc + curbufsize;
+  currb->curbuf->next = b;
+  currb->size_hint = BUFSZ;
+}
+@ Calculating [[curbufsize]] separately is conventient, 
+and it makes sure we don't subtract [[limit]] 
+from [[p]] when [[p]] is too small.
+For efficiency, 
+we allocate once, and we use the resulting memory
+to hold both the buffer structure and its data area.
+Also,
+we round everything  in sight to a multiple of~8 just to keep good alignment.
+
+The low water mark is ``automagically'' set by this code;
+if we're allocating the first buffer,
+[[currb->firstbuf.datalc]] becomes the low water mark by virtue of 
+[[currb->firstbuf.next]] becoming non-null.
+@
+\subsubsection{Emission using the byte order of the machine}
+To emit data using the byte order of the machine, clients should call through the
+function pointer [[emitm]].
+@ Clients must exercise care when copying or passing the value of [[emitm]], 
+because [[emitm]] works by a hack:  it's initialized to a procedure that 
+dynamically determines the byte order, then resets [[emitm]] 
+to point either to [[emitl]] or [[emitb]].  
+I believe in avoiding [[#ifdef]]; it's too easy to get wrong.
+
+This section also defines some shortcuts for emitting data of known size.
+<<exported macro definitions>>=
+#define emitul(BITS) emitm((BITS), sizeof(unsigned long))
+#define emitu(BITS)  emitm((BITS), sizeof(unsigned))
+#define emitus(BITS) emitm((BITS), sizeof(unsigned short))
+#define emituc(BITS) emitm((BITS), sizeof(unsigned char))
+@
+<<local declarations>>=
+static void initial_emitm(unsigned long bits, unsigned size);
+<<definitions>>=
+static void initial_emitm(bits, size) unsigned long bits; unsigned size; {
+  static union { unsigned u; unsigned char c[sizeof(unsigned)]; } u = { 0xaabbccdd };
+  switch (u.c[0]) {
+    case 0xaa: emitm = &emitb; break;
+    case 0xdd: emitm = &emitl; break;
+    default:   assert(("byte-order botch", 0));
+  }
+  (*emitm)(bits, size);
+}
+void (*emitm)(unsigned long, unsigned) = &initial_emitm; 
+@
+\subsubsection{Macros for super-fast emission}
+[[emitfastul]], [[emitfastu]], [[emitfastus]], and [[emitfastuc]] are all macros
+for emitting unsigned longs, words, shorts, and characters, respectively,
+into the current buffer.
+[[emitfast]] calls one of these macros or [[emitm]], as appropriate.
+The macros themselves call [[emitm]] if they can't guarantee sufficient space.
+Applications calling these macros {\em must} guarantee that the current location
+counter has the proper alignment.
+
+The macros differ only in the type of the datum they emit quickly, so 
+we make that a parameter:
+<<exported macro definitions>>=
+#define emitfastT0(BITS, TYPE) do { \
+  if (currb_p < currb_safe) { \
+     *((TYPE*)currb_p) = (TYPE) (BITS); \
+      currb_p += sizeof(TYPE); \
+  } else (*emitm)((BITS), sizeof(TYPE)); \
+} while (0)
+#define emitfastul0(BITS) emitfastT0((BITS), unsigned long)
+#define emitfastu0(BITS)  emitfastT0((BITS), unsigned)
+#define emitfastus0(BITS) emitfastT0((BITS), unsigned short)
+#define emitfastuc0(BITS) emitfastT0((BITS), unsigned char)
+@  We have several versions of these macros; 
+the trailing~[[0]] indicates this is version~0.
+@
+[[emitfast]] chooses the right macro.
+We use nested [[if-then-else]] instead of a [[switch]] because we think more compilers 
+will eliminate the unreachable code at compile time.
+<<exported macro definitions>>=
+#define emitfast0(BITS, SIZE) do { \
+  if      ((SIZE) == sizeof(unsigned long))  emitfastul0((BITS)); \
+  else if ((SIZE) == sizeof(unsigned))       emitfastu0((BITS)); \
+  else if ((SIZE) == sizeof(unsigned short)) emitfastus0((BITS)); \
+  else if ((SIZE) == sizeof(unsigned char))  emitfastuc0((BITS)); \
+  else emitm((BITS), (SIZE)); \
+} while(0)
+@
+We can't provide much help to the poor CISC people, because they can't guarantee proper 
+alignment, but we can at least give them a fast path for a single byte:
+<<exported macro definitions>>=
+#define emitfastbyte0(BITS, SIZE) do { \
+  if ((SIZE) == sizeof(unsigned char)) \
+    emitfastuc0((BITS)); \
+  else \
+    emitm((BITS), (SIZE)); \
+} while(0)
+@
+\paragraph{Version~1}
+To speed things up a bit, we use a temporary to hold [[currb_p]] while we're using it.
+<<exported macro definitions>>=
+#define emitfastT1(BITS, TYPE) do { \
+  register unsigned char *p = currb_p; \
+  if (p < currb_safe) { \
+     *((TYPE*)p) = (TYPE) (BITS); \
+      currb_p = p + sizeof(TYPE); \
+  } else (*emitm)((BITS), sizeof(TYPE)); \
+} while (0)
+#define emitfastul1(BITS) emitfastT1((BITS), unsigned long)
+#define emitfastu1(BITS)  emitfastT1((BITS), unsigned)
+#define emitfastus1(BITS) emitfastT1((BITS), unsigned short)
+#define emitfastuc1(BITS) emitfastT1((BITS), unsigned char)
+<<exported macro definitions>>=
+#define emitfast1(BITS, SIZE) do { \
+  if      ((SIZE) == sizeof(unsigned long))  emitfastul1((BITS)); \
+  else if ((SIZE) == sizeof(unsigned))       emitfastu1((BITS)); \
+  else if ((SIZE) == sizeof(unsigned short)) emitfastus1((BITS)); \
+  else if ((SIZE) == sizeof(unsigned char))  emitfastuc1((BITS)); \
+  else emitm((BITS), (SIZE)); \
+} while(0)
+<<exported macro definitions>>=
+#define emitfastbyte1(BITS, SIZE) do { \
+  if ((SIZE) == sizeof(unsigned char)) \
+    emitfastuc1((BITS)); \
+  else \
+    emitm((BITS), (SIZE)); \
+} while(0)
+@
+\paragraph{Version 2}
+Version~2 works around a problem that crops up with {\tt lcc}
+and other compilers; the many [[if]] statements generate lots of unreachable
+code, killing VM performances.
+{\tt gcc -O} works around this, but both {\tt gcc} and {\tt lcc} 
+generate much better code if we use conditional expressions instead 
+of conditional statements. 
+
+We need one trick; we declare the pointer in the outermost macro.
+That's because the inner macros have to be expressions, because C
+compilers like {\tt lcc} and {\tt gcc} will optimize away unnecessary
+branches and labels for conditional expressions but not for
+conditional statements.
+<<exported macro definitions>>=
+#define emitfastT2(BITS, TYPE) ( \
+  (EMITFAST_p < currb_safe) \
+    ? (*((TYPE*)EMITFAST_p) = (TYPE) (BITS), \
+       currb_p = EMITFAST_p + sizeof(TYPE), \
+       (void)0) \
+    : (*emitm)((BITS), sizeof(TYPE)) \
+  )
+#define Xemitfastul2(BITS) emitfastT2((BITS), unsigned long)
+#define Xemitfastu2(BITS)  emitfastT2((BITS), unsigned)
+#define Xemitfastus2(BITS) emitfastT2((BITS), unsigned short)
+#define Xemitfastuc2(BITS) emitfastT2((BITS), unsigned char)
+<<exported macro definitions>>=
+#define emitfast2(BITS, SIZE) do { \
+  register unsigned char *EMITFAST_p = currb_p; \
+  ((SIZE) == sizeof(unsigned long))  ? Xemitfastul2((BITS)) : \
+  ((SIZE) == sizeof(unsigned))       ? Xemitfastu2((BITS))  : \
+  ((SIZE) == sizeof(unsigned short)) ? Xemitfastus2((BITS)) : \
+  ((SIZE) == sizeof(unsigned char))  ? Xemitfastuc2((BITS)) : \
+  emitm((BITS), (SIZE)); \
+} while(0)
+<<exported macro definitions>>=
+#define emitfastbyte2(BITS, SIZE) do { \
+  register unsigned char *EMITFAST_p = currb_p; \
+  ((SIZE) == sizeof(unsigned char)) ? emitfastuc2((BITS)) : \
+  emitm((BITS), (SIZE)); \
+} while(0)
+<<exported macro definitions>>=
+#define emitfastul2(BITS) do { \
+  register unsigned char *EMITFAST_p = currb_p; Xemitfastul2((BITS)); \
+} while(0)
+#define emitfastu2(BITS) do { \
+  register unsigned char *EMITFAST_p = currb_p; Xemitfastu2((BITS)); \
+} while(0)
+#define emitfastus2(BITS) do { \
+  register unsigned char *EMITFAST_p = currb_p; Xemitfastus2((BITS)); \
+} while(0)
+#define emitfastuc2(BITS) do { \
+  register unsigned char *EMITFAST_p = currb_p; Xemitfastuc2((BITS)); \
+} while(0)
+@
+We use version~2.
+<<exported macro definitions>>=
+#define emitfast 	emitfast2
+#define emitfastbyte 	emitfastbyte2
+#define emitfastul	emitfastul2
+#define emitfastu	emitfastu2
+#define emitfastus	emitfastus2
+#define emitfastuc	emitfastuc2
+@
+\subsection{Location-counter manipulations}
+We export the following macros and procedures.
+Note that we use the global variables, not the dirty fields in [[currb]].
+<<exported macro definitions>>=
+#define lc() (currb_p - currb->curbuf->data + currb->curbuf->datalc)
+#define org(LOC)        set_lc(currb,(LOC))
+#define addlc(N) ((void)(currb_p += (N)))
+@
+When the location counter changes, 
+we always maintain the invariant on page~\pageref{lc-invariant}.
+The invariant doesn't require that [[currb_p]] point into the current buffer, so
+we have to update [[currb->curbuf]] only
+if the location counter moves back to precede the beginning of the buffer.
+If it moves forwards, we needn't touch anything, because we will lazily walk to the 
+proper buffer when we try to emit.
+<<definitions>>=
+void set_lc(rb, newlc) RBlock rb; unsigned newlc; {
+    <<if low water mark not set, update first [[datalc]] and return>>
+    if (newlc < currb->curbuf->datalc) {
+      currb->curbuf = &currb->firstbuf;
+      currb_safe = currb->curbuf->limit - MARGIN;
+    }
+    assert(("above low water", newlc >= currb->curbuf->datalc));
+    currb_p = newlc - currb->curbuf->datalc + currb->curbuf->data;
+}
+@ We have to provide access to {\em all} the fields of any relocatable block,
+even if it isn't the [[crb]].  
+[[block_lc]] and [[block_low]] return the location counter and low-water
+mark of [[rb]]. 
+If [[rb]] is [[crb]], [[make_clean]] is called so we don't access any dirty fields.
+<<exported macro definitions>>=
+#define block_lc(rb) \
+  ((rb) == currb \
+      ? (make_clean(),((rb)->p - (rb)->curbuf->data + (rb)->curbuf->datalc)) \
+      :               ((rb)->p - (rb)->curbuf->data + (rb)->curbuf->datalc))
+#define block_low(rb) \
+  ((rb) == currb \
+      ? (make_clean(), (rb)->firstbuf.datalc) \
+      :                (rb)->firstbuf.datalc)
+@
+If the low water mark isn't set, then we can change the location
+counter and pin [[currb_p]] to the beginning of the sentinel buffer.
+<<if low water mark not set, update first [[datalc]] and return>>=
+if (!currb->firstbuf.next) {
+  assert(currb->curbuf == &currb->firstbuf);
+  currb->firstbuf.datalc = newlc;
+  currb_p = currb->curbuf->data; /* might have been advanced by addlc */
+  return;
+}
+@
+Aligning always increases the location counter, so we use [[addlc]],
+which is fast.
+<<definitions>>=
+void align(n) unsigned n; {
+    unsigned oldlc = lc();
+    unsigned newlc;
+    newlc = (oldlc + n - 1);
+    newlc -= newlc % n;
+    addlc(newlc-oldlc);
+}
+@
+\subsection{Pointing registers into relocatable blocks}
+Wherein we define the following exported functions:
+@
+[[bind_register(rb, reg, rlc)]] binds register [[reg]] to the relocatable block [[rb]] 
+at location counter [[rlc]].
+Registers can't be rebound.
+<<definitions>>=
+void set_register(rb, reg, rlc) RBlock rb; unsigned reg, rlc; {
+    assert(!rb->known.reg);
+    rb->reg = reg;
+    rb->reglc = rlc;
+    rb->known.reg = 1;
+}
+
+@
+\subsection{Other operations on relocatable blocks}
+Here's the rest of 'em:
+@
+A block is defined if it's non-null and it's not the undefined block.
+<<exported macro definitions>>=
+extern struct reloc_block undefrblock;
+#define block_defined(rb) ((rb) && (rb) != &undefrblock)
+<<local declarations>>=
+struct reloc_block undefrblock;
+@ Note that in initializing the undefined block we rely on the fact that the 
+[[known]] flags default to~0, since they're used in the [[location_known]] tests.
+@
+
+[[block_new]] creates a new relocatable block.  [[size]] is a hint to the library
+as to the maximum size of the block's contents.
+Rather than allocate a buffer immediately, however, we just save away the size hint. 
+At the cost of a word per block, 
+this makes it cheap to create blocks that are never used. 
+We're doing it because someday somebody might want to create {\em lots} of them.
+<<definitions>>=
+RBlock block_new(size) unsigned size; {
+    RBlock rb, tmprb; 
+    
+    rb = (RBlock) mc_alloc(sizeof(*rb), RBlock_pool);
+    <<initialize a new relocatable block [[rb]]>>
+    rb->size_hint = size > 0 ? size : BUFSZ;
+    <<count the new block [[rb]] and string it on a list>>
+    return rb;
+}
+<<exported macro definitions>>=
+#define block_label(rb) ((rb)->label)
+@
+For some reason, we have a bunch of instrumentation attached to relocatable blocks.
+For example, we keep them on a list [[defined_rbs]] linked by [[next]] fields.
+The next few chunks can go if we ditch the instrumentation.
+<<count the new block [[rb]] and string it on a list>>=
+nblocks++; /* do we really need this instrumentation? */
+rb->next = defined_rbs;		/* instrumentation */
+defined_rbs = rb; 		/* instrumentation */
+<<other fields of a relocatable block>>=
+struct reloc_block *next; 	/* instrumentation */
+<<exported data declarations>>=
+extern RBlock defined_rbs; 	/* instrumentation */
+extern int nblocks; 		/* instrumentation */
+<<definitions>>=
+RBlock defined_rbs = (RBlock) 0;/* instrumentation */
+int nblocks = 0;		/* instrumentation */
+@
+Setting and reading an address is straightforward.
+<<exported macro definitions>>=
+#define block_address_known(rb) ((rb)->known.address)
+#define block_address(rb)       ((rb)->address)
+<<definitions>>=
+void set_address(rb, address) RBlock rb; unsigned address; {
+    assert(rb);
+    rb->address = address;
+    rb->known.address = 1;
+}
+@
+Computing the block size is a pain in the ass, because the block
+we're looking at just might be dirty.
+<<exported macro definitions>>=
+#define block_size(rb) ((rb) == currb ? (make_clean(), (rb)->size) : (rb)->size)
+@
+\subsection{Accessing contents of relocatable blocks}
+
+[[block_copy]] copies [[n]] bytes of relocatable block [[rb]] into [[dest]] beginning
+at location [[start]].
+[[block_write]]  writes [[n]] bytes of relocatable block [[rb]] into file defined by
+file descriptor [[fd]] beginning at location [[start]].
+We use a macro [[TRANSFER(DEST, SRC, N)]] to transfer the data, so we
+can re-use the body.
+<<definitions>>=
+void block_copy(dest, rb, start, n) unsigned char *dest; RBlock rb; unsigned start, n; {
+  void *memcpy(void *dest, const void *src, size_t n);
+  #define TRANSFER(SRC, N) (memcpy(dest, (SRC), (N)), dest += (N))
+  <<transfer [[n]] bytes from [[start]]>>
+  #undef TRANSFER
+}
+<<transfer [[n]] bytes from [[start]]>>=
+{ Buffer buf;
+  unsigned char *p;
+  for (buf = buffer_at_lc(rb, start), p = buf->data + (start - buf->datalc);
+       buf && (n > 0);
+       buf = buf->next, p = buf ? buf->data : p
+      ) {
+    unsigned blk_size = min(buf->limit - p, n);
+    TRANSFER(p, blk_size);
+    n -= blk_size;
+  }
+  assert(n == 0);
+}
+@
+<<definitions>>=
+void block_write(fd, rb, start, n) RBlock rb; unsigned start, n; {
+  #define TRANSFER(SRC, N) (write(fd, SRC, N))
+  <<transfer [[n]] bytes from [[start]]>>
+  #undef TRANSFER
+}
+@
+Searching for a buffer is easy.
+We look either from the current buffer or from the first buffer,
+depending on whether we've already overshot.
+If the point we're looking for is on the boundary between two buffers,
+we return the first buffer, because if this point is at the very end of the contents, 
+there might not be a second buffer.\change{6}
+<<definitions>>=
+static Buffer buffer_at_lc(rb, start) RBlock rb; unsigned start; {
+  Buffer b = rb->curbuf;
+  if (start < b->datalc)
+    b = &rb->firstbuf;
+  assert(start >= b->datalc);
+  while (b && start > b->datalc + (b->limit - b->data))
+    b = b->next;
+  assert(b);
+  return b;
+}
+<<local declarations>>=
+static Buffer buffer_at_lc(RBlock rb, unsigned start);
+@ 
+I assume an efficient fetch isn't needed, since the only thing I'm
+using it for so far is to simulate relocation in the style of GNU BFD.
+For that reason, I implement fetch using [[block_copy]].
+<<definitions>>=
+unsigned long block_fetchl(rb, lc, n) 
+    RBlock rb; unsigned lc; unsigned n; 
+{
+  unsigned char bytes[8];
+  unsigned long val = 0;
+  assert(n <= sizeof(bytes));
+  block_copy(bytes, rb, lc, n);
+  <<convert [[n]] bytes of [[bytes]] into [[val]] (little-endian)>>
+  return val;
+}
+<<definitions>>=
+unsigned long block_fetchb(rb, lc, n) 
+    RBlock rb; unsigned lc; unsigned n; 
+{
+  unsigned char bytes[8];
+  unsigned long val;
+  assert(n <= sizeof(bytes));
+  block_copy(bytes, rb, lc, n);
+  <<convert [[n]] bytes of [[bytes]] into [[val]] (big-endian)>>
+  return val;
+}
+<<convert [[n]] bytes of [[bytes]] into [[val]] (little-endian)>>=
+val = 0;
+switch (n) {
+  #define BYTE(N) case N+1: val |= bytes[N] << 8*N; /* fall through */
+  BYTE(7) BYTE(6) BYTE(5) BYTE(4) BYTE(3) BYTE(2) BYTE(1) BYTE(0)
+  #undef BYTE
+  case 0: /* do nothing */
+    break;
+  default: assert(("unsigned long bigger than 8 bytes", 0));
+}
+<<convert [[n]] bytes of [[bytes]] into [[val]] (big-endian)>>=
+switch (n) {
+  #define B(POS, N) (bytes[POS] << 8*N)
+  case 0: break;
+  case 1: val = B(0,0); break;
+  case 2: val = B(0,1) | B(1,0); break;
+  case 3: val = B(0,2) | B(1,1) | B(2,0); break;
+  case 4: val = B(0,3) | B(1,2) | B(2,1) | B(3,0); break;
+  case 5: val = B(0,4) | B(1,3) | B(2,2) | B(3,1) | B(4,0); break;
+  case 6: val = B(0,5) | B(1,4) | B(2,3) | B(3,2) | B(4,1) | B(5,0); break;
+  case 7: val = B(0,6) | B(1,5) | B(2,4) | B(3,3) | B(4,2) | B(5,1) | B(6,0); break;
+  case 8: val = B(0,7) | B(1,6) | B(2,5) | B(3,4) | B(4,3) | B(5,2) | B(6,1) | B(7,0); 
+          break;
+  default: assert(("unsigned long bigger than 8 bytes", 0));
+  #undef B
+}
+@ 
+<<local declarations>>=
+static unsigned long initial_block_fetchm(RBlock rb, unsigned lc, unsigned size);
+<<definitions>>=
+static unsigned long initial_block_fetchm(rb, lc, size) 
+         RBlock rb; unsigned lc; unsigned size; 
+{
+  static union { unsigned u; unsigned char c[sizeof(unsigned)]; } u = { 0xaabbccdd };
+  switch (u.c[0]) {
+    case 0xaa: block_fetchm = &block_fetchb; break;
+    case 0xdd: block_fetchm = &block_fetchl; break;
+    default:   assert(("byte-order botch", 0));
+  }
+  return (*block_fetchm)(rb, lc, size);
+}
+unsigned long (*block_fetchm)(RBlock rb, unsigned lc, unsigned) = &initial_block_fetchm; 
+@ %def initial_block_fetchm
+@
+\section{Labels}
+<<exported data declarations>>=
+struct label {
+    RBlock block;
+    unsigned offset;
+    char *name;
+};
+@ 
+[[label_location_known]] is true if the given label is located in a relocatable
+block with a known address.  [[label_location]] returns the absolute address of 
+the label, if it is known.  If the address is unknown, [[label_location]] is
+undefined.
+[[cur_pc_known]] and [[cur_pc]] are analogous macros for the current program counter [[pc]];
+[[pc_location_known]] and [[pc_location]] are simliar but are applied to the location 
+of a closure.
+<<exported macro definitions>>=
+#define label_location_known(lbl)  (((lbl) && (lbl)->block->known.address))
+#define label_location(lbl)        ((lbl)->block->address + (lbl)->offset)
+#define pc_location_known(loc)     ((loc).dest_block->known.address)
+#define pc_location(loc)           ((loc).dest_block->address + (loc).dest_lc)
+#define cur_pc_known()             (currb->known.address)
+#define cur_pc()                   (currb->address + lc())
+@
+[[label_define]] defines  label [[lbl]] 
+at the current location counter plus [[offset]] in 
+the current relocatable block.
+[[label_define_at]] is a more general operation.
+<<definitions>>=
+void label_define(lbl, offset) RLabel lbl; int offset; {
+    label_define_at(lbl, currb, lc() + offset);
+}
+void label_define_at(lbl, block, lc) RLabel lbl; RBlock block; unsigned lc; {
+    assert(lbl);
+    assert(!block_defined(lbl->block));  /* fail on multiple definition */
+    lbl->block = block;
+    lbl->offset = lc;
+}
+@ 
+[[label_new]] returns a new label.
+<<definitions>>=
+RLabel label_new(name) char *name; {
+    RLabel lbl;
+
+    lbl = (RLabel) mc_alloc(sizeof(*lbl), RLabel_pool);
+    lbl->block = &undefrblock;
+    lbl->name = name;
+    return lbl;
+}
+@ 
+\section{Relocation and closures}
+
+Closures are implemented in a two-level structure.
+[[ClosureHeader]] 
+{\em The specification needs to be revised.  Meanwhile, there's a two-level
+structure.   [[CHeader]] shows the header of a constructor, which retains a 
+tag and inputs until they are to be used in an instruction.
+[[RClosure]] is the relocation closure, which delays evaluation until 
+labels (including those nested inside constructor inputs) are known.
+
+With nested constructors, the simple array scheme won't work any more,
+and we will need to emit label-locating functions for each constructor type
+(with callbacks).
+Similarly for PCs.}
+<<C emitter spec>>=
+typedef void (*RelocCallback)(void *closure, RAddr reloc);
+typedef void (*RelocEnumerator)(struct rclosure *cp, RelocCallback f, void *closure);
+
+typedef struct instance {
+    int tag;	     /* need at least 11 bits for Intel */
+    union { struct { void *inputs[1]; } consname; } u;
+} Instance;
+@ %def Instance RelocEnumerator RelocCallback
+<<exported data declarations>>=
+<<C emitter spec>>
+typedef void (*ApplyMethod)(RClosure cl, Emitter emitter, FailCont fail);
+
+typedef struct closure_header {
+    ApplyMethod apply;
+    RelocEnumerator relocfn;
+    int uses_pc;
+    int size_in_bytes;
+} *ClosureHeader;	/* always allocated statically */
+
+typedef struct closure_location {
+    RBlock dest_block;        /* block written */
+    unsigned dest_lc;         /* location within block to write */
+} ClosureLocation;
+
+struct rclosure {
+    ClosureHeader h;
+    ClosureLocation loc;
+    /* fields may follow */
+};
+@ 
+In order to be able to export closures to disk, we need to be able to
+map the closure functions into some other representation.  For the
+moment, we use a bastard form of PostScript.
+<<exported data declarations>>=
+typedef struct closurepostfix {
+    ApplyMethod apply;
+    char *postfix;
+} ClosurePostfix;
+@ 
+We also need to be able to walk the internal fields.
+<<exported data declarations>>=
+typedef void (*IntCallback)(void *closure, unsigned n);
+typedef void (*FieldEnumerator)(struct rclosure *cp, RelocCallback r,
+                                IntCallback i, void *closure);
+typedef struct closureemitter {
+    ApplyMethod apply;
+    FieldEnumerator walk_fields;
+} ClosureEmitter;
+@
+The library provides the closure-independent procedure [[apply_closure]].
+[[apply_closure]] checks that
+all relocatable blocks on which the closure is dependent are known before
+applying the closure-dependent [[apply]] procedure which performs the relocation.
+{\hfuzz=1pt\par}
+
+<<local declarations>>=
+static void fail_if_undef(void *, RAddr);
+<<definitions>>=
+static void fail_if_undef(void *closure, RAddr a) {
+    if (!location_known(a)) 
+       ((FailCont)closure)("Label %s undefined or unbound", a->label->name);
+}
+
+<<definitions>>=
+void apply_closure(RClosure cl, Emitter emitter, FailCont fail) {
+    (*cl->h->relocfn)(cl, &fail_if_undef, (void*)fail);
+    (*cl->h->apply)(cl, emitter, fail);
+}
+<<old definitions>>=
+void apply_closure(RClosure cl, Emitter emitter, FailCont fail) {
+    int n = cl->t.depends_count;
+    RLabel *p = &cl->s.depends[0];
+
+    if (cl->t.depends_on_dest && !location_known(cl->t.dest_block->label))
+        (*fail)("Destination %s undefined or unbound", cl->t.dest_block->label->name);
+    while (n-- > 0)
+        if (location_known(*p))
+            p++;
+        else
+            (*fail)("Label %s undefined or unbound",(*p)->name);
+    (*cl->t.apply)(cl, emitter, fail);
+}
+@ 
+To help reduce code bloat in generated encoding procedures, here is a
+function that allocates and initializes a closure:
+<<exported procedure declarations>>=
+extern RClosure mc_create_closure_at_offset(unsigned size, ClosureHeader h, unsigned offset);
+<<definitions>>=
+RClosure mc_create_closure_at_offset(unsigned size, ClosureHeader h, unsigned offset) {
+  RBlock   this_block = crb();
+  unsigned this_lc    = lc() + offset;
+  RClosure c = (RClosure) mc_alloc_closure(size, this_block, this_lc);
+  c->h = h;
+  c->loc.dest_block = this_block;
+  c->loc.dest_lc    = this_lc;
+  return c;
+}
+@ To save passing a parameter in the common case, here's a specialized
+version:
+<<exported procedure declarations>>=
+extern RClosure mc_create_closure_here(unsigned size, ClosureHeader h);
+<<definitions>>=
+RClosure mc_create_closure_here(unsigned size, ClosureHeader h) {
+  return mc_create_closure_at_offset(size, h, 0);
+}
+@
+\section{Support for printing relocatable addresses}
+<<definitions>>=
+static void label_print(struct label *label) {
+  if (!asmprintfd) asmprintfd = stdout;
+  asmprintf(asmprintfd, "%s", label->name ? label->name : "???");
+}
+<<local declarations>>=
+static void label_print(struct label *label);
+<<definitions>>=
+typedef void (*asmprinter)(void *closure, const char *fmt, ...);
+extern int fprintf(FILE *stream, const char *fmt, ...); /* needed at Purdue -- ugh */
+void (*asmprintf)(void *closure, const char *fmt, ...) = (asmprinter) fprintf;
+void *asmprintfd = (void *)0;
+void (*asmprintreloc)(RAddr reloc) = reloc_print; /* calls asmprintf */
+@
+\section{Boilerplate}
+<<mclib.h>>=
+#ifndef INCLUDE_MCLIBH
+#define INCLUDE_MCLIBH
+
+#ifndef assert
+#include <assert.h>
+#endif 
+
+/* this group is available for users */
+
+<<library types>>
+<<library procedures>>
+<<declarations of procedures provided by the application>>
+
+/* this group either supports macros or is needed by emission procedures */
+
+<<exported data declarations>>
+<<exported macro definitions>>
+<<exported procedure declarations>>
+
+#endif
+@
+Note the [[roundup]] macro is good only for powers of two.
+<<mclib.c>>=
+#include <mclib.h>
+#include <stdio.h> 
+#include <sys/types.h>
+  /* get size_t, I hope */
+
+#define max(X,Y) ((X) > (Y) ? (X) : (Y))
+#define min(X,Y) ((X) < (Y) ? (X) : (Y))
+#define roundup(X,N) (((X)+((N)-1))&(~((N)-1)))
+
+
+static void mcfail(char *fmt, ...) { 
+  assert(("application didn't set fail", 0));  /* apps should provide their own */
+}
+void (*fail)(char *fmt, ...) = &mcfail;
+
+#define BUFSZ 1024
+
+<<local declarations>>
+<<definitions>>
+

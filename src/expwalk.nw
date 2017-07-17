@@ -1,0 +1,346 @@
+% l2h ignore change {
+\section{Visiting every term of an expression}
+[[expwalk]] suspends {\em every} result of applying [[f]] to each node
+in a bottom-up tree walk.
+<<*>>=
+procedure expwalk(e, f, closure[])
+  suspend do_expwalk(e, f, closure)
+end
+
+procedure do_expwalk(e, f, closure)
+  suspend case type(e) of {
+           <<cases for [[do_expwalk]]>>
+           default : impossible("expression type in expression walking")
+          } | f ! ([e] ||| closure)
+         
+end
+<<cases for [[do_expwalk]]>>=
+"pattern"         : do_expwalk(!e.disjuncts, f, closure)
+"disjunct"        : do_expwalk(!\e.conditions | !e.sequents, f, closure)
+"adisjunct"       : do_expwalk(!\e.conditions | !e.aconstraints, f, closure)
+"sequent"         : do_expwalk(!e.constraints, f, closure)
+"dots_sequent"    : &fail
+"patlabel"	  : &fail
+@ [[e.instance]] can be [[null]] when a pattern label is ``vanishing,'' 
+and we wouldn't want to walk a null.
+<<cases for [[do_expwalk]]>>=
+"latent_patlabel" : do_expwalk((vanishing_latent_patlabel ~=== e).instance, f, closure)
+"constraint"      : do_expwalk(e.field, f, closure)
+"fieldbinding"    : do_expwalk(e.code | e.field, f, closure)
+"absolute_field"  : do_expwalk(e.field, f, closure)
+"field"           : &fail
+<<cases for [[do_expwalk]]>>=
+"list" | "set"    : do_expwalk(!e, f, closure)
+"eqn"             : do_expwalk(e.left | e.right, f, closure)
+"table"           : do_expwalk(key(e), f, closure)
+<<cases for [[do_expwalk]]>>=
+"Eorb" | "Eand"   : do_expwalk(e.x | e.y, f, closure)
+"Eslice" | "Eshift" | "Enarrowu" | "Enarrows" | "Ewiden" | 
+"Ediv" | "Emod" | "Semit" | "Stoken" | "Efitsu" | "Efitss" | 
+  "Einstance_input" | "Einstance_tagged" :
+                    do_expwalk(e.x, f, closure) 
+<<cases for [[do_expwalk]]>>=
+"Epatlabel"       : do_expwalk(e.l, f, closure)
+"Eforce" | "Eforceable" | "Enot" | "Enosimp" | "Sstmts" : 
+                    do_expwalk(e.x, f, closure) 
+"Epc" | "Epc_known" : &fail
+"Einstance"       : do_expwalk(!e.argt, f, closure)
+"Ebinding_instance" : do_expwalk(e.name, f, closure)
+"Eapp"            : do_expwalk(!e.args, f, closure)
+<<cases for [[do_expwalk]]>>=
+"Eclosure_loc"  : &fail
+"Eclosure_addr" : &fail
+"Eclosure_val"  : &fail
+<<cases for [[do_expwalk]]>>=
+"Sif"             : do_expwalk(!e.arms, f, closure)
+"Sguarded"        : do_expwalk(e.guard | e.x, f, closure)
+"Sepsilon"        : &fail
+"Stagcase"        : do_expwalk(e.x | !e.arms, f, closure)
+"Sfail"           : &fail
+"integer" | "string" | "literal" : &fail
+"Efail"           : &fail
+"Sclosure"        : do_expwalk(e.disjunct | \e.conditions | \e.creation, f, closure)
+<<cases for [[do_expwalk]]>>=
+"balance"         : do_expwalk(e.left | e.right, f, closure)
+"balitem"         : do_expwalk(e.v | e.value, f, closure)
+<<cases for [[do_expwalk]]>>=
+"Glines"    	  : &fail
+"Gresynch"        : &fail
+"Gblock"          : do_expwalk(!e.decls | !e.stmts, f, closure)
+"Gdecl"           : do_expwalk(e.init, f, closure)
+"Gcase"           : do_expwalk(e.x | !e.arms, f, closure)
+"Gcasearm"        : do_expwalk(e.x, f, closure)
+"Ginrange"        : do_expwalk(e.x, f, closure)
+"Gsetname"        : &fail
+"Gnomatch"        : &fail
+"Gasgn"           : do_expwalk(e.x, f, closure)
+"Tunsigned" 	  : &fail
+"Gcomment"	  : &fail
+"Gcommented"	  : do_expwalk(e.e, f, closure)
+<<cases for [[do_expwalk]]>>=
+"inject"          : do_expwalk(\e.pattern | \e.integer, f, closure)
+<<cases for [[do_expwalk]]>>=
+"Eclosure" : do_expwalk(!e.values | !e.addresses, f, closure)
+"Elambda"  : do_expwalk(e.body, f, closure)
+@
+\section{Generalized substitution}
+<<*>>=
+procedure gsubst(e, f, closure[])
+  return do_gsubst(e, f, closure)
+end
+
+procedure do_gsubst(e, f, closure)
+  local args
+  return f ! ([e] ||| closure) |
+         case type(e) of {
+           <<cases for [[do_gsubst]]>>
+           default : impossible("expression type in generalized substition")
+         }
+end
+
+procedure do_gsubst_children(e, f, closure)
+  local args
+  return case type(e) of {
+           <<cases for [[do_gsubst]]>>
+           default : impossible("expression type in generalized substition")
+         }
+end
+@
+<<*>>=
+procedure maplistn(f, l, closure)
+  local result, x
+  result := []
+  every x := !l do
+    put(result, f ! ([x] ||| closure) | fail)
+  return result
+end
+<<cases for [[do_gsubst]]>>=
+"pattern"  : if l := maplistn(do_gsubst, e.disjuncts, [f, closure]) & 
+                lists_match(l, e.disjuncts) then e else {
+                  ll := []; 
+                  every d := !l do 
+                    if not member(\d.conditions, 0) then put(ll, d)
+	        pattern(ll, e.name)
+             }
+"disjunct" : { fclosure := [f, closure]
+               c := do_gsubst_conditions(e.conditions, f, closure)
+               s := []  # this code vanishes dead latent pattern labels
+               every x := do_gsubst(!e.sequents, f, closure) do
+                 put(s, vanishing_latent_patlabel ~=== x)
+               if lists_match(s, e.sequents) & c === e.conditions then
+                 e
+               else 
+                 disjunct(s, e.name, c)
+             }
+<<*>>=
+procedure do_gsubst_conditions(e, f, closure)
+  if \(c := e) then {
+     c := set(); 
+     every insert_condition(c, do_gsubst(!e, f, closure))
+     if sets_match(c, e) then c := e
+  }
+  return c
+end
+
+procedure gsubst_conditions(e, f, closure[])
+  return do_gsubst_conditions(e, f, closure)
+end
+<<cases for [[do_gsubst]]>>=
+"adisjunct" : { 
+               if \(c := e.conditions) then {
+                 c := set(); 
+                 every insert_condition(c, do_gsubst(!e.conditions, f, closure))
+                 if sets_match(c, e.conditions) then c := e.conditions
+               }
+               if \(p := e.patlabelbindings) then
+                 p := do_gsubst_values_in_table(p, f, closure)
+               s := maplistn(do_gsubst, e.aconstraints, [f, closure])
+               if lists_match(s, e.aconstraints) & c === e.conditions &
+                  p === e.patlabelbindings 
+               then 
+                 e
+               else 
+                 adisjunct(s, e.name, c, e.length, p)
+             }
+"sequent"  : if l := maplistn(do_gsubst, e.constraints, [f, closure]) & 
+                lists_match(l, e.constraints) then e else sequent(l, e.class)
+@ 
+<<cases for [[do_gsubst]]>>=
+"patlabel"        : e
+"latent_patlabel" : if (x := do_gsubst(e.instance, f, closure)) === e.instance then e
+                    else latent_patlabel(x)
+"dots_sequent" : e
+"constraint"   : e
+"fieldbinding" : if (x := do_gsubst(e.code, f, closure)) === e.code then e 
+                 else fieldbinding(e.field, x)
+"absolute_field" : e
+<<cases for [[do_gsubst]]>>=
+"list"       : if lists_match(l := maplistn(do_gsubst, e, [f, closure]), e) then e else l
+"eqn"        : if l := do_gsubst(e.left, f, closure) & 
+                  r := do_gsubst(e.right, f, closure) &
+                  l === e.left & r === e.right then e else eqn(l, e.op, r)
+"table"      : if (t := do_gsubst_sumprod_table(e, f, closure)) === e then e else t
+"set"        : {s := set()
+                every insert(s, do_gsubst(!e, f, closure))
+                if x := !s & not member(e, x) then s else e
+               }                   
+"string"     : e
+"literal"    : e
+"integer"    : e
+"null"       : e
+<<cases for [[do_gsubst]]>>=
+"Eorb"       : if x := do_gsubst(e.x, f, closure) & y := do_gsubst(e.y, f, closure) &
+                  x === e.x & y === e.y then e else Eorb(x, y)
+"Eand"       : if x := do_gsubst(e.x, f, closure) & y := do_gsubst(e.y, f, closure) &
+                  x === e.x & y === e.y then e else Eand(x, y)
+"Eslice"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+               else Eslice(x, e.lo, e.n)
+"Eshift"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Eshift(x, e.n)
+"Enarrowu"   : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Enarrowu(x, e.n)
+"Enarrows"   : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Enarrows(x, e.n)
+"Ewiden"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Ewiden(x, e.n)
+"Ediv"       : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Ediv(x, e.n)
+"Emod"       : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Emod(x, e.n)
+"Efitsu"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Efitsu(x, e.n)
+"Efitss"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Efitss(x, e.n)
+"Epatlabel"  : if (l := do_gsubst(e.l, f, closure)) === e.l then e else Epatlabel(l)
+"Eforce"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Eforce(x)
+"Eforceable" : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Eforceable(x)
+"Epc" | "Epc_known" : e
+"Enot"       : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Enot(x)
+"Enosimp"    : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Enosimp(x)
+"Sstmts"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Sstmts(x)
+"Semit"      : if (x := do_gsubst(e.x, f, closure)) === e.x then e else Semit(x)
+"Stoken"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+               else Stoken(x, e.n, e.offset)
+@
+<<cases for [[do_gsubst]]>>=
+"Einstance"  :  e # suppress warning --- will confuse users
+		  # --- and we do this with eliminate_instances now
+                  # { warning("escaping Einstance: ", expimage(e)); e}
+"Ebinding_instance" : e
+"Einstance_input" :
+  if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+  else Einstance_input(x, e.cons, e.name)
+"Einstance_tagged" :   
+  if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+  else Einstance_tagged(x, e.cons, e.uid)
+<<cases for [[do_gsubst]]>>=
+"Eapp"  : 
+  if (args := do_gsubst(e.args, f, closure)) === e.args then e else Eapp(e.f, args)
+"Eclosure_loc"  : e
+"Eclosure_addr" : e
+"Eclosure_val"  : e
+<<cases for [[do_gsubst]]>>=
+"Sif"      : if (arms := do_gsubst(e.arms, f, closure)) === e.arms then e 
+             else Sif(arms)
+"Sguarded" : if (guard := do_gsubst(e.guard, f, closure), 
+                 x := do_gsubst(e.x, f, closure),
+                 guard === e.guard, x === e.x) then e 
+             else Sguarded(guard, x)
+"Sepsilon" : e
+"Sfail" : e
+"Stagcase" : if (arms := do_gsubst_vals(e.arms, f, closure), 
+                 x := do_gsubst(e.x, f, closure),
+                 arms === e.arms, x === e.x) then e
+             else {
+write(&errout, "TAGCASE: ", expimage(e.x))
+write(&errout, "TAGCASE: ", expimage(e.arms))
+write(&errout, "TAGCASE: ", expimage(x))
+write(&errout, "TAGCASE: ", expimage(arms))
+             Stagcase(x, e.type, arms)
+}
+"Efail"    : e
+<<cases for [[do_gsubst]]>>=
+"balance"  : if l := do_gsubst(e.left, f, closure) & 
+                r := do_gsubst(e.right, f, closure) &
+                l === e.left & r === e.right then e else balance(l, r)
+"balitem"  : if l := do_gsubst(e.v, f, closure) & 
+                r := do_gsubst(e.value, f, closure) &
+                l === e.v & r === e.value then e else balitem(l, r)
+<<cases for [[do_gsubst]]>>=
+"Glines"    : e
+"Gresynch"  : e
+"Gblock"    : if (decls := do_gsubst(e.decls, f, closure),
+                  stmts := do_gsubst(e.stmts, f, closure),
+                  decls === e.decls, stmts === e.stmts) then e 
+              else Gblock(decls, stmts)
+"Gdecl"     : if (init := do_gsubst(e.init, f, closure)) === e.init then e 
+              else Gdecl(e.name, e.type, init)
+"Gcase"     : if (x := do_gsubst(e.x, f, closure), arms := do_gsubst(e.arms, f, closure),
+                  x === e.x, arms === e.arms) then e 
+              else Gcase(x, arms)
+"Gcasearm"  : if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+              else Gcasearm(e.tags, x)
+"Ginrange"  : if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+              else Ginrange(e.lo, x, e.hi)
+"Gsetname"  : e
+"Gnomatch"  : e
+"Gasgn"     : if (x := do_gsubst(e.x, f, closure)) === e.x then e 
+              else Gasgn(e.lhs, x)
+"Tunsigned" : e
+"Gcomment"  : e
+"Gcommented": if (x := do_gsubst(e.e, f, closure)) === e.e then e 
+              else Gcommented(x, e.comment)
+<<cases for [[do_gsubst]]>>=
+"inject"    : if (p := do_gsubst(\e.pattern, f, closure) | &null, 
+                  i := do_gsubst(\e.integer, f, closure) | &null, 
+                  p === e.pattern, i === e.integer) then e 
+              else inject(p, i, e.consop)
+<<cases for [[do_gsubst]]>>=
+"Eclosure" : if (v := do_gsubst(e.values, f, closure),
+                 a := do_gsubst(e.addresses, f, closure),
+                 v === e.values, a === e.addresses)
+             then e
+             else Eclosure(e.ty, e.fun, e.headertype, v, a)
+"Elambda"  : if (x := do_gsubst(e.body, f, closure)) === e.body then e
+             else Elambda(e.formals, x)
+@
+Making a new ``sum of products'' table involves substituting all the keys.
+The only trick comes in when one of the new keys is itself a table.
+In that case, we have a sum of terms in which one of the terms is itself a sum
+of terms, and by distributing the outer coefficient over the inner terms,
+we can wind up with a single sum (that is, a single table).
+Using [[+:=]] to assign the coefficients makes it all work like magic, even
+when substitution causes duplicate keys.
+<<*>>=
+procedure do_gsubst_sumprod_table(e, f, closure)
+  t := table(0)
+  every k := key(e) & kk := do_gsubst(k, f, closure) do
+    add_to_table(t, kk, e[k])
+  every k := key(t) & t[k] = 0 do delete(t, k) # delete zeroes
+  return if tables_match(e, t) then e else t
+end
+<<*>>=
+procedure insert_condition(s, c)
+  if c ~=== 1 & not exps_eq(c, !s) then insert(s, c)
+  return s
+end
+<<*>>=
+procedure add_to_table(t, k, multiplier)
+  case type(k) of {
+    "table"   : every v := key(k) do t[v] +:= k[v] * multiplier
+    "integer" : t[1] +:= k * multiplier
+    default   : t[k] +:= multiplier
+  }
+  return t
+end
+<<*>>=
+procedure lists_match(l1, l2)
+  if n := *l1 = *l2 then
+    if l1[i := 1 to n] ~=== l2[i] then fail
+    else return l2
+  else fail
+end
+<<*>>=
+procedure sets_match(s1, s2)
+  if n := *s1 = *s2 then {
+    s := set()
+    every insert(s, expimage(!s1 | !s2))
+    if *s = n then return s1 else fail
+  } else fail
+end
+<<*>>=
+procedure tables_match(t1, t2)
+  if k := key(t1 | t2) & t1[k] ~= t2[k] then fail else return t1
+end

@@ -1,0 +1,136 @@
+<html><head><title> code.nw</title></head><body>
+<h1><a name="NWD1">Miscellaneous code-generation procedures</a></h1>
+
+<a name="NWD2">Value computation and shifting is straightforward; the only detail is</a>
+that signed values have to be masked to remove the high-order (sign) bits.
+<pre><a name="NWcod7-*-1" href="#NWD2"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD3">-&gt;</a>]</b>
+procedure <a href="#NWD2">unsignedval</a>(f, val)
+  constant(val) = 0 | return Cshift(val, &quot;left&quot;, f.lo)
+end
+procedure <a href="#NWD2">signedval</a>(f, val)
+  constant(val) = 0 | 
+  return Cshift(Cmask(val, fwidth(f)), &quot;left&quot;, f.lo)
+end
+</pre><blockquote>Defines <a href="#NWI-signedval"><code>signedval</code></a>, <a href="#NWI-unsignedval"><code>unsignedval</code></a> (links are to index).<p>
+</blockquote><p><a name="NWD3">Signed and unsigned values are stored in </a><code><a href="#NWD3">fieldval</a></code>
+<pre><a name="NWcod7-*-2" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+procedure <a href="#NWD3">init_tests</a>()
+  <a name="NWcod7-*-2-u1" href="#NWcod7-ini4-1"><i>&lt;init&gt;</i></a>
+  return
+end
+global <a href="#NWD3">fieldval</a>
+</pre><blockquote>Defines <a href="#NWI-fieldval"><code>fieldval</code></a>, <a href="#NWI-init_tests"><code>init_tests</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWcod7-ini4-1" href="#NWcod7-ini4-1"><dfn>&lt;init&gt;=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[D<a href="#NWcod7-ini4-2">-&gt;</a>]</b>
+fieldvals := table() 
+fieldvals[&quot;field&quot;] := <a href="#NWD2">unsignedval</a>; fieldvals[&quot;extended&quot;] := <a href="#NWD2">signedval</a>
+</pre><p>
+<a name="NWD4">Size testing is straightforward but tedious.</a>
+Constants, which usually come from constraints in disjuncts,
+are tested at generation time.
+Unsigned values require a single test; signed values require two
+(i.e.&nbsp;a range test).
+<pre><a name="NWcod7-*-3" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D<a href="#NWcod7-*-4">-&gt;</a>]</b>
+procedure <a href="#NWD4">unsignedtest</a>(outfile, f, value, inputs)
+  bits := fwidth(f)
+  bits &gt;= f.class.size |
+  if v := constant(value) then
+    v &lt; 2^bits | 
+    error(&quot;spec forces &quot;, f.name, &quot; = &quot;, v, &quot;, which won't fit in &quot;, bits, &quot; bits&quot;)
+  else {
+    value := eqntoC(value, inputs, 1)
+    write(outfile, <a href="#NWcod7-*-8">indent</a>(), &quot;if ((unsigned)(&quot;, value, &quot;) &gt; &quot;, <a href="#NWD6">mask</a>(bits), &quot;)\n&quot;,
+      <a href="#NWcod7-*-8">indent</a>(2), &quot;(*fail)(&quot;, 
+      image(f.name || &quot; = %d won't fit in &quot; || bits || &quot; bits&quot;), 
+      &quot;, &quot;, value, &quot;);&quot;)
+  }
+  return
+end
+procedure <a href="#NWD4">unsignedcond</a>(f, value, inputs)
+  bits := fwidth(f)
+  value := eqntoC(value, inputs, 1)
+  return &quot;((unsigned)(&quot; || value || &quot;) &lt;= &quot; || <a href="#NWD6">mask</a>(bits) || &quot;)&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-unsignedcond"><code>unsignedcond</code></a>, <a href="#NWI-unsignedtest"><code>unsignedtest</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWcod7-*-4" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD4">&lt;-</a>D<a href="#NWcod7-*-5">-&gt;</a>]</b>
+procedure <a href="#NWcod7-*-4">signedtest</a>(outfile, f, value, inputs)
+  bits := fwidth(f)
+  bits &gt;= f.class.size |
+  if v := constant(value) then
+    -(2^(bits-1)) &lt;= v &lt; 2^(bits-1) | 
+    error(&quot;spec forces &quot;, f.name, &quot; = &quot;, v, &quot;, which won't fit in &quot;, bits, &quot; signed bits&quot;)
+  else {
+    value := eqntoC(value, inputs, 1)
+    write(outfile, <a href="#NWcod7-*-8">indent</a>(), &quot;if ((int)(&quot;, value, &quot;) &lt; -&quot;, <a href="#NWD6">tworaised</a>(bits-1), &quot; ||\n&quot;,
+      <a href="#NWcod7-*-8">indent</a>(2), &quot;(int)(&quot;, value, &quot;) &gt;= &quot;, <a href="#NWD6">tworaised</a>(bits-1), &quot;)\n&quot;,
+      <a href="#NWcod7-*-8">indent</a>(2), &quot;(*fail)(&quot;, 
+      image(f.name || &quot; = %d won't fit in &quot;|| bits || &quot; signed bits&quot;), 
+      &quot;, &quot;, value, &quot;);&quot;)
+  }
+  return
+end
+procedure <a href="#NWcod7-*-4">signedcond</a>(f, value, inputs)
+  bits := fwidth(f)
+  value := eqntoC(value, inputs, 1)
+  return &quot;((int)(&quot; || value || &quot;) &gt;= -&quot; || <a href="#NWD6">tworaised</a>(bits-1) || &quot; &amp;&amp; \n&quot; ||
+          &quot;(int)(&quot; || value || &quot;) &lt; &quot; || <a href="#NWD6">tworaised</a>(bits-1) || &quot;)&quot;
+end
+</pre><blockquote>Defines <a href="#NWI-signedcond"><code>signedcond</code></a>, <a href="#NWI-signedtest"><code>signedtest</code></a> (links are to index).<p>
+</blockquote><p>
+<pre><a name="NWcod7-*-5" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWcod7-*-4">&lt;-</a>D<a href="#NWD5">-&gt;</a>]</b>
+global <a href="#NWcod7-*-5">fieldconds</a>, <a href="#NWcod7-*-5">fieldtests</a>
+</pre><blockquote>Defines <a href="#NWI-fieldconds"><code>fieldconds</code></a>, <a href="#NWI-fieldtests"><code>fieldtests</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWcod7-ini4-2" href="#NWcod7-ini4-1"><dfn>&lt;init&gt;+=</dfn></a> <b>(<a href="#NWD3">&lt;-U</a>)</b> <b>[<a href="#NWcod7-ini4-1">&lt;-</a>D]</b>
+every <a href="#NWcod7-*-5">fieldconds</a> | <a href="#NWcod7-*-5">fieldtests</a> := table()
+<a href="#NWcod7-*-5">fieldconds</a>[&quot;field&quot;] := <a href="#NWD4">unsignedcond</a>; <a href="#NWcod7-*-5">fieldconds</a>[&quot;extended&quot;] := <a href="#NWcod7-*-4">signedcond</a> 
+<a href="#NWcod7-*-5">fieldtests</a>[&quot;field&quot;] := <a href="#NWD4">unsignedtest</a>; <a href="#NWcod7-*-5">fieldtests</a>[&quot;extended&quot;] := <a href="#NWcod7-*-4">signedtest</a>
+</pre><p>
+
+<code><a name="NWD5" href="#NWD5">testcondition</a></code> generates code to test an arbitrary condition generated by the solver.
+<pre><a name="NWcod7-*-6" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWcod7-*-5">&lt;-</a>D<a href="#NWD6">-&gt;</a>]</b>
+procedure <a href="#NWD5">testcondition</a>(outfile, cond, inputs) 
+    write(outfile, <a href="#NWcod7-*-8">indent</a>(), &quot;if (!(&quot;, eqntoC(cond, inputs, 1), &quot;))\n&quot;, 
+          <a href="#NWcod7-*-8">indent</a>(2), &quot;(*fail)(\&quot;Condition &quot;, expimage(cond), &quot; not satisified.\&quot;);&quot;)
+end
+</pre><blockquote>Defines <a href="#NWI-testcondition"><code>testcondition</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD6">These functions compute the constants against which values are tested.</a>
+<pre><a name="NWcod7-*-7" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD5">&lt;-</a>D<a href="#NWcod7-*-8">-&gt;</a>]</b>
+global <a href="#NWD6">hex_prefix</a>
+procedure <a href="#NWD6">mask</a>(bits)
+  return <a href="#NWD6">hex_prefix</a> || ((0 ~= (2^(bits % 4) - 1)) | &quot;&quot;) || repl(&quot;f&quot;, bits / 4)
+end
+procedure <a href="#NWD6">tworaised</a>(bits)
+  return <a href="#NWD6">hex_prefix</a> || (2^(bits % 4)) || repl(&quot;0&quot;, bits / 4)
+end
+</pre><blockquote>Defines <a href="#NWI-hex_prefix"><code>hex_prefix</code></a>, <a href="#NWI-mask"><code>mask</code></a>, <a href="#NWI-tworaised"><code>tworaised</code></a> (links are to index).<p>
+</blockquote><pre><a name="NWcod7-*-8" href="#NWD2"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD6">&lt;-</a>D]</b>
+procedure <a href="#NWcod7-*-8">indent</a>(n)
+    initial /sindent := 2
+    return repl(&quot; &quot;, sindent + (\n | 0))
+end
+</pre><blockquote>Defines <a href="#NWI-indent"><code>indent</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD2"><i>&lt;*&gt;</i></a>: <a href="#NWD2">D1</a>, <a href="#NWD3">D2</a>, <a href="#NWD4">D3</a>, <a href="#NWcod7-*-4">D4</a>, <a href="#NWcod7-*-5">D5</a>, <a href="#NWD5">D6</a>, <a href="#NWD6">D7</a>, <a href="#NWcod7-*-8">D8</a>
+<li><a href="#NWcod7-ini4-1"><i>&lt;init&gt;</i></a>: <a href="#NWD3">U1</a>, <a href="#NWcod7-ini4-1">D2</a>, <a href="#NWcod7-ini4-2">D3</a>
+</ul>
+<ul>
+<li><a name="NWI-fieldconds" href="#NWcod7-*-5">fieldconds</a>: <a href="#NWcod7-*-5">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-fieldtests" href="#NWcod7-*-5">fieldtests</a>: <a href="#NWcod7-*-5">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-fieldval" href="#NWD3">fieldval</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-hex_prefix" href="#NWD6">hex_prefix</a>: <a href="#NWD6">D1</a>
+<li><a name="NWI-indent" href="#NWcod7-*-8">indent</a>: <a href="#NWD4">U1</a>, <a href="#NWcod7-*-4">U2</a>, <a href="#NWD5">U3</a>, <a href="#NWcod7-*-8">D4</a>
+<li><a name="NWI-init_tests" href="#NWD3">init_tests</a>: <a href="#NWD3">D1</a>
+<li><a name="NWI-mask" href="#NWD6">mask</a>: <a href="#NWD4">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-signedcond" href="#NWcod7-*-4">signedcond</a>: <a href="#NWcod7-*-4">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-signedtest" href="#NWcod7-*-4">signedtest</a>: <a href="#NWcod7-*-4">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-signedval" href="#NWD2">signedval</a>: <a href="#NWD2">D1</a>, <a href="#NWcod7-ini4-1">U2</a>
+<li><a name="NWI-testcondition" href="#NWD5">testcondition</a>: <a href="#NWD5">D1</a>
+<li><a name="NWI-tworaised" href="#NWD6">tworaised</a>: <a href="#NWcod7-*-4">U1</a>, <a href="#NWD6">D2</a>
+<li><a name="NWI-unsignedcond" href="#NWD4">unsignedcond</a>: <a href="#NWD4">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-unsignedtest" href="#NWD4">unsignedtest</a>: <a href="#NWD4">D1</a>, <a href="#NWcod7-ini4-2">U2</a>
+<li><a name="NWI-unsignedval" href="#NWD2">unsignedval</a>: <a href="#NWD2">D1</a>, <a href="#NWcod7-ini4-1">U2</a>
+</ul>
+</body></html>
+

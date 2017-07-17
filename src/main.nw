@@ -1,0 +1,911 @@
+% l2h ignore change {
+\chapter{Main program}
+<<version string>>=
+"0.5a"
+<<*>>=
+link pushtrace
+<<*>>=
+procedure usage() 
+    every write(&errout, ![
+        "Usage: tools [options] [specfile ...]",
+        "Options:",
+        <<usage lines>>
+        "`-' may be used in place of a file name to mean stdin or stdout"])
+    stop()
+end
+@
+<<cases for arguments>>=
+"-alt"        : alt := &output
+<<refman: options>>=
+\tkoption{d}{alt}{Show alternates at decision-tree leaves}
+Prints something to do with alternatives at the leaves of decision
+trees?
+I'm no longer sure\ldots
+\endtkoption
+<<usage lines>>=
+"    -ascii-dag file   write an ascii representation of matching-statement code",
+<<cases for arguments>>=
+"-ascii-dag" : ascii_dag   := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{ascii-dag \file}
+   {write an ascii representation of decision DAGs used in matching statements}
+Writes on {\file} an ASCII representation of the decision trees
+(actually DAGs) used
+to implement matching statements.
+Useful for debugging, especially performance debugging.
+\warning{Probably broken.  In any case, it should be rewritten to use
+the new prettyprinter.}
+\endtkoption
+@
+<<usage lines>>=
+"    -ascii-tree file  write an ascii representation of matchin-statement trees",
+<<cases for arguments>>=
+"-ascii-tree" : ascii_tree := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{ascii-tree \file}
+   {write an ascii representation of decision trees used to build matching DAGs}
+Writes on {\file} an ASCII representation of the decision trees before
+they are converted to DAGs.
+This option is really here only in case something goes badly wrong
+with the dagging process (or in case you're curious).
+\warning{This, too, is probably broken.}
+\endtkoption
+@
+<<usage lines>>=
+"    -asm-encoder file generate assembly-emitting encoding procedures on file.[ch]",
+<<cases for arguments>>=
+"-asm-encoder" : asmencoderfilename  := get(args)
+<<refman: options>>=
+\tkoption{E}{asm-encoder {\file}}{generate assembly-emitting encoding procedures on \file}
+Like {\tt -encoder}, but the generated encoding procedures use
+{\tt asmprintf}, {\tt asmprintfd}, and {\tt asmprintreloc} to emit
+assembly language instead of binary.
+Puts the implementation into {\tt\file.c} and puts suitable
+declarations into {\tt\file.h}.
+\endtkoption
+@
+<<usage lines>>=
+"    -asm-grammar file generate assembly-language grammar on file",
+<<cases for arguments>>=
+"-asm-grammar" : asmgrammarfilename  := get(args)
+<<refman: options>>=
+\tkoption{?}{asm-grammar {\file}}{generate assembly-language grammar on \file}
+Writes an EBNF grammar to the specified \file.
+Semantic actions call encoding procedures either direct or indirect
+according to whether the \opt{indirect} option is used.
+In the current version of the toolkit, the grammar written is not the
+input of any known parser generator---it is for illustrative purposes only.
+\endtkoption
+@
+<<usage lines>>=
+"    -byteorder O      use order O (one of [blm]) to emit words",
+<<cases for arguments>>=
+"-byteorder"  : emittername := "emit" || get(args)
+<<refman: options>>=
+\tkoption{E}{byteorder \optarg{string}}{choose emission procedure}
+This misleadingly named option actually determines the name of the
+function that the encoding procedures use to emit tokens 
+(\texttt{emit}\optarg{string}).
+Since the toolkit library provides \texttt{emitb}, \texttt{emitl}, and
+\texttt{emitm} procedures, which emit tokens using big-endian,
+little-endian, or machine-dependent byte orders, the values
+\texttt{b}, \texttt{l}, and \texttt{m} are good choices.
+My favorite trick, however, is to use \texttt{-byteorder X}, then use
+the C compiler to pick a byte order later on, for example, by
+compiling with {\tt cc -DemitX=emitfast}.
+This trick avoids running the generator multiple times, which is good,
+because running the generator can be expensive.
+\endtkoption
+@
+<<usage lines>>=
+"    -c                generate C code [default]",
+<<cases for arguments>>=
+"-c" : { Generate_C(); interface_extension := ".h"; implementation_extension := ".c" }
+<<refman: options>>=
+\tkoption{DE}{c}{generate C code}%
+Tells the generator to generate C~code (the only option),
+or tells the translator that the code emitted for the {\tt -decoder}
+file should be C code.
+\endtkoption
+@
+<<usage lines>>=
+"    -checker file    generate a checker on file",
+<<cases for arguments>>=
+"-checker"    :  { checkerfilename := get(args) }
+<<refman: options>>=
+\tkoption{A}{checker \file}{generate a checker on \file}%
+Writes the source for a checker in {\file}.
+For each instruction in a specification,
+the checker program emits assembly code and binary code in ASCII
+into an assembly file. The resulting file is then assembled
+and disassembled. 
+The disassembled output should contain pairs of matching instructions.
+\endtkoption
+@
+<<usage lines>>=
+"    -count            count invocations of encoding procedures",
+<<cases for arguments>>=
+"-count"      : gen_counters := 1
+<<refman: options>>=
+\tkoption{E}{count}{Count invocations of encoding procedures}
+Tells the generator to include code in encoding procedures that
+counts the invocations of such procedures.
+This is useful for determining the static frequency of an instruction
+in a program, e.g., how many loads are generated.
+<<refman: counter functions>>
+\endtkoption
+@
+<<usage lines>>=
+"    -data             encoding procedures return data",
+<<cases for arguments>>=
+"-data"      : encode_as_data := 1
+<<refman: options>>=
+\tkoption{E}{data}{Encoding procedures return data}
+Have encoding procedures return data representing instructions at an
+abstract level.  
+This is not the default; the default is for them to emit binary as a
+side effect.
+\endtkoption
+<<*>>=
+global encode_as_data
+@
+\change{17}
+<<usage lines>>=
+"    -debug-bal file   extra debugging info for balancer",
+<<cases for arguments>>=
+"-debug-bal" : baldebug := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{debug-bal \file}
+  {write extra debugging information about the balancer}
+This option causes more information about the operation of the balancer to
+be written to \file, as an aid to debugging unsolvable sets of equations.
+\endtkoption
+<<*>>=
+global baldebug
+@
+<<usage lines>>=
+"    -debug-checker file  write debugging info about checker",
+<<cases for arguments>>=
+"-debug-checker" : cdebug := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{debug-checker \file}
+  {write information about generating checker inputs}
+To produce a checker program, the toolkit attempts to generate
+test inputs that will satisfy every branch of every constructor. 
+This option writes information about choosing test values onto \file.
+\endtkoption
+<<usage lines>>=
+"    -debug-heur file  write debugging info about heuristic scores",
+<<cases for arguments>>=
+"-debug-heur" : hdebug := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{debug-heur \file}
+  {write information about heuristic scores for tree-building}
+When building the decision tree, the toolkit uses about a half dozen heuristics 
+to choose the field to test next.
+Each heuristic assigns a score to each field.
+This option writes information about heuristic scoring onto \file.
+\endtkoption
+@
+<<usage lines>>=
+"    -debug-match file write debugging info about matching statements",
+<<cases for arguments>>=
+"-debug-match" : mdebug := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{debug-match \file}
+  {write other information about building matching statements}
+During tree building, writes information about building matching statements onto \file.
+\endtkoption
+@
+<<usage lines>>=
+"    -debug-solver     turn on solver debugging",
+<<cases for arguments>>=
+"-debug-solver" : debug_on()
+<<refman: options>>=
+\tkoption{V}{debug-solver}{turn on solver debugging (to {\tt stderr})}
+Makes the equation solver (and a few other parts of the toolkit) print
+lots of debugging information on standard error.
+\endtkoption
+@
+<<usage lines>>=
+"    -debug-split file write debugging info when splitting tree nodes",
+<<cases for arguments>>=
+"-debug-split" : sdebug := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{debug-split \file}{write debugging info when splitting tree nodes}
+During tree building, writes information about splitting internal nodes onto \file.
+\endtkoption
+@
+<<usage lines>>=
+"    -decoder file     from matcher, generate decoder on file",
+<<cases for arguments>>=
+"-decoder" : decoderout := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{D}{decoder {\file}}
+    {from info in \texttt{-matcher} file, generate decoder on \file}
+<<refman: doc for -matcher and -decoder>>
+\endtkoption
+<<refman: doc for -matcher and -decoder>>=
+Invoke the toolkit translator, which translates embedding matching
+statements from the {\tt -matcher} file and writes the results on the
+{\tt -decoder} file.
+To use the translator, both {\tt -matcher} and {\tt -decoder} must be
+given exactly once.
+@
+<<usage lines>>=
+"    -dis file         generate disassembly code on file",
+<<cases for arguments>>=
+"-dis"        : disassemblyfilename  := get(args)
+<<refman: options>>=
+\tkoption{D}{dis {\file}}{generate disassembly code on \file}
+Generate code for disassembly on \file.
+In flux right now.
+\endtkoption
+@
+<<usage lines>>=
+"    -dot file         write dot(1) commands showing matching statements",
+<<cases for arguments>>=
+"-dot" : dotfile   := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{dot {\file}}{write {\tt dot} commands showing matching statements}
+Creates output for the {\tt dot} graph-drawing program, which can be
+used to create a graphical representation of the decision tree
+(actually a DAG) used to implement matching statements.
+The output is written to {\file}.
+\warning{This option probably doesn't work.
+It certainly doesn't understand multiple branches with identical
+patterns but different conditions.}
+\endtkoption
+@
+<<usage lines>>=
+"    -emit-bits n      unit of emission is n bits (default 8)",
+<<cases for arguments>>=
+"-emit-bits"   : emit_unit_bits := integer(get(args)) | stop("-emitbits not integer")
+<<refman: options>>=
+\tkoption{E}{emit-bits \optarg{n}}
+  {unit of emission is \optarg{n} bits}
+The toolkit's generator works with bits, but it is more convenient for
+the toolkit's library to work with larger units.
+In particular, the second argument to the {\tt emit} functions tells
+the library how wide the emitted token is, in units of \optarg{n} bits.
+The default is~8, which means that the {\tt emit} functions work with
+bytes, since these are how the library distributed with the toolkit
+works.
+The width of every emitted token must be a multiple of~\optarg{n} or the
+generator will complain.
+\endtkoption
+@
+<<usage lines>>=
+"    -encoder file     generate encoding procedures on file.[ch]",
+<<cases for arguments>>=
+"-encoder" : encoderfilename  := get(args)
+<<refman: options>>=
+\tkoption{E}{encoder {\file}}{generate encoding procedures on {\tt\file.[ch]}}
+Invokes the generator, which writes encoding procedures into
+{\tt\file.c} and puts suitable
+declarations into {\tt\file.h}.
+\endtkoption
+@
+<<usage lines>>=
+"    -expand-spec file writes an expanded version of the input specification",
+<<cases for arguments>>=
+"-expand-spec" : spec  := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{A}{expand-spec {\file}}{write expanded specification on \file}
+Rewrites the specification onto {\file}, but with all patterns in
+normal form.  Can be useful for seeing the meanings of complex
+opcodes.
+\warning{
+This option predates the introduction of constructors, which it does
+not treat, and it may break horribly.  
+Pester us if you want it brought up to date, so that it emits a
+complete specification in some canonical form.}
+\endtkoption
+@
+<<usage lines>>=
+"    -fieldnames file  write arrays of field names on file.[ch]",
+<<cases for arguments>>=
+"-fieldnames" : fieldnamesbase := get(args)
+<<refman: options>>=
+\tkoption{A}{fieldnames \file}
+  {write arrays of field names on \file}
+For each field in the specification, write to {\tt\file.c} an array of string
+literals representing the names of values of that field.
+Write declarations to {\tt\file.h}.
+Such arrays may be useful in writing disassemblers.
+(Will use extensions {\tt.i3} and {\tt.m3} if {\tt-m3} is given.)
+\endtkoption
+@
+<<usage lines>>=
+"    -foldemit         fold constants in calls to emit functions",
+<<cases for arguments>>=
+"-foldemit"   : simplify_emits := 1
+<<refman: options>>=
+\tkoption{E}{foldemit}{fold constants in calls to emit procedure}
+Normally, the toolkit refrains from folding constants when generating
+the code that emits a token.
+This behavior makes it easy to examine the generated code to
+double-check that it really looks right.
+The {\tt -foldemit} option tells the toolkit to fold constants aggressively.
+Its only real use is to make the generated code smaller, because 
+modern compilers fold constants themselves, don't they?
+\endtkoption
+@
+<<usage lines>>=
+"    -icon             generate Icon code (for wizards only)",
+<<cases for arguments>>=
+"-icon"         : { Generate_Icon(); 
+                  interface_extension := ".bogus.icn"; implementation_extension := ".icn" }
+<<refman: options>>=
+\tkoption{D}{icon}{generate Icon code}
+Tells the translator to attempt to generate encoding procedures
+written in Icon.  Not really supported.
+\endtkoption
+@
+<<usage lines>>=
+"    -icon-dag  file   write Icon representation of matching-statement dags",
+<<cases for arguments>>=
+"-icon-dag" : icon_dag := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{icon-dag  \file}
+   {write an Icon representation of matching DAGs}
+Writes on {\file} an Icon representation of the DAGs used to 
+implement matching statements.
+This code can be used to create a CGI program that lets you browse trees
+with Netscape.
+\endtkoption
+@
+<<usage lines>>=
+"    -icon-tree file   write Icon representation of matching-statement trees",
+<<cases for arguments>>=
+"-icon-tree" : icon_tree := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{icon-tree \file}
+   {write an Icon representation of decision trees used to build matching DAGs}
+Writes on {\file} an Icon representation of the decision trees before
+they are converted to DAGs.
+Most people will use {\tt -icon-dag} instead.
+\endtkoption
+@
+<<usage lines>>=
+"    -impossible       force errors to stop with stack trace",
+<<cases for arguments>>=
+"-impossible" : error := stop := impossible
+<<refman: options>>=
+\tkoption{V}{impossible}{make errors force stop with stack trace}
+Arranges for all error messages to be treated as ``impossible,'' which 
+causes ``this can't happen'' to be printed and a stack trace to be
+generated.
+It is intended primarily for debugging the toolkit.
+\endtkoption
+@
+<<usage lines>>=
+"    -indirect name[:type] generated encoding procs called indirect through name",
+<<cases for arguments>>=
+"-indirect"   : get(args) ? 
+                  { indirectname := tab(upto(':') | 0)
+                    indirecttype := if =":" then tab(0) else indirectname
+                  }
+<<refman: options>>=
+\setbox0=\hbox{\optarg{name}\optional{\tt:\optarg{type}}}%
+\tkoption{E}{indirect \box0}{generated encoding procs called indirect through \optarg{name}}
+Normally, the toolkit generates encoding procedures that are externally visible,
+that is, they occupy top-level name space.
+The {\tt -indirect} option tells the toolkit to make the procedures local to a 
+compilation unit and to provide indirect access to them through a structure
+holding procedure pointers.
+\optarg{name} gives the name of the structure, \optarg{type} its tag.
+(If \optarg{type} is omitted, we reuse \optarg{name}.)
+Useful for avoiding name clashes or for having multiple sets of encoding
+procedures in a single application.
+\endtkoption
+@
+<<usage lines>>=
+"    -instype name     name of abstract instruction datatype",
+<<cases for arguments>>=
+"-instype"   : instructionctype.name := get(args)
+<<refman: options>>=
+\tkoption{E}{instype \optarg{name}}{Use \optarg{name} to refer to instructions}
+When return instructions as abstract data (instead of emitting bits)
+use \optarg{name} to refer to instructions.
+\endtkoption
+@
+<<usage lines>>=
+"    -late-const       include constants in closure functions (default)",
+<<cases for arguments>>=
+"-late-const" : lateconst := 1
+<<refman: options>>=
+\tkoption{E}{late-const}{use constants in closure functions (default)}
+A heuristic that attempts to make closures smaller at the risk of
+creating more closure functions, by putting literal constants in the
+function bodies instead of the closures.  
+This is the default.
+\endtkoption
+<<initialize globals>>=
+lateconst := 1
+@
+<<usage lines>>=
+"    -late-none        include *no* constants in closure functions",
+<<cases for arguments>>=
+"-late-none" : lateconst := latezero := &null
+<<refman: options>>=
+\tkoption{E}{late-none}{include no constants in closure functions}
+Do not apply either the \tkopt{late-const} or \tkopt{late-zero}
+heuristics. 
+ Makes closures larger but may create fewer closure functions.
+You probably don't want this.
+\endtkoption
+@
+<<usage lines>>=
+"    -late-zero        include zero in closure functions",
+<<cases for arguments>>=
+"-late-zero" : latezero := 1
+<<refman: options>>=
+\tkoption{E}{late-zero}{use zeroes in closure functions}
+A heuristic that attempts to make closures smaller at the risk of
+creating more closure functions, by putting literal zeroes in the
+function bodies instead of the closures.
+\endtkoption
+@
+<<usage lines>>=
+"    -lc-cons-names    use all lower case for constructor names",
+<<cases for arguments>>=
+"-lc-cons-names" : lowercons := 1
+<<refman: options>>=
+\tkoption{E}{lc-cons-names}{use all lower case for constructor names}
+Ensures that only lower-case letters are used in the names of
+generated encoding procedures.
+\endtkoption
+@
+<<usage lines>>=
+"    -lc-pat-names     map pattern names to lower case in code",
+<<cases for arguments>>=
+"-lc-pat-names" : lc_pat_names := 1
+<<refman: options>>=
+\tkoption{D}{lc-pat-names}{force pattern names to lower case}
+Pattern names are accessible using the \lit[\term{name}\lit] syntax in matching
+statements; this option forces all such names to use lower-case
+letters only.
+\endtkoption
+@
+<<usage lines>>=
+"    -ledger           tell dot(1) to use ledger paper with -dot",
+<<cases for arguments>>=
+"-ledger"     : {ledger := 1; pagesize := "11,17"}
+<<refman: options>>=
+\tkoption{d}{ledger}{Use ledger paper with {\tt -dot}}
+Insert a PostScript incantation that might make the {\tt -dot} option
+use ledger paper instead of regular paper.
+\warning{Almost certainly broken.}
+\endtkoption
+@
+<<usage lines>>=
+"    -matcher file     transform pattern-matching statements in file",
+<<cases for arguments>>=
+"-matcher"    : matcher := openfile(get(args),"r")
+<<refman: options>>=
+\tkoption{D}{matcher \file}
+  {transform pattern-matching statements in \file}
+<<refman: doc for -matcher and -decoder>>
+\endtkoption
+@
+<<usage lines>>=
+"    -max-decimal n    values larger than n will be printed in hex",
+<<cases for arguments>>=
+"-max-decimal" : max_decimal := 0 <= get(args) | 
+		   error("-max-decimal value must be nonnegative integer")
+<<refman: options>>=
+\tkoption{DE}{max-decimal \optarg{n}}
+	{values larger than \optarg{n} will be printed in hex}
+When generating code, 
+the toolkit will use hexadecimal notation for integer literals larger than 
+\optarg{n}.
+For smaller literals, it uses decimal notation.
+\optarg{n} must be nonnegative, so forcibly all negative integer literals are written
+in decimal notation.
+Default value is $2^{31}-1$.
+\endtkoption
+<<initialize globals>>=
+max_decimal := 2^31 - 1
+<<*>>=
+global max_decimal
+@
+<<usage lines>>=
+"    -m3               generate Modula-3 code",
+<<cases for arguments>>=
+"-m3"         : { Generate_M3(); 
+                  interface_extension := ".i3"; implementation_extension := ".m3" }
+<<refman: options>>=
+\tkoption{D}{m3}{generate Modula-3 code}
+Tells the translator that the code emitted for the {\tt -decoder}
+file should be Modula-3 code.
+(The toolkit generator and library do not yet support Modula-3.)
+\endtkoption
+@
+<<usage lines>>=
+"    -no-asm-ws        remove whitespace from assembly syntax",
+<<cases for arguments>>=
+"-no-asm-ws" : no_asm_ws := 1
+<<refman: options>>=
+\tkoption{E}{no-asm-ws}{remove whitespace from assembly syntax}
+Removes all whitespace from between operands in assembly-language syntax.
+This might be a cheap way to get compatibility with other tools.
+\endtkoption
+<<*>>=
+global no_asm_ws
+@
+<<usage lines>>=
+"    -no-pp            don't prettyprint output; use $ escapes",
+<<cases for arguments>>=
+"-no-pp" : { PPxwrite := PPwrite; PPxwrites := PPwrites }
+<<refman: options>>=
+\tkoption{E}{no-pp}{don't prettyprint output; use \$\ escapes}
+This turns of the toolkit's internal prettyprinter; instead, it writes
+output that has a bunch of \texttt{\char`\$} escapes indicating how it should
+be printed.
+This is useful only if you intend to run the output through another prettyprinter.
+\endtkoption
+<<*>>=
+global no_asm_ws
+@
+%%<usage lines>>=
+%%"    -no-fits-cond     don't use fits conditions to decide branches",
+%%<cases for arguments>>=
+%%"-no-fits-cond" : early_branch := old_early_branch
+%%<refman: options>>=
+%%\tkoption{E}{no-fits-cond}{don't use fits conditions to decide branches}
+%%As of version 0.5, a generated encoding procedure skips
+%%a branch if the values to be encoded
+%%won't fit in the fields to which they are bound.
+%%This option reverts to the old behavior, in which only equations are used to choose 
+%%branches, and the fields had just better fit or the encode will be aborted.
+%%Not recommended.
+%%\endtkoption
+@
+<<usage lines>>=
+"    -no-reloc         make all relocatable addresses integers",
+<<cases for arguments>>=
+"-no-reloc" : no_reloc := 1
+<<refman: options>>=
+\tkoption{DE}{no-reloc}{make all relocatable addresses integers}
+Forces all relocatable operands to be integers.
+Useful when generating encoding procedures to be called from a disassembler.
+\endtkoption
+<<*>>=
+global no_reloc
+@
+<<usage lines>>=
+"    -nowarn           no warnings",
+<<cases for arguments>>=
+"-nowarn" : nowarn := 1
+<<refman: options>>=
+\tkoption{V}{nowarn}{suppress warnings (not recommended)}
+Suppresses warnings.
+It's not a good idea to use this option routinely.
+If a warning annoys you, let us know---maybe we can make it appear only when 
+{\tt-verbose}.
+\endtkoption
+@
+<<usage lines>>=
+"    -old-closures     use the old closure technique",
+<<cases for arguments>>=
+"-old-closures" : emit_closure_functions := emit_original_closure_functions
+<<refman: options>>=
+\tkoption{?}{old-closures}{use the old closure technique (not recommended)}
+Uses the old, fast technique that produces way too many closure functions.
+\endtkoption
+@
+<<usage lines>>=
+"    -postfix          use postfix assembly-language syntax",
+<<cases for arguments>>=
+"-postfix" : postfix := 1
+<<refman: options>>=
+\tkoption{ED}{postfix}{use postfix assembly-language syntax}
+For disassembly or for assembly-language encoding, put opcode
+\emph{after} operands.
+\endtkoption
+<<*>>=
+global postfix
+@
+<<usage lines>>=
+"    -symdis file      put symbolic disassembler on file.[mh]",
+<<cases for arguments>>=
+"-symdis" : symdisfilename := get(args)
+<<refman: options>>=
+\tkoption{E}{symdis \file}{put symbolic disassmbler on \file.m and \file.h}
+To  {\tt\file.h}, write type declarations of a symbolic representation 
+of instructions. 
+To {\tt\file.c}, write a disassembler that returns that representation.
+\endtkoption
+<<*>>=
+global symdisfilename
+@
+<<usage lines>>=
+"    -token-closures  use one closure per token",
+<<cases for arguments>>=
+"-token-closures" : emit_closure_functions := emit_tokenized_closure_functions
+<<refman: options>>=
+\tkoption{?}{token-closures}{use one closure per token (recommended)}
+Emit one closure function per token instead of one per instruction,
+which should further reduce counts of closure functions.
+\endtkoption
+@
+<<usage lines>>=
+"    -test    pay no attention to the man behind the curtain",
+<<cases for arguments>>=
+"-test" : {
+write("Uncommented ", Cuncomment("/* foo at 0 */"))
+######    pp := PPnew(&output)
+######    t := constype("Outer", set(), 1, 1)
+######    t2 := constype("Inner", set(), 1, 1)
+######    c := constructor("mkOut", "mkOut", ["in"], t, [epsilon()], [table()], 1)
+######    c2 := constructor("mkIn", "mkIn", ["fish"], t2, [epsilon()], [table()], 1)
+######    t.members := [c]
+######    t2.members := [c2]
+######    b := Ebinding_instance("xxx", t, table())
+######  y2 := Einstance_tagged(Einstance_input(b, c, "in"), c2, 99)
+######    PPxwrite(pp, ppexpimage(y2), " =>$t$c ", "???", "$b")
+######    pushtrace("TEST")
+######    x2 := eliminate_instances_f(y2)
+######  #  x1 := eliminate_instances_f(y1 := Einstance_input(Einstance_input(b, c, "in"), c2, "fish"))
+######    poptrace()
+######  #  PPxwrite(pp, ppexpimage(y1), " =>$t$c ", ppexpimage(x1), "$b")
+######    PPxwrite(pp, ppexpimage(y2), " =>$t$c ", ppexpimage(x2), "$b")
+}
+@
+<<usage lines>>=
+"    -tryall           try all heuristics on every field, node (for debugging)",
+<<cases for arguments>>=
+"-tryall"     : tryall := 1
+<<refman: options>>=
+\tkoption{d}{tryall}{try all heuristics on every field in tree}
+Show what split would be given by each heuristic.
+Useful only with the option {\tt -debug-heur}.
+\endtkoption
+@
+<<usage lines>>=
+"    -verbose          extra warnings & informatory messages",
+<<cases for arguments>>=
+"-verbose"    : verbose := info_msg
+<<refman: options>>=
+\tkoption{V}{verbose}{print extra warnings and information}
+Make the toolkit print extra warnings and informational messages.
+We've tried to include enough stuff so that you can watch the toolkit's 
+progress through a big specification, even on a slow computer.
+\endtkoption
+<<*>>=
+procedure info_msg(L[])
+  write ! ([&errout, image(filename), ", line ", lineno, ": Info -- "] ||| L)
+end
+@
+<<*>>=
+global cdebug, mdebug, sdebug, hdebug, tryall, indirectname, indirecttype
+global lc_pat_names, nowarn, emptyset, emittername, pretty
+global lowercons, pc_unit_bits, emit_unit_bits, simplify_emits, gen_counters
+global fieldnamesbase, verbose, version
+global interface_extension, implementation_extension
+global emit_closure_functions, latezero, lateconst
+global asmgrammarfilename, disassemblyfilename
+<<initialize globals>>=
+dotfile := ascii_dag := spec := ascii_tree := decoderout :=
+  fulltree := sdebug := hdebug := encoderfilename := asmencoderfilename := 
+  ledger := tryall := asmgrammarfilename := disassemblyfilename
+  lc_pat_names := alt := matcher := gen_counters := lowercons := 
+  &null 
+<<initialize globals>>=
+emittername := "emitm"
+emptyset := set()
+verbose := nop
+filename := "-"
+pagesize := "8.5,11"
+fetchtab := table()
+pc_unit_bits := 8
+emit_unit_bits := 8
+fresh_variables := set()
+pretty := prettyC
+interface_extension := ".h"
+implementation_extension := ".c"
+debug := debugs := nop 
+emit_closure_functions := emit_optimized_closure_functions
+@
+It's a hack, but I use the global variable [[emitterstyle]] to determine whether
+code for [[Semit]] and [[Stoken]] should use a {\em direct}
+call to the emitter named by [[emittername]],
+or whether it should use a style appropriate to a {\em closure}.
+<<*>>=
+global emitterstyle # closure or direct, controls emission
+<<initialize globals>>=
+emitterstyle := "direct"
+@ 
+Used to make sure the program counter is unique, so that [[pc - pc]]
+is zero always.
+<<*>>=
+global the_global_pc
+<<initialize globals>>=
+the_global_pc := Epc()
+@
+I have to split up [[main]], otherwise I get too many definitions which leads to
+a line more than 3000 characters wide, and \TeX\ dies.
+<<*>>=
+global command_line, header_lines
+record Gcomment(s)
+
+procedure main(args)
+    <<initialize globals>>
+    version := <<version string>>
+
+    command_line := "tools"
+    every command_line ||:= " " || !args
+    header_lines := [
+      Gcomment("Generated by the New Jersey Machine-Code Toolkit, version " ||version),
+      Gcomment("command line: " || command_line)]
+
+<<*>>=
+    Generate_C()	# default
+    instructionctype := constype("instruction", set())
+
+    while args[1][1:2] == "-" & *args[1] > 1 do
+        case a := get(args) of {
+            <<cases for arguments>>
+            default    : usage()
+       }
+
+    verbose("NJ Machine-Code Toolkit, version ", version)
+
+    init_parser()
+    init_tests()        # see code.nw
+
+<<*>>=
+    if /quiet then write(&errout, "Parsing...")
+    if *args > 0 then
+        every consume(openfile(filename := !args,"r"))
+    else
+        consume(&input)
+
+    if /quiet then write(&errout, "Done parsing.")
+
+<<*>>=
+    if \no_asm_ws then every strip_asm_whitespace(kept_constructors())
+    emit_encoding(\encoderfilename)
+    emit_assembly(\asmencoderfilename)
+    emit_symbolic_disassembler(\symdisfilename)
+    emit_asm_grammar(\asmgrammarfilename)
+    emit_disassembler(\disassemblyfilename)
+    emit_fieldnames(\fieldnamesbase)
+    emit_checker(\checkerfilename)
+    if \ledger then { <<write PostScript for ledger paper>> }
+
+    outspec(\spec)
+    if \matcher then {<<handle matching statements>>}
+end
+<<handle matching statements>>=
+codelex(matcher)
+P_CodeFile()
+<<if tokens are left over, complain>>
+x := super_simplify(genheader(codeheader))
+PPxwrite(PPnew(\decoderout), pretty(x))
+every resolve_case_patterns(!matching_stmts)
+<<emit header for Icon trees>>
+every t := tree(cs := !matching_stmts) do { <<manipulate decision tree [[t]]>> }
+<<emit trailer for Icon trees>>
+<<*>>=
+global showpnf
+<<*>>=
+global real_lex
+procedure noisylex(k)
+  local x
+  x := real_lex(k)
+  write(&errout, "Lexed ", image(x), " (", image(tval), ")")
+  return x
+end
+
+procedure consume(input)
+    real_lex := lex
+    # lex := noisylex
+    lex(input)
+    pushtrace("PARSE")
+    P_Spec()
+    poptrace()
+    <<if tokens are left over, complain>>
+    return
+end
+<<if tokens are left over, complain>>=
+while (token ~== EOF) do {
+    error("Leftover token ", token, " = ", image(tval))
+    lex()
+}
+<<write PostScript for ledger paper>>=
+write(\dotfile,"%!   PostScript")
+write(\dotfile,"/setpapertraybyname {")
+write(\dotfile,"  { /trayname exch def statusdict trayname known {")
+write(\dotfile,"    statusdict trayname get exec } if} stopped")
+write(\dotfile,"    { handleerror } if}bind def")
+write(\dotfile,"/ledgertray setpapertraybyname")
+<<manipulate decision tree [[t]]>>=
+checktree(t, cs)
+outtree(\ascii_tree, t)
+icontree(PPnew(\icon_tree), t)
+if \dotfile | \ascii_dag | \icon_dag | \decoderout | \alt then {
+    d := tree2dag(t)
+    outtree(\ascii_dag, d)
+    icontree(PPnew(\icon_dag), d)
+    dotouttree(\dotfile, d)
+    PPxwrite(PPnew(\decoderout), pretty(super_simplify(gencase(cs, d))))
+    printalternates(\alt, d)
+    write(\alt,"\n", repl("=", 50))
+}
+@ 
+<<emit header for Icon trees>>=
+every write(\icon_tree | \icon_dag, 
+  "procedure tree(n)" |
+  "  static trees" |
+  "  initial {" |
+  "    trees := []")
+<<emit trailer for Icon trees>>=
+every write(\icon_tree | \icon_dag,
+  "  }" |
+  "  return trees[n]" |
+  "end")
+<<*>>=
+record alternator(constraints, thennode, elsenode)
+
+procedure alternates(n)
+    local alt
+    if *n.children = 2 then {
+        every i := 1 to 2 do
+            if alt := alternates(n.children[i].node) &
+               n.children[3-i].node === alt.elsenode then
+                   suspend alternator(alt.constraints|||
+                       [constraint(n.field, n.children[i].lo, n.children[i].hi)],
+                       alt.thennode, alt.elsenode)
+        every i := 1 to 2 do
+            suspend alternator(
+                       [constraint(n.field, n.children[i].lo, n.children[i].hi)],
+                       n.children[i].node, n.children[3-i].node)
+    }
+end
+<<*>>=
+procedure printalternates(file, n)
+    local alt
+    if alt := alternates(n) then {
+        write(file)
+        writes(file, "if (")
+        l := copy(alt.constraints)
+        while genconstraint(file, get(l)) do writes(file, " && ")
+        write(file, "1) {")
+        writes(file, "    /*")
+        writes(file, \alt.thennode.cs.arms[1].original.pattern.name | 
+                        "[" || alt.thennode.cs.arms[1].original.line || "]")
+        write(file, " */")
+        write(file, "} else {")
+        writes(file, "    /*")
+        writes(file, \alt.elsenode.cs.arms[1].original.pattern.name | 
+                        "[" || alt.elsenode.cs.arms[1].original.line || "]")
+        write(file, " */")
+        write(file, "} else assert(0);")
+    } else
+        every printalternates(file, (!n.children).node)
+end    
+<<*>>=
+procedure genconstraint(file, c)
+    r := sort(c.lo ++ c.hi)
+    writes(file, "(", get(r), "<=", c.field.name, "<", get(r))
+    while writes(file, " || ", get(r), "<=", c.field.name, "<", get(r))
+    writes(file, ")")
+    return
+end
+@ 
+[[openfile]] makes it possible to open standard input or output using
+the file name ``{\tt -}.''
+<<*>>=
+procedure openfile(name, mode) 
+    /mode := "r"
+    if name == "-" then
+       case mode of {
+          "r" : return &input
+          "w" : return &output
+          default : stop("bogus file mode: ", mode)
+       }
+    else 
+      return open(name, mode) | stop("Can't open file ", name, " for ", mode)
+end
