@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: tree.nw,v 1.16 1998/11/28 01:15:42 nr Exp $
+% $Id: tree.nw,v 1.17 2000/08/04 23:07:20 nr Exp $
 % l2h ignore change {
 \chapter{Generating decision trees}
 
@@ -38,7 +38,7 @@ datatype 'code node
   | LEAF of { arms : 'code Match.arm list 
             , name : string option
 	    }
-and 'code edge = EDGE of {node : 'code node, range : Field.range }
+and 'code edge = EDGE of {node : 'code node, range : Field.vrange }
     (* node pointed to and range of field values for this edge *)
 @ 
 To create a decision tree, I begin with a node containing the full,
@@ -259,13 +259,13 @@ can be any match, I create and add a new child node.
 <<function [[applyConstraint]]>>
 fun splitAt f =
   let fun foldPat f (M.ARM (pattern, _), z) = f(pattern, z)
-      val cuts = IntSet.addList(IntSet.empty, [0, Word.toInt (Field.fmax (#1 f))])
+      val cuts = TWSet.addList(TWSet.empty, [TW.zero, Field.fmax (#1 f)])
       val cuts = foldl (foldPat (addIntervals f)) cuts arms
       val _ = <<if debugging, write about splitting this node>>
       fun addEdge(lo::hi::rest, edges') =
 	    addEdge(hi::rest, ({lo=lo, hi=hi}, applyConstraint(f, lo, hi)) :: edges')
 	| addEdge(_, edges') = rev edges'	
-  in  addEdge(IntSet.listItems cuts, [])
+  in  addEdge(TWSet.listItems cuts, [])
       before sdebug (fn _ => [pp.te "Done splitting.", pp.nl])
   end
 @
@@ -313,7 +313,7 @@ fun pmatch(P.PAT (pname, ds), f, lo, hi) =
       and trimConstraints cs = trimCs(cs, [])
       and trimCs((head as (f', {lo=lo', hi=hi'}))::tail, newcs) =
             if f <> f' then trimCs(tail, head::newcs)
-	    else if lo' <= lo andalso hi <= hi' then trimCs(tail, newcs)
+	    else if lo' |<=| lo andalso hi |<=| hi' then trimCs(tail, newcs)
 	    else NONE before (<<check bounds>>)
         | trimCs([], newcs) = SOME newcs
       val ds = foldr foldDis [] ds
@@ -321,7 +321,7 @@ fun pmatch(P.PAT (pname, ds), f, lo, hi) =
   in  if null ds then NONE else SOME (P.PAT (pname, ds))
   end
 <<check bounds>>=
-( hi' <= lo orelse hi <= lo' orelse impossible "bad interval"
+( hi' |<=| lo orelse hi |<=| lo' orelse impossible "bad interval"
 ; ()
 )
 @
@@ -440,7 +440,7 @@ need to be considered.
 fun addIntervals f (P.PAT (_, ds), cuts) =
   let fun dis(P.DIS(_, _, (constraints, _, _)), cuts) = foldl con cuts constraints
       and con((f', {lo, hi}), cuts) =
-	    if f' = f then IntSet.add(IntSet.add(cuts, lo), hi) else cuts
+	    if f' = f then TWSet.add(TWSet.add(cuts, lo), hi) else cuts
   in  foldl dis cuts ds
   end
 @
@@ -543,12 +543,12 @@ fun showUnmatched node (M.ARM (P.PAT(_, ds), {patRegion, original={smap,...}, ..
 	       ArmSet.foldr coverMsg [] (foldr (coveringArms node) ArmSet.empty ds)))
   end
 <<constraint invention and checking>>=     
-fun intervalsIntersect ({lo=lo1:int, hi=hi1:int}, {lo=lo2, hi=hi2}) =
-  not (hi1 <= lo2 orelse hi2 <= lo1)
+fun intervalsIntersect ({lo=lo1, hi=hi1}, {lo=lo2, hi=hi2}) =
+  not (hi1 |<=| lo2 orelse hi2 |<=| lo1)
 fun findOrInventConstraint(f, P.DIS(name, conds, (constraints, _, _))) =
   case List.find (fn (f', r) => f = f') constraints
     of SOME (f, range) => range
-     | NONE => {lo=0, hi=Word.toInt (Field.afmax f)}
+     | NONE => {lo=TW.fromInt 0, hi=Field.afmax f}
 @ 
 <<tree.sml>>=
 functor TreeFun (structure Match : MATCH
@@ -563,6 +563,8 @@ functor TreeFun (structure Match : MATCH
   structure Exp = A.Exp
   structure AFSet = AbsoluteFieldSet
   structure AFMap = AbsoluteFieldMap
+  structure TW = TargetWord
+  open TWInfix; infix 4 |<=| |<| |>=| |>|
   type 'a match = 'a M.match
   <<tree node types>>
   val impossible = ErrorMsg.impossible
@@ -591,11 +593,12 @@ structure Img = struct
     in  pp.li o m
     end
   fun int n = pp.te (Int.toString n)
+  fun tw  n = pp.te (TW.toString  n)
   fun field (f : Field.field, n) = 
     pp.te (String.concat ["{", #name f, " at ", Int.toString n, "}"])
   fun constraint (f, {lo, hi}) = 
-    if lo + 1 = hi then pp.li [field f, pp.te " == ", int lo]
-    else pp.li [int lo, pp.te " <= ", field f, pp.te " < ", int hi]
+    if TW.+(lo, TW.one) = hi then pp.li [field f, pp.te " == ", tw lo]
+    else pp.li [tw lo, pp.te " <= ", field f, pp.te " < ", tw hi]
   fun disjunct (P.DIS (name, conds, ([], _, _))) = pp.te "<ELSE>"
     | disjunct (P.DIS (name, conds, (ccs, _, _))) = 
          pp.li [pp.$ "${$t", merge "&" (map constraint ccs), pp.$ "$b$}"]

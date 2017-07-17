@@ -69,7 +69,7 @@ fun cons2map l =
 We want to be able to identify constraints that cover full ranges, so
 we can drop them entirely.
 <<auxiliary functions>>=
-fun isMax(f, {lo, hi}) = lo = 0 andalso Word.fromInt hi = Field.afmax f
+fun isMax(f, {lo, hi}) = lo = TW.zero andalso hi = Field.afmax f
 @ 
 Next, we'll see if two absolute disjuncts can fuse.
 <<functions>>=
@@ -130,6 +130,7 @@ functor DisjunctFusionFun(Patterns : PATTERNS) : DISJUNCT_FUSION = struct
   structure Patterns = Patterns
   structure P = Patterns
   structure AFM = AbsoluteFieldMap
+  structure TW = TargetWord
   <<auxiliary functions>>
   <<functions>>
 end

@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: dag.nw,v 1.15 1998/11/11 21:59:12 nr Exp $
+% $Id: dag.nw,v 1.16 2000/08/04 23:07:18 nr Exp $
 % l2h ignore change {
 @
 \section{Converting trees to dags}
@@ -115,7 +115,7 @@ get different answers when the field value would be different.
 <<types>>=
 datatype name_array = 
   NAME_ARRAY of { field : Tree.Match.Patterns.absolute_field   (* index to the array *)
-                , tbl : string IntMap.map	      (* names of various values *)
+                , tbl : string TWMap.map	      (* names of various values *)
                 , uid : int		              (* unique within one dag *)
 		}
 type 'a dag = node * name_array list * 'a Tree.Match.arm list vector
@@ -127,7 +127,8 @@ fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
 <<structure for name arrays>>=
 structure Arrays = struct
   val MAXRANGE = 32
-  fun tooBig {lo, hi} = hi - lo > MAXRANGE
+  structure TW = TargetWord
+  fun tooBig {lo, hi} = TW.> (TW.- (hi, lo), TW.fromInt MAXRANGE)
   type arrays = name_array list AbsoluteFieldMap.map * int
   val empty = (AbsoluteFieldMap.empty, 0)
   <<name-array functions>>
@@ -148,11 +149,12 @@ We update the list of arrays for a field by adding bindings to the
 first usable array.
 <<name-array functions>>=
 fun bindName(f, {lo, hi}, name, (amap, cnt)) =
-  let fun usableAt(NAME_ARRAY {tbl, ...}, n) = getOpt(IntMap.find(tbl, n), name) = name
+  let fun next n = TargetWord.+ (n, TargetWord.fromInt 1)
+      fun usableAt(NAME_ARRAY {tbl, ...}, n) = getOpt(TWMap.find(tbl, n), name) = name
       fun usable(na, lo, hi) = if lo = hi then true 
-			       else usableAt(na, lo) andalso usable(na, lo+1, hi)
+			       else usableAt(na, lo) andalso usable(na, next lo, hi)
       fun newTbl(tbl, lo, hi) = if lo = hi then tbl
-				else newTbl(IntMap.insert(tbl, lo, name), lo+1, hi)
+				else newTbl(TWMap.insert(tbl, lo, name), next lo, hi)
       fun update((h as NAME_ARRAY {uid, tbl, ...})::t, bad, cnt) =
 	    if usable(h, lo, hi) then
               let val na = NAME_ARRAY {field=f, uid=uid, tbl=newTbl(tbl, lo, hi)}
@@ -161,7 +163,7 @@ fun bindName(f, {lo, hi}, name, (amap, cnt)) =
 	    else
 	      update(t, h::bad, cnt)
 	| update ([], bad, cnt) = 
-            update([NAME_ARRAY {field=f, tbl=IntMap.empty, uid=cnt}], bad, cnt+1)
+            update([NAME_ARRAY {field=f, tbl=TWMap.empty, uid=cnt}], bad, cnt+1)
       val (uid, arrays, cnt) = update(arraysFor(amap, f), [], cnt)
   in  (uid, (AbsoluteFieldMap.insert(amap, f, arrays), cnt))
   end
@@ -188,7 +190,7 @@ SPARC.}
 fun singletonArrays([], singletab) = ([], singletab)
   | singletonArrays((a as NAME_ARRAY { tbl, uid, ... }) :: arrays, singletab) =
       let val (arrays, singletab) = singletonArrays (arrays, singletab)
-      in  case uniqueElement (IntMap.listItems tbl)
+      in  case uniqueElement (TWMap.listItems tbl)
 	    of SOME x => (arrays, IntMap.insert(singletab, uid, x))
 	     | NONE   => (a :: arrays, singletab)
       end
@@ -258,7 +260,7 @@ fun node2dag({ field, children }, arrays, armtab) =
                 warning("node with one child doesn't match all cases")    
         }
      *)
-and leaf2dag(parentField, range, {name, arms}, arrays, armtab) = 
+and leaf2dag(parentField, range : Field.vrange, {name, arms}, arrays, armtab) = 
       let <<functions [[dagArms]] and [[dagName]]>>
 	  val (armid, armtab) = dagArms (arms, armtab)
 	  val (name, arrays) = case name of NONE => (NONE, arrays)

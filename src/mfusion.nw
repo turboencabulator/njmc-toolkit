@@ -83,9 +83,9 @@ local
 
   fun spaceGain (_, {cost = FF.INFINITY, ...}) = ["(this can't happen)"]
     | spaceGain (f1 <* f2, {cost = FF.FINITE c, benefit = b}) =
-    let val g = real c - real b / real (Word.toInt (Field.afmax f1))
-    in  [" (estimated space gain ", Real.fmt (StringCvt.FIX (SOME 1)) g, " words)"]
-    end
+        let val g = real c - real b / TargetWord.toReal (Field.afmax f1)
+        in  [" (estimated space gain ", Real.fmt (StringCvt.FIX (SOME 1)) g, " words)"]
+        end
 in 
   fun showEdge (e, c) = 
     app (app print) [["Fusing fields "], edgeStrings e, [" at "], cost c,

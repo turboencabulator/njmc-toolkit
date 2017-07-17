@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: match.nw,v 1.29 1999/09/06 16:09:01 nr Exp $
+% $Id: match.nw,v 1.30 2000/08/04 23:07:19 nr Exp $
 % l2h ignore change {
 \chapter{Support for pattern-matching statements}
 
@@ -343,7 +343,7 @@ fun moveConstantBindingsToConstraints (P.DIS(name, conds, (ccs, labs, len)), bbs
   let fun move([],          bbs, ccs) = (bbs, ccs)
         | move((bb as (f, e)) :: t, bbs, ccs) =
             case Exp.unConst (superSimplify e)
-	      of SOME n => move(t, bbs, (f, {lo=n, hi=n+1}) :: ccs)
+	      of SOME n => move(t, bbs, (f, Range.singleton n) :: ccs)
 	       | NONE   => move(t, bb :: bbs, ccs)
       val (bbs, ccs) = move(bbs, [], ccs)
   in  (P.DIS(name, conds, (ccs, labs, len)), bbs)

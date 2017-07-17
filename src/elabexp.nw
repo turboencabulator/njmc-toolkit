@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: elabexp.nw,v 1.28 1999/09/06 16:04:37 nr Exp $
+% $Id: elabexp.nw,v 1.29 2000/08/04 23:07:18 nr Exp $
 % l2h ignore change {
 
 \section{Elaborating expressions}
@@ -500,13 +500,13 @@ fun flookup field lookup =
                         of NONE   => lookup n
                          | SOME k => 
                              ( if isInteger n then <<warn of [[n]] hiding>> else ()
-                             ; Denotable.TMP(Exp.const k, NONE) )
+                             ; Denotable.TMP(Exp.const (TargetWord.toInt k), NONE) )
   in  lookup'
   end                                
 <<warn of [[n]] hiding>>=
 ErrorMsg.warning sourcemap (region, 
-  ["value ", n, " = ", Int.toString k, " of field ", #name field, " hides integer ", n,
-   " in outer scope (source coordinates may be off)"])
+  ["value ", n, " = ", TargetWord.toString k, " of field ", #name field,
+   " hides integer ", n, " in outer scope (source coordinates may be off)"])
 @ 
 
 
@@ -748,7 +748,7 @@ let fun fieldInput(A.MARK_EXP (rgn, e)) = fieldInput e
       | fieldInput(A.LITERAL_exp s) =
           let val (ftab, _) = FieldInfo.namesOf(f, fieldInfo)
           in  case StringMap.find(ftab, s)
-                of SOME i => OK (newTable (Exp.const i))
+                of SOME i => OK (newTable (Exp.const (TargetWord.toInt i)))
                  | NONE => errorl [s, " is not a value of field ", #name f]
           end
       | fieldInput e =
@@ -1193,8 +1193,9 @@ Every name and value pair gets folded in.
 let val (names, _) = FieldInfo.namesOf (field, info)
     val size = case field of {range={hi,lo},...} => hi - lo
     fun addFieldValue(name, k, newInterps) =
-      addInterpretation(n, name, SOME (D.TMP (Exp.const k, SOME field)), tail)
-      @ newInterps
+      let val meaning = SOME (D.TMP (Exp.const (TargetWord.toInt k), SOME field))
+      in  addInterpretation(n, name, meaning, tail) @ newInterps
+      end
 in  if StringMap.numItems names = 0 then
       errorl ["Used field `", #name field, "' in opcode without supplying field names"]
     else

@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: emit-c.nw,v 1.43 2000/02/28 23:45:26 nr Exp $
+% $Id: emit-c.nw,v 1.45 2000/08/04 23:07:19 nr Exp $
 % l2h ignore change {
 \chapter{Emitting C code}
 
@@ -71,6 +71,7 @@ functor EmitCFun(
 struct
   structure Code = Control.Code
   structure Prec = PrecedenceFun()
+  structure TW = TargetWord
   structure Unparser = Unparser.Unparser
   structure U = UnifiedExp
   <<functions>>
@@ -414,6 +415,10 @@ fun ppcon' n = pp.te (
   else
     Int.toString n)
 val ppcon = Unparser.ATOM o ppcon'
+fun pptw' n = 
+  ppcon' (TW.toIntX n) handle Overflow =>
+  pp.te ("0x" ^ TW.fmt StringCvt.HEX n)
+val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.
 The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
@@ -519,9 +524,9 @@ val impossible = Impossible.impossible
   | exp(U.NOSIMP(e)) = exp e
   | exp(U.ORB []) = ppcon 0
   | exp(U.ORB(exps)) = Util.joinl op /|/ (map exp exps)
-  | exp(U.INRANGE(e, {lo, hi})) =
-      if lo + 1 = hi then exp e /==/ ppcon lo
-      else /&&/ (ppcon lo /<=/ exp e, exp e /</ ppcon hi)
+  | exp(U.INRANGE(e, r as {lo, hi})) =
+      if Range.isSingleton r then exp e /==/ pptw lo
+      else /&&/ (pptw lo /<=/ exp e, exp e /</ pptw hi)
   | exp(U.ANDALSO []) = ppcon 1
   | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
        (* it's possible exps should be sorted to avoid gratuitous differences *)
@@ -800,10 +805,12 @@ block or an emission.
     end
 <<stmt>>=
 | INTCASE (value, arms) => 
-    let fun r(lo, hi, cases) = 
-          if hi < lo then cases 
-	  else r(lo, hi-1, pp.$ "case " :: pp.int hi :: pp.$ ": $o" :: cases)
-	fun addRange ({lo, hi}, cases) = r(lo, hi-1, cases)
+    let fun pptw n = pp.int (TW.toIntX n)
+                     handle Overflow => pp.te ("0x" ^ TW.toString n)
+        fun r(lo, hi, cases) = 
+          if TW.<(hi, lo) then cases 
+	  else r(lo, TW.-(hi, TW.one), pp.$ "case " :: pptw hi :: pp.$ ": $o" :: cases)
+	fun addRange ({lo, hi}, cases) = r(lo, TW.-(hi, TW.one), cases)
 	fun addArm ((ranges, arm), s) = 
 	  let val body = pp.$ "$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
           in  pp.cn :: RangeSet.foldr addRange body ranges

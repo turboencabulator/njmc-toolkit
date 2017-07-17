@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: fieldinfo.nw,v 1.8 1999/09/06 16:07:55 nr Exp $
+% $Id: fieldinfo.nw,v 1.9 2000/08/04 23:07:19 nr Exp $
 % l2h ignore change {
 \chapter{Field-dependent information}
 \section{Field categories}
@@ -31,7 +31,7 @@ That table is associated with the field in the global table [[fnt]]
 <<exported types>>=
 type field = Field.field
 type checking = Ast.fieldchecking
-type namespec = int StringMap.map * bool  (* flag for full name table *)
+type namespec = TargetWord.word StringMap.map * bool  (* flag for full name table *)
 type info =
   { checking : checking FieldMap.map
   , names    : namespec FieldMap.map
@@ -41,7 +41,7 @@ val emptyInfo    : info
 val setChecking  : field * checking * info -> info
 val getChecking  : field * info -> checking
 val setAllNames  : field * string list * info -> info
-val setSomeNames : field * (string * int) list * info -> info
+val setSomeNames : field * (string * TargetWord.word) list * info -> info
 val namesOf : field * info -> namespec
 @
 <<values>>=
@@ -55,12 +55,15 @@ fun getChecking (f, {checking,...}: info) =
 <<values>>=
 local
   structure E = Error
+  structure TW = TargetWord
   fun bindSpec(f, spec, {names,checking}:info) =
     case FieldMap.find(names, f)
       of SOME _ => E.error ("Field names for field " ^ #name f ^ " already specified")
        | NONE => {names=FieldMap.insert(names, f, spec), checking=checking} : info
-  fun fieldmax ({range={lo,hi},...}:field) = Util.twoRaised(hi-lo)
-  fun ok(f, x) = x >= 0 andalso x < fieldmax f
+(*   fun fieldmax ({range={lo,hi},...}:field) = Util.twoRaised(hi-lo) *)
+  val fieldmax = Field.fmax
+  val (op >=, op <) = (TW.>=, TW.<)
+  fun ok(f, x) = x >= TW.fromInt 0 andalso x < fieldmax f
   <<mapping functions>>
 in
   fun setAllNames (f, l, i) = bindSpec(f, allSpec (f, l), i)
@@ -85,22 +88,23 @@ fun someSpec(f : field, pairs) =
 	     | SOME _ => Error.errorl ["Duplicate definitions for value ", name,
 				       " of field ", #name f]
 	else
-	  E.errorl ["Value ", Int.toString x, " won't fit in field ", #name f]
+	  E.errorl ["Value ", TW.toString x, " won't fit in field ", #name f]
   in   (foldl bindName StringMap.empty pairs, false)
   end
 @
 <<mapping functions>>=
 fun allSpec (f : field, names) =
-  let fun bind(name::names, x, tab) = bind(names, x+1,
-	     case StringMap.find(tab, name)
-	       of NONE => StringMap.insert(tab, name, x)
-		| SOME _ => E.errorl ["Duplicate definitions for value ", name,
-                                      " of field ", #name f])
+  let fun bind(name::names, x, tab) =
+             bind(names, TW.+(x, TW.fromInt 1),
+                  case StringMap.find(tab, name)
+                    of NONE => StringMap.insert(tab, name, x)
+                     | SOME _ => E.errorl ["Duplicate definitions for value ", name,
+                                           " of field ", #name f])
 	| bind([], limit, tab) =
 	    if limit = fieldmax f then tab
-	    else E.errorl ["Field ", #name f, " has ", Int.toString(fieldmax f),
-                           " values, but spec gave ", Int.toString limit, " names"]
-  in  (bind(names, 0, StringMap.empty), true)
+	    else E.errorl ["Field ", #name f, " has ", TW.toString(fieldmax f),
+                           " values, but spec gave ", TW.toString limit, " names"]
+  in  (bind(names, TW.fromInt 0, StringMap.empty), true)
   end
 @
 \section{Emitting field names}

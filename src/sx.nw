@@ -2,6 +2,7 @@
 module Sx {
   sx = ATOM (string)
      | INT (int)
+     | WORD (int)
      | STRING (string)
      | CONS (sx, sx)
      | NIL
@@ -32,6 +33,7 @@ signature Sx_SIG =
     
     datatype sx = ATOM of (string)
                 | INT of (int)
+                | WORD of (TargetWord.word)
                 | STRING of (string)
                 | CONS of (sx * sx)
                 | NIL
@@ -62,6 +64,7 @@ structure Sx : Sx_SIG =
     
     datatype sx = ATOM of (string)
                 | INT of (int)
+                | WORD of (TargetWord.word)
                 | STRING of (string)
                 | CONS of (sx * sx)
                 | NIL

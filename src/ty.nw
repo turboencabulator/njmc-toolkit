@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: ty.nw,v 1.20 1999/09/06 16:11:22 nr Exp $
+% $Id: ty.nw,v 1.21 2000/08/04 23:07:20 nr Exp $
 % l2h ignore bug {
 % l2h ignore change {
 
@@ -70,7 +70,7 @@ SLICE(e, {lo, width}) : unsigned width  (* bit slicing, never fails *)
 WIDEN(e, N) : signed			(* sign extension *)
 SHIFT(e : ty, N) : shiftType(ty, N)     (* shift left N bits *)
 ORB es : orType tys                     (* bitwise or *)
-INRANGE (e, {lo, hi}) : bool            (* range test *)
+INRANGE (e, {lo : TargetWord.word, hi : TargetWord.word}) : bool            (* range test *)
 @ [[NARROWs]] leaves an unsigned value.  The corresponding ASSERT
 doesn't, because there's no computation involved.
 @

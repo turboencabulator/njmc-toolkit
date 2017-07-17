@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: images.nw,v 1.34 1999/11/23 16:25:57 nr Exp $
+% $Id: images.nw,v 1.35 2000/08/04 23:07:19 nr Exp $
 <<denotable-image.sig>>=
 signature DENOTABLE_IMAGE = sig
   structure Denotable : DENOTABLE
@@ -196,6 +196,9 @@ infix  9 dot
 <<[[exp]] auxiliaries>>=
 fun ppcon' n = pp.te (Int.toString n)
 val ppcon = Unparser.ATOM o ppcon'
+fun pptw' n = ppcon' (TargetWord.toIntX n) 
+              handle Overflow => pp.te ("0x"^ TargetWord.toString n)
+val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.
 The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
@@ -280,7 +283,7 @@ fun constructor name args =
   | exp(U.NOSIMP(e)) = exp e
   | exp(U.ORB []) = ppcon 0
   | exp(U.ORB(exps)) = Util.joinl op /|/ (map exp exps)
-  | exp(U.INRANGE (e, {lo, hi})) = ppcon lo /<=/ exp e /</ ppcon hi
+  | exp(U.INRANGE (e, {lo, hi})) = pptw lo /<=/ exp e /</ pptw hi
   | exp(U.ANDALSO []) = exp (U.TRUE)
   | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
   | exp(U.ORELSE []) = exp (U.FALSE)
@@ -542,9 +545,18 @@ struct
     in  a's
     end
 
-  fun stdRange {lo, hi} =
+  fun bitRange {lo, hi} =
     pp.te (if lo+1 = hi then Int.toString lo
 	   else String.concat [Int.toString lo, "-", Int.toString (hi-1)])
+  fun stdRange (r as {lo, hi}) =
+    bitRange {lo = TargetWord.toIntX lo, hi = TargetWord.toIntX hi}
+    handle Overflow =>
+      pp.te (if Range.isSingleton r then
+               TargetWord.toString lo
+             else
+               String.concat [TargetWord.toString lo, "-",
+                              TargetWord.toString (TargetWord.-(hi, TargetWord.one))])
+
   fun tree smap =
     let fun tree (T.NODE {field=(f, n), children}) =
 	   pp.li [pp.te "test ", pp.te (#name f), pp.te " at ", pp.te (Int.toString n),
@@ -566,8 +578,9 @@ struct
 
   fun arrayImage (D.NAME_ARRAY { field, tbl, uid }) =
     pp.li ([pp.te "name array ", pp.te (Int.toString uid), pp.$ ": $t${$c" ] 
-	   @ IntMap.foldri
-	     (fn (n, s, tail) => pp.te (Int.toString n) :: pp.te " => " :: 
+	   @ TWMap.foldri
+	     (fn (n, s, tail) => pp.te ("0x" ^ TargetWord.toString n) ::
+                  pp.te " => " :: 
 	          pp.te s :: (if length tail < 4 then tail else pp.$ ", $o" :: tail))
 	     [pp.$ "$}$b$n"] tbl)
 	                     

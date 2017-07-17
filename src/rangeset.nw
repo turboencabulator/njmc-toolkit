@@ -1,8 +1,9 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: rangeset.nw,v 1.8 1998/11/11 21:59:22 nr Exp $
+% $Id: rangeset.nw,v 1.9 2000/08/04 23:07:20 nr Exp $
 <<rangeset.sig>>=
 signature RANGE_SET = sig
-  type range = {lo : int, hi : int}
+  type value
+  type range = {lo : value, hi : value}
   type set
   val overlaps : set * range -> bool
   val empty : set
@@ -17,35 +18,62 @@ signature RANGE_SET = sig
   val foldr : (range * 'a -> 'a) -> 'a -> set -> 'a
 end
 <<rangeset.sml>>=
-(* this implementation works for sets of NON-OVERLAPPING ranges only *)
-structure RangeSet : RANGE_SET = struct
-  type range = {lo : int, hi : int}
-  type set = IntSet.set * IntSet.set
-  val empty = (IntSet.empty, IntSet.empty)
-  fun isEmpty (l, h) = IntSet.isEmpty l
-  fun cuts (l, h) = IntSet.listItems(IntSet.union(l, h))
-  fun numItems (l, h) = IntSet.numItems l
+signature RANGED_VALUE = sig
+  structure Set : ORD_SET
+  type value = Set.item
+  val > : value * value -> bool
+  val >= : value * value -> bool
+  val < : value * value -> bool
+  val <= : value * value -> bool
+  val min : value * value -> value
+  val max : value * value -> value
+end
+
+functor RangeSetFun(Value : RANGED_VALUE) : RANGE_SET = struct
+  (* this implementation works for sets of NON-OVERLAPPING ranges only *)
+  structure V = Value
+  type value = V.value
+  type range = {lo : value, hi : value}
+  type set = V.Set.set * V.Set.set
+  val empty = (V.Set.empty, V.Set.empty)
+  fun isEmpty (l, h) = V.Set.isEmpty l
+  fun cuts (l, h) = V.Set.listItems(V.Set.union(l, h))
+  fun numItems (l, h) = V.Set.numItems l
   fun listItems set =
     let fun chop(lo::hi::t, cuts') = chop(t, {lo=lo, hi=hi}::cuts')
           | chop([], cuts') = rev cuts'
           | chop([x], _) = Impossible.impossible "range-set cuts"
     in  chop(cuts set, [])
     end
+  val (op <, op <=, op >, op >=) = (V.<, V.<=, V.>, V.>=)
   <<functions>>
   fun rangesOverlap ({lo, hi} : range, {lo = lo', hi = hi'}) =
     if hi <= lo' orelse hi' <= lo then false else true
   fun possibleUnion ({lo, hi} : range, {lo = lo', hi = hi'}) =
     if hi <  lo' orelse hi' < lo then NONE
-    else SOME { lo = Int.min(lo, lo'), hi = Int.max (hi, hi') }
+    else SOME { lo = V.min(lo, lo'), hi = V.max (hi, hi') }
   fun compare(a, b) =
     let fun comp(h::t, h'::t') =
-              (case Int.compare(h, h') of EQUAL => comp(t, t') | diff => diff)
+              (case V.Set.Key.compare(h, h') of EQUAL => comp(t, t') | diff => diff)
 	  | comp([], []) = EQUAL
 	  | comp([], _)  = LESS
 	  | comp(_,  []) = GREATER
     in  comp(cuts a, cuts b)
     end
 end
+
+structure RangeSet = RangeSetFun(
+  struct
+    structure Set = TWSet
+    type value = Set.item
+    open TargetWord
+  end)
+structure BRangeSet = RangeSetFun(
+  struct
+    structure Set = IntSet
+    type value = Set.item
+    open Int
+  end)
 @ 
 To make the transformation work, I have to represent a {\em set of
 intervals} on each edge, not just a single interval.  Because no two intervals
@@ -77,10 +105,10 @@ take your pick.%
 <<functions>>=
 fun insert ({lo, hi}, (loset, hiset)) =
   let fun addPoint(p, like, unlike) =
-        if IntSet.member(unlike, p) then
-	  (like, IntSet.delete(unlike, p))
+        if V.Set.member(unlike, p) then
+	  (like, V.Set.delete(unlike, p))
 	else   
-	  (IntSet.add(like, p), unlike)
+	  (V.Set.add(like, p), unlike)
       val (hiset, loset) = addPoint(hi, hiset, loset)
       val (loset, hiset) = addPoint(lo, loset, hiset)
   in  (loset, hiset)
@@ -96,9 +124,9 @@ If these total to the number of intervals, there is no overlap.
 Otherwise, there is an overlap.
 <<functions>>=
 fun overlaps((loset, hiset), {lo, hi}) =
-  let val leftcount  = IntSet.numItems (IntSet.filter (fn h => h <= lo) hiset)
-      val rightcount = IntSet.numItems (IntSet.filter (fn l => l >= hi) loset)
-  in  leftcount + rightcount < IntSet.numItems loset
+  let val leftcount  = V.Set.numItems (V.Set.filter (fn h => h <= lo) hiset)
+      val rightcount = V.Set.numItems (V.Set.filter (fn l => l >= hi) loset)
+  in  Int.< (leftcount + rightcount, V.Set.numItems loset)
   end
 @ 
 <<functions>>=
@@ -126,7 +154,9 @@ end
 
 <<range.sml>>=
 structure Range = struct
-  type range = {lo:int, hi:int}
+  type range = {lo:TargetWord.word, hi:TargetWord.word}
   fun intersection ({lo, hi}, {lo=lo', hi=hi'}) : range =
-    {lo = Int.max(lo, lo'), hi = Int.min(hi, hi')}
+    {lo = TargetWord.max(lo, lo'), hi = TargetWord.min(hi, hi')}
+  fun singleton n = {lo=TargetWord.fromInt n, hi=TargetWord.fromInt (n+1)}
+  fun isSingleton {lo, hi} = TargetWord.+(lo, TargetWord.one) = hi
 end

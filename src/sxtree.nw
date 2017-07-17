@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: sxtree.nw,v 1.2 1998/11/11 21:59:25 nr Exp $
+% $Id: sxtree.nw,v 1.3 2000/08/04 23:07:20 nr Exp $
 <<sxtree.sig>>=
 signature TREE_DAG_SX = sig
   structure Dag : DAG
@@ -17,6 +17,7 @@ struct
   structure T = D.Tree
   structure M = T.Match
   structure Exp = M.Patterns.Exp
+  structure TW = TargetWord
   structure pp = PP.Short
 
   fun app s l = SxUtil.list (Sx.ATOM s :: l)
@@ -33,9 +34,9 @@ struct
     end
   fun armList encode = map (arm encode)
 
-  fun stdRange {lo, hi} =
-    if lo+1 = hi then Sx.INT lo
-    else SxUtil.list [Sx.INT lo, Sx.ATOM "..", Sx.INT (hi-1)]
+  fun stdRange (r as {lo, hi}) =
+    if Range.isSingleton r then Sx.WORD lo
+    else SxUtil.list [Sx.WORD lo, Sx.ATOM "..", Sx.WORD (TW.-(hi, TW.one))]
 
   fun sxopt f x = case x of SOME z => f z | NONE => Sx.NIL
 
@@ -55,8 +56,8 @@ struct
 
   fun arrayImage (D.NAME_ARRAY { field, tbl, uid }) =
     let val bindings =
-          map (fn (n, s) => SxUtil.list [Sx.INT n, Sx.ATOM "=>", Sx.STRING s]) o
-          IntMap.listItemsi
+          map (fn (n, s) => SxUtil.list [Sx.WORD n, Sx.ATOM "=>", Sx.STRING s]) o
+          TWMap.listItemsi
     in  app "name-array" [app "uid" [Sx.INT uid], SxUtil.list (bindings tbl)]
     end
 	                     

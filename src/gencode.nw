@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: gencode.nw,v 1.16 1998/11/11 21:15:33 nr Exp $
+% $Id: gencode.nw,v 1.17 2000/08/04 23:07:19 nr Exp $
 % l2h ignore bug {
 % l2h ignore change {
 \chapter{Code generation for matching}
@@ -33,7 +33,7 @@ functor GencodeFun(structure Dag : DAG
                        Dag.Tree.Match.SledSpec.Denotable.Constructor = Code.Constructor
 		   val simplify : Code.exp -> Code.exp
 		   val codeSimp : Code.statement -> Code.statement
-                   val maxRange : int (* largest range OK in case statement *)
+                   val maxRange : TargetWord.word (* largest range OK in case statement *)
 ) : GENCODE = struct
   structure Dag = Dag
   structure Code = Code
@@ -41,6 +41,8 @@ functor GencodeFun(structure Dag : DAG
   structure A = M.Patterns.Absolute
   structure P = Code.Constructor.Patterns
   structure Exp = P.Exp
+  structure TW = TargetWord
+  open TWInfix; infix 4 |<=| |<| |>=| |>|
   structure U = UnifiedExp
   type templates = { addressType : Type.ty
                    , addressAdd : {address : Code.exp, pcUnits : int} -> Code.exp
@@ -97,11 +99,11 @@ fun gencase {addressType, addressAdd, addressToPC, fetch, noMatch}
 <<support for name arrays>>=
 local
   val arrayType = Type.ARRAY (Type.STRING, NONE)
-  fun maxIndex tbl = IntMap.foldli (fn (i, _, _) => i) 0 tbl
+  fun maxIndex tbl = TW.toInt (TWMap.foldli (fn (i, _, _) => i) (TW.fromInt 0) tbl)
   fun elems(~1, tbl, a) = Exp.array a
     | elems( i, tbl, a) =
-        let val elem = case IntMap.find(tbl, i) of NONE => Exp.missingString
-                                                 | SOME s => Exp.string s
+        let val elem = case TWMap.find(tbl, TW.fromInt i) of NONE => Exp.missingString
+                                                           | SOME s => Exp.string s
         in  elems(i-1, tbl, elem :: a)
 	end
 in  
@@ -146,8 +148,9 @@ I use rational numbers to compute costs.
 <<paths>>=
 type rat = {num:int, den:int}
 fun rlt({num=n1, den=d1}:rat, {num=n2, den=d2}) = n1 * d2 < n2 * d1
+fun rangeCost {lo, hi} = if TW.+ (lo, TW.fromInt 1) = hi then 1 else 2
 fun addSetCost (ranges, c) =
-  RangeSet.foldr (fn ({lo, hi}, cost) => cost + (if lo+1 = hi then 1 else 2)) c ranges
+  RangeSet.foldr (fn (r, cost) => cost + rangeCost r) c ranges
 fun addCost (PATH l, cost) =
   let fun c((_, ranges) :: t, cost) = c(t, addSetCost(ranges, cost))
         | c([], cost) = cost
@@ -389,7 +392,7 @@ To split edges, we sort them by their ranges.
 <<functions to add if arms or case edges (conditionally)>>
 fun normalSplit children =
   let fun minRange e = #lo (hd (RangeSet.listItems (edgeRange e)))
-      fun sort l = ListMergeSort.sort (fn ((lo : int, e), (lo', e')) => lo > lo') l
+      fun sort l = ListMergeSort.sort (fn ((lo, e), (lo', e')) => lo |>| lo') l
       val edges = map #2 (sort (map (fn e => (minRange e, e)) children))
       val casestmt = Code.INTCASE (afieldExp f, foldr addEdge [] edges)
       val ifstmt   = Code.IF (foldr addIfArm [ELSE casestmt] edges)
@@ -417,7 +420,8 @@ contain more than one element.
 <<if [[other]]'s range has one element, exchange it with [[single]]>>=
 val (single, other) =
   case RangeSet.listItems (edgeRange other)
-    of [{lo, hi}] => if lo+1 = hi then (other, single) else (single, other)
+    of [{lo, hi}] => if TW.+(lo,TW.fromInt 1) = hi then (other, single)
+                     else (single, other)
      | _ => (single, other)
 @
 We use a stylized [[wordname]] to refer to the word containing a particular
@@ -436,7 +440,8 @@ fun afieldExp (f as ({range={lo, hi}, name, ...}, offset) : P.absolute_field) =
 @ 
 <<functions to add if arms or case edges (conditionally)>>=
 fun addEdge(e, arms) =
-  let val ranges = RangeSet.filter (fn {lo, hi} => hi - lo <= maxRange) (edgeRange e)
+  let val ranges = RangeSet.filter (fn {lo, hi} => TW.- (hi, lo) |<=| maxRange)
+                                   (edgeRange e)
   in  if RangeSet.isEmpty ranges then
         arms
       else
@@ -444,7 +449,8 @@ fun addEdge(e, arms) =
   end
 <<functions to add if arms or case edges (conditionally)>>=
 fun addIfArm(e, arms) = 
-  let val ranges = RangeSet.filter (fn {lo, hi} => hi - lo > maxRange) (edgeRange e)
+  let val ranges = RangeSet.filter (fn {lo, hi} => TW.- (hi, lo) |>| maxRange)
+                                   (edgeRange e)
   in  if RangeSet.isEmpty ranges then
         arms
       else

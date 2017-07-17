@@ -1,0 +1,7 @@
+group
+  structure Impossible
+  structure TargetWord
+  structure TWInfix
+is
+  word.nw
+  impossible.sml@impossible.nw

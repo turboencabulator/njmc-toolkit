@@ -1,0 +1,97 @@
+% -*- mode: Noweb; noweb-code-mode: sml-mode -*-
+
+\section{Target word size; used for cross-optimization}
+
+Words used on the target machine.
+Grep for [[TargetWord.toInt]] (or [[TW.toInt]]) to find places that
+may not have been converted yet. 
+
+<<word.sig>>=
+signature TARGET_WORD = sig
+    eqtype word
+    val wordSize : int
+(*
+    val toLargeWord : word -> Word32.word
+    val toLargeWordX : word -> Word32.word
+    val fromLargeWord : Word32.word -> word
+*)
+    val toReal : word -> real (* may lose precision, but not magnitude *)
+(*
+    val toLargeInt : word -> Int32.int
+    val toLargeIntX : word -> Int32.int
+    val fromLargeInt : Int32.int -> word
+*)
+    val toInt : word -> int
+    val toIntX : word -> int
+    val fromInt : int -> word
+    val zero : word (* zero == fromInt 0 *)
+    val one  : word (* one  == fromInt 1 *)
+    val orb : word * word -> word
+(*
+    val xorb : word * word -> word
+    val andb : word * word -> word
+    val notb : word -> word
+*)
+    val << : word * word -> word
+    val >> : word * word -> word
+(*
+    val ~>> : word * word -> word
+*)
+    val + : word * word -> word
+    val - : word * word -> word
+(*
+    val * : word * word -> word
+    val div : word * word -> word
+    val mod : word * word -> word
+*)
+    val compare : word * word -> order
+    val compare'word : word * word -> order
+
+    val > : word * word -> bool
+    val >= : word * word -> bool
+    val < : word * word -> bool
+    val <= : word * word -> bool
+    val min : word * word -> word
+    val max : word * word -> word
+(*
+    val scan : StringCvt.radix
+               -> (char,'a) StringCvt.reader -> (word,'a) StringCvt.reader
+    val fromString : string -> word option
+*)
+    val fmt : StringCvt.radix -> word -> string
+    val toString : word -> string
+end
+
+signature WORD_INFIX = sig
+  eqtype word
+  val |>|  : word * word -> bool
+  val |>=| : word * word -> bool
+  val |<|  : word * word -> bool
+  val |<=| : word * word -> bool
+end  
+@ 
+For cross-decoding, etc, we need true high-precision here, but for
+now, [[Word32]] will have to do.
+<<word.sml>>=
+structure TargetWord :> TARGET_WORD = struct
+  open Word32 (* poor cousin *)
+  val zero = fromInt 0
+  val one  = fromInt 1
+  val compare'word = compare
+  fun << (a, b) = Word32.<<(a, Word31.fromLargeWord b)
+  fun >> (a, b) = Word32.>>(a, Word31.fromLargeWord b)
+  fun toReal n = 
+      Real.fromLargeInt (toLargeInt n)
+      handle Overflow =>
+          Impossible.impossible "converting target word to real"
+end
+structure TWInfix :> WORD_INFIX where type word = TargetWord.word =
+struct
+  type word = TargetWord.word
+  val |>|  = TargetWord.>
+  val |>=| = TargetWord.>=
+  val |<|  = TargetWord.<
+  val |<=| = TargetWord.<=
+end  
+@ 
+

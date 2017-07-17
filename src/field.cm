@@ -1,7 +1,8 @@
-; $Id: field.cm,v 1.3 1999/09/06 16:02:53 nr Exp $
+; $Id: field.cm,v 1.4 2000/08/04 23:07:20 nr Exp $
 ; module semantic
 group is
   smlnj-lib.cm
+  word.cm
 
   field.sig@pattern.nw
   field.ord@pattern.nw
