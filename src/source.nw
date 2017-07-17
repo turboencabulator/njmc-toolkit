@@ -1,0 +1,69 @@
+% l2h ignore change {
+\documentclass[twoside]{book}
+\usepackage{noweb,multicol,ofields}
+%\documentstyle[twoside,noweb,multicol,ofields]{book}
+%\includeonly{grammar,patterns,exp,solve}
+%\includeonly{match,tree}
+%\includeonly{library,reloc,mclib}
+\ifx\mathtt\undefined\def\mathtt#1{{\tt #1}}\fi % for non-NFSS
+\title{New Jersey Machine-Code Toolkit\\Source Code}
+\author{Norman Ramsey and Mary F. Fernandez}
+\pagestyle{noweb}\noweboptions{shift,hideunuseddefs,externalindex}
+\raggedbottom
+\newcommand\octothorpe{\#}
+\newcommand\change[1]{\marginpar{\small\ss Change \octothorpe#1}}
+\newcommand\bug[1]{\marginpar{\small\ss Fixes bug \octothorpe#1}}
+
+\makeatletter
+\def\nwcodecomment#1{\@@par\penalty\nwcodepenalty
+    \if@firstnwcodecomment
+      \vskip\nwcodecommentsep\penalty\nwcodepenalty\@firstnwcodecommentfalse
+    \fi%
+    \hspace{-\codemargin}{%
+        \rightskip=0pt plus1in
+        \interlinepenalty\nwcodepenalty
+	\tolerance=800 % try to avoid overfull boxes
+        \let\\\relax\footnotesize\Rm #1\@@par\penalty\nwcodepenalty}}
+\makeatother
+
+\begin{document}
+%\overfullrule=10pt
+\maketitle
+\tableofcontents
+\part{Icon code}
+\include{main}
+\include{environment}
+\include{grammar}
+\include{patterns}
+\include{exp}
+\include{expwalk}
+\include{expps}
+\include{solve}
+\include{balance}
+\include{constructors}
+\include{encoding}
+\include{assembly}
+\include{match}
+\include{tree}
+\include{dag}
+\include{gencode}
+\include{checker}
+\include{Cexp}
+\include{M3exp}
+\include{code}
+\include{fieldinfo}
+\include{lex}
+\include{output}
+\include{debug}
+
+\part{Library code}
+\include{mclib}
+\include{reloc}
+
+\part{Back matter}
+\section{List of chunks}
+\nowebchunks
+\begin{multicols}{2}[\section{Index}]
+\nowebindex
+\end{multicols}
+\end{document}

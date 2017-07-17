@@ -1,0 +1,101 @@
+\documentclass[twoside]{article}
+\usepackage{noweb,optable,nchicago}
+\title{New Jersey Machine-Code Toolkit\\Architecture
+Specifications\\{\normalsize Toolkit version~0.5}}
+\author{Norman Ramsey \and Mary Fernandez}
+\pagestyle{headings}
+\let\originalnotused=\nwnotused
+\let\nwnotused=\nwoutput
+
+\let\orghbox=\hbox
+\newcommand\nohbox{\let\hbox=\orghbox\relax}
+
+\newcommand\opencite[1]{{\let\hbox=\nohbox\cite{#1}}}
+\newcommand\openciteN[1]{{\let\hbox=\nohbox\citeN{#1}}}
+
+
+\begin{document}
+@
+\maketitle
+
+\section*{Preface}
+
+The New Jersey Machine-Code Toolkit
+helps programmers write
+applications that
+process machine code---assemblers, disassemblers, 
+code generators, tracers, profilers, debuggers, and more.
+The toolkit lets programmers encode and decode machine instructions
+symbolically.
+It transforms symbolic manipulations into bit manipulations,
+guided by a specification that defines mappings between symbolic and
+binary representations of instructions.
+This document presents our annotated specifications for the MIPS
+R3000, SPARC, Pentium, and Alpha instruction sets.
+\authorcite{ramsey:jersey} present an overview of the toolkit;
+read it first.
+\citeN{ramsey:specifying} presents the toolkit's specification
+lanugage in depth, and 
+the reference manual for the toolkit \opencite{ramsey:tk-reference} gives a complete 
+description.
+
+This document does not just describe the specifications; it contains them.
+The [[noweb]] system~\cite{ramsey:simplified} for ``literate
+programming''~\cite{knuth:literate:book} makes it possible to write a
+single source containing both
+document and specifications.
+This source contains prose interleaved with definitions of named code 
+``chunks.'' 
+Code chunks contain specification code and references to other code chunks.
+The code chunks appear in an order suited to explanation, not
+necessarily in the order required by the toolkit language.
+Chunk names appear italicized within angle brackets, e.g.,
+\LA{}pattern and constructor
+specifications~{\nwtagstyle\subpageref{NWspa8-patc-1}}\RA{}.  
+The ``{\nwtagstyle\subpageref{NWspa8-patc-1}}'' 
+is the number of the chunk's first definition.
+Chunk definitions are numbered according to the pages on which they appear;
+When two or more chunks appear on the same page, a letter is appended
+to the page number, e.g. 18a and 18b.
+
+We present the specifications mostly in order of increasing complexity:
+the MIPS, followed by the SPARC, 
+the Alpha,
+and then the Pentium.
+The annotations in the MIPS specification describe basic use of the
+toolkit language.
+More sophisticated techniques appear in the SPARC, Alpha, and Pentium specifications.
+%Finally, we have an incomplete, unannotated Power~PC specification from Doug Currie.
+Annotations include descriptions of how each architecture's
+instruction set is factored in its specification
+and highlight useful specification techniques,
+e.g., those that protect against errors.
+References to the associated architecture manual
+also appear in the annotations.
+We encourage the reader to get the manuals
+so he can compare 
+the information presented
+in the manuals to the equivalent information in the specifications.
+
+\tableofcontents
+
+\noweboptions{shift}
+\include{mips}
+\include{sparc}
+\include{alpha}
+\include{pentium}
+\include{ppc}
+
+%%  \iffalse % need to switch to external index
+%%  \section*{List of chunks}
+%%  \addcontentsline{toc}{section}{List of chunks}
+%%  \nowebchunks
+%%  \fi
+
+\bibliographystyle{nchicago}
+\bibliography{web,cs,ramsey}
+@
+
+\end{document}
+
+

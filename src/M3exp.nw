@@ -1,0 +1,316 @@
+% l2h ignore change {
+\chapter{Converting Expressions to Modula-3}
+[[prettyM3]] returns Modula-3 code for an expression (or statement)
+with embedded prettyprinting escapes.
+[[nohex]] is a purely internal flag.
+If it is non-null, constants are in hex; otherwise they're in decimal.
+<<*>>=
+procedure prettyM3(e, precedence, associativity, nohex)
+  <<local declarations for [[prettyM3]]>>
+  initial {<<initialize [[M3prec]] and [[M3assoc]]>>}
+  /precedence := 0
+  /associativity := "L"
+  return case type(e) of {
+    <<cases for [[prettyM3]]>>
+    default    : impossible("Bad code to prettyM3")
+  }
+end
+@
+<<cases for [[prettyM3]]>>=
+<<cases for [[prettyM3]]>>=
+"list"     : commaseparate(maplist2(prettyM3, e, M3prec[","]), ", $o")
+"set"      : commaseparate(maplist2(prettyM3, sort(e), M3prec["AND"]), " AND $o")
+"eqn"      : { o := M3op(e.op)
+               M3bracket(prettyM3(e.left,  M3prec[o]) || " " || o || " $o" ||
+                         prettyM3(e.right, M3prec[o]), "=", precedence)
+             }
+"table"    : {                      # standard normal form
+    <<make [[s]] represent table [[e]], but elide additive and multiplicative units>>
+    "$t${" || s || "$}$b"
+  }
+"string"   : if e == "$pc" then "$$pc" else e
+"literal"  : list_to_string(e.s)
+"integer"  : string(e)
+@ The old version printed in any old order, but the new version prints
+positive terms first, then negative terms, with the constant term last in its group.
+\change{23}
+<<make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  s := ""; leadingsign := ""
+  <<add positive terms to [[s]]>>
+  leadingsign := " - $o"
+  <<add negative terms to [[s]]>>
+  s := if s == "" then "0" else M3bracket(s, "+", precedence)
+}
+<<add positive terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] > 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyM3(k, M3prec["*"])
+    leadingsign := " + $o"
+}
+if e[1] > 0 then s ||:= leadingsign || string(e[1])
+<<add negative terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] < 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyM3(k, M3prec["*"])
+}
+if e[1] < 0 then s ||:= leadingsign || string(-e[1])
+<<old make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := " + $o" }
+  else s := leadingsign := ""
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] < 0 then " - " else leadingsign
+      leadingsign := " + $o"
+      s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+      s ||:= prettyM3(k, M3prec["*"])
+  }
+  s := if s == "" then "0" else M3bracket(s, "+", precedence)
+}
+<<local declarations for [[prettyM3]]>>=
+local leadingsign
+<<cases for [[prettyM3]]>>=
+"Eorb"     : "Word.Or(${$t$c" || prettyM3(e.x) || ", $c" || prettyM3(e.y) || "$b$})"
+"Eand"     : { s := prettyM3(e.x, M3prec["AND"], "L")
+               t := prettyM3(e.y, M3prec["AND"], "R")
+               M3bracket(s || " AND $o" || t, "AND", precedence)
+             }
+<<cases for [[prettyM3]]>>=
+"Eslice"   : "Word.Extract(${$t$c" || prettyM3(e.x) || ", $c" || e.lo || ", " || 
+                                                                       e.n || "$b$})"
+"Eshift"   : "Word.Shift(${$t$c"   || prettyM3(e.x) || ", $c" || e.n || "$b$})"
+<<cases for [[prettyM3]]>>=
+"Enarrowu" : prettyM3(e.x, precedence, associativity) # checked, so must be identity
+"Enarrows" : prettyM3(super_simplify(Eslice(e.x, 0, e.n)), precedence, associativity)
+"Ewiden"   : "Word.Insert(${$t$c" || prettyM3(e.x) || 
+                        ", $cMATCH_bits[" ||
+                        prettyM3(super_simplify(Eslice(e.x, e.n-1, 1))) || 
+                        "], $c" || e.n || ", $cWord.Size - " || e.n || "$b$})"
+<<cases for [[prettyM3]]>>=
+"Ediv"     : { s := prettyM3(e.x, M3prec["DIV"]) 
+               s ||:= " DIV " || e.n
+               M3bracket(s, "DIV", precedence)
+             }
+"Emod"     : { s := prettyM3(e.x, M3prec["MOD"]) 
+               s ||:= " MOD " || e.n
+               M3bracket(s, "MOD", precedence)
+             }
+<<cases for [[prettyM3]]>>=
+"Semit"    : { s := emittername || "$t(" || prettyM3(e.x, M3prec[","]) || ", $o" || 
+                    e.n || ");$b"
+               M3bracket("$c" || s, "app", precedence)
+             }
+<<cases for [[prettyM3]]>>=
+"Efitsu"   : "Word.LT(${$t$c" || prettyM3(e.x) || ", $c" || (2^e.n) || "$b$})"
+"Efitss"   : "Word.LT(${$t$c" || prettyM3(addconst(e.x, 2^(e.n-1))) || ", $c" || 
+                                                                     (2^e.n) || "$b$})"
+<<cases for [[prettyM3]]>>=
+"Eforce" | "Eforceable"  : {
+               z := if type(e) == "Eforceable" then "_known" else ""
+               case s := prettyM3(e.x) of { 
+                 "$$pc"    : "RBlocks.cur_pc" || z || "()"
+                 "_c->loc" : "RBlocks.pc_location" || z || "(_c.loc)"
+                 default   : "RBlocks.location" || z || "$t${(" || s || ")$}$b"
+               }
+             }
+<<cases for [[prettyM3]]>>=
+"Enot"      : { s := "NOT " || prettyM3(e.x, M3prec["NOT"])
+                M3bracket(s, "NOT", precedence)
+              }
+<<cases for [[prettyM3]]>>=
+"Enosimp"   : prettyM3(e.x, precedence, associativity)
+<<cases for [[prettyM3]]>>=
+"Sstmts"    : "${" || commaseparate(maplist2(prettyM3, e.x), " $c") || "$}"
+<<cases for [[prettyM3]]>>=
+"Gcall" : { l := []; every put(l, prettyM3(!e.args))
+            M3noreserve(e.name) || "(" || commaseparate(l) || ")"
+         }
+"Einstance_input" : { 
+               s := "NARROW(" || prettyM3(e.x) || 
+                    ", Encode." || e.cons.name || "Instance)." || e.name
+               M3bracket(s, ".", precedence)
+             }
+"Einstance_tagged" : { 
+               s := "ISTYPE(" || prettyM3(e.x) || 
+                    ", Encode." || e.cons.name || "Instance)"
+               M3bracket(s, "app", precedence)
+             }
+@
+I assume the if statement has been simplified, so there are no arms beyond
+any [[else]] arm
+<<cases for [[prettyM3]]>>=
+"Sif"      : { ifword := "IF "
+               s := ""
+               every a := !e.arms do {
+                 s ||:= ifword || M3test(a.guard) || "$t$c" || prettyM3(a.x) || "$b"
+                 ifword := "$cELSIF "
+               }
+               "${" || s || " $cEND;$}"
+             }
+<<cases for [[prettyM3]]>>=
+"Efail" : error("Generate-time operation failed: ", e.msg)
+<<*>>=
+procedure M3test(guard)
+  return if guard_always_satisfied(guard) then "TRUE THEN "
+         else "$t${" || prettyM3(guard) || "$}$b THEN "
+end
+<<cases for [[prettyM3]]>>=
+"Stagcase" : { s := "TYPECASE " || prettyM3(e.x) || " OF$t${"
+              every c := kept_constructors(e.type) do
+                s ||:= "$n| Encode." || c.name || "Instance => $o$t${" ||
+                          prettyM3(e.arms[c]) || "$}$b"
+              s || "$nELSE <* ASSERT FALSE *>$}$b$nEND; (* " || prettyM3(e.x) || "*)"
+            }
+<<cases for [[prettyM3]]>>=
+"Sfail"    : { s := "fail($t${" || image(escape_dollars(e.fmt))
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= ", $o" || prettyM3(\a, M3prec[","])
+               s ||:= "$}$b);"
+               M3bracket(s, "app", precedence)
+             }
+"Sepsilon" : "(* skip *)"
+<<cases for [[prettyM3]]>>=
+"Sclosure" : prettyM3(\e.creation) | impossible("creating closure")
+<<cases for [[prettyM3]]>>=
+"Glines"    : { s := ""; every s ||:= prettyM3(!e.x) || "\n"; s }
+"Gresynch"  : "<* LINE " || e.line  || " " || image(\e.file | "generated-code") || "*>"
+<<cases for [[prettyM3]]>>=
+"Gblock"    : { s := "${"
+                every s ||:= prettyM3(!e.decls) || ";$n"
+                if *e.decls > 0 then 
+                  s ||:= "BEGIN ${$t$c"
+                s ||:= commaseparate(maplist(prettyM3, e.stmts), "$c")
+                if *e.decls > 0 then 
+                  s ||:= "$b$cEND$}"
+                s || "$}"
+              }
+"Gdecl"     : { s := "VAR ${" || e.name 
+                s ||:= " : " || prettyM3(\e.type) 
+                s ||:= " := $t$c" || prettyM3(\e.init) || "$b"
+                s || "$}"
+              }
+<<cases for [[prettyM3]]>>=
+"Gdeclnamearray" : {
+  /na_count := 0
+  /e.na.codename := "MATCH_name_" || e.na.field.field.name || "_" || (na_count +:= 1)
+  s := "CONST ${" || e.na.codename || " = ARRAY [0.." || (e.na.hi - 1) || "] OF TEXT {"
+  s ||:= "${$t"
+  every i := 0 to e.na.hi - 1 do {
+    s ||:= " $c" || (image(\e.na.tbl[i])|"NIL")
+    if i < e.na.hi - 1 then s ||:= ","
+  }
+  s || "$b$c$}}"
+}
+<<local declarations for [[prettyM3]]>>=
+static na_count
+<<cases for [[prettyM3]]>>=
+"Gcase"     : { s := "CASE ${" || prettyM3(e.x) || "$} OF "
+                every s ||:= prettyM3(!e.arms)
+                "${" || s || "$nEND; (* CASE ${" || prettyM3(e.x) || "$} *)$}"
+               }
+"Gcasearm"  : { s := "$n| $t"
+                every i := 1 to *e.tags by 2 do {
+                  if i > 1 then s ||:= ", $o"
+                  s ||:= if e.tags[i] + 1 = e.tags[i+1] then e.tags[i] 
+                         else e.tags[i] || ".." || (e.tags[i+1]-1)
+                } 
+                s ||:= " => "  || "$t$c" || prettyM3(e.x)
+                "${" || s || "$b$b$}"
+              }
+<<cases for [[prettyM3]]>>=
+"Ginrange"  : { x := prettyM3(e.x, M3prec["<"])
+                if e.lo + 1 = e.hi then {
+                  M3bracket(x || " = " || e.lo, "=", M3prec["AND"])
+                } else {
+                  c1 := M3bracket(e.lo || " <= " || x, "<=", M3prec["AND"])
+                  c2 := M3bracket(x || " < " || e.hi, "<", M3prec["AND"])
+                  M3bracket(c1 || " AND " || c2, "AND", precedence)
+                }
+              }
+"Gsetname"  : "${VAR " || e.lhs || " := $t$o" || case type(e.name) of {
+                   "string"    : image(e.name)
+                   "namearray" : e.name.codename || "[" || prettyM3(e.name.field) || "]"
+                   default     : impossible("type of node name field")
+              } || "$b$}"
+"Gasgn"  : "${" || e.lhs || " := $t$o" || prettyM3(e.x, M3prec["="]) || ";$b$}"
+"Gcomment"  : "(* " || e.s || " *)"
+"Gcommented" : 
+  prettyM3(e.e, precedence, associativity, nohex) || " (* " || e.comment || " *)"
+<<cases for [[prettyM3]]>>=
+"Gnomatch"  : "<* ASSERT FALSE *> (* no match *)"
+"Tunsigned" : if \e.width < wordsize then 
+                 "[0.." || (2^e.width-1) || "]"
+              else
+                 "Word.T"
+<<cases for [[prettyM3]]>>=
+"absolute_field" :
+    prettyM3(super_simplify(afieldexp(e)), precedence, associativity, nohex)
+<<*>>=
+global M3prec, M3assoc
+procedure M3bracket(s, op, p, a)
+  /a := "L"
+  return "${" || (if M3prec[op] > p | (M3prec[op] = p & M3assoc[p] == a) then s
+                   else "(" || s || ")") || "$}"
+end
+<<initialize [[M3prec]] and [[M3assoc]]>>=
+ops := ["N", ["low"],
+        "L", [";"],
+        "L", [","],
+        "L", ["OR"], 
+        "L", ["AND"], 
+        "L", ["NOT"], 
+        "L", ["<=", "<", ">=", ">", "=", "#", "IN"],
+        "L", ["+", "-", "&"],
+        "L", ["MOD", "DIV", "*", "/"],
+        "L", ["^"],
+        "L", ["app"],
+        "L", ["."],
+        "N", ["high"]
+       ]
+M3prec := table([])  # missed lookups break arithmetic comparisons
+M3assoc := table()
+every i := 1 to *ops by 2 do {
+  every M3prec[!ops[i+1]] := i
+  M3assoc[i] := ops[i]
+}
+@
+<<*>>=
+procedure M3op(op)
+  return if op == "!=" then "#" else op
+end
+<<*>>=
+procedure M3noreserve(word) 
+  static reserved
+  initial reserved := set([
+       "AND", "ANY", "ARRAY", "AS", "BEGIN", "BITS", "BRANDED", "BY", "CASE",
+       "CONST", "DIV", "DO", "ELSE", "ELSIF", "END", "EVAL", "EXCEPT",
+       "EXCEPTION", "EXIT", "EXPORTS", "FINALLY", "FOR", "FROM", "GENERIC",
+       "IF", "IMPORT", "IN", "INTERFACE", "LOCK", "LOOP", "METHODS", "MOD",
+       "MODULE", "NOT", "OBJECT", "OF", "OR", "OVERRIDES", "PROCEDURE",
+       "RAISE", "RAISES", "READONLY", "RECORD", "REF", "REPEAT", "RETURN",
+       "REVEAL", "ROOT", "SET", "THEN", "TO", "TRY", "TYPE", "TYPECASE",
+       "UNSAFE", "UNTIL", "UNTRACED", "VALUE", "VAR", "WHILE", "WITH"])
+  return if member(reserved, word) then M3noreserve(word||"_") else word
+end
+@
+\section{Support for decoding code in Modula-3}
+<<*>>=
+procedure Generate_M3()
+  eqntoC := eqntoM3
+  pretty := prettyM3
+  gen_outer_decls := [literal(
+       "CONST MATCH_bits = ARRAY [0..1] OF Word.T {0, Word.Not(0)}")]
+  gen_file_header := ""
+  fetchtab["type"] := "ADDRESS"
+  fetchtab["add"] := "LOOPHOLE(%a+%o, Word.T)"
+  fetchtab["pc"] :=  "%a"
+#  fetchtab[8]  := "LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF [0..255])^"
+#  fetchtab[16] := "LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF [0..65535])^"
+#  fetchtab[32] := "LOOPHOLE(%a+(%o/ADRSIZE(CHAR)), UNTRACED REF INTEGER)^"
+end
+
+

@@ -1,0 +1,10 @@
+% l2h ignore change {
+\section{Shapes and sequences}
+The idea is to support representations that make the best possible use
+of the bits in the machine.
+We have an initial or prefix sequence of tokens that are always used, followed
+by a list of alternative list of possible suffix sequences.
+When there are multiple alternatives, we need a tag.
+We need to be able to mix sequences from either direction, too.
+Finally, when possible we try to cram everything into  one machine
+word.

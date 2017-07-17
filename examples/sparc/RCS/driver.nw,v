@@ -1,0 +1,47 @@
+head	1.1;
+access;
+symbols;
+locks
+	nr:1.1; strict;
+comment	@# @;
+
+
+1.1
+date	96.03.04.22.32.35;	author nr;	state Exp;
+branches;
+next	;
+
+
+desc
+@simple self-disassembling driver
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@This simple driver for a SPARC disassembler disassembles its own main
+routine.
+<<*>>=
+#include <stdio.h>
+	
+typedef void (*Printer)(void *pr, char *fmt, ...);
+
+extern void sparc_disassemble(unsigned *pc, Printer print, void *pr);
+
+static void empty(void);
+
+main() {
+  unsigned *start = (unsigned *)main;
+  unsigned *limit = (unsigned *)empty;
+
+  while (start < limit) {
+    sparc_disassemble(start++, (Printer) fprintf, stdout);
+    printf("\n");
+  }
+}
+
+static void empty() {}
+@

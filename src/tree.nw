@@ -1,0 +1,589 @@
+% l2h ignore change {
+\chapter{Generating decision trees}
+
+The crux of the problem is to transform a {\em matching statement} into a
+{\em decision tree}.  A matching statement has a {\em value}, a sequence
+of {\em arms}, and a {\em trailer}.
+Each arm has a pattern, and code to be executed.
+When the matching statement is executed, it chooses the first arm whose
+pattern matches the value, then executes the corresponding code, then
+executes the trailer.
+I generate a {\em decision tree} to do the job.
+Each internal node of the decision tree tests a field of a word.
+It then chooses an edge (child) based on what range constraints can be
+satisfied by the value of that field, and it continues testing fields
+until it reaches a leaf, at which time it executes the code associated
+with that leaf.
+
+The goal of tree generation is not to generate just any tree, but the
+tree with the fewest nodes.  This problem is NP-complete, so I apply
+a few heuristics.  The results, at least for the machine descriptions
+I use, seem to be as good as what I would come up with by hand.
+@
+When a pattern is in normal form, it is not obvious what word is
+tested by a particular range constraint; one needs to know the
+position of the sequent containing the range constraint.
+To make the problem simpler, I put the patterns into a new {\em
+absolute normal form}, which is described by the following rules:
+\begin{enumerate}
+\item
+Each disjunction contains not a list of sequents but a set of
+range constraints and field bindings.
+\item
+The range constraints and field bindings are made ``absolute'' by
+using an [[absolute_field]] in place of a [[field]].
+The [[absolute_field]] gives the bit offset of the word containing the
+field (its size is available from the field's class).
+\end{enumerate}
+In support of this scheme, we use ``absolute disjuncts.''
+<<*>>=
+record adisjunct(aconstraints, name, conditions, length, patlabelbindings) 
+					# list of absolute constraints, name, conds
+record absolute_field(field, offset)	# used to make absolute constraints
+@ We have to store the length explicitly in an [[adisjunct]], because sequents that 
+constrain no fields are lost.  The [[patlabelbindings]] binds label
+names to offsets, which are expressed in PC units, not bits.
+@
+\section{Transformation to absolute normal form}
+The transformation is simply a matter of adding up word sizes to
+compute offsets.  I cache absolute fields to avoid allocating
+gazillions of them.
+<<*>>=
+procedure anf(p)
+  return pattern(maplist(anfd, p.disjuncts), p.name)
+end
+
+procedure anfd(d)
+  local offset
+  offset := 0
+  l := []
+  t := table()
+  every s := !d.sequents do
+    case type(s) of {
+      "sequent"  : { every put(l, aconstraint(!s.constraints, offset))
+                     offset +:= s.class.size    
+                   }
+      "patlabel" : t[\s.name] := bits_to_pcunits(offset)
+      "latent_patlabel" : &null
+      default    : impossible("sequent type")
+    }
+  a := adisjunct(l, d.name, d.conditions, offset, if *t > 0 then t else &null)
+  return gsubst(a, Epatlabel_to_Epc_by_table, t, a)
+end
+@ 
+During decoding we eliminate the pattern label offsets by using a
+table of bindings.  If the label is already bound, of course, we need
+do nothing.
+<<*>>=
+procedure Epatlabel_to_Epc_by_table(x, t, a)
+  if type(x) == "Epatlabel" then 
+    return if /x.l.name then Epatlabel_to_Epc(x)
+           else {
+  write(\mdebug, "====> RESORTED TO TABLE in ", expimage(x))
+  binop(the_global_pc, "+", \t[\x.l.name]) | 
+        	impossible("in ", expimage(a), "---Label ", x.l.name, 
+		           " not used yet, but is not in table:",
+		           envimage(t, "pattern_table"))   
+            }
+end
+@
+I don't cache constraints, but I do cache fields.
+I have absolutely no measurements to justify either decision, but it simplifies
+the code to make absolute fields unique (as fields are) because they can be 
+inserted into sets.
+<<*>>=
+procedure aconstraint(c, offset)
+  return case type(c) of {
+    "constraint"   : constraint(afield(c.field, offset), c.lo, c.hi)
+    "fieldbinding" : 
+       if x := constant(super_simplify(c.code)) then
+         constraint(afield(c.field, offset), x, x+1)
+       else
+         fieldbinding(afield(c.field, offset), c.code)
+    default : impossible("constraint type")
+  }
+end
+<<*>>=
+procedure afield(f, offset)
+  static tables
+  initial tables := table()
+  /tables[offset] := table()
+  /tables[offset][f] := absolute_field(f, offset)
+  return tables[offset][f]
+end
+@
+\section{Structure of matching statements and tree nodes}
+The arms of the matching statement have some extra information.
+The file and line number help with error message and make it possible
+to generate [[#line]] statements that identify the source of the code.
+The original arm gives the arm from which the current arm is derived,
+and is useful for many of the heuristics.
+<<*>>=
+record matching_stmt(arms,valcode,succptr,trailer)
+		# case arms, code to compute value, id to set to end of p, trailing code
+record arm(file, line, pattern, eqns, soln, imp_soln, patlen, name, code, original)
+		# line, file, original(pattern) are used for error reporting
+		# These fields are the original contents:
+		#   pattern (in absoslute normal form) is pattern to match
+                #   eqns are equations given explicitly with arm (or else null)
+                #   name is identifier given in square brackets (or else null)
+		#   code is the list of code lines on the right hand side of the =>
+@ [[imp_soln]] gives answers and conditions associated with identifiers
+that appear as field bindings or constructor operands in the pattern.
+These identifiers are the {\em inputs} to the equations.
+This construct is a little odd, because the meanings of bound
+identifiers and the conditions that need to be satisfied are more
+naturally associated with disjuncts, not arms.
+We ``raise the differences'' by splitting arms until each arm as a
+unique such ``implicit solution.''
+We further guarantee the uniqueness of the [[imp_soln]] field.
+The reason for going to all this trouble is to simplify the task of
+dagging the eventual decision tree: we'll be able to unify nodes just
+by taking the [[image()]] of the [[imp_soln]] field (along with a few
+other goodies, of course).
+
+If [[succptr]] was requested in the corresponding case statment, [[patlen]] 
+gives the length of the pattern in the arm.  We split arms as needed to 
+make lengths unique.
+If [[succptr]] wasn't requiested, [[patlen]] is null.
+[[patlen]] is assigned by [[resolve_case_arms]].
+@
+
+Each node of the decision tree is associated with a particular matching
+statement.
+Internal nodes have children, and a [[field]] and [[offset]] that say
+which field of which word
+we decided to test on.  The edges that point to the children record
+the interval of values for the particular child.
+Leaf nodes have a [[name]] that records the name of the pattern known
+to match at that leaf node.
+<<*>>=
+record node(cs, children, field, offset, name, parent)
+	# matching statement, list of edges to children, field chosen, pattern name
+	#	(name field used to support name operator, assigned only to leaves)
+record edge(node, lo, hi)
+	# node pointed to and lo and hi interval of field for this edge
+@
+To create a decision tree, I begin with a node containing the full,
+original matching statement.  I then use a ``work queue'' approach to check
+each node and see if it needs to be split.
+If no pattern matches the node, or if the first pattern always matches
+(with a unique name), no further splitting needs to be done, and I
+assign a name to the leaf.\footnote{If the name isn't used, I assign
+the name [["-unused-"]], because that will make it easier to combine
+nodes in the dagging phase.}
+Otherwise, I split the node.
+<<*>>=
+procedure needs_splitting(n)
+    local name
+    if *n.cs.arms = 0 then fail
+    if not guard_always_satisfied(n.cs.arms[1].imp_soln.constraints) then 
+        return # first arm can't always match.
+    p := n.cs.arms[1].pattern
+    name := \p.disjuncts[1].name | p.name
+    every d := !p.disjuncts do {
+        n := \d.name | p.name
+        if n ~=== name then
+          return   # needs splitting if names or answers are different
+        else if adalwaysmatches(d) then 
+          fail	# always matches, needn't split
+    }
+    return 			# pattern doesn't always match -> split
+end
+@
+I need different procedures to check matching because the patterns
+are in absolute normal form.
+<<*>>=
+procedure aalwaysmatches(p)
+    return adalwaysmatches(!p.disjuncts)
+end
+procedure adalwaysmatches(d)
+  if type(!d.aconstraints) == "constraint" then fail
+  else return guard_always_satisfied(d.conditions)
+end
+@
+[[tree]] converts a matching statement into a decision tree. 
+<<*>>=
+procedure tree(cs)
+    local armcount, arm, armname, nodename
+    static heuristics
+    initial {
+       heuristics := [leafarms, childarms, nomatch, childdisjuncts, branchfactor]
+    }
+    root := node(copy(cs), [])	# need empty children in case root not split
+    work := [edge(root)]        # work queue of edges (nodes) to be expanded
+    while n := get(work).node do
+        if (needs_splitting(n) & *(afields := mentions(n.cs)) > 0) then {
+            <<split node [[n]] and add children to work queue>>
+        } else {
+            write(\sdebug, "Not splitting ", 
+                  commaseparate(maplist(expimage, n.cs.arms), "\n"))
+            armcount := *n.cs.arms
+            trim_impossible_arms(n.cs)
+            n.name := case *n.cs.arms of {
+                        0 : "-NOMATCH-"
+                        default: get_nodename(n)
+                      }
+	    if \lc_pat_names then n.name := map(\n.name)
+            if armcount > *n.cs.arms then
+              write(\sdebug, "Trimmed node is ",
+                  commaseparate(maplist(expimage, n.cs.arms), "\n"))
+       }
+    return root
+end
+@ 
+We want to assign each leaf node a name, which is derived 
+from the names of the pattern arms that the node matches.
+If all pattern arms in the node have the same name $N$ or
+are the null string, i.e., they do not specify a name, 
+then the node's name is simply $N$.  
+This case always holds when the node matches exactly one arm; 
+one arm and a default (wildcard) arm; or multiple arms that
+all match the same constructor (possibly applied to different arguments).
+If the names of the pattern arms in the node are not the same, 
+then the node's name is ambiguous, because no single
+name exists for all possible matches. 
+An ambiguous node name will cause an error in [[genarm]], 
+if any of the node's pattern arms attempts to bind a [[ [name] ]].
+<<*>>=
+procedure get_nodename(n)
+local nodename, armname
+    nodename := armname := &null
+    every arm := !n.cs.arms do 
+      if (armname := \(<<Get name from pattern [[arm]]>>)) then {
+        write(\sdebug, "[", image(arm.name),"] = ", 
+             image(armname), " for ",expimage(arm.pattern))
+        if (\nodename ~== armname) then 
+          nodename := <<Ambiguous name warning>>
+        else nodename := armname
+      }
+    return nodename
+end
+<<Get name from pattern [[arm]]>>=
+if \arm.name then {
+  \arm.pattern.disjuncts[1].name | \arm.pattern.name | &null
+# "-unnamed-"
+} else &null
+<<Ambiguous name warning>>=
+(warning("ambiguous name for pattern arm at ", arm.original.file, ", line ",
+         arm.original.line, ": ", commaseparate(maplist(expimage, n.cs.arms), 
+         "\nAre you trying to decode a synthetic instruction?\n")), 
+&null)
+@
+Splitting a node involves choosing a field, finding out which intervals
+of values of that field are interesting, and creating a child node for
+each such interval of values.  The patterns in the matching statement of the
+child node reflect the knowledge of the value interval of the tested
+field.
+
+I make the decision by splitting the node on {\em each} field
+mentioned in the matching statement.  I then compute some heuristic
+functions of the children from each splitting and use the
+best-scoring field.
+
+Some debugging information may be written to [[hdebug]] or [[sdebug]].
+<<split node [[n]] and add children to work queue>>=
+afields := mentions(n.cs)
+*afields > 0 | impossible("internal node mentions no fields")
+candidates := table()
+every f := !afields do
+    candidates[f] := split(n, f)
+<<if debugging, split all and report>>
+*afields > 1 & write(\hdebug, "Choosing one of ", patimage(afields))
+every h := !heuristics do {
+    if *afields = 1 then break
+    afields := findmaxima(h, candidates, afields)
+write(\hdebug, image(h), " chose ", patimage(afields))
+}
+*afields > 0 | impossible("no fields")
+*afields = 1 | write(\hdebug, "tie among fields", patimage(afields), " near ",
+                      image(n.cs.arms[1].original.file), ", line ",
+                      n.cs.arms[1].original.line)
+work |||:= n.children := candidates[n.field := ?afields]
+*afields = 1 | write(\hdebug, "arbitrarily chose ", patimage(n.field))
+@
+<<*>>=
+procedure parentchoices(n)
+  l := []
+  n := n.parent
+  while \n do { push(l, n.field); n := n.parent }
+  return l
+end
+<<if debugging, split all and report>>=
+if \tryall & \hdebug & *afields > 1 then     {
+  write(\hdebug, repl("=",10), " Splitting ", repl("=", 10))
+  every findmaxima(!heuristics, candidates, afields) do write(\hdebug)
+  write(\hdebug, repl("=", 30), "\n")
+}
+@
+To split a node, I look at each interval of values that might be
+interesting.  I apply that interval to the matching statement, and if there
+can be any match, I create and add a new child node.
+[[f]] is an absolute field.
+<<*>>=
+procedure split(n, f)
+    local vals,v,d,val,c,p,j,i,newd,cst,child,newp, xxx
+
+    patterns := []
+    children := []
+    every put(patterns, (!n.cs.arms).pattern)
+    r := intervals(patterns, f)
+    <<if debugging, write about splitting this node>>
+
+    every i := 1 to *r - 1 do
+        put(children, edge(node(apply(n.cs, f, r[i], r[i+1]),[]), r[i], r[i+1]))
+
+    write(\sdebug, "Done splitting.\n")
+    every (!children).node.parent := n
+    return children
+end    
+@
+<<if debugging, write about splitting this node>>=
+writes(\sdebug, "Splitting ")
+outpattern(\sdebug, patterns[1])
+every i := 2 to *patterns do { writes(\sdebug, " | "); outpattern(\sdebug, patterns[i])}
+write(\sdebug, " on ", f.field.name, " at ", f.offset)
+@
+What is the new matching statement that results from applying 
+$\mathtt{lo \le f < hi}$ to [[cs]]?
+For each arm, I match the pattern against the interval.
+If it succeeds, I create a new arm for the new matching statement,
+containing the reduced pattern.
+[[f]] is an absolute field.
+<<*>>=
+procedure apply(cs, f, lo, hi)
+    local newarm
+    result := copy(cs)
+    result.arms := []
+    write(\sdebug, "    Applying ", stringininterval(patimage(f), lo, hi))
+    every a := !cs.arms do {
+        newarm := copy(a)
+        put(result.arms, if newarm.pattern := pmatch(a.pattern, f, lo, hi) then newarm)
+    }
+    if *result.arms > 1 & aalwaysmatches(result.arms[1].pattern) &
+       guard_always_satisfied(result.arms[1].imp_soln.constraints) then { # change 21
+        write(\sdebug, "    Trimming results of apply to ", expimage(result.arms[1]))
+        result.arms := [result.arms[1]]
+    }
+    return result
+end
+@
+[[pmatch]] both tests to see whether $\mathtt{lo \le f < hi}$ and, if so, returns
+the new~[[p]].
+[[f]] is an absolute field.
+<<*>>=
+procedure pmatch(p, f, lo, hi)
+    result := pattern([], p.name)
+    every d := !p.disjuncts do 
+        if c := !d.aconstraints & c.field === f & type(c) == "constraint" then 
+							# disjunct mentions f
+	    if c.lo <= lo & hi <= c.hi then { 		# this constraint is matched
+		newd := adisjunct([], d.name, d.conditions, d.length,d.patlabelbindings)
+		every c := !d.aconstraints & c.field ~=== f do 
+		    put(newd.aconstraints, c)
+		put(result.disjuncts, newd)
+	    } else
+		c.hi <= lo | c.lo >= hi | impossible("bad intervals")
+        else						 # disjunct does not mention f
+	    put(result.disjuncts, d)
+    <<if debugging, write about results of [[pmatch]]>>
+    if *result.disjuncts > 0 then return result
+end
+@
+<<if debugging, write about results of [[pmatch]]>>=
+if *result.disjuncts > 0 then writes(\sdebug, "        ===> ") & outpattern(\sdebug, p)
+# else writes(\sdebug, "             ") & outpattern(\sdebug, p)
+
+if *result.disjuncts > 0 then write(\sdebug, " matches") 
+# else write(\sdebug, " does not match")
+@
+\section{Tree-minimization heuristics}
+First, the boilerplate that takes a heuristic [[h]], candidate
+splittings, and a set of fields, and returns the set of fields with
+the largest score on [[h]].
+<<*>>=
+procedure findmaxima(h, candidates, afields)
+    local max
+    S := []
+    every f := !afields do {
+	score := h(candidates[f], f)
+        write(\hdebug,"Field ", patimage(f), " scores ", score, " on ", image(h))
+	/max := score - 1
+	if score > max then {
+	    max := score
+	    S := [f]
+	} else if score = max then
+	    put(S, f)
+    }
+    return set(S)
+end
+@
+Here's a big pile of heuristics.
+I'm not sure I've ever needed more than the first two, but they're
+amusing and easy enough to write.
+<<*>>=
+# leafarms: prefer candidate with most arms that appear at leaf
+#           nodes.  Each original arm counted only once.
+#	    Not matching is also counted as an arm.
+
+procedure leafarms(children, f) 
+    arms := set()
+    every n := (!children).node & *n.cs.arms > 0 do
+       if not needs_splitting(n) then 
+           insert(arms, n.cs.arms[1].original)
+    return *arms + if *(!children).node.cs.arms = 0 then 1 else 0
+end
+<<*>>=
+# childarms: prefer the candidate with the fewest arms in children
+
+procedure childarms(children, f)
+    sum := 0
+    every sum -:= *(!children).node.cs.arms
+    return sum
+end
+<<*>>=
+# nomatch: if tied on leafarms and childarms, take candidate
+#          with real leaf in preference to nomatch leaf
+
+procedure nomatch(children, f)
+    return if *(!children).node.cs.arms = 0 then -1 else 0
+end
+<<*>>=
+# childdisjuncts: prefer the candidate with the fewest disjuncts in children
+
+procedure childdisjuncts(children, f)
+    sum := 0
+    every sum -:= *(!(!children).node.cs.arms).pattern.disjuncts
+    return sum
+end
+<<*>>=
+# branchfactor:  prefer the candidate with the fewest children
+
+procedure branchfactor(children, f)
+    return - *children
+end
+@
+\section{Utility functions}
+If an absolute field [[f]] is  to be used to split patterns, 
+[[intervals]] returns a sorted list defining the intervals that need to be considered.
+<<*>>=
+procedure intervals(patterns, f)
+    cuts := set([0, 2^fwidth(f.field)])
+    every p := !patterns & d := !p.disjuncts & c := !d.aconstraints & c.field === f &
+          type(c) == "constraint"
+    do
+	every insert(cuts, c.lo | c.hi)
+    return sort(cuts)
+end
+@
+[[mentions]] produces the set containing all
+absolute fields mentioned in a matching statement.
+Mentions in field bindings {\em don't} count; this information is for
+building decision trees only.%
+\footnote{The original design had no field bindings and omitting them seems to be
+the best migration path.}
+<<*>>=
+procedure mentions(cs) 
+    result := set()
+    every a := !cs.arms & d := !a.pattern.disjuncts & c := !d.aconstraints &
+          type(c) == "constraint"
+    do
+       insert(result, c.field)
+    return result
+end
+@
+<<*>>=
+procedure trim_impossible_arms(cs)
+  l := []
+  every a := !cs.arms do 
+    if arm_conditions_always_satisfied(a) then {
+      put(l, a)
+      if *l < *cs.arms then cs.arms := l
+      return cs
+    } else if member(a.imp_soln.constraints, 0) |
+           constant(!(\a.soln).constraints) = 0 then {
+      cs.arms := l
+      return cs
+    } else {
+      put(l, a)
+    }
+  return cs
+end
+<<*>>=
+procedure arm_conditions_always_satisfied(a)
+  return guard_always_satisfied(a.imp_soln.constraints) &
+         /a.soln | guard_always_satisfied(a.soln.constraints)
+end
+<<*>>=
+# find_id: tab to and past identifier id, returning its position
+# ignores quotes, comment brackets
+
+procedure find_id(id)
+    static notlnum
+    initial notlnum := ~ (&letters ++ &digits ++ '_')
+    tab(p := find(id)) & p = 1 | (move(-1) & any(notlnum) & move(1)) &
+               =id & pos(0) | any(notlnum) & suspend p
+end
+@
+\section{Tree checking}
+Once the tree is generated, it's useful to check it for redundant arms
+and for arms that never match.  These checks will help users catch
+mistakes in their specifications.  Note that I must check the
+``original'' arms; that's why they're there.
+<<*>>=
+procedure checktree(n, cs)
+    originals := set()
+    every insert(originals, (!cs.arms).original)
+    deletematching(n, originals)
+    every show_unmatched(n, !originals)
+    if hasnomatch(n) then
+        warning("Matching statement at ", image(cs.arms[1].file), ", line ",
+		n.cs.arms[1].line - 1, " doesn't cover all cases")
+    return n
+end
+@
+<<*>>=
+procedure deletematching(n, originals)
+    if *originals = 0 then return
+    else if *n.children > 0 then every deletematching((!n.children).node, originals)
+    else every delete(originals, (!n.cs.arms).original)
+end
+<<*>>=
+procedure hasnomatch(n)
+    if *n.children > 0 then return hasnomatch((!n.children).node)
+    else if *n.cs.arms = 0 then return  # found it
+end
+@  
+If an arm never matches, I push its
+pattern through the tree and find out combinations of arms do match
+that pattern.\change{33}
+<<*>>=
+procedure show_unmatched(n, a)
+  warning("No word matches pattern at ", image(a.file), ", line ", a.line, ".")
+  write(&errout,"    Covered by patterns at")
+  every find_covering_arms(n, a, !a.pattern.disjuncts)
+  return
+end
+
+procedure find_covering_arms(n, a, ad)
+  if *n.children = 0 then
+    every a := !n.cs.arms do
+      write(&errout, "\t", image(a.file), ", line ", a.line)
+  else {
+    c := find_or_invent_constraint(n.field, ad)
+    every e := !n.children & intervals_intersect(c.lo, c.hi, e.lo, e.hi) do
+      find_covering_arms(e.node, a, ad)
+  }
+  return
+end
+@ 
+<<*>>=
+procedure intervals_intersect(lo1, hi1, lo2, hi2)
+  if hi1 <= lo2 | hi2 <= lo1 then fail else return
+end
+
+# absolute disjuncts!
+procedure find_or_invent_constraint(f, d)
+  return if type(c := !d.aconstraints) == "constraint" & c.field === f then c
+         else constraint(f, 0, 2^fwidth(f.field))
+end

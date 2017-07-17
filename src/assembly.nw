@@ -1,0 +1,696 @@
+% l2h ignore change {
+\chapter{Managing generation of assembly encoders}
+We can reuse the encoding interface, since the assembly stuff is an
+implementation of it.
+<<*>>=
+link pretty
+procedure emit_assembly(outfilename)
+  local i, f
+  verbose("Emitting encoding interface")
+  emit_encoding_interface(openfile(i := outfilename || interface_extension, "w")) |
+    error("Could not open ", image(i), " for writing")
+  verbose("Emitting assembly procedures")
+  emit_assembly_implementation(
+         openfile(f := outfilename || implementation_extension, "w"), i) |
+    error("Could not open ", image(f), " for writing")
+end
+@ 
+Here's the template that begins all assembly implementations:
+<<assembly-impl.t>>=
+#include <mclib.h>
+#include %interface
+
+#define sign_extend(N,SIZE) \
+  (((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) @>> (sizeof(unsigned)*8-(SIZE)))
+ 
+@ 
+This next should probably be turned into something higher-order at
+some point.
+We reuse the same implementations of typed constructors to bundle up
+their
+arguments. We also create a local procedure we can call for
+each typed constructor to emit is assembly code.
+<<*>>=
+procedure emit_assembly_implementation(outfile, interfacename)
+  pp := PPnew(outfile)
+  every PPwrite(pp, pretty(!header_lines))
+  emit_template(pp, "assembly-impl.t", "interface", image(interfacename))
+
+  pushtrace("ASS")
+  <<write tag definitions for typed [[kept_constructors]]>>
+  every cons := kept_constructors() do {
+    verbose("Assembler for ", cons.name)
+    if cons.type ~=== instructionctype then
+      emit_create_instance_body(pp, cons)
+    emit_assembler_body(pp, cons) 
+  }
+  PPwrite(pp)	# flush prettyprinter
+  if \gen_counters then 
+    emit_counter_funs(outfile)
+  poptrace()
+  if \indirectname then emit_indirect_encoder(pp)
+  return
+end
+<<write tag definitions for typed [[kept_constructors]]>>=
+every cons := kept_constructors() & cons.type ~=== instructionctype do 
+  PPwrite(pp, "#define ", cons.name, "_TAG ", cons.tag)
+@
+\section{Name mapping}
+And now we start in with name mapping o-rama.
+The game here is to use separate mappings for every possible
+component of a constructor.
+By postulating these mappings now, we separate concerns, so that we
+can worry elsewhere about how they are defined.
+
+As part of planning the mappings, we need to think about how we want
+the code organized at run time.  In particular, we need to think about
+where to use specialized print procedures and where to use simple
+format strings.  We assume that if people want speed, they'll be
+emitting binary, not assembly language, so for simplicity we use lots
+and lots of procedures.
+We have a procedure for each:
+\begin{itemize}
+\item field
+\item constructor
+\item constructor type
+\end{itemize}
+We try to reuse field procedures where possible.
+The application must supply a print procedure [[asmprintf]] in the
+style of {\tt fprintf}, and also a procedure [[asmprintreloc]], which
+prints a relocatable address.
+
+We're going to create these procedures lazily.
+The field-printing procedure is off in the {\tt fieldinfo.nw} module.
+
+
+The mappings are:
+\begin{tabular}{ll}
+[[consname2asm]]&constructor names\\
+[[field_asm_syntax]]&field operands\\
+[[intarg_asm_syntax]]&non-field integer operands\\
+???&what else?
+\end{tabular}
+
+@
+\subsection{Mapping constructor names}
+Use the mapping for constructor's complete name, if it exists.
+Otherwise, we break the constructor name into its components and match the
+individual components.
+We never use full-name mapping and componentwise mapping on the same
+constructor name.
+<<*>>=
+procedure consname2asm(cons)
+  local n, x, cname
+  n := ""
+  cname := ""
+  every cname ||:= opcode_component_name(!cons.opcode)
+  x := map_fullname(cname)
+  pushtrace("GLOB")
+  if (\x) then 
+    n := if (\lowercons) then map(x) else x
+  else 
+    every x := map_component(opcode_component_name(!cons.opcode), cons.type) do
+      n ||:= if (\lowercons) then map(x) else x
+  poptrace()
+  return if cons.type === instructionctype | *n > 0 then 
+           if /postfix then (if !asmoperands(cons) then n || " "  else n)
+           else             " " || n
+         else ""
+end
+@ 
+We map the individual components by opcode globbing.
+<<*>>=
+global opcode_globs, opcode_full
+procedure map_fullname(name)
+  initial /opcode_full := []
+  return globmap(name, !opcode_full) | &null
+end
+procedure map_component(name, type)
+  initial /opcode_globs := []
+  return globmap(name, !opcode_globs) | if type === instructionctype then name else ""
+end
+@ 
+And finally, here's where we install the globs.
+<<*>>=
+record globpair(lhs, rhs)
+procedure asmopcode(lhs, rhs, full)
+  initial { /opcode_globs := []
+            /opcode_full := []
+          }
+  put(if (\full) then opcode_full else opcode_globs, globpair(lhs, rhs))
+  return
+end
+@ 
+And now, the implementation of globbing.
+<<*>>=
+procedure globmap(name, glob) 
+  l := []   # used for $n
+  name ?
+    if consume_globs(glob.lhs, l) & pos(0) then
+      return insert_glob_matches(glob.rhs, l)
+end
+<<*>>=
+procedure consume_globs(pat, dollars, i)
+  suspend case type(pat) of {
+    "glob_any" : { 
+       while *dollars < pat.number do put(dollars, &null)
+       dollars[pat.number] <- consume_globs(!pat.alternatives, dollars)
+    }
+    "glob_wildcard" : tab(&pos to *&subject + 1)
+    "list"          : {<<glob a concatenation>>}
+    "string"        : =pat
+    default         : impossible("glob pattern")
+  }
+end
+<<glob a concatenation>>=
+/i := 1
+if pat[i] then 
+  consume_globs(pat[i], dollars) || consume_globs(pat, dollars, i+1)
+else
+  ""
+<<*>>=
+procedure number_braces(pat)
+  do_number_braces(pat, 0)
+  return pat
+end
+
+procedure do_number_braces(pat, bracecount)
+  case type(pat) of {
+    "glob_any"      : { pat.number := bracecount +:= 1
+                        bracecount := do_number_braces(pat.alternatives, bracecount)
+                      }
+    "glob_wildcard" : &null
+    "list"          : every i := 1 to *pat do
+                        bracecount := do_number_braces(pat[i], bracecount)
+    "string"        : &null
+    default         : impossible("glob pattern: ", image(pat))
+  }
+  return bracecount
+end
+<<*>>=
+procedure insert_glob_matches(rhs, dollars)
+  s := ""
+  every x := !rhs do 
+    s ||:= case type(x) of {
+      "string"      : x
+      "glob_dollar" : \dollars[x.number] |
+			error("No match for $", x.number, " in `", grhsimage(rhs), "'")
+      default : impossible("glob rhs")
+    }
+  return s
+end
+<<*>>=
+procedure grhsimage(rhs)
+  s := ""
+  every x := !rhs do 
+    s ||:= case type(x) of {
+      "string"      : x
+      "glob_dollar" : "$" || x.number
+      default : impossible("glob rhs")
+    }
+  return s
+end
+@ 
+\subsection{Mapping operands}
+First, we're only allowed to map integers and fields, not relocatables
+or constructor types.
+<<*>>=
+record operand_syntax(syntax, nametable)
+  # syntax string, optional name table, optional bound on values (max+1)
+
+global operand_syntax_tab
+
+procedure asmoperand(name, syntax, names)
+  local nametable
+  initial /operand_syntax_tab := table()
+  <<insist that [[name]] not refer to a constructor type or relocatable>>
+  <<set [[nametable]] to the name table, checking for consistency>>
+  <<insist on names if [[%s]] is used>>
+  (return /operand_syntax_tab[name] := operand_syntax(syntax, nametable)) |
+     error("Operand syntax for ", name, " already specified")
+end
+<<set [[nametable]] to the name table, checking for consistency>>=
+if type(names) == "field" then
+  names := namespec(\fieldname_table(names)) | 
+              error("No names supplied for field ", ii2)
+nametable := 
+  if type(f := symtab[name]) == "field" then {
+    /names := namespec(\fieldname_table(f))  # use default names if none given
+    check_namespec(\names, f)
+  } else
+    (\names).nametable
+if \names & /nametable then impossible("name table: ", image(names))
+<<insist that [[name]] not refer to a constructor type or relocatable>>=
+if type(symtab[name]) == ("constype" | "relocatable") then
+  error("You may specify an operand syntax only for integer or field operands")
+<<insist on names if [[%s]] is used>>=
+if /nametable & !percent_split(syntax) == "%s" then 
+  error("You used %s to format operand ", name, ", but you gave no name specifier")
+@ 
+To implement lookup, we must provide suitable defaults.
+The only tricky case is that we use a field's name if it exists,
+otherwise not.
+<<*>>=
+procedure operand_syntax_of(ipt)
+  initial /operand_syntax_tab := table()
+  return \operand_syntax_tab[ipt.name] |
+    case type(ipt.meaning) of { 
+      "null"    : operand_syntax("%d")   # integer
+      "integer" : operand_syntax("%d")   # signed field
+      "field"   : { n := fieldname_table(symtab[ipt.name])
+                    operand_syntax(if \n then "%s" else "%u", n)
+                  }
+      default   : impossible("violated default syntax invariant")
+    }
+end
+@ 
+\section{Assembly syntax of constructors}
+@ 
+Next, the syntax may be given by an [[asmsyntax]] directive, or it may
+be taken from the original declaration.
+<<*>>=
+global asmsyntax
+procedure set_asmsyntax(cons, operands)
+  local oldoperands
+  initial /asmsyntax := table()
+  <<insist that [[operands]] and operands of [[cons]] have the same names>>
+  <<insist that [[operands]] and operands of [[cons]] have the same signed operands>>
+  (/asmsyntax[cons] := operands) |
+    {<<[[operands]] matches existing assembly syntax for [[cons]]>>} |
+    error("Conflicting assembly syntax already given for constructor ", cons.name)
+  return
+end
+
+procedure asmoperands(cons)
+  initial /asmsyntax := table()
+  return \asmsyntax[cons] | cons.operands
+end
+<<insist that [[operands]] and operands of [[cons]] have the same names>>=
+s1 := set(); every insert(s1, inputs_of_operands(operands).name)
+s2 := set(); every insert(s2, inputs_of(cons).name)
+every x := !s1 & not member(s2, x) do
+  error("Operand ", x, " given in assembly syntax for ", cons.name, 
+        " is not in the original constructor specification")
+every x := !s2 & not member(s1, x) do
+  warning("Operand ", x, " of constructor ", cons.name, 
+          " is not shown in the assembly syntax")
+<<insist that [[operands]] and operands of [[cons]] have the same signed operands>>=
+s1 := set(); every insert(s1, inputs_of_operands(operands, "integer").name)
+s2 := set(); every insert(s2, inputs_of(cons, "integer").name)
+every x := !s1 & not member(s2, x) do
+  error("Operand ", x, " of constructor ", cons.name, 
+        " is signed in assembly syntax but unsigned in the constructor specification")
+every x := !s2 & not member(s1, x) do
+  error("Operand ", x, " of constructor ", cons.name, 
+        " is unsigned in assembly syntax but signed in the constructor specification")
+@ 
+Because some constructors explode with vacuous disjuncts, we make it
+OK to define duplicate syntax, but we do insist the duplicates be identical.
+<<[[operands]] matches existing assembly syntax for [[cons]]>>=
+oldoperands := asmsyntax[cons]
+*operands = *oldoperands &
+  if i := 1 to *operands & not operands_match(operands[i], oldoperands[i]) then
+    {dump_em("new", operands); dump_em("old", oldoperands); &fail}
+  else
+    &null
+<<*>>=
+procedure operands_match(op1, op2)
+  return case type(op1) == type(op2) of {
+    "literal" : op1.s == op2.s
+    "input"   : op1.name == op2.name & op1.meaning === op2.meaning
+  }
+end
+<<*>>=
+procedure dump_em(ty, ops)
+  writes(&errout, ty, " syntax:")
+  every writes(&errout, x := !ops & 
+               case type(x) of { 
+                    "literal" : x.s
+                    "input"   : x.name || 
+                                if type(x.meaning) == "integer" then "!" 
+                                else ""
+                    default : impossible("operand type")
+               })
+  write(&errout)
+  return
+end
+@ 
+\section{Emitting print procedures for constructors}
+The first issue is figuring out what to call the print procedures
+and what storage class they should be.
+Untyped constructors print directly and are visible (if not doing
+indirect),
+whereas typed constructors create instances, so we have to give them
+different names and we have to make them always hidden (static).
+<<*>>=
+procedure assembler_proc_name(cons)
+  return if cons.type === instructionctype then cons.name 
+         else cons.name || "_asm"  # unsafe, but what do you want?
+end
+procedure assembler_proc_class(cons)
+  return if \indirectname |  cons.type ~=== instructionctype then "static " else "" 
+end
+@ 
+[[emit_assembler_body]] creates an assembly-emitting procedure for the
+constructor [[cons]].  Its first act is to make sure there are print
+procedures for all the operands.  After that, it just prints all the
+syntax, then possibly a newline.
+<<*>>=
+procedure emit_assembler_body(pp, cons) 
+  local asmname
+  every create_input_print_proc(pp, inputs_of(cons))
+  emit_template(pp, "emitter-body.t", 
+                    "safename", Cnoreserve(assembler_proc_name(cons)),
+                    "args", arg_decls(cons),
+                    "class", assembler_proc_class(cons))
+  asmname := consname2asm(cons)
+  if *asmname > 0 & /postfix then
+    emit_asm_printf(pp, "%s", image(asmname))
+  every o := !asmoperands(cons) do
+    case type(o) of {
+      "literal" : emit_asm_printf(pp, "%s", image(o.s))
+      "input"  : 
+          PPxwrites(pp, "$n", 
+                        create_input_print_proc(pp, o), "(", Cnoreserve(o.name), ");")
+      default : impossible("operand type")
+    }
+  if *asmname > 0 & \postfix then
+    emit_asm_printf(pp, "%s", image(asmname))
+  if cons.type === instructionctype then
+    emit_asm_printf(pp, "\n")
+  PPxwrite(pp, "$b$n}")
+end
+@ 
+\section{Generating print procedures for operands}
+Next we show how to create a print procedure for an operand.
+We do it lazily, and we return the name of the procedure.
+@
+We're allowed to print any integer argument using any syntax we like.
+Relocatable addresses constructor types have constrained syntaxes.
+<<*>>=
+procedure create_input_print_proc(pp, ipt)
+  return case type(ipt.meaning) of {
+    "string"   : "asmprintreloc"
+    "constype" : create_constype_print_proc(pp, ipt.name, ipt.meaning)
+    "integer"  : create_integer_print_proc(pp, "signed",   ipt, 
+                    signed_type(fwidth(f := symtab[ipt.name])), operand_syntax_of(ipt))
+                        # maybe this should be forced to %d?
+    "field"    : create_integer_print_proc(pp, "unsigned", ipt, 
+                    unsigned_type(fwidth(f := ipt.meaning)), operand_syntax_of(ipt))
+    "null"     : create_integer_print_proc(pp, "signed",   ipt, 
+                    signed_type(), operand_syntax_of(ipt))
+    default    : impossible("Bad operand value", type(ipt.meaning))
+  }
+end
+@ 
+There's no science here. 
+<<*>>=
+procedure create_integer_print_proc(pp, sign, ipt, argtype, syntax)
+  local namearray, argname, limit
+  if p := lookup_printproc(syntax, argtype) then return p
+  argname := ipt.name
+  emit_template(pp, "int-print-header.t", 
+                     "name", argname, "type", argtype, "sign", sign)
+  l := percent_split(syntax.syntax)
+  if !l == "%s" then {
+    \syntax.nametable | <<complain no names specified>>
+    <<set [[limit]] based on [[ipt]] and the name table>>
+    namearray := name_array_from_table(syntax.nametable, limit, argname)
+    namearray.storageclass := "static"
+    PPxwrite(pp, pretty(Gdeclnamearray(namearray)), ";") # local name array
+    if type(ipt.meaning) == "null" then
+      PPxwrite(pp, pretty(Sif([
+          Sguarded(set([literal("0 <= " || argname),
+                        literal(argname || " < " || limit)]),
+                   Sepsilon()),
+          Sguarded(set(), 
+                   literal("{asmprintf(asmprintfd, " || 
+                               image(bad_operand_name(argname, "%d")) || ", " || 
+                               argname || "); return;}"))])))
+  }
+  every x := !l do
+    case x of {
+      "%s" : emit_asm_printf(pp, "%s", namearray.codename || "[" || argname || "]")
+      "%d" | "%u" | "%x" : emit_asm_printf(pp, x, argname)
+      "%%" : emit_asm_printf(pp, "%%")
+      default :
+        if match("%", x) then
+          error("Unknown escape ", x, " in syntax string for argument ", argname)
+        else
+          emit_asm_printf(pp, "%s", image(x))
+    }
+  PPxwrite(pp, "$b$n}")  
+  p := "print_" || sign || "_" || argname
+  save_printproc(p, syntax, argtype)
+  return p
+end
+<<set [[limit]] based on [[ipt]] and the name table>>=
+case type(ipt.meaning) of {
+  "field"   : limit := 2^fwidth(ipt.meaning)
+  "integer" : limit := 2^ipt.meaning
+  default   : { limit := 0; every limit <:= !syntax.nametable; limit +:= 1 }
+}
+<<int-print-header.t>>=
+static void print_%sign_%name(%type %name) {$t
+<<complain no names specified>>=
+error("Tried to use field names to format argument ", argname, 
+      ", but no name specifier was given")
+@ 
+To keep track of print procedures, the easy case is one in which no
+field names are used: we just look up a procedure by its syntax and
+argument type.  Otherwise we need a key that captures all the field
+names.
+I use [["\0"]] to separate parts of a key.
+This trick isn't perfectly safe, but names are most unlikely to
+contain the null character, and if they do, the C code is going to
+break anyway.
+<<*>>=
+global printproctab
+
+procedure printproc_key(syntax, argtype)
+  k := syntax.syntax || "\0" || argtype
+  if find("%s", syntax.syntax) then
+    k ||:= nametablekey(syntax.nametable)
+  return k
+end
+
+procedure lookup_printproc(syntax, argtype)
+  initial /printproctab := table()
+  return \printproctab[printproc_key(syntax, argtype)]
+end
+
+procedure save_printproc(procname, syntax, argtype)
+  initial /printproctab := table()
+  (/printproctab[printproc_key(syntax, argtype)] := procname) |
+  impossible("duplicated print procedures")
+  return procname
+end
+@ 
+Here's the print procedure for a constructor type.
+Note that we don't have to worry about whether the print procedures
+for the individual constructors are out, because the global ordering
+on constructors guarantees they've all been emitted.%
+\footnote{There are probably several lurking bugs if somebody discards
+a typed constructor.} 
+<<*>>=
+procedure create_constype_print_proc(pp, argname, constype)
+  local call, prefix
+  static constype_syntax
+  initial constype_syntax := operand_syntax("")
+  if p := lookup_printproc(constype_syntax, constype.name) then return p
+  emit_template(pp, "constype-print-header.t", "type", constype.name)
+  s := Stagcase(argname, constype, table())
+  every cons := kept_constructors(constype) do {
+    <<let [[call]] represent a call to the assembly proc for [[cons]]>>
+    s.arms[cons] := literal(call)
+  } 
+  PPxwrite(pp, pretty(s), "$b$n}")
+  p := "print_" || constype.name
+  save_printproc(p, operand_syntax(""), constype.name)
+  return p
+end
+@ 
+Just blast out the arguments\ldots
+and make sure to have inital parenthesis \change{41}.
+<<let [[call]] represent a call to the assembly proc for [[cons]]>>=
+call := [assembler_proc_name(cons), "("]
+prefix := ""
+every ipt := inputs_of(cons) do {
+  put(call, prefix); prefix := ", "
+  put(call, pretty(Einstance_input(argname, cons, ipt.name)))
+}
+put(call, ");")
+<<constype-print-header.t>>=
+static void print_%type(%type_Instance %type) {$t
+@ 
+\section{Little utility procedures}
+[[percent_split]] divides up a syntax string such that the escapes are
+obvious.
+<<*>>=
+procedure percent_split(s)
+  l := []
+  s ? 
+    while not pos(0) do {
+      if not match("%") then 
+        put(l, tab(upto('%') | 0))
+      while match("%") do
+        put(l, move(2)) | error("unescaped % at end of syntax string")
+    }
+  return l
+end
+@ 
+[[emit_asm_printf]] emits a call to {\tt asmprintf}\footnote{Note the
+complete lack of consistency in my use of the underscore}.
+<<*>>=
+procedure emit_asm_printf(pp, fmt, args[])
+  PPxwrites(pp, "$nasmprintf(asmprintfd, ")
+  PPwrites(pp, image(fmt))
+  every PPwrites(pp, ", ", !args)
+  PPwrites(pp, ");")
+  return
+end
+@ 
+\chapter{Emitting assembly-language grammars}
+<<*>>=
+procedure emit_asm_grammar(outfilename)
+  local outfile
+  verbose("Emitting assembly-language grammar")
+  (outfile := openfile(outfilename, "w")) | 
+		error("could not open ", image(outfilename), " for writing")
+  pushtrace("ASMGRAMMAR")
+  every emit_cons_production(outfile, kept_constructors())
+  poptrace()
+  return
+end
+@ 
+We use the nonterminal [[Instruction]] for untyped constructors.
+For typed constructors we use the name of the type plus the word [[Operand]].
+<<*>>=
+procedure nonterminal_name(cons)
+  return if cons.type === instructionctype then "Instruction" 
+         else cons.type.name || "Operand"
+end
+@ 
+To emit a production, we use the operands and the concrete syntax.
+We share [[consname2asm]] to determine the syntax for the constructor
+name (and whether to use it at all!).
+The semantic action calls an encoding procedure.
+<<*>>=
+procedure emit_cons_production(outfile, cons)
+  local asmname, i, operand_positions, procname
+  every create_field_nonterminal(outfile, inputs_of(cons, "field"))
+  writes(outfile, nonterminal_name(cons), " :")
+  asmname := consname2asm(cons)
+  i := 1
+  if *asmname > 0 then
+    i +:= emit_literal_syntax(outfile, asmname)
+  operand_positions := []
+  every o := !asmoperands(cons) do
+    case type(o) of {
+      "literal" : i +:= emit_literal_syntax(outfile, o.s)
+      "input"   :  {
+          put(operand_positions, "$" || i)
+          i +:= emit_operand_syntax(outfile, o)
+        }
+      default : impossible("operand type")
+    }
+  procname := Cnoreserve(cons.name)
+  write(outfile, " /* ", 
+           if cons.type === instructionctype then "" else "$0 = ",
+           (\indirectname || "->" | "") || procname, 
+                "(", commaseparate(operand_positions), "); */;")
+  return
+end
+@ 
+This is a first cut and will have to be refined to tokenize things
+properly.
+<<*>>=
+procedure emit_literal_syntax(outfile, s)
+  static alphanum, letters, multichar
+  initial { letters := &letters ++ '_.'
+            alphanum := letters ++ &digits 
+            multichar := ["<=", ">=", "!="]
+           }
+  n := 0
+  s ? {
+    optwhite() 
+    while not pos(0) do {
+      if any(letters) then 
+        writes(outfile, " ", image(tab(many(alphanum))))
+      else if any(&digits) then {
+        warning("Can't put digits in assembly syntax")
+        tab(many(&digits))
+      } else 
+        writes(outfile, " ", image(=!multichar | move(1)))
+      n +:= 1
+      optwhite()
+    }     
+  }
+  return n
+end
+@ 
+This, too, is temporary and bogus.
+We need to take the same directives used to create
+[[operand_syntax_tab]] and use them to create a sensible input syntax.
+<<*>>=
+global operand_input_syntax_tab
+procedure emit_operand_syntax(outfile, ipt)
+  initial /operand_input_syntax_tab := table()
+  s := \operand_input_syntax_tab[ipt.name] |
+    case type(ipt.meaning) of { 
+      "null"     : "Integer"
+      "integer"  : "Integer"
+      "field"    : field_nonterminal[ipt.meaning]
+      "string"   : "Relocatable"
+      "constype" : ipt.meaning.name || "Operand"
+      default    : impossible("type of operand")
+    }
+  writes(outfile, " ", s)
+  return 1
+end
+@ 
+<<*>>=
+global field_nonterminal # maps fields to nonterminal names
+
+procedure create_field_nonterminal(outfile, ipt)
+  local nt, prefix
+  /field_nonterminal := table()
+  f := ipt.meaning
+  if member(field_nonterminal, f) then return field_nonterminal[f]
+  t := fieldname_table(f := ipt.meaning)
+  return field_nonterminal[f] := 
+    if /t then
+      "Integer"
+    else if fprime := key(field_nonterminal) & t === fieldname_table(fprime) then
+      field_nonterminal[fprime] # reuse
+    else {
+      nt := f.name || "Field"
+      write(outfile, nt)
+      prefix := ":"
+      every p := !sort(t, 2) do {
+        writes(outfile, "  ", prefix)
+        emit_literal_syntax(outfile, p[1])
+        write(outfile, " /* $0 = ", p[2], "; */")
+        prefix := "|"
+      }
+      write(outfile, "  ;\n")
+      nt
+    }
+end  
+@ 
+Here we remove whitespace from between the operands of
+<<*>>=
+procedure strip_asm_whitespace(cons)
+  every o := !cons.operands & type(o) == "literal" do
+    o.s := strip_whitespace(o.s)
+  return cons
+end
+
+procedure strip_whitespace(s)
+  r := ""
+  s ? {
+    while r ||:= tab(upto(' \t')) do tab(many(' \t'))
+    return r || tab(0)
+  }
+end
+

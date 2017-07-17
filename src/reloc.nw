@@ -1,0 +1,121 @@
+% l2h ignore change {
+% replace this source file to change the representation of relocatable addresses
+
+\chapter{Relocatable Addresses}
+
+Encoding applications often want to work with addresses whose values
+aren't known.  
+Common examples include calls to unknown procedures, or forward
+branches within a procedures.
+This kind of work can be done with labels alone, but it is more
+convenient to use a more general abstraction: the {\em relocatable
+address}.
+In its most general form, a relocatable address is an expression whose
+value depends on one or more labels.%
+\footnote{Note that our definition is different from the more
+traditional definition, in which, for example, the difference of two
+labels is taken to be an absolute address, not a reloctable address.
+This traditional definition works only if the two labels are in the
+same compilation unit.}
+Most of the toolkit treats relocatable addresses
+simply as an abstract data type:
+<<library types>>=
+typedef struct relocatable_address *RAddr;
+@ The operations available on a relocatable address are to see whether
+it has a known value, and to extract that value:
+<<faux declarations of library macros>>=
+extern int location_known(RAddr addr);
+extern unsigned location (RAddr addr);
+@ [[location_known(addr)]] will be true whenever all the labels on
+which [[addr]] depends have known values.
+If
+an application writer wants to change our representation of relocatable
+addresses,  his only obligation is to provide
+[[location_known]] and [[location]].
+@
+
+It is often convenient to refer to the ``program counter'' ([[pc]]), 
+i.e., the address of the current location
+in the current relocatable block, as if it were a relocatable address.
+In our current scheme, it is not representable as a relocatable
+address, but we provide a similar interface through macros:
+<<faux declarations of library macros>>=
+extern int cur_pc_known(void);
+extern unsigned cur_pc(void);
+@ [[cur_pc]] returns [[pc]]'s value if [[cur_pc_known]]
+is true.\index{program counter!referring to in library} 
+
+@
+The representation we have chosen for relocatable addresses does not
+support the fully general form defined above, because we would need
+ a little language for representing and interpreting addressing
+expressions, and we despair of devising a language whose definition
+and implementation would be acceptable to all application writers.
+Instead, the toolkit provides relocatable addresses of the form $L+n$, where
+$L$ is a label and $n$ is an integer offset.
+A relocatable address [[ra]] therefore has two fields:
+\begin{fields*} 
+ra.label&\noindent\phantom{label}\\
+ra.offset&\noindent\phantom{offset}\\
+\end{fields*}
+and one can be created by calling the following procedure:
+<<library procedures>>=
+extern RAddr addr_new(RLabel label, int offset);
+@ You can also convert an unsigned integer to a relocatable address:
+<<library procedures>>=
+extern RAddr unsigned_to_raddr(unsigned lc);
+@
+
+\ifx\refman\relax
+
+Here's the concrete representation of a relocatable address:
+<<exported data declarations>>=
+struct relocatable_address {
+    struct label *label;
+    int offset;
+};
+@ [[addr_new]] allocates and initializes a new relocatable address.
+<<definitions>>=
+RAddr addr_new(label, offset) RLabel label; int offset; {
+    RAddr ra;
+
+    ra = (RAddr) mc_alloc(sizeof(*ra), RAddr_pool);
+    ra->label = label;
+    ra->offset = offset;
+    return ra;
+}
+@ 
+[[location_known]] is true if the given relocatable address is located in a relocatable
+block with a known address.  [[location]] returns the absolute address of 
+the relocatable address, if it is known.  
+<<exported macro definitions>>=
+#define location_known(raddr)      ((raddr) && label_location_known((raddr)->label))
+#define location(raddr)            (label_location((raddr)->label) + (raddr)->offset)
+@
+Here's how we print the sucker.
+{\em Does this belong here?}
+<<local declarations>>=
+static void reloc_print(RAddr addr);
+<<definitions>>=
+static void reloc_print(RAddr addr) {
+  label_print(addr->label);
+  if (addr->offset > 0) asmprintf(asmprintfd, "+%d", addr->offset);
+  if (addr->offset < 0) asmprintf(asmprintfd,  "%d", addr->offset);
+}
+@ 
+It is often convenient to convert a known address into a relocatable
+address, e.g., to provide test values for a constructor's relocatable
+operands.  [[unsigned_to_raddr]] converts an unsigned address to an [[RAddr]].
+We use a new label for each unsigned value.
+It would be nice to save memory by using a single label with varying offsets, but
+juggling the signed and unsigned conversions seems too tricky.
+<<definitions>>=
+RAddr unsigned_to_raddr(unsigned lc) {
+  static RBlock rb;
+  RLabel lbl = label_new("stands for an unsigned value");
+  if (!rb) { rb = block_new(0); set_address(rb, 0); }
+  label_define_at(lbl, rb, lc);
+  return addr_new(lbl, 0);
+}
+@
+\fi 

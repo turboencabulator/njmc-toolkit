@@ -1,0 +1,143 @@
+% l2h ignore change {
+\chapter{Closure optimization for relocation}
+Record types are [[special]] if handled by hand-written code.
+[[expargs]] holds the names of arguments (fields) known to be 
+expressions, and which therefore need to be simplified recursively.
+<<*>>=
+global records, rules, special, expargs, simp_name
+link commafy
+procedure main(args)
+  every special | expargs := set()
+  every records | rules := table()
+  lex()
+  P_Spec()
+  every r := !records & not(member(special, r.name)) do
+    emit_tests(r)
+  return
+end
+@
+To optimize, we first optimize expression arguments, then
+if they're all early, we return a new early variable.
+<<*>>=
+procedure emit_tests(r)
+  local sargs, sa, before_if
+  iwrite(0, image(r.name), " : {")	# case label
+  iwrite(2, "sigma := []") 
+  iwrite(2, "m := make_early")
+  <<emit hoisting assignments, making [[sargs]] name hoisted [[r.args]]>>
+  if member(expargs, !r.args) then
+    {<<emit assignment making [[e]] its hoisted version>>}
+  iwrite(2, "m(", image(r.name), ", e, sigma)")
+  iwrite(0, "}")
+  write()
+end
+<<emit assignment making [[e]] its hoisted version>>=
+<<make [[c]] a list of conditions required to re-use [[e]]>>
+if *c > 0 then {
+  write("  if not (", commaseparate(c), ") then")
+  write("    e := ", r.name, "(", commaseparate(sargs), ")")
+}
+<<make [[c]] a list of conditions required to re-use [[e]]>>=
+c := []
+every i := 1 to *r.args & member(expargs, r.args[i]) do
+  put(c, sargs[i] || " === e." || r.args[i])
+@
+<<emit hoisting assignments, making [[sargs]] name hoisted [[r.args]]>>=
+sargs := []
+every a := !r.args do
+  if member(expargs, a) then {
+    sa := "_a" || *sargs
+    iwrite(2, sa, " := hoist(pp, e.", a, ", latevars)")
+    iwrite(2, "sigma := compose(sigma, ", sa, ".sigma)")
+    iwrite(2, sa, " := ", sa, ".e")
+    iwrite(2, "if islate(", sa, ", latevars) then m := make_late")
+    put(sargs, sa)
+  } else
+    put(sargs, "e." || a)
+@
+\subsection{Grammar}
+Each record type has a list of arguments.
+A rule has a matching expression on the left and code on the right.
+<<*>>=
+record Record(name, args)
+record Rule(lhs, code)
+<<productions>>=
+Spec : {Directive};
+Directive: Record
+         | "special" 
+               ( "hoist"    {Ident} "." /* every insert(special, !ii2) */
+               | "simplify" {Ident} "."
+               )
+         | "expargs" {Ident} "." /* every insert(expargs, !ii2) */
+         ;
+Record: "record" Ident "(" [Ident {"," Ident} /* push(ii2, ii1) */] ")"
+        /* records[ii2] := Record(ii2, \ii4 | []); rules[ii2] := [] */
+      ;
+Ident : IDENT | "_";
+<<grammar>>=
+%term INT
+%term IDENT
+%term CODE
+%%
+<<productions>>
+@
+\subsection{Lexical analysis}
+[[token]] describes the category of the token, and [[tval]] is its value.
+[[token == tval]] except for integers and identifiers.
+[[file]] and [[line]] describe the source file and line number from which 
+the token came.
+<<*>>=
+global token, tval, file, line
+@
+There are three special tokens.
+<<*>>=
+global EOF, IDENT, INT, CODE
+<<initialize [[tokens]]>>=
+CODE    := " code  "
+EOF    := " end of file "
+IDENT  := " identifier "
+INT    := " integer "
+<<*>>=
+procedure scantokens(eol)
+  static alphanum, hexdigits, multichar
+  initial { 
+    alphanum   := &letters ++ &digits ++ '_'
+    hexdigits  := &digits ++ 'abcdefABCDEF'
+    multichar  := set(["->", "%%"])
+    <<initialize [[tokens]]>>
+  }
+  if pos(1) & tab(many(' \t')) then {
+    tval := tab(0)
+    return token := CODE
+  } else if {white(); not pos(0)} then {
+    thispos := &pos
+    if ="#" then tab(0) & fail 
+    else if tval := integer(((="0x" & "16r") || tab(many(hexdigits))) | 
+                              ((="-" | "") || tab(many(&digits)))) then {
+      token := INT
+    } else if tval := (any(&letters), tab(many(alphanum))) then {
+      token := reserved(tval) | IDENT
+    } else if tval := ="->" then {
+      white()
+      tval := tab(0)
+      token := CODE
+    } else if tval := =!multichar then {
+      token := tval
+    } else {
+      token := tval := move(1)
+    }
+    return token
+  }
+end
+<<*>>=
+procedure white()
+  suspend tab(many(' \t'))
+end
+<<*>>=
+procedure iwrite(indent, L[])
+  return write!(push(L,left("", indent)))
+end
+
+procedure iwrites(indent, L[])
+  return writes!(push(L,left("", indent)))
+end

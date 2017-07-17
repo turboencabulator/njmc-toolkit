@@ -1,0 +1,51 @@
+<html><head><title> driver.nw</title></head><body><a name="NWD1">This simple driver for a SPARC disassembler disassembles its own main</a>
+routine.
+<pre><a name="NWdri9-*-1" href="#NWD1"><dfn>&lt;*&gt;=</dfn></a> <b>[D<a href="#NWD2">-&gt;</a>]</b>
+#include &lt;stdio.h&gt;
+#include &quot;sparcdis.h&quot;   
+</pre><p>
+<a name="NWD2">We do nothing at all clever about disassembling relocatable addresses.</a>
+A real function would keep track of labels and show these things more symbolically.
+<pre><a name="NWdri9-*-2" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD1">&lt;-</a>D<a href="#NWD3">-&gt;</a>]</b>
+static char *<a href="#NWD2">dis_rel</a> (void *unused, unsigned addr) { 
+  static char buf[80];
+  sprintf(buf, &quot;0x%08x&quot;, addr);
+  return buf;
+}
+</pre><blockquote>Defines <a href="#NWI-dis_rel"><code>dis_rel</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD3">We fetch by casting pointers and integers.</a>
+<pre><a name="NWdri9-*-3" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD2">&lt;-</a>D<a href="#NWD4">-&gt;</a>]</b>
+static unsigned <a href="#NWD3">fetch_word</a>(void *unused, unsigned lc) {
+  return *(unsigned *)lc;
+}
+</pre><blockquote>Defines <a href="#NWI-fetch_word"><code>fetch_word</code></a> (links are to index).<p>
+</blockquote><p>
+<a name="NWD4">The main program disassembles from </a><code><a href="#NWD4">main</a></code> through <code><a href="#NWD4">empty</a></code>
+<pre><a name="NWdri9-*-4" href="#NWD1"><dfn>&lt;*&gt;+=</dfn></a> <b>[<a href="#NWD3">&lt;-</a>D]</b>
+static void <a href="#NWD4">empty</a>(void);
+<a href="#NWD4">main</a>() {
+  unsigned start = (unsigned)<a href="#NWD4">main</a>;
+
+  for (start = (unsigned)<a href="#NWD4">main</a>; start &lt; (unsigned)<a href="#NWD4">empty</a>; start += 4) {
+    sparc_disassemble(start, (Printer) fprintf, stdout, 
+                             <a href="#NWD2">dis_rel</a>, NULL, <a href="#NWD3">fetch_word</a>, NULL);
+    printf(&quot;\n&quot;);
+  }
+}
+
+static void <a href="#NWD4">empty</a>() {}
+</pre><blockquote>Defines <a href="#NWI-empty"><code>empty</code></a>, <a href="#NWI-main"><code>main</code></a> (links are to index).<p>
+</blockquote>
+
+<ul>
+<li><a href="#NWD1"><i>&lt;*&gt;</i></a>: <a href="#NWD1">D1</a>, <a href="#NWD2">D2</a>, <a href="#NWD3">D3</a>, <a href="#NWD4">D4</a>
+</ul>
+<ul>
+<li><a name="NWI-dis_rel" href="#NWD2">dis_rel</a>: <a href="#NWD2">D1</a>, <a href="#NWD4">U2</a>
+<li><a name="NWI-empty" href="#NWD4">empty</a>: <a href="#NWD4">D1</a>
+<li><a name="NWI-fetch_word" href="#NWD3">fetch_word</a>: <a href="#NWD3">D1</a>, <a href="#NWD4">U2</a>
+<li><a name="NWI-main" href="#NWD4">main</a>: <a href="#NWD4">D1</a>
+</ul>
+</body></html>
+

@@ -1,0 +1,123 @@
+% l2h ignore change {
+\chapter{Environments and environment errors}
+An environment is a stack of symbol tables.
+The default environment is the top-level environment, [[globals]].
+[[newscope]] creates a copy of an environment that can be added to
+without having a side effect on the original.
+[[add_to_rho]] does the adding.
+
+[[lookup]] searches for the first binding of string [[val]] in 
+the environment. 
+[[lookuptype]] searches for [[val]] in the environment and if
+it exists, checks that its type is [[ty]].
+<<*>>=
+procedure is_defined(ident, rho)
+  return (<<value of [[ident]] in [[rho]]>>)   # parens handle newline from -L
+end
+procedure lookup(ident, rho)
+  return  (<<value of [[ident]] in [[rho]]>>) | error("`", ident, "' is undefined")
+end
+procedure lookuptype(ident, ty, rho)
+  type(v := <<value of [[ident]] in [[rho]]>>) == ty | typeerror(v, ty, ident, rho)
+  return v
+end
+<<value of [[ident]] in [[rho]]>>=
+{ /rho := globals; \(!rho)[ident] }
+<<*>>=
+procedure add_to_rho(name, val, rho)
+#write("rho ", *rho, " ", name, " ", expimage(val))
+    add_to_frame(name, val, rho[1]) | impossible("bogus environment")
+    return rho
+end
+
+procedure add_to_frame(name, val, frame)
+    (/frame[name] := val) | deferror(name)
+    return frame
+end
+<<*>>=
+procedure newscope(rho)
+    return push(copy(rho), table())
+end
+@ 
+Here we extend an environment with a new frame.
+I take care not to modify the environment.
+<<*>>=
+procedure extendscope(rho, frame)
+  (type(frame) == "table" & type(rho) == "list") | impossible("rho extension")
+  return push(copy(rho), frame)
+end
+<<*>>=
+procedure envimage(env, envname)
+    local hidden
+    /envname := "env"
+    s := ""
+    <<if [[env]] is a list, convert to a table and create string [[hidden]]>>
+    if *env = 0 then s ||:= "\nEnvironment " || envname || " is empty"
+    every p := !sort(env) do s ||:= pairimage(envname, p[1], p[2])
+    if \hidden then {
+       s ||:= "  -------- hidden --------\n"
+       return s || hidden
+    } else
+       return s
+end
+<<if [[env]] is a list, convert to a table and create string [[hidden]]>>=
+if type(env) == "list" then {
+  t := table()
+  every e := !env & ident := key(e) do
+    (/t[ident] := e[ident]) | 
+    { /hidden := "" ; hidden ||:= pairimage(envname, ident, e[ident]) }
+  env := t
+}
+<<*>>=
+procedure pairimage(envname, ident, v)
+  return "\n  " || envname || "[" || expimage(ident) ||"]" || " = " || 
+    case type(v) of {
+#      "pattern" : "<pattern> " || patternimage(v)
+#      "field"   : "<field> "   || fieldimage(v)
+      "string"  : image(v)
+      default   : expimage(v)
+    }
+end
+<<*>>=
+procedure deferror(t, v)
+    error(t, " ", v," is already defined.")
+end
+<<*>>=
+procedure typeerror(x, typename, ident, rho)
+    error("Expected ", (\ident || " to be a " | ""), typename, 
+          "; found ", type(x), " ", expimage(x))
+end
+<<name of [[rho]]>>=
+if rho === globals then "globals" else "rho"
+@
+\section{Injection and projection}
+Sometimes an identifier could have more than one meaning, depending on
+the precise context in which it is used.  For example, the name of a
+constructor operand denotes an instance when it is used in an
+application, but a pattern when it is used as a pattern identifier.
+We use ``injection'' to define the meaning of such an identifier; the
+meaning will be ``projected'' when the identifier is actually looked
+up.  Meanings can be projected into three spaces: patterns, integers,
+and constructor operands.  
+Projection never produces a null value; null values are used to
+indicate inability to project, and [[project]] fails.
+<<*>>=
+record inject(pattern, integer, consop)
+
+procedure project(x, ty)
+  return if type(x) == ty then x
+         else if type(x) == "inject" then case ty of {
+           "pattern" : \x.pattern
+	   "integer" : \x.integer
+  	   "consop"  : \x.consop
+         } else if ty == "integer" then case type(x) of {
+	   "pattern" | "input" : fail
+           exptypes() : x
+	   default    : 
+	     impossible("Bug in toolkit---can't use relocatable name",
+		        " in matching statement (was `rethink projection')")
+         }
+end
+@ I don't really know if the last clause here is right, but it was better than
+simply allowing anything to be projected into an integer, which I think would be
+unwarranted optimism.

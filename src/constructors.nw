@@ -1,0 +1,2264 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+% l2h ignore change {
+\chapter{Constructors}
+@
+\section{Creating and checking constructors}
+
+\subsection{Basic types}
+Most of the elements of a constructor are straight out of
+the concrete syntax. 
+Operands may be [[literal]] or [[input]].
+[[type]] is a [[constype]].
+[[rho]] is a bit odd; it contains the initial bindings used to evaluate the
+patterns in the branches, including any bindings introduced as part of exploding 
+the constructor's opcode.
+The constructor's [[tag]] is used to identify instances of that constructor.
+Tags are unique only within constructor types.
+
+To each branch we add the solution to its equations.
+
+The constructor type keeps track of its members, the number of tags used, and
+the line on which the type itself was used (to enforce definition before use).
+The [[members]] field is initially a set.
+When the type is first used, it must be complete, so the [[members]] are
+turned into a list (in alphabetical order by constructor name).
+<<*>>=
+record constructor(name, opcode, operands, type, branches, rho, tag)
+record branch(eqns, soln, pat)
+record constype(name, members, used, ntags)
+@ The solution ([[soln]]) in a branch has appropriate expressions substituted 
+for the free variables representing the inputs.
+@
+
+\subsection{Interpreting and checking constructor specifications}
+
+@
+The parser calls
+[[note_constructor]] when it sees a constructor specification.
+One specification may create many constructors;
+[[note_constructor]] calls [[explode]] to generate them all.
+Its effects are:
+\begin{itemize}
+\item add the constructor to the members of its type
+\item make sure the type hasn't been used an an argument to another
+constructor (thus avoiding possible recursion)
+\item add the constructor to the [[constructors]] name space
+\end{itemize} 
+<<*>>=
+procedure note_constructor(opcode, operands, type, branches)
+    local cons, template
+
+    <<to avoid circularity, make sure [[type]] has never been used>>
+    template := constemplate(type, opcode, operands, branches)
+    every cons := explode(opcode, template, globals) do {
+        if /constructors[cons.name] := cons then {
+	    verbose("New constructor ", cons.name)
+	    put(conslist, cons)
+            insert(type.members, cons)
+	    <<if first time thru, check for unused definitions in [[cons]]>>
+        } else if *crhs(constructors[cons.name]).disjuncts = 0 then {
+	    verbose("Replacing vacuous constructor ", cons.name)
+            constructors[cons.name] := cons
+	    put(conslist, cons)
+            insert(type.members, cons)
+	    <<if first time thru, check for unused definitions in [[cons]]>>
+        } else if *crhs(cons).disjuncts = 0 then {
+	    verbose("Ignoring extra, vacuous constructor ", cons.name)
+        } else {
+            warning("Ignoring duplicate definition of constructor ", cons.name)
+#	    PPxwrite(PPnew(&errout), 
+#		"Keeping $t$o", ppexpimage(crhs(constructors[cons.name])), "$b$n",
+#               "Discarding $t$o", ppexpimage(crhs(cons)), "$b")
+        }
+    }
+    return
+end
+@
+A constructor specification defines one or more constructors.
+(Multiple constructors are specified by enumerating disjuncts of patterns 
+that appear in the opcode, or by enumerating values of fields that appear in the opcode.)
+[[constemplate]] returns a template that is filled in differently for
+each constructor (by [[explode]]).
+[[instantiate_template]] is called by [[explode]] to create a complete
+[[Stype]] from a template and environment [[rho]].
+Differences between a template and a full-fledged constructor:
+\begin{itemize}
+\item A template has no name,  initial environment, or tag
+\end{itemize} 
+<<*>>=
+procedure constemplate(type, opcode, operands, branches)
+  local inputs, inputs_labs
+  <<make [[inputs]] the set of input names, barfing if duplicates exist>>
+  B := []
+  every b := !branches do { # b === [eqns, pat]
+    <<make [[inputs_labs]] [[inputs]] plus labels defined in [[b[2]]], barfing on duplicates>>
+    put(B, branch(b[1], inject_soln(solve(balance_eqns(b[1]), inputs_labs)), 
+                  \b[2] | implicit_pattern(opcode, operands)))
+  }
+  return constructor(&null, &null, operands, type, B, &null, &null)
+end
+@
+[[instantiate_template]] instantiates the templates by assigning name, environment,
+and branch tags.  Both the list of branches and the branches themselves
+have to be copied.
+<<*>>=
+procedure instantiate_template(op, t, rho)
+  /t.type.ntags := 0
+  t.type.ntags +:= 1
+  <<check that [[t.type.ntags]] doesn't overflow tag bits>>
+  return constructor(iname(op), op, t.operands, t.type, t.branches, rho, t.type.ntags)
+end
+<<make [[inputs]] the set of input names, barfing if duplicates exist>>=
+inputs := set()
+every i := inputs_of_operands(operands) do
+  if member(inputs, i.name) then
+    error("Input named ", i.name, " is used twice in one constructor")
+  else
+    insert(inputs, i.name)
+@ 
+Note that duplicate labels are OK, because they could appear in
+different disjuncts.  We have to sort that stuff out later.
+(Also note that implicit patterns never define labels.)
+<<make [[inputs_labs]] [[inputs]] plus labels defined in [[b[2]]], barfing on duplicates>>=
+if \b[2] then {
+  inputs_labs := copy(inputs)
+  every labname := pattern_label_names(b[2]) do
+    if member(inputs, labname) then
+      error("label name ", labname, ": conflicts with constructor input name")
+    else
+      insert(inputs_labs, labname)
+} else {
+  inputs_labs := inputs
+}
+@
+[[explode]] generates all those constructors denoted by a single
+constructor specification
+by enumerating disjuncts and field values for disjuncts and fields
+that appear in the constructor's opcode.
+Those disjuncts and fields are bound in the initial environment for the constructor.
+<<*>>=
+procedure explode(opcode, template, rho, frame)
+    /frame := table()
+    l := copy(opcode)
+    if type(p := l[i := 1 to *l]) == "pattern" then {
+        every l[i] := !p.disjuncts do {
+            add_to_frame(p.name, pattern([l[i]], \l[i].name | p.name), frame)
+            suspend explode(l, template, rho, frame)
+	    delete(frame, p.name)
+        }
+    } else if type(f := l[i := 1 to *l]) == "field" then {
+        t := fieldname_table(f); <<insist on [[*\t > 0]]>>
+        every x := t[l[i] := key(t)] do {
+            add_to_frame(f.name, inject(conspat(f, "=", x), x, &null), frame)
+            suspend explode(l, template, rho, frame)
+	    delete(frame, f.name)
+        }
+    } else
+        suspend instantiate_template(l, template, extendscope(rho, copy(frame)))
+end
+@
+<<insist on [[*\t > 0]]>>=
+*\t > 0 | error("Can't use field `", f.name, "' in opcode without supplying field names")
+@
+For constructor applications, we explode the applied constructor's
+name, first using the constructor's ``local'' environment(s) then 
+the global environment to determine the meaning of the applied
+constructor's name. 
+For example, in the definition of the constructors generated by
+[[P^Y]], the pattern [[P]] is bound to [[A]] in the environment
+created for the constructor [[A^Y]] {\em or} 
+is bound to [[B]] in [[B^Y]]'s environment.
+In the definition of the constructor [[R]], however,
+[[P]] is not bound in [[R]]'s environment, therefore its meaning in
+the global enviroment is used, i.e., [[(A | B)(s)]] which is [[A(s) | B(s)]].
+\begin{verbatim}
+patterns     P is A | B
+constructors 
+  P r is r
+  P^Y s is P(s) & Y
+  R s is P(s)
+\end{verbatim}
+
+[[explode_names]] uses a pattern's name if it is bound in [[rho]], 
+otherwise it explodes its disjunct's names.
+<<*>>=
+procedure explode_names(opcode, rho)
+    l := copy(opcode)
+    if type(p := l[i := 1 to *l]) == "pattern" then {
+        if l[i] := \lookup(p.name, \rho) then 
+            suspend explode_names(l)
+        else every l[i] := !p.disjuncts do {
+            suspend explode_names(l)
+        }
+    } else if type(f := l[i := 1 to *l]) == "field" then {
+        t := fieldname_table(f); <<insist on [[*\t > 0]]>>
+        every x := t[l[i] := key(t)] do
+            suspend explode_names(l)
+    } else
+        suspend iname(l)
+end
+@
+An implicit pattern conjoins all the pattern and field names appearing in the opcode 
+and operands.
+<<*>>=
+procedure implicit_pattern(opcode, operands)
+  l := []
+  every op := !opcode do 
+    case type(op) of {
+      "pattern" : put(l, Pident(\op.name)) | impossible("unnamed opcode pattern")
+      "field"   : put(l, Pident(op.name))
+    }
+  every ipt := inputs_of_operands(operands) do
+    if type(ipt.meaning) == ("field"|"integer"|"constype") then
+      put(l, Pident(ipt.name))
+  *l > 0 | 
+    error("Cannot use implicit pattern with no patterns or fields on lhs (",
+          expimage(opcode), ")")
+  return Pand(l)
+end
+@
+These auxiliary functions help choose names for constructors.
+<<*>>=
+procedure iname(opcode)
+  local name
+  name := ""
+  every name ||:= opcode_component_name(!opcode)
+  if \lowercons then name := map(name)
+  return mapoutbadchars(name)
+end
+
+procedure opcode_component_name(op)
+  return case type(op) of {
+    	   "string"   : op
+           "disjunct" : {
+             if *\op.name = 0 then impossible("disjunct with empty name")
+             \op.name | "???unnamed disjunct???"
+             }
+           default : impossible("opcode component", image(op))
+    	 }
+end
+<<*>>=
+procedure mapoutbadchars(name)
+  static nonalnum, underscores
+  initial {
+    nonalnum := string(&ascii -- &letters -- &digits -- '_')
+    underscores := repl("_", *nonalnum)
+  }
+  return map(name, nonalnum, underscores)
+end
+<<to avoid circularity, make sure [[type]] has never been used>>=
+if \type.used then
+  error("You can't create new constructors of type ", type.name,
+        "!\n\tThat name has already been used (on line", type.used, ")")
+<<if first time thru, check for unused definitions in [[cons]]>>=
+if /checked then {
+  checked := 1
+  <<check for unused definitions in [[cons]]>>
+}
+<<check for unused definitions in [[cons]]>>=
+every i := 1 to *cons.branches & b := cons.branches[i] do {
+  u := copy(b.soln.used)
+  every insert(u, pattern_free_variables(b.pat))
+  d := copy(b.soln.defined)
+  every insert(d, key(cons.rho[1 to *cons.rho - 1]) | inputs_of(cons).name)
+  every x := !(d--u--fresh_variables) do
+    warning(
+      if \cons.rho[1 to *cons.rho-1][x] then "opcode part"
+      else if member(b.soln.defined, x) then "equation result"
+      else "operand",
+      " ", image(x), " not used in constructor ", cons.name,
+           if (*cons.branches = 1) then "."
+           else " in " || ordinal(i) || " branch.")
+}
+@
+<<check that [[t.type.ntags]] doesn't overflow tag bits>>=
+if t.type.ntags >= 2^11 then
+  impossible("Too many type tags --- change mclib.nw (struct instance), constructors.nw")
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\section{Utility functions}
+
+\subsection{Input generation}
+
+[[inputs_of(cons, t)]] generates the inputs with meanings of type [[t]],
+or all inputs if [[t]] is omitted.
+<<*>>=
+procedure inputs_of(cons, t)
+  suspend inputs_of_operands(cons.operands, t)
+end
+procedure inputs_of_operands(ops, t)
+  type(ops) == "list" | impossible("inputs_of")
+  suspend if \t then (type(i := !ops) == "input", type(i.meaning) == t, i)
+          else       (type(i := !ops) == "input",                       i)
+end
+@
+[[input_named(cons, n)]] returns the input named [[n]] if there is one.
+<<*>>=
+procedure input_named(cons, n)
+  return if i := inputs_of(cons) & i.name == n then i
+end
+@
+\subsection{Checking constructor types}
+The two [[enforce]] functions distinguish between typed and untyped constructors
+by comparing their argument (a constructor type) to the anonymous type.
+<<*>>=
+procedure enforce_instance(ct)
+  return instructionctype ~=== ct | impossible("instance of untyped constructor")
+end
+<<*>>=
+procedure enforce_closure(ct)
+  return instructionctype  === ct | impossible("closure of typed constructor")
+end
+@
+\subsection{Miscellany}
+[[cons_named]] produces the constructor named [[s]] and issues an 
+error if no such constructor exists.  [[is_constructor]] tests if 
+[[s]] is a constructor and prints an optional message if it is not.
+<<*>>=
+procedure cons_named(s) 
+  return is_constructor(s, error)
+end
+procedure is_constructor(s, p)
+  return \constructors[s | iname([s])] | (\p)(image(s), " is not a constructor name")
+end
+<<*>>=
+procedure discard_cons_named(s)
+  if member(constructors, s <- (s | iname([s]))) then
+    delete(constructors, s)
+  else
+    warning("There is no constructor named ", s)
+  return
+end
+<<*>>=
+procedure ordinal(n)
+  return case n of {
+    1 : "1st"
+    2 : "2nd"
+    3 : "3rd"
+    default : n || "th"
+  }
+end
+@
+\section{Applying constructors}
+
+\subsection{Right-hand-side patterns}
+For every constructor, I compute a right-hand side, which is a pattern with
+free variables for the constructor's inputs.
+I then can apply the constructor by substituting for the inputs.
+
+[[chrs]] computes the stuff.
+Every input makes a contribution to the environment.
+I don't try to make constructor inputs visible as labels.
+This is perhaps inconsistent with the treatment of free constructor
+types in matching statements, but I need to hear an argument in favor
+before I'll be convinced to work out a proper semantics.
+<<*>>=
+procedure crhs(cons)
+  local rho, labrho
+  static cache
+  initial cache := table()
+  if /cache[cons] then {<<compute and cache pattern for [[cons]]>>
+PPxwrite(PPnew(\mdebug), "crhs for ", cons.name, " is ", ppexpimage(cache[cons]))
+}
+  return cache[cons]
+end
+<<compute and cache pattern for [[cons]]>>=
+rho := newscope(cons.rho)
+every ipt := inputs_of(cons) do
+  case type(ipt.meaning) of { 
+    "constype" : 
+        add_to_rho(ipt.name, inject(consinput_pattern(ipt), &null, ipt), rho)
+    "field" | "integer" : 
+        add_to_rho(ipt.name, inject(fieldinput_pattern(ipt), ipt.name, &null), rho)
+    "string"| "null" :
+        add_to_rho(ipt.name, inject(&null, ipt.name, &null), rho)
+    default    : impossible("input type")
+  }
+p := &null
+every b := !cons.branches do {
+  <<convert branch [[b]] to a pattern [[q]]>>
+  p := orp(\p, q) | q
+}
+cache[cons] := subst(eliminate_contradictions(p), "nonexistent variable", 0)
+		 # can't afford to simplify -- makes it too hard to solve eqns
+		# subst eliminates bad tag conditions
+@ 
+OK, the treatment of labels is a dreadful hack.
+The problem is that with the pattern in syntactic form, we don't know
+which disjuncts labels actually belong to.
+The depressing solution is to make multiple passes:
+\begin{enumerate}
+\item 
+Build an environment mapping label names to themselves (make sure
+there are no conflicts with inputs).
+\item
+Convert the pattern to normal form, which will propagate the
+free-variable names into the field bindings.
+\item
+Make a separate pass over each disjunct, converting the label names to
+suitable expressions of type [[Epatlabel]].
+That last pass is done by [[bind_and_remove_patlabel_names]]---it
+also nulls out the [[patlabel]] stuff.
+\end{enumerate}
+<<convert branch [[b]] to a pattern [[q]]>>=
+push(rho, b.soln.answers) # answers already injected by inject_soln
+t := table()
+every n := pattern_label_names(b.pat) do 
+  t[n] := n
+push(rho, t)
+q := freshen_disjuncts(pnf(b.pat, rho))
+pop(rho)
+pop(rho)
+every bind_condition(q, !b.soln.constraints)
+q := bind_and_remove_patlabel_names(q)
+@
+<<*>>=
+procedure inject_soln(soln)
+  every k := key(soln.answers) do
+    if type(symtab[k]) == "field" then 
+      soln.answers[k] := 
+        inject(constraints2pattern(fieldbinding(symtab[k], soln.answers[k])), 
+               soln.answers[k],
+               &null)
+  return soln
+end
+@
+Making an instance means instantiating the precomputed one.
+<<*>>=
+procedure consinput_pattern(ipt)
+  type(ipt.meaning) == "constype" | impossible("non-constructor input")
+  return subst(constype_pattern(ipt.meaning), ipt.meaning.name, ipt.name)
+end
+@
+We get the precomputed instance by using the right-hand sides of all
+the constructors.
+<<*>>=
+procedure constype_pattern(constype)
+  local cons, luid
+  static cache, uid
+  initial { cache := table(); uid := 0 }
+  if /cache[constype] then {<<compute and cache pattern for [[constype]]>>}
+  return cache[constype]
+end
+@
+Static local variables, like [[uid]] are evil. [[constype_pattern]] 
+is called recursively via [[crhs]].  
+Each instance of [[constype]] is tagged
+with [[uid]], but [[uid]] can be updated by the recursive call to
+[[crhs]]!  So [[luid]] preserves its value across recursive calls.
+Yuckorama.  You wouldn't believe what tripped this bug --- Icon's
+generation of record values in alphabetical order. 
+<<compute and cache pattern for [[constype]]>>=
+p := &null
+uid +:= 1 # one uid per constype??? will fail with multiple args of some constype
+luid := uid
+every cons := kept_constructors(constype) do {
+  t := table()   # substitution table to get inputs from instance
+  every ipt := inputs_of(cons) do {
+    t[ipt.name] := Einstance_input(constype.name, cons, ipt.name)
+    if type(ipt.meaning) == "string" then
+      t[ipt.name] := Eforce(t[ipt.name])  # ???? could this be right?
+  }
+  q := freshen_disjuncts(subst_tab(crhs(cons), t, 1))
+  bind_condition(q, Einstance_tagged(constype.name, cons, luid))
+  p := orp(\p, q) | q
+}
+p := seqpx(latent_label2pattern(constype.name), p)
+	# label will be used for binding instances later on!
+cache[constype] := p   # can't afford to simplify -- makes it too hard to solve eqns
+@
+The pattern corresponding to a field input is a field binding.
+<<*>>=
+procedure fieldinput_pattern(ipt)
+  type(symtab[ipt.name]) == "field" | impossible("input name is not field name")
+  type(ipt.meaning) == ("field"|"integer") | impossible("non-field input")
+  return constraints2pattern(fieldbinding(symtab[ipt.name], ipt.name))
+end
+@
+\subsection{Applying the patterns}
+[[apply_constructor]] produces the pattern value
+and constraints for a constructor when applied to [[args]] in an output
+pattern in the context of an environment [[rho]].
+We have to freshen pattern labels to maintain the nonduplication invariant.
+<<*>>=
+procedure apply_constructor(cons, args, rho, free_env)
+  local inputs, c, l
+pushtrace("APPCONS")
+  inputs := []; every put(inputs, inputs_of(cons))
+  <<insist input lengths match>>
+  t := argtable(inputs, args, rho, free_env)
+  p := freshen_patlabels(subst_tab(crhs(cons), t, 1)) # can't afford to simplify
+  every p.name | /(!p.disjuncts).name := cons.name
+	# overwrite pattern name always, but only default disjuncts
+PPxwrite(PPnew(\mdebug), "applied ", cons.name, " to get ",ppexpimage(p))
+poptrace()
+  return p
+end
+@
+[[app_to_instance]] is almost the same, but it produces an instance, not
+the pattern.
+You might wonder why we need it.  
+Well, [[crhs]] produces a pattern in which constructor operands are
+expected to be {\em instances}, not patterns.
+That means that [[apply_constructor]] expects its constructor-typed
+arguments to be instances, not patterns.
+But [[apply_constructor]] itself produces a pattern (which it must do,
+because that pattern is then used to produce an emitter or whatever).
+So then, what are we to do when the argument to a constructor is
+itself a constructor application?  We need a procedure that will apply
+a constructor and produce an instance, therefore [[app_to_instance]].
+Note that the call to [[subst_tab]] in [[apply_constructor]] above
+actually eliminates the instances.  (That's a sneaky hack.)
+
+I wish I knew whether freshening pattern variables was needed here, or how to do it.
+<<*>>=
+procedure app_to_instance(cons, args, rho, free_env)
+  local inputs
+  inputs := []; every put(inputs, inputs_of(cons))
+  <<insist input lengths match>>
+  return Einstance(cons, argtable(inputs, args, rho, free_env))
+end
+@
+[[argtable]] builds a table mapping input names to expresssions.
+It does all of the type checking.
+<<*>>=
+procedure argtable(inputs, args, rho, free_env)
+  t := table()
+  every ipt := inputs[i := 1 to *args] do
+    t[ipt.name] := case type(ipt.meaning) of { 
+      "constype" : <<make [[args[i]]] a constructor input>>
+      "integer"  : <<make [[args[i]]] a signed integer input>>
+      "field" | "string" | "null" :
+                   <<make [[args[i]]] an unsigned integer input>>
+      default    : impossible("input type")
+    }
+  return t
+end
+@
+Field inputs (typically registers)
+may have special names associated with particular values.
+[[fieldname_env_for_ipt(ipt)]] returns an environment that is empty for non-field
+inputs, but that contains the special names for field inputs.
+We can afford to put it first because we check elsewhere that these special 
+names never collide with operand names or identifiers used in equations,
+and therefore they can't collide with names in [[rho]].
+They have to go first because the decoding code blindly puts all free identifiers into 
+[[rho]], even if they are one of these special names.
+Extended fields don't use the special names.
+\change{29}
+If we look up a name and get a field, we treat it just as if it
+weren't defined, i.e., we can use it as a free variable. This change
+lets us use the name of a field as a binding instance in a matching
+statement.  God only knows what other consequences it may have.
+<<make [[args[i]]] an unsigned integer input>>=
+super_simplify(gsubst(args[i], unsigned_arg_f, rho, free_env, args, i, ipt))
+<<*>>=
+procedure unsigned_arg_f(e, rho, free_env, args, i, ipt)
+  local fieldrho
+  return case type(e) of {
+    "string" : {
+       fieldrho := fieldname_env_for_ipt(ipt) ||| rho
+       (if is_defined(e, fieldrho) & type(lookup(e, fieldrho)) ~== "field" then
+          project(lookup(e, fieldrho), "integer") 
+        else 
+          new_binding_instance(e, e, "integer", \free_env)
+       ) | badarg(args, i, ipt, "integer or field")
+    }
+    "literal" : project(lookup(e.s, fieldname_env_for_ipt(ipt)), "integer") |
+		                           badarg(args, i, ipt, "integer or field")
+    "Eapp" : error("Constructor application not allowed; expected integer or field")
+  }
+end
+@
+<<make [[args[i]]] a signed integer input>>=
+Enarrows(super_simplify(gsubst(args[i], signed_arg_f, rho, free_env, args, i, ipt)), 
+         ipt.meaning)
+<<*>>=
+procedure signed_arg_f(e, rho, free_env, args, i, ipt)
+  return case type(e) of {
+    "string" : (if is_defined(e, rho) & type(lookup(e, rho)) ~== "field" then
+                  project(lookup(e, rho), "integer") 
+                else 
+                  new_binding_instance(e, e, "integer", \free_env)
+               ) | badarg(args, i, ipt, "integer or field")
+    "literal" : badarg(args, i, ipt, "integer or field")
+    "Eapp" : error("Constructor application not allowed; expected integer or field")
+  }
+end
+@
+<<make [[args[i]]] a constructor input>>=
+case type(x := untable(args[i])) of {
+  "Papp" : impossible("Papp as constructor arg")
+  "Eapp" :
+    if c := cons_named(x.f) & c.type === ipt.meaning then
+      app_to_instance(c, x.args, rho, free_env)
+    else
+      badarg(args, i, ipt, "constructor of type " || ipt.meaning.name || 
+                           "; denotes " || c.type.name || ")")
+  "string" : 
+      (if is_defined(x, rho) then
+         if x := project(lookup(x, rho), "consop") then
+           if type(x) == "input" then
+              if x.meaning === ipt.meaning then 
+                ipt.name  # stands for an instance, not a pattern
+              else
+                badarg(args, i, ipt, " constructor of type " || ipt.meaning.name || 
+                                     " (not " || x.meaning.name || ")")
+           else
+             impossible("consop projected into non-input")
+         else 
+           if lookup(x, rho) === ipt.meaning then
+             <<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>
+           else
+             &fail
+       else
+         <<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>
+     ) | badarg(args, i, ipt, " constructor of type " || ipt.meaning.name)    
+  default : impossible("argument to constructor")
+}
+@ 
+<<possible binding instance [[x]] of constructor type [[ipt.meaning]]>>=
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    if (/free_env[x] := binding_instance(y, ipt.meaning)) |
+       (type(free_env[x]) == "binding_instance", 
+        type(free_env[x].val) == "Ebinding_instance", 
+        free_env[x].type === free_env[x].val.type === y.type)
+    then
+      &null
+    else
+      error("Can't re-use ", x, "; already used as ", type(free_env[x]), "(", 
+            expimage(free_env[x]), ")",
+	    "\n --- new value as ", type(y), "(", expimage(y), ") no good"))
+else
+  &fail
+@ This was the old code.  I don't understand it, but it was causing
+errors that I didn't want, so I changed it.
+<<old possible binding instance [[x]] of constructor type [[ipt.meaning]]>>=
+if \free_env then
+  1(y := Ebinding_instance(x, ipt.meaning, table()),
+    (/free_env[x] := binding_instance(y, ipt.meaning)) |
+     error("Can't re-use ", x, "; already used as ", expimage(free_env[x])))
+else
+  &fail
+<<*>>=
+procedure badarg(args, i, ipt, expected)
+  error(expimage(args[i]), " [", image(args[i]), "]",
+        " (", ordinal(i), " arg ", ipt.name, ") ",
+        "does not denote ", if any('aeiou', expected) then "an " else "a ", expected)
+end
+<<insist input lengths match>>=
+*inputs = *args | 
+   error(cons.name, " expects ", *inputs, " arguments, but you gave ", *args)
+@ 
+\subsection{Eliminating instances}
+This code is applied to every pattern as the last step in conversion
+to normal form.
+We don't remember why it's the {\em last} step, or if it really has to
+be the last. 
+<<*>>=
+procedure eliminate_instances(e)
+  return gsubst(e, eliminate_instances_f)
+end
+@ 
+[[eliminate_instances_f]] simplifies a pattern by removing constructor instances.
+For some forgotten reason,%
+\footnote{One might suspect the reason has something to do with the complicated
+logic of [[unwind_instance_inputs]], which doesn't look like it
+could be implemented with mere rewrite rules.} these transformations
+are not specified by rewrite rules in [[exp.nw]].
+
+The basic idea is that if we have an instance, we can simplify away
+some predicates on the instance and selection of elements of the
+instance. 
+<<what we might write if we were doing this with rewrite rules>>=
+Einstance_tagged(Einstance(c, a), c2, uid) -> if c === c2 then 1 else 0
+Einstance_input(Einstance(c, a), c2, name) -> if c === c2 then a[name] 
+                                              else Efail(expimage(e))
+Einstance_tagged(Ebinding_instance(_, _, _),_, _) -> 1 # why? helps matching?
+@ The real kicker is dealing with names.  If we have a binding
+instance of a constructor type, we have a name for it.  Now, if we
+want to select an element of that constructor type, we need a name for
+the element, too, since that element itself becomes a binding
+instance.
+The general idea is 
+<<what we might write if we were doing this with rewrite rules>>=
+Einstance_input(Ebinding_instance(name, _, _), c, fname) ->
+   Ebinding_instance(name || "." || c.name || "." || fname)
+@ but the real truth is in [[unwind_instance_inputs]].
+@ 
+We also take this opportunity to make some decisions about latent
+pattern labels.  Latent labels associated with binding instances of
+constructor types become real, but labels associated with literal
+instances ([[Einstance]]) are discarded.
+<<what we might write if we were doing this with rewrite rules>>=
+latent_patlabel(Einstance(_, _)) -> vanishing_latent_patlabel
+latent_patlabel(Ewildcard(nam)) -> patlabel(nam, nam)
+@ 
+
+With rewrite rules, we would enjoy the great convenience that the
+rewrite engine would simplify the elements of every expression before
+simplifying the expression itself, since it works bottom-up.
+Unfortunately, we're using [[gsubst]], which works top-down, and the
+code is therefore more labored than one might like.
+@
+Even after all these soothing explanations, Mary may still be afraid
+of this code.  
+She has good judgment.
+@
+Mary's good judgement is borned out by bug number~17.
+In an effort to fix bug~17, I'm splitting these things into two
+functions.
+The inner function, [[do_eliminate_instances_f]], retains values of
+type [[binding_instance_var]].  The outer such function,
+[[eliminate_instances_f]], rewrites those to strings.\change{42}\bug{17}
+<<*>>=
+procedure eliminate_instances_f(e)
+  return eliminate_binding_instance_vars(do_eliminate_instances_f(e))
+end
+
+procedure do_eliminate_instances_f(e)
+  local the_answer
+  static issued_warning
+  pushtrace("ELIMINATE")
+  the_answer := case type(e) of {
+    "Einstance_input" : unwind_instance_inputs(e) 
+    "Einstance_tagged" : {
+	e.x := gsubst(e.x, do_eliminate_instances_f)  # simplify children bottom-up
+        case type(e.x) of {
+          "Ebinding_instance" : 1
+          "binding_instance_var" : 1
+          "Einstance" : if e.cons === e.x.cons then 1 else 0 
+          default : e    # don't let gsubst continue; we did it already
+        }
+      }
+    "latent_patlabel" : {
+       e.instance := gsubst(e.instance, do_eliminate_instances_f) # simplify bottom-up
+       case type(e.instance) of { 
+         "Ebinding_instance" : patlabel(e.instance.name, e.instance.name)
+         "string"	     : e  # no change
+	 "binding_instance_var" : e # as with string (but should it be patlabel?)
+         "Einstance_input"   : {<<latent pattern label of an instance input>>}
+         "Einstance"         : vanishing_latent_patlabel
+         "Efail"             : Efail("latent pattern label of " || e.instance.msg)
+        default		     : impossible("type of latent pattern label")
+      }
+    }
+  } | {poptrace(); fail}
+  poptrace()
+  return the_answer
+end
+@ 
+That last case has caused much consternation.
+Originally we weren't sure if a latent pattern label of an instance
+input should vanish or just stay unchanged.
+For a long time we just let it stay unchanged.
+I do believe that's right, since I think the recursive call to
+[[eliminate_instances]] handles the cases that need to be handled.
+<<latent pattern label of an instance input>>=
+/issued_warning := 1 & 
+  warning("Yes, Virginia, there are latent labels of instance inputs: ", expimage(e))
+e # change nothing
+@ 
+Let it be noted that at one point we had the following Band-Aid:
+<<Band-Aid that once covered latent pattern label of an instance input>>=
+# fail or vanishing?  or other? not sure!
+# Should this arm should be like the one above? i.e.:
+# This gets us part of the way to binding an a "constructor-typed" operand
+# in a constructor application to a location in an instruction stream, 
+# but it's not quite right. 
+# I have to think about this some more.                           
+eliminate_instances_f(latent_patlabel(unwind_instance_inputs(e.instance, "")))
+@ This was before we introduced bottom-up simplification.
+
+@
+Unwinding the instance inputs may mean using an argument table, or it
+may mean creating a fresh name for a field of a binding instance.
+<<*>>=
+record binding_instance_var(s)
+
+procedure eliminate_binding_instance_vars(e)
+  return gsubst(e, eliminate_binding_instance_vars_f)
+end
+
+procedure eliminate_binding_instance_vars_f(e)
+  if type(e) == "binding_instance_var" then return e.s
+end 
+@ 
+If [[unwind_instance_inputs]] succeeds, we're guaranteed to have
+made progress, so we can safely re-apply it.
+
+In the arm for [[Einstance]] below, the ``false'' branch of the
+conditional returns [[Efail]], because nested
+constructor applications can produce nonsense ([[Efail]]) guarded by
+conditions that are statically false.
+For example, in the following pattern, the first
+disjunct is always true, and the second is always false.
+\begin{verbatim}
+  {Y(x) IS Y} => (?Y(x):): <pattern>
+| {Y(x) IS C, ... } => (?Y(x):): (?Y(x).C.B:): <pattern>
+\end{verbatim}
+The binding instance \verb|(?Y(x).C.B:)| is meaningless because
+\verb|Y(x) is C| is false.
+<<*>>=
+procedure unwind_instance_inputs(e, postfix_name)
+  /postfix_name := ""
+  type(e) == "Einstance_input" | impossible("unwinding ", expimage(e), " : ", type(e))
+  postfix_name := "." || e.cons.name || "." || e.name || postfix_name
+  return case type(e.x) of {
+    "Ebinding_instance" :
+      binding_instance_var(
+         binding_instance_input_name(e.x.name || postfix_name, e.x.vart))
+    "Einstance" :  
+         if e.x.cons === e.cons then e.x.argt[e.name] else Efail(expimage(e))
+    "Einstance_input" :
+      case type(x := unwind_instance_inputs(e.x, postfix_name)) of {
+        "binding_instance_var" : x
+        default : {
+	  e := Einstance_input(x, e.cons, e.name)
+          unwind_instance_inputs(e, postfix_name) | e  # guaranteed to terminate
+        }
+      }
+  }
+end
+<<*>>=
+procedure binding_instance_input_name(name, vart)
+  /vart[name] := fresh_variable(name)
+  return vart[name]
+end
+@
+\section{Machine-independent support for encoding procedures}
+The deal here is to transform a pattern with tag conditions 
+into a nested case statement.  
+<<*>>=
+record Stagcase(x, type, arms)		# CASE x : type OF arms END
+@ [[x]] is the instance from which we will check the tag, 
+[[type]] is the constructor type (of [[x]]), and 
+[[arms]] is a table mapping each constructor of the type
+to a pattern (or another case statement).
+
+We're going to destroy the pattern, so we use a fresh one.
+<<*>>=
+procedure pattern_to_case(p)
+  <<error if [[p]] has no disjuncts>>
+  return do_pattern_to_case(freshen_disjuncts(p))
+end
+@
+To produce a case statement, pull out the tags, then recurse.
+It's possible that some constructors have been discarded between the
+time we defined pattern~[[p]] and the time we're actually doing the
+pattern-to-case conversion.  For example, on the Pentium, we specify all
+addressing modes, but when generating instructions for the 32-bit
+instructions, we discard unused constructors (e.g., [[Index8]]):
+<<example>>=
+constructors 
+  Index8  base,index: Eaddr ...
+  Index32 base,index: Eaddr ...
+  Add Eaddr, r is ...
+discard Index8
+@ 
+We drop disjuncts with conditions that say an instance is tagged with
+a discarded constructor.
+Since [[s.arms[cons]]] is non-null only for kept
+constructors~[[cons]], we can use that test to drop such disjuncts.
+<<*>>=
+procedure do_pattern_to_case(p)
+  local rep		# representative tag condition
+  if rep := tag_test_in_every_disjunct(p) then {
+    s := Stagcase(rep.x, rep.cons.type, table())
+    every s.arms[kept_constructors(s.type)] := pattern([])
+    every d := !p.disjuncts do {
+      if type(c := !d.conditions) == "Einstance_tagged" & c.uid = rep.uid &
+         exps_eq(rep.x, c.x) 
+      then {
+        delete(d.conditions, c)
+        put((\s.arms[c.cons]).disjuncts, d)
+      } else
+	impossible("Mislaid a tag condition on ", expimage(rep.x))
+    }
+    every c := key(s.arms) do s.arms[c] := do_pattern_to_case(s.arms[c])
+    return s
+  } else if rep := tag_test_in_any_disjunct(p) then {
+     PPxwrite(PPnew(&errout), "Can't eliminate tag condition on ", ppexpimage(rep.x), 
+                       " $t$ofrom pattern $c", ppexpimage(p))
+     impossible("Report a bug in the toolkit")
+  } else
+    return simplify(p)
+end
+<<*>>=
+procedure tag_test_in_any_disjunct(p)
+  suspend type(rep := !\(!p.disjuncts).conditions) == "Einstance_tagged" & rep
+end
+<<*>>=
+procedure tag_test_in_every_disjunct(p)
+  every type(rep := !\p.disjuncts[1].conditions) == "Einstance_tagged" do
+    if tag_test_not_in_disjunct(rep, !p.disjuncts) then &null else return rep
+  fail
+end
+
+procedure tag_test_not_in_disjunct(rep, d)
+  if type(c := !\d.conditions) == "Einstance_tagged" & c.uid = rep.uid &
+     exps_eq(rep.x, c.x) then fail
+  else return
+end
+@
+The structure of an encoding procedure is complex because of the number of 
+conditions to be checked.  Here is a sketch of the conditions:
+\begin{fields*}{iwidth}
+iwidth&input-width conditions for the constructor\\
+conds&conditions for a branch to be taken\\
+cknown&conditions that must hold before [[conds]] can be evaluated
+(e.g., relocatable addresses are known)\\
+fits&field-width conditions for fields to be emitted, and conditions that
+	attempts to narrow actually fit\\
+fknown&conditions that must hold before fields can be emitted or
+[[fits]] can be evaluated (again, relocatable addresses).
+[[fknown]] never repeats any conditions already in [[cknown]],
+because its use is always guarded by [[cknown]]\\
+\end{fields*}
+The [[*known]] conditions influence closure creation, the [[*width]]
+conditions are error checks only, and [[conds]] is used for branch selection.
+
+Rather than use C templates, we use a language-independent
+representation of control flow.
+<<*>>=
+record Sstms(stmts)			# statement sequence
+@
+
+A constructor branch is chosen conservatively, except for the last
+branch, which gets special treatment.
+While an early branch is taken iff its conditions are known to be
+true, a late branch is taken iff its conditions are not known to be
+false.
+
+Field conditions are used to decide branches now.
+<<early-branch.s>>=
+if (cknown && conds && fknown && fits) {
+  emit
+}
+<<old-early-branch.s>>=
+if (cknown && conds) {
+  if (fknown) {
+    fits_aborts;  	# abort if fits not satisfied
+    emit_fields;
+  } else
+    create_closure;
+}
+@
+The Icon branch procedures add their branches to a list of arms.
+<<*>>=
+procedure old_early_branch(arms, cknown, conds, fknown, fits, emit, closure)
+  local fits_and_emit
+  fits_and_emit := Sif([])
+  every c := !\fits do 
+    put(fits_and_emit.arms, Sguarded(Enot(c), widthfailure(c)))
+  put(fits_and_emit.arms, Sguarded(1, emit))
+  return put(arms, Sguarded(Eand(cknown, conds), 
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, closure)])))
+end
+
+procedure early_branch(arms, cknown, conds, emit)
+  return put(arms, Sguarded(conjoin(cknown, conds), emit))
+end
+@ 
+[[conjoin]] eliminates duplicate conditions.
+This code should probably be moved into the simplifier somewhere, but
+I'm not sure where.
+<<*>>=
+procedure conjoin(L[])
+  pushtrace("CONJ")
+  x := do_conjoin(1, set(), L)
+  poptrace()
+  return x
+end
+<<*>>=
+procedure do_conjoin(early, tested, rest)
+  if e := get(rest) then
+    case type(e) of {
+      default : {
+        e := super_simplify(e)
+        if exps_eq(!tested, e) then {
+#write("TESTED ", expimage(e))
+          return do_conjoin(early, tested, rest)
+        } else {
+#write("USING ", expimage(e))
+          insert(tested, e)
+          return binary_conjunction(early, do_conjoin(e, tested, rest))
+        }
+      }
+      "set" : {
+        every push(rest, !e)
+        return do_conjoin(early, tested, rest)
+      }
+    }
+  else 
+    return early
+end   
+
+procedure binary_conjunction(x, y)
+  return if x === 1 then y else if y === 1 then x else Eand(x, y)
+end
+@
+<<late-branch.s>>=
+if (cknown) {
+  if (conds) {
+    if (fknown) {
+      fits_aborts;
+      emit_fields;
+    } else {
+      unchecked_closure;
+    }
+  } else {
+    condition_failure;
+  }
+} else {
+  checked_closure;
+}
+<<*>>=
+procedure last_branch(arms, cknown, conds, fknown, fits_and_emit, uclosure, 
+		      condfail, cclosure)
+  every put(arms, 
+            Sguarded(cknown, Sif(
+                [Sguarded(conds,
+                       Sif([Sguarded(fknown, fits_and_emit), Sguarded(1, uclosure)])),
+                 Sguarded(1, condfail)])) |
+            Sguarded(1, cclosure))
+  return arms
+end
+<<*>>=
+procedure emitter_body(cons)
+  s := []
+  every f := inputs_of(cons, "field").meaning & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitsu(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " unsigned bits")))
+  every f := symtab[inputs_of(cons, "integer").name] & 
+        not member(unchecked_fields, f) & fwidth(f) < wordsize do
+    put(s, Sguarded(Enot(Efitss(literal(f.name), fwidth(f))), 
+                    Sfail("field " || f.name || " does not fit in " || 
+                          fwidth(f) || " signed bits")))
+  put(s, Sguarded(1, case_to_emitter(pattern_to_case(
+		subst_tab(crhs(cons), parmtab(cons), 1)), cons)))
+  return super_simplify(Sif(s))
+end
+@
+[[Sfail]] is like [[printf]]
+<<*>>=
+record Sfail(fmt, a1, a2, a3)
+@
+[[parmtab]] produces a substitution table that does the right thing with 
+the parameters to a C emission procedure.
+<<*>>=
+procedure parmtab(cons)
+  t := table()
+  every ipt := inputs_of(cons) do
+    t[ipt.name] := case type(ipt.meaning) of { 
+      "constype" : ipt.name # name stands for an instance
+      "field"    : ipt.name
+      "integer"  : Enarrows(ipt.name, ipt.meaning)
+      "string"   : Eforce(ipt.name)
+      "null"     : ipt.name
+      default    : impossible("input type")
+    }
+  return t
+end
+@
+\subsection{Emission}
+<<*>>=
+procedure case_to_emitter(p, cons)
+  local cknown, conds, fknown, fits, condition_failure_msg
+  case type(p) of {
+    "Stagcase"   : {
+       every c := kept_constructors(p.type) do
+         p.arms[c] := case_to_emitter(p.arms[c], cons)
+       return p
+    }
+    "pattern" : {<<turn pattern [[p]] into emitter and return it>>}
+  }
+end
+@ 
+We go ahead and permit encoding of patterns with no disjuncts, because
+they might represent one case in a statement where other cases are
+valid.
+This situation holds on machines like the 68k, which  forbid certain
+addressing modes for certain instructions.
+We issue a warning message, and if sonmebody tries the mode at
+encoding time they get slapped with an error message.
+
+Note that we just set the [[patlabel]] offsets, not worrying about
+whether they're shared (although by the invariant they shouldn't be).
+It shouldn't matter because the offsets are then used immediately.
+
+Except for the last disjunct (branch), 
+we have to attach ``fits'' conditions to the pattern before the
+redundancy check.
+<<turn pattern [[p]] into emitter and return it>>=
+p := freshen_disjuncts(p)
+every add_fits_conditions_and_sanitize(p.disjuncts[1 to *p.disjuncts-1], cons)
+remove_duplicate_conditions(p, cons)
+if *p.disjuncts = 0 then {
+  <<possibly warn about bad encoding for [[cons]]>>
+  return Sfail("impossible encoding (no disjuncts) --- perhaps a bad address mode?")
+} 
+s := Sif([])
+<<make [[condition_failure_msg]] complain of undecided branch or unsatisfied conditions>>
+while *p.disjuncts > 1 do { # early branches
+  d := get(p.disjuncts)
+  set_patlabel_offsets(d)
+  d := gsubst(d, Epatlabel_to_Epc)
+  conds := conditions_with_narrows_check(d.conditions, cons)
+  cknown := known_conditions(conds)
+  early_branch(s.arms, cknown, conds, disjunct_to_emission(d))
+}
+if d := get(p.disjuncts) then { # last branch --- fits conditions not folded in!
+  *p.disjuncts = 0 | impossible("bug in constructors")
+  set_patlabel_offsets(d)
+  d := gsubst(d, Epatlabel_to_Epc)
+  conds := conditions_with_narrows_check(d.conditions, cons)
+  cknown := known_conditions(conds)
+  fknown := known_conditions(d.sequents)
+  <<strip [[fknown]] of conditions already in [[cknown]]>>
+  fits := fits_conditions_of(d, cons)
+  sanitize_sequents(d, fits)
+  fwe := Sif([])
+  every c := !\fits do 
+    put(fwe.arms, Sguarded(Enot(c), widthfailure(c)))
+  put(fwe.arms, Sguarded(1, disjunct_to_emission(d)))
+  last_branch (s.arms, cknown, conds, fknown, fwe, Sclosure(d),
+               Sfail(condition_failure_msg || " for constructor " || cons.name), 
+               Sclosure(d, conds))
+}
+return s
+@
+This old code is BOGUS because it doesn't include ``fits''
+conditions before the redunancy check.  Therefore all but the first
+disjunct gets thrown out, and then when a value doesn't fit, the
+toolkit goes belly-up at run time.  Not pretty. \bug{15}.
+<<old, bogus turn pattern [[p]] into emitter and return it>>=
+remove_duplicate_conditions(p, cons)
+if *p.disjuncts = 0 then {
+  <<possibly warn about bad encoding for [[cons]]>>
+  return Sfail("impossible encoding (no disjuncts) --- perhaps a bad address mode?")
+} 
+s := Sif([])
+<<make [[condition_failure_msg]] complain of undecided branch or unsatisfied conditions>>
+while d := get(p.disjuncts) do {
+  set_patlabel_offsets(d)
+  d := gsubst(d, Epatlabel_to_Epc)
+  conds := conditions_with_narrows_check(d.conditions, cons)
+  cknown := known_conditions(conds)
+  fknown := known_conditions(d.sequents)
+  <<strip [[fknown]] of conditions already in [[cknown]]>>
+  fits := fits_conditions_of(d, cons)
+  sanitize_sequents(d, fits)
+  fwe := Sif([])
+  every c := !\fits do 
+    put(fwe.arms, Sguarded(Enot(c), widthfailure(c)))
+  put(fwe.arms, Sguarded(1, disjunct_to_emission(d)))
+if *p.disjuncts > 0 then write(&errout, "Early branch for constructor ", cons.name)
+  if *p.disjuncts > 0 then
+    early_branch(s.arms, cknown, conds, fknown, fits, disjunct_to_emission(d), Sclosure(d))
+  else
+    last_branch (s.arms, cknown, conds, fknown, fwe, Sclosure(d),
+                 Sfail(condition_failure_msg || " for constructor " || cons.name), 
+                 Sclosure(d, conds))
+}
+return s
+<<*>>=
+procedure Epatlabel_to_Epc(x)
+  if type(x) == "Epatlabel" then
+    return binop(the_global_pc, "+", x.l.offset)
+end
+<<make [[condition_failure_msg]] complain of undecided branch or unsatisfied conditions>>=
+condition_failure_msg := 
+  if *p.disjuncts > 1 then "Can't decide on branch"
+  else "Conditions not satisfied"
+<<error if [[p]] has no disjuncts>>=
+if *p.disjuncts = 0 then 
+  error("Output pattern for constructor ", cons.name, " can never match anything.\n",
+	"\tCould you have written a bad conjunction?")
+<<possibly warn about bad encoding for [[cons]]>>=
+{ /warned_no_disjuncts := table()
+  if /warned_no_disjuncts[cons] := 1 then
+    warning("constructor ", cons.name, 
+            " has an encoding with no matches -- maybe a bad address mode?")
+}  
+<<*>>=
+global warned_no_disjuncts
+<<*>>=
+record Sclosure(disjunct, conditions, creation)
+<<argument descriptions>>=
+expargs disjunct conditions creation.
+@
+Sanitize [[d]]'s sequents, possibly adding conditions to [[fits]].
+<<*>>=
+procedure sanitize_sequents(d, fits) 
+  l := []
+  every put(l, sanitize_for_output(!d.sequents, fits))
+  d.sequents := l
+end
+@
+[[sequent_to_stoken]] can't know the offsets, so [[disjunct_to_emission]] 
+keeps track of them.  You can optionally pass the initial offset.
+<<*>>=
+procedure disjunct_to_emission(d, n)
+  s := Semit([])
+  /n := 0
+  every seq := !d.sequents & type(seq) == "sequent" do {
+    put(s.x, sequent_to_Stoken(seq, n))
+    n +:= s.x[-1].n
+  }
+  return s
+end
+<<*>>=
+procedure sequent_to_Stoken(s, offset)
+  v := &null
+  o := start_overlap_check()
+  every c := !s.constraints & x := case type(c) of {
+    "constraint": 
+        if c.lo + 1 = c.hi then {
+            add_overlap_field(o, c.field)
+            if 0 <= c.lo < 2^fwidth(c.field) then
+               c.lo
+            else {
+               warning("Field value ", c.lo, " exceeds width of field ", c.field.name);
+               Eslice(c.lo, 0, fwidth(c.field))
+            }
+	} else if c.lo < c.hi then {
+              warning("Field ", c.field.name, " is underconstrained by ", 
+                     constraintimage(c), "; no value output") 
+              &fail
+        }
+    "fieldbinding": {
+       add_overlap_field(o, c.field)
+       if member(guaranteed_fields, c.field) # | not member(unchecked_fields, c.field)
+       then
+         c.code
+       else 
+         Eslice(c.code, 0, fwidth(c.field))
+    }
+  } & y := emitshift(x, c.field.lo) do
+    v := Eorb(\v, y) | y
+  return Stoken(\v | 0, 
+     if s.class.size % emit_unit_bits = 0 then s.class.size / emit_unit_bits 
+     else error("tokens are emitted in units of ", token_unit_bits, 
+                ", but some pattern is ", s.class.size, " bits wide"),
+     offset)
+end
+<<*>>=
+record overlap_check(fields, loset, hiset)
+procedure start_overlap_check()
+  return overlap_check(set(), set(), set())
+end
+
+procedure add_overlap_field(o, f)
+  if overlaps(o.loset, o.hiset, f.lo, f.hi) then {
+    <<issue error message about overlapping fields>>
+  } else {
+    insert(o.fields, f)
+    addinterval(o.loset, o.hiset, f.lo, f.hi) 
+  }
+  return o
+end
+<<issue error message about overlapping fields>>=
+every g := !o.fields do
+  if f.hi <= g.lo | g.hi <= f.lo then
+    &null
+  else
+    error("Cannot use overlapping fields ", f.name, " and ", g.name, " in the same token")
+impossible("some fields overlap, but I can't tell which ones")
+<<*>>=
+procedure emitshift(x, n)
+  return if n = 0 then x
+         else if \simplify_emits then Eshift(x, n)
+         else Eshift(Enosimp(super_simplify(x)), n)
+end
+@
+Delete [[p]]'s disjuncts with duplicate conditions, 
+issuing suitable warnings.
+<<*>>=
+procedure remove_duplicate_conditions(p, cons)
+  local l
+  l := []
+  every i := *p.disjuncts to 1 by -1 do
+    if j := 1 to i-1 &
+       same_conditions(p.disjuncts[i].conditions, p.disjuncts[j].conditions) then
+      <<warn of redundant disjunct>>
+    else
+      push(l, p.disjuncts[i])
+  if *l < *p.disjuncts then p.disjuncts := l
+  return
+end
+<<warn of redundant disjunct>>=
+warning("Pattern on right-hand side of constructor ", cons.name, 
+        " has redundant disjuncts ", expimage(p.disjuncts[j]), " and ",
+        expimage(p.disjuncts[i]), ".\tI'll use the first one for encoding")
+<<*>>=
+procedure same_conditions(c1, c2)
+  if /c1 & /c2 then return
+  else if /c1 | /c2 then fail
+  else if *c1 = *c2 then {
+    c := copy(c1)
+    every insert_condition(c, !c2)
+    if *c > *c1 then fail
+    else return
+  } else fail
+end
+@
+<<*>>=
+procedure widthfailure(c)
+  c.n < wordsize | impossible("test to fit in word: ", expimage(c))
+  case type(c) of {
+    "Efitsu" : {f := "0x%x"; s := "unsigned"}
+    "Efitss" : {f := "%d";   s := "signed"}
+    default  : impossible("width condition")
+  }
+  return Sfail("`" || expimage(c.x) || "' = " || f || " won't fit in " || 
+               c.n || " " || s || " bits.", c.x)
+end
+@
+\subsection{Conditions}
+<<*>>=
+procedure known_conditions(e)
+  local known
+  known := set()
+  every ff := subterms_matching(e, "Eforce") &
+        cc := super_simplify(Eforceable(ff.x)) do
+    insert_condition(known, cc)
+  if subterms_matching(e, "Epc") then
+    insert_condition(known, Epc_known())
+  delete(known, 1)
+  return if *known = 0 then 1 else known 
+end
+@
+<<strip [[fknown]] of conditions already in [[cknown]]>>=
+if type(cknown) == "set" then
+  every ff := !fknown do
+    if exps_eq(ff, !cknown) then
+      delete(fknown, ff)
+if *fknown = 0 then fknown := 1
+@
+At this point, we know that field and extended inputs satisfy the appropriate width
+conditions. 
+<<*>>=
+procedure fits_conditions_of(d, cons)
+  local fits, ff
+  fits := set()
+  every ff := subterms_matching(d.sequents, "fieldbinding") &
+        not member(unchecked_fields, ff.field) do
+    if not known_to_fit(input_fitsu, ff.code, cons, fwidth(ff.field)) then
+      insert_width_condition(fits, Efitsu(ff.code, fwidth(ff.field)))
+  return fits ++ narrows_ok_conditions(d.sequents, cons)
+end
+@ 
+<<*>>=
+procedure add_fits_conditions_and_sanitize(d, cons)
+  local fits
+  fits := fits_conditions_of(d, cons)
+  if *fits > 0 then {
+    /d.conditions := set()
+    every insert_condition(d.conditions, !fits)
+  }
+  sanitize_sequents(d, fits)
+  return d
+end
+@
+We lost earlier because the solver converted the condition:
+\mbox{[[v = v[0:15]!]]} to
+\begin{quote}
+Enarrows(v, 16) = v[0:15].
+\end{quote}
+Without a check for the success of the narrow, this condition becomes
+a tautology, with the result that we were always taking an incorrect
+branch of the SPARC [[set]] constructor.
+By seeking out narrows in conditions, we make sure to include the
+correct check (although we continue to emit C~code for the tautology,
+which is annoying).
+<<*>>=
+procedure narrows_ok_conditions(e, cons)
+  local ok
+  ok := set()
+  every ee := subterms_matching(e, "Enarrowu") do
+    if not known_to_fit(input_fitsu, ee.x, cons, ee.n) then
+      insert_width_condition(ok, Efitsu(ee.x, ee.n))
+  every ee := subterms_matching(e, "Enarrows") do
+    if not known_to_fit(input_fitss, ee.x, cons, ee.n) then
+      insert_width_condition(ok, Efitss(ee.x, ee.n))
+  return ok
+end
+
+procedure conditions_with_narrows_check(conds, cons)
+  if *\conds > 0 then {
+    c := narrows_ok_conditions(conds, cons)
+    return if *c > 0 then c ++ conds else conds
+  } else 
+    return 1
+end
+<<*>>=
+procedure insert_width_condition(fits, c)
+  if (x := super_simplify(c)) === 0 then
+    error(widthfailure(c).fmt)
+  else
+    insert_condition(fits, x)
+  return
+end
+@
+Either inputs or instances can be known to fit.
+The test on strings is valid {\em only when all free variables represent inputs of
+constructor [[cons]]}.
+In particular, it is valid when patterns are prepared for emission.
+The test on instance inputs is, of course, always valid.
+[[test]] is [[input_fitsu]] or [[input_fitss]].
+<<*>>=
+procedure known_to_fit(test, code, cons, width)
+  return case type(code) of {
+    "string"          : test(code, cons, width)
+    "Einstance_input" : known_to_fit(test, code.name, code.cons, width)
+  }
+end
+<<*>>=
+procedure input_fitsu(name, cons, width)
+  return width >= wordsize | 
+    ((ipt := inputs_of(cons)).name == name & case type(ipt.meaning) of {
+      "field"   : fwidth(ipt.meaning) <= width
+      "integer" : ipt.meaning <= width
+    })
+end
+
+procedure input_fitss(name, cons, width)
+  return width >= wordsize | 
+    ((ipt := inputs_of(cons)).name == name & case type(ipt.meaning) of {
+      "integer" : ipt.meaning <= width
+      "field"   : fwidth(ipt.meaning) < width
+    })
+end
+@
+\section{Support for encoding procedures (in C)}
+\subsection{C type declarations for instances}
+
+A user-defined constructor type is represented by $T$[[Instance]], a
+C type that stores an instance of a constructor type $T$.
+It contains a union of all possible constructors of type $T$;
+for each one it stores the instance.
+The header [[h]] points to a statically allocated record that contains,
+among other information, a tag that identifies not just the constructor,
+but its branch.
+Here's the template:
+<<instance-type.t>>=
+typedef struct %{name}_instance {$t
+int tag;
+union {$t%constructors$b
+} u;$b
+} %{name}_Instance;
+@ And here's the code the does the emission.
+<<*>>=
+procedure emit_instance_type(pp, ct)
+  local constructors
+  enforce_instance(ct)
+  constructors := []
+  every put(constructors, input_record_for(kept_constructors(ct)))
+  emit_template(pp, "instance-type.t", "name", ct.name, "constructors", constructors)
+  return
+end
+@
+There's a trick to the layout of  an input record; we
+use bit fields to hold field inputs, and we want to make them consecutive so
+they have a decent chance of packing.
+To achieve this effect, we run through the inputs twice.
+<<*>>=
+procedure input_record_for(cons, struct_name)
+  local pp, ipt
+  pp := []
+  put(pp, "$nstruct {$t");
+  every ipt := inputs_of(cons) do	## emit bit fields
+    case type(ipt.meaning) of {
+      "field"   : put(pp, "$nunsigned " || ipt.name || ":" || fwidth(ipt.meaning)||";")
+      "integer" : put(pp, "$nint "      || ipt.name || ":" || ipt.meaning        ||";")
+    }
+  every ipt := inputs_of(cons) do	## emit other inputs
+    case type(ipt.meaning) of {
+      "null"     : put(pp, "$nint "   ||                                ipt.name ||";")
+      "string"   : put(pp, "$nRAddr " ||                                ipt.name ||";")
+      "constype" : put(pp, "$n" || ipt.meaning.name || "_Instance  " || ipt.name ||";")
+      "field" | "integer" : &fail
+      default : impossible("input meaning")
+    }
+  if not inputs_of(cons) then
+    put(pp, "\nchar avoid_empty_structures;")
+  put(pp, "$b$n} " || (\struct_name | cons.name) || ";")
+  return pp
+end
+@
+While we're playing the input game, we use a similar technique to
+compute a list of argument declarations.
+<<*>>=
+procedure arg_decls(cons)
+  l := []
+  every ipt := inputs_of(cons) do
+    put(l, case type(ipt.meaning) of {
+            "null"     : "int"
+            "string"   : "RAddr"
+            "constype" : ipt.meaning.name || "_Instance"
+            "field"    : unsigned_type(fwidth(ipt.meaning))
+            "integer"  : "int"
+            default    : impossible("arg_decls input")
+          } || " " || ipt.name)
+  return if *l = 0 then "void" else commaseparate(l)
+end
+@
+\section{C support for closures}
+Closures are numbered within a particular constructor, except for the first.
+<<*>>=
+procedure emit_original_closure_functions(pp, cons, b)
+  local suffix   
+  every cl := subterms_matching(b, "Sclosure") do
+    emit_original_closure_function(pp, cons, cons.name || <<suffix with update>>, cl) 
+  return
+end
+<<suffix with update>>=
+(if /suffix then (suffix := 1, "") else "_" || (suffix +:= 1))
+@
+The idea with a closure is to ferret out all the free variables and stuff them
+into a custom closure.  The trick is, we don't want to use {\em instance}-valued
+variables; we want the components of the instance.  Step 1, then, is to grab all
+the instance selections, noting the instances that we're not interested in.
+Step 2 will add all the free variables.
+The things to save,
+are the selections and free variables that aren't selected from.
+
+Everything to save is put in the closure.
+Equivalent expressions are to be saved only once, so we use a table mapping things to be 
+saved to their names in the closure.
+[[closurenametab]] computes that table.
+
+The definition of a closure type requires the inverse of that table.
+<<*>>=
+procedure emit_original_closure_function(pp, cons, name, cl)
+  local selections, selected, free, save, upc
+  <<make [[selections]], [[selected]], [[free]] hold selections, things selected from, and free variables>>
+  nt := closurenametab(selections ++ free -- selected)
+  mt := meaningtab(nt, cons)
+  emit_original_closure_typedef(pp, name, cons, mt)
+  emit_original_closure_relocfn(pp, name, cons, mt)
+  emit_original_closure_function_def(pp, name, cl, nt)
+  emit_closure_header_def(pp, name, name || "_app", cl)
+  <<make [[cl.creation]] to create closure and emit placeholder>>
+  return
+end
+@
+<<make [[cl.creation]] to create closure and emit placeholder>>=
+<<make [[l]] a list of assignments by using the name table [[nt]]>>
+upc := if subterms_matching(\cl.conditions | cl.disjunct, "Epc", "Epc_known") then 1
+       else 0
+cl.creation := Sstmts([
+  literal(template_to_list("create-closure.t", 
+                                "name", name, "save", l, "clofun", name || "_app")), 
+  disjunct_to_emission(place_holder(cl.disjunct))])
+<<create-closure.t>>=
+$t{ %{name}_Closure _c;
+_c = (%{name}_Closure) mc_create_closure_here(sizeof *_c, &%{clofun}_closure_header);
+%{save}/* this line intentionally left blank */$b
+}  
+<<create-closure-at.t>>=
+$t{ %{name}_Closure _c;
+_c = (%{name}_Closure) mc_create_closure_at_offset(sizeof *_c, &%{clofun}_closure_header, %offset);
+%{save}/* this line intentionally left blank */$b
+}  
+@ 
+<<make [[l]] a list of assignments by using the name table [[nt]]>>=
+l := []
+s := set()
+every e := key(nt) & not member(s, nt[e]) do {
+  insert(s, nt[e])
+  put(l, "_c->v." || nt[e] || " = " || pretty(e) || ";$n")
+}
+s := &null # enable garbage collection
+@ 
+Added this to restructure so we could emit one header per closure
+function in the optimized case (instead of one header per encoding
+function).\change{34} 
+<<*>>=
+procedure emit_closure_header_def(pp, name, clofun, cl)
+  local upc
+  upc := if subterms_matching(\cl.conditions | cl.disjunct, "Epc", "Epc_known") then 1
+         else 0
+  emit_template(pp, "closure-header.t", "clofun", clofun, "name", name, "uses-pc", upc)
+  return
+end
+<<closure-header.t>>=
+static struct closure_header %{clofun}_closure_header = $t
+{ %{clofun}, %{name}_relocfn, %{uses-pc}, sizeof (struct %{name}_closure) };$b
+@   
+<<make [[selections]], [[selected]], [[free]] hold selections, things selected from, and free variables>>=
+every selections | selected | free := set()
+every s := subterms_matching(cl.disjunct | \cl.conditions, "Einstance_input") do {
+  insert(selections, s)
+  insert(selected, s.x)
+}
+every insert(free, free_variables(cl.disjunct | \cl.conditions))
+@
+<<*>>=
+procedure closurenametab(save)
+  local namecounts, saved, name
+  every namecounts | t := table()
+  saved := set()
+  every e := !save do
+    if eprime := !saved & exps_eq(e, eprime) then
+      t[e] := t[eprime]
+    else {
+      insert(saved, e)
+      <<set [[name]] to the proper name of the field for [[e]]>>
+      t[e] := name
+    }
+  return t
+end
+<<set [[name]] to the proper name of the field for [[e]]>>=
+name := case type(e) of {
+  "string" : e
+  "Einstance_input" : e.name
+  default : impossible("type of saved exp")
+}
+if /namecounts[name] then 
+  namecounts[name] := 1
+else 
+  name ||:= "__" || (namecounts[name] +:= 1)
+@
+To compute the closure type, we pack the names;
+big ones first, then little ones.
+First we invert the table, so that the names are the unique keys in [[u]].
+<<*>>=
+procedure emit_original_closure_typedef(pp, name, cons, t)
+  l := []
+  every fname := key(t) do 
+    put(l, case type(t[fname]) of {
+             "null"     : "$cint "   || fname || ";"
+             "string"   : "$cRAddr " || fname || ";"
+             "constype" : impossible("failed to eliminate an instance")
+           })
+  every fname := key(t) do
+    put(l, case type(t[fname]) of {
+             "field"   : "$cunsigned " || fname || ":" || fwidth(t[fname]) || ";"
+             "integer" : "$cint "      || fname || ":" || t[fname]         || ";"
+           })
+  emit_template(pp, "closure-type.t", "name", name, "decls", l)
+end
+@
+<<closure-type.t>>=
+typedef struct %{name}_closure {$t
+ClosureHeader h;
+ClosureLocation loc;
+struct { $t${%decls $b$c$}} v;$b
+} *%{name}_Closure;
+<<*>>=
+procedure emit_original_closure_relocfn(pp, name, cons, t)
+  local calls
+  calls := []
+  every fname := key(t) & type(t[fname]) == "string" do
+     put(calls, template_to_list("reloc-call.t", "irec", "v", "input", fname))
+  emit_template(pp, "constructor-labels.t", "ptrtype", name || "_Closure",
+                                 "name", name, "calls", calls)
+  return
+end
+@
+The  emitter code in [[Cexp]] assumes that the closure is stored in [[_c]].
+<<*>>=
+procedure emit_original_closure_function_def(pp, name, cl, t)
+  local es
+  tt := copy(t)
+  every k := key(t) do tt[k] := literal("_c->v." || tt[k])
+  tt[the_global_pc] := Eforce(Eclosure_loc())
+  PPxwrite(pp, "static void ", name,
+               "_app (RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n",
+               name, "_Closure _c = (", name, "_Closure) c;$n")
+  es := emitterstyle
+  emitterstyle := "closure"
+  PPxwrite(pp, pretty(
+     super_simplify(Sif([Sguarded(subst_table_elements(cl.conditions, tt), 
+                                  disjunct_to_emission(
+				      subst_table_elements(cl.disjunct, tt))),
+	### disjunct_to_emission should be changed to include width conditions &c
+                   Sguarded(1, 
+                      Sfail("Conditions not satisfied for constructor " || name))]))))
+  emitterstyle := es
+  PPxwrite(pp, "$b$n}")
+end
+<<apply-fun.t>>=
+static void %{name}_app (RClosure c, Emitter emitter, FailCont fail) {
+<<*>>=
+procedure find_input(name, cons)
+  return input_named(cons, name)
+end
+<<*>>=
+procedure meaningtab(t, cons)
+  u := table()
+  every k := key(t) do
+    (u[t[k]] := known_to_fit(find_input, k, cons).meaning) | 
+        impossible("unknown free variable ", k)
+  return u
+end
+@
+\subsection{Extracting relocatable addresses from instances and closures}
+There are three possible sources of relocatable addresses:
+the program counter, relocatable inputs, or constructors (input or applied).
+
+[[uses_pc]] determines if a constructor
+{\em directly} uses the program counter.
+Conservatively, we estimate that a constructor uses the program
+counter if any of its branches have labels, or
+if some constructor used in {\em any} of the constructor's
+output patterns uses the program counter.
+This is overly conservative but easy to implement.
+<<*>>=
+procedure uses_pc(x)
+  static pccache
+  initial pccache := table()
+  if not member(pccache, x) then {
+    pccache[x] := 0
+    type(x) == "constructor" | impossible("uses_pc")
+    if pattern_label_names((!x.branches).pat) |
+       uses_pc(constructors_applied_in((!x.branches).pat)) then
+      return pccache[x] := 1
+  }
+  return 0 < pccache[x]
+end
+@
+[[uses_reloc]] determines if the given constructor
+can depend on the label of some relocatable address.
+[[uses_reloc]] holds if [[uses_pc]] holds
+or if a relocatable address is in the constructor's inputs,
+or if [[uses_reloc]] holds for some constructor-typed input
+or for any constructor used in an output pattern.
+<<*>>=
+procedure uses_reloc(x)
+   static cache
+   initial cache := table()
+   if not member(cache, x) then {
+     cache[x] := 0
+     case type(x) of {
+       "constype"    : if uses_reloc(kept_constructors(x)) then return cache[x] := 1
+       "constructor" :
+         if inputs_of(x, "string") | uses_pc(x) |
+            uses_reloc(inputs_of(x, "constype").meaning |
+                       constructors_applied_in((!x.branches).pat))
+         then
+           return cache[x] := 1
+       default : impossible("uses_reloc")
+     }
+   }
+   return 0 < cache[x]
+end
+@
+
+[[ptrtype]] is the exact pointer type of this instance or closure.
+[[irec]] is the record containing the inputs.
+
+<<constructor-labels.t>>=
+static void %{name}_relocfn(RClosure c, RelocCallback f, void *closure) {$t
+%ptrtype _c = (%ptrtype) c;
+%calls$b}
+<<reloc-call.t>>=
+(*f)(closure, _c->%irec.%input);
+<<cons-call.t>>=
+$t${(*(_c->%irec.%input.h->relocfn))$o((Instance*)(&_c->%irec.%input), f, closure);$}$b
+<<no-labels.t>>=
+static void %{name}_relocfn(RClosure c, RelocCallback f, void *closure) {
+  return;
+}
+@
+\subsection{Creating instances}
+Instance creation is simple-minded---check the widths of the field inputs, and
+stuff all the inputs into the instance.
+<<create-instance-body.t>>=
+%{class}%{type}_Instance %safename(%args) {$t
+%{type}_Instance _i = { %{name}_TAG };
+%{input-tests}%{assignments}return _i;$b
+}
+<<input-test.t>>=
+$t${if (!(${%condition$})) $c(*fail) ("%name = %%d won't fit in %width %signed bits");$}$b
+<<instance-assignment.t>>=
+_i.u.%name.%l = %r;
+<<*>>=
+procedure input_width_tests(cons) 
+  t := []
+  every i := inputs_of(cons) & case type(i.meaning) of {
+    "integer" : { w := i.meaning; s := "signed"; c := Efitss(literal(i.name), w) }
+    "field"   : if member(unchecked_fields, i.meaning) then &fail
+                else { w := fwidth(i.meaning); s := "unsigned"
+                       c := Efitsu(literal(i.name), w) }
+  } do put(t, template_to_list("input-test.t", "name", i.name, "width", w, "signed", s,
+                                               "condition", pretty(c)))
+  return t
+end
+@
+<<*>>=
+procedure emit_proc_declaration(pp, cons)
+  if cons.type === instructionctype then
+    emit_emitter_proto(pp, cons)
+  else
+    emit_create_instance_proto(pp, cons)
+  return
+end    
+<<*>>=
+procedure emit_create_instance_proto(pp, cons)
+  c_function_declaration(pp, cons.type.name || "_Instance", Cnoreserve(cons.name), 
+			 arg_decls(cons))
+end
+<<*>>=
+procedure emit_create_instance_body(pp, cons)
+  a := []
+  every i := inputs_of(cons).name do
+     put(a, template_to_list("instance-assignment.t", "name", cons.name, "l", i, "r", i))
+  emit_template(pp, "create-instance-body.t", "safename", Cnoreserve(cons.name),
+                   "name", cons.name, "type", cons.type.name, "args", arg_decls(cons), 
+	           "class", if \indirectname then "static " else "",
+                   "uses_pc", if uses_pc(cons) then 1 else 0, 
+                   "input-tests", input_width_tests(cons), "assignments", a)
+  return
+end
+@
+\subsection{Emitting}
+<<*>>=
+procedure emit_emitter_proto(pp, cons)
+  c_function_declaration(pp, "void", Cnoreserve(cons.name), arg_decls(cons))
+  return
+end
+
+procedure emit_emitter_body(pp, cons)
+  b := emitter_body(cons)
+  emit_closure_functions(pp, cons, b)
+  emit_template(pp, "emitter-body.t", 
+                "safename", Cnoreserve(cons.name), "args", arg_decls(cons),
+                "class", if \indirectname then "static " else "")
+  PPxwrites(pp, pretty(b))
+  if \gen_counters then
+    PPxwrites(pp, "$n", cons.name, "_ctr++;")
+  PPxwrite(pp, "$b$n}")
+  return
+end
+<<emitter-body.t>>=
+%{class}void %safename(%args) {$t
+@
+\section{Optimizing closures}
+We don't have to number optimized closures; their naming is arbitrary.
+<<*>>=
+procedure emit_optimized_closure_functions(pp, cons, b)
+  pushtrace("CLO")
+  every cl := subterms_matching(b, "Sclosure") do
+    emit_optimized_closure_function(pp, cons, cons.name, cl) 
+  poptrace()
+  return
+end
+@
+We really ought to add a string type to the closure, so that we
+could give the name of the constructor when conditions aren't
+satisfied in the closure.  As it is, I use the same error message for
+each constructor---otherwise they won't all use the same closure function!
+<<*>>=
+procedure emit_optimized_closure_function(pp, cons, name, cl)
+  local selections, selected, free, save, upc, latevars, clo, subst, body
+  latevars := set()
+  every insert(latevars, inputs_of(cons, "string").name)
+  body := 
+     super_simplify(Sif([Sguarded(cl.conditions, disjunct_to_emission(cl.disjunct)),
+	### disjunct_to_emission should be changed to include width conditions &c
+                         Sguarded(1, 
+                            Sfail("Conditions not satisfied for unnamed constructor"))
+                        ]))
+  p := hoist(pp, Elambda(sort(latevars), body), latevars)
+  clo := p.e # is a closure
+  clo := apply_subst(clo, p.sigma)
+  free := set(); every insert(free, free_variables(clo))
+  free := sort(free)
+PPwrite(pp, "/****************")
+PPxwrite(pp, "CLOSURE IS:$t $o", ppexpimage(clo), "$b")
+PPwrite(pp, "****************/")
+  <<make [[cl.creation]] to create optimized closure [[clo]] and emit placeholder>>
+  return
+end
+@ N.B. I think there's a potential botch because [[latevars]] doesn't
+include relocatable addresses hidden inside constructor-typed
+arguments.
+@
+<<make [[cl.creation]] to create optimized closure [[clo]] and emit placeholder>>=
+l := []
+every i := 1 to *clo.values do
+  put(l, pretty(Gasgn(Eclosure_val(i),  clo.values[i])) || "$n")
+every i := 1 to *clo.addresses do
+  put(l, pretty(Gasgn(Eclosure_addr(i), clo.addresses[i])) || "$n")
+upc := if subterms_matching(\cl.conditions | cl.disjunct, "Epc", "Epc_known") then 1
+       else 0
+cl.creation := Sstmts([
+  literal(template_to_list("create-closure.t", "name", clo.ty, "clofun", clo.fun, 
+                           "uses-pc", upc, "save", l)),
+  disjunct_to_emission(place_holder(cl.disjunct))])
+@ 
+<<*>>=
+record Elambda(formals, body)
+record hoisted(e, sigma)	# pair containing exp, substitution
+record arrow(v, e)		# part of a substitution
+procedure make_early(v, e, sigma)
+  v := fresh_variable(v)
+  return hoisted(v, push(sigma, arrow(v, e)))
+end
+
+procedure make_late(v, e, sigma)
+  return hoisted(e, sigma)
+end
+
+procedure make_time(e, latevars)
+  return if islate(e, latevars) then make_late else make_early
+end
+
+procedure islate(e, latevars)
+  return case type(e) of {
+    "string" : member(latevars, e)
+    "list"   : islate(!e, latevars)
+    default  : 1
+  }
+end
+<<*>>=
+record Eclosure(ty, fun, headertype, values, addresses)
+
+procedure hoist(pp, e, latevars)
+  local body, sigma, sigma1, p, free, freeset, clo, clofun, closubst, early, late, hd
+  local values, addresses
+  x := case type(e) of {
+    "string"  : hoisted(e, [])
+    "integer" : make_early("lit", e, []) 
+    "list"    : hoistlist(pp, e, latevars)
+    "Elambda" : {
+       p := hoist(pp, e.body, set(e.formals))
+       body := p.e
+       sigma := p.sigma
+       <<make [[addresses]] and [[values]] free vars of body (in order of appearance)>>
+       if \lateconst then {
+         <<using [[sigma]], push constants back into [[body]] and out of [[values]]>>
+       }
+
+       clo := fresh_variable("clo")
+       <<make [[closubst]] change addresses and values to select from [[clo]]>>
+       body := apply_subst(body, closubst)
+
+       clotype := closure_type(pp, values, addresses)
+       clofun := closure_function(pp, clotype, addresses, body)
+       hd := closure_header_type(pp, clofun, clotype, body)
+       <<make [[cloargs]] the list of closure args, using [[values]] and [[sigma]]>>
+       p := hoistlist(pp, cloargs, latevars)
+       make_time(p.e, latevars)("closure", 
+            Eclosure(clotype, clofun, hd, p.e, apply_subst(addresses, sigma)), p.sigma)
+    }
+    "Epc" | "Epc_known" : make_late("pc", e, [])
+    <<other cases for hoisting>>
+    <<generated cases for hoisting>>
+    default : impossible("hoisting ", image(type(e)))
+  }
+### PPxwrites(pp, "Hoisting ", ppexpimage(e), "$t$ngot $t${$o", ppexpimage(x.e), 
+###			  "$}$b$nwith")
+### showsigma(pp, x.sigma)
+### PPxwrite(pp, "$nso, when applied, have $t$o${", 
+###		 ppexpimage(apply_subst(x.e, x.sigma)),
+###		     "$}$b$b$n")
+  return x
+end
+<<generated cases for hoisting>>=
+@ 
+A value is an address if it's a formal parameter or if it's a suitable
+element of an instance input:
+<<*>>=
+procedure is_address(e, addressparms)
+  return e === !addressparms |
+         (type(e) == "Einstance_input", 
+          type(input_named(e.cons, e.name).meaning) == "string")
+end          
+@ 
+Preserving order here helps keep us from creating
+closure functions that differ only by a permutation of arguments.
+We have to apply [[sigma]], and see what sort of value the free
+variable stands for, in order to classify it as a value or an address.
+<<make [[addresses]] and [[values]] free vars of body (in order of appearance)>>=
+every addresses | values := []
+freeset := set()
+every v := free_variables(body) & not member(freeset, v) & 
+      x := apply_subst(v, sigma) 
+do {
+  insert(freeset, v)
+  put(if is_address(x, e.formals) then addresses else values, v)
+}
+<<using [[sigma]], push constants back into [[body]] and out of [[values]]>>=
+l := []
+every f := !values do
+  if x := constant(apply_subst(f, sigma)) then
+    body := apply_subst(body, arrow(f, x))
+  else
+    put(l, f)
+values := l
+<<make [[closubst]] change addresses and values to select from [[clo]]>>=
+closubst := []
+every i := 1 to *values do
+  put(closubst, arrow(values[i], Eclosure_val(i)))
+every i := 1 to *addresses do
+  put(closubst, arrow(addresses[i], Eclosure_addr(i)))
+<<make [[cloargs]] the list of closure args, using [[values]] and [[sigma]]>>=
+cloargs := []
+every put(cloargs, apply_subst(!values, sigma))
+<<other cases for hoisting>>=
+"table" : {
+  kl := []; every k := key(e) & e[k] ~= 0 do put(kl, k)
+  hl := hoistlist(pp, kl, latevars)
+  sigma := hl.sigma
+  hl := hl.e
+  if x := !hl & not islate(x, latevars) then {
+    t := table(0)
+    every k := kl[i := 1 to *kl] & x := hl[i] & not islate(x, latevars) do
+      t[x] +:= e[k]
+    early := make_early("sum", t, sigma)
+    sigma := early.sigma
+    early := early.e
+  } else 
+    early := &null
+  if islate(!hl, latevars) then {
+    t := table(0)
+    every k := kl[i := 1 to *kl] & x := hl[i] & islate(x, latevars) do
+      t[x] +:= e[k]
+    t[\early] +:= 1
+    make_late("sum", t, sigma)
+  } else {
+    make_early("sum", \early | 0, sigma)
+  }
+}
+<<other cases for hoisting>>=
+"Eorb" : {
+  l := hoistlist(pp, flatten(e, "Eorb"), latevars)
+  every early | late := []
+  every x := !l.e do put(if islate(x, latevars) then late else early, x)
+  if *late > 0 then
+    if *early = 0 then 
+      make_late("or", unflatten(late, Eorb, 0), l.sigma)
+    else {
+      early := make_early("or", unflatten(early, Eorb, 0), l.sigma)
+      push(late, early.e)
+      make_late("or", unflatten(late, Eorb, 0), early.sigma)
+    }
+  else 
+    make_early("or", unflatten(early, Eorb, 0), l.sigma)
+}
+<<other cases for hoisting>>=
+"set" : {
+  sigma := []
+  s := set()
+  every x := !e do {
+    p := hoist(pp, x, latevars)
+    insert(s, p.e)
+    sigma := compose(sigma, p.sigma)
+  }
+  hoisted(s, sigma)
+}
+@ 
+For equations, we try a funky heuristic, namely, if we see a zero on
+the right-hand side, {\em don't} hoist it.
+<<other cases for hoisting>>=
+"eqn" : {
+  sigma := []
+  m := make_early
+  _a0 := hoist(pp, e.left, latevars)
+  sigma := compose(sigma, _a0.sigma)
+  _a0 := _a0.e
+  if islate(_a0, latevars) then m := make_late
+  if \latezero & untable(e.right) === 0 then {
+    _a2 := 0
+    m := make_late
+  } else {
+    _a2 := hoist(pp, e.right, latevars)
+    sigma := compose(sigma, _a2.sigma)
+    _a2 := _a2.e
+    if islate(_a2, latevars) then m := make_late
+  }
+  if not (_a0 === e.left, _a2 === e.right) then
+    e := eqn(_a0, e.op, _a2)
+  m("eqn", e, sigma)
+}
+@ 
+We can't hoist a guard!  And we might as well not hoist~1 when it's
+just the guard that's always satisfied.
+<<other cases for hoisting>>=
+"Sguarded" : {
+  p := if guard_always_satisfied(e.guard) then hoisted(1, [])
+       else hoist(pp, e.guard, latevars)
+  q := hoist(pp, e.x, latevars)
+  hoisted(Sguarded(p.e, q.e), compose(p.sigma, q.sigma))
+}
+"Sepsilon" : hoisted(e, [])
+@ 
+For [[Sfail]], we ought to be able to keep track of the types of
+variables that are hoisted, so we could hoist both the message and, if
+need be, the arguments.
+<<other cases for hoisting>>=
+"Sfail"    : hoisted(e, [])
+@ 
+For emission, we ought to do something extra special.
+We ought {\em always} to hoist emission, converting unknown tokens
+into placeholders as we go.  Then we can build closures for the
+remaining tokesn.  Perhaps if we have a type mechanism, we can do that
+one day.
+
+For now, we prevent hoisting by keeping [[Stoken]]s late.
+<<other cases for hoisting>>=
+"Stoken" : {
+  p := hoist(pp, e.x, latevars)
+  hoisted(Stoken(p.e, e.n, e.offset), p.sigma)
+}
+@ 
+For a particular instance input, we have to check its type to know
+whether it is early or late.
+<<other cases for hoisting>>=
+"Eforce" : {
+  p := hoist(pp, e.x, latevars)
+  hoisted(Eforce(p.e), p.sigma)
+}
+<<*>>=
+procedure hoistlist(pp, l, latevars)
+  local sigma, newl, e
+  sigma := []
+  newl := []
+  every e := !l do {
+    p := hoist(pp, e, latevars)
+    put(newl, p.e)
+    sigma := compose(p.sigma, sigma)
+  }
+  return hoisted(newl, sigma)
+end
+@ 
+The function [[closure_type]] looks at the number of free and bound
+variables and finds (or emits) a type suitable for use as the closure.
+If it has to emit a new type, it also emits a ``reloc function'' to go
+with it.      
+<<*>>=
+procedure closure_type(pp, values, addresses)
+  static closure_types
+  local clname, calls
+  initial closure_types := set()
+  clname := "O" || *addresses || "_" || *values
+  if not member(closure_types, clname) then {
+    insert(closure_types, clname)
+    every calls | l := []
+    every i := 1 to *addresses do {
+      put(l, " $cRAddr a" || i || ";")
+      put(calls, template_to_list("reloc-call.t", "irec", "v", "input", "a" || i))
+    }
+    every i := 1 to *values do
+      put(l, " $cunsigned u" || i || ";")
+    emit_template(pp, "closure-type.t", "name", clname, "decls", l)
+    emit_template(pp, "constructor-labels.t", "ptrtype", clname || "_Closure",
+                                 "name", clname, "calls", calls)
+  }
+  return clname
+end
+@ 
+For compose, the right-hand substitution is applied first.
+<<*>>=
+procedure compose(sigma1, sigma2)
+  return if *sigma1 = 0 then sigma2
+         else if *sigma2 = 0 then sigma1
+         else push(sigma1, sigma2)
+end
+<<*>>=
+procedure apply_subst(e, sigma)
+  return case type(sigma) of {
+	   "list" : {
+               every s := !sigma do e := apply_subst(e, s)
+               e
+             }
+           "arrow": subst(e, sigma.v, sigma.e)
+           default :  impossible("substitution")
+         }
+end
+procedure apply_subst_list(e, sigma)
+  every i := 
+  return case type(sigma) of {
+	   "list" : apply_subst_list(e, sigma, 1)
+           "arrow": subst(e, s.v, s.e)
+           default :  impossible("substitution")
+         }
+end
+<<*>>=
+procedure showsigma(pp, sigma)
+  case type(sigma) of {
+    "arrow" : PPxwrites(pp, "$t$n${", sigma.v, " --> ", 
+                        ppexpimage(sigma.e), "$}$b")
+    "list"  : every showsigma(pp, !sigma)
+    default : impossible("substitution")
+  }
+  return
+end
+<<*>>=
+global closure_functions_postfix
+procedure emit_closure_functions_postfix(pp, interfacebasename)
+  if *\closure_functions_postfix > 0 then {
+    PPxwrite(pp, "/*****************************$t")
+    every k := key(\closure_functions_postfix) do
+      PPxwrite(pp, "${", k, " = $t$c", closure_functions_postfix[k], "$b$}")
+    PPxwrite(pp, "$b$n****************/")
+  }
+  PPxwrites(pp, "ClosurePostfix ", 
+                mapoutbadchars(interfacebasename), "_clofuns[] = {$t")
+  every k := key(\closure_functions_postfix) do
+    PPxwrites(pp, "$n{ ", k, ", ", image(closure_functions_postfix[k]), " }, ")
+  PPxwrites(pp, "$n{ (ApplyMethod) 0, (char *) 0 }")
+  PPxwrite(pp, "$b$n};")
+  return
+end
+<<*>>=
+procedure closure_function(pp, cloty, addresses, body)
+  static cache, count
+  local bodyimage, es, orig_body, bytecode
+  initial { every closure_functions_postfix | cache := table(); count := 0 }
+  tt := table()
+  every i := 1 to *addresses do tt[addresses[i]] := Eclosure_addr(i)
+  tt[the_global_pc] := Eforce(Eclosure_loc())
+  orig_body := body
+  body := subst_table_elements(body, tt)
+  bodyimage := expps(body)
+  if /cache[bodyimage] then {
+    cache[bodyimage] := "_clofun_" || (count +:= 1)
+    closure_functions_postfix[cache[bodyimage]] := bodyimage
+    verbose("New closure function for \n", bodyimage)
+    PPxwrite(pp, "/* CLOSURE FUNCTION _clofun_", count, " is $t$n", bodyimage, "$b$n */")
+    bytecode := expbc(body) || bc_halt()
+    PPwrite(pp, "/* bytecode (", *bytecode, ") is ", image(bytecode), " */")
+    <<emit new closure function numbered [[count]] and put it in cache>>
+  }
+  return cache[bodyimage]
+end
+<<emit new closure function numbered [[count]] and put it in cache>>=
+es := emitterstyle
+emitterstyle := "closure"
+PPxwrite(pp, "static void _clofun_", count, 
+             "(RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n",
+             cloty, "_Closure _c = (", cloty, "_Closure) c;$n")
+PPxwrite(pp, pretty(body))
+emitterstyle := es
+PPxwrite(pp, "$b$n}")
+@ 
+Added this so we could emit one header per closure
+function in the optimized case (instead of one header per encoding
+function).\change{34} 
+<<*>>=
+procedure closure_header_type(pp, clofun, clotype, body)
+  local upc
+  static cache
+  initial cache := table()
+  if /cache[clofun] then {
+    cache[clofun] := clofun || "_closure_header"
+    upc := if subterms_matching(body, "Epc", "Epc_known") then 1 else 0
+    emit_template(pp, "closure-header.t", 
+                              "clofun", clofun, "name", clotype, "uses-pc", upc)
+  }
+  return cache[clofun]
+end
+
+
+
+

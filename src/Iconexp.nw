@@ -1,0 +1,345 @@
+% l2h ignore change {
+\chapter{Converting Expressions to Icon}
+[[prettyIcon]] returns Icon code for an expression (or statement)
+with embedded prettyprinting escapes.
+[[nohex]] is a purely internal flag.
+If it is non-null, constants are in hex; otherwise they're in decimal.
+<<*>>=
+procedure prettyIcon(e, precedence, associativity, nohex)
+  <<local declarations for [[prettyIcon]]>>
+  initial {<<initialize [[Iconprec]] and [[Iconassoc]]>>}
+  /precedence := 0
+  /associativity := "L"
+  return case type(e) of {
+    <<cases for [[prettyIcon]]>>
+    default    : impossible("Bad code to prettyIcon")
+  }
+end
+@
+<<cases for [[prettyIcon]]>>=
+"Gcomment" : "# " || e.s || "\n"
+"list"     : commaseparate(maplist2(prettyIcon, e, Iconprec[","]), ", $o")
+"set"      : commaseparate(maplist2(prettyIcon, sort(e), Iconprec["&"]), " & $o")
+"eqn"      : { o := Iconop(e.op)
+               Iconbracket(prettyIcon(e.left,  Iconprec[o]) || " " || o || " $o" ||
+                        prettyIcon(e.right, Iconprec[o]), "=", precedence)
+             }
+"table"    : {                      # standard normal form
+    <<make [[s]] represent table [[e]], but elide additive and multiplicative units>>
+    "$t${" || s || "$}$b"
+  }
+"string"   : e
+"literal"  : list_to_string(e.s)
+"integer"  : if e > max_decimal then "16r" || hexstring(e) else string(e)
+@ The old version printed in any old order, but the new version prints
+positive terms first, then negative terms, with the constant term last in its group.
+\change{23}
+<<make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  s := ""; leadingsign := ""
+  <<add positive terms to [[s]]>>
+  leadingsign := " - $o"
+  <<add negative terms to [[s]]>>
+  s := if s == "" then "0" else Iconbracket(s, "+", precedence)
+}
+<<add positive terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] > 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyIcon(k, Iconprec["*"])
+    leadingsign := " + $o"
+}
+if e[1] > 0 then s ||:= leadingsign || string(e[1])
+<<add negative terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] < 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyIcon(k, Iconprec["*"])
+}
+if e[1] < 0 then s ||:= leadingsign || string(-e[1])
+@
+<<old make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := " + $o" }
+  else s := leadingsign := ""
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] < 0 then " - " else leadingsign
+      leadingsign := " + $o"
+      s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+      s ||:= prettyIcon(k, Iconprec["*"])
+  }
+  s := if s == "" then "0" else Iconbracket(s, "+", precedence)
+}
+<<local declarations for [[prettyIcon]]>>=
+local leadingsign
+<<cases for [[prettyIcon]]>>=
+"Eorb"     : { s := prettyIcon(e.x, Iconprec[","], "L")
+               t := prettyIcon(e.y, Iconprec[","], "R")
+               "ior(" || s || ", $o" || t ||  ")"
+             }
+"Eand"     : { s := prettyIcon(e.x, Iconprec["&"], "L")
+               t := prettyIcon(e.y, Iconprec["&"], "R")
+               Iconbracket(s || " & $o" || t, "&", precedence)
+             }
+<<cases for [[prettyIcon]]>>=
+"Eslice"   : { s := prettyIcon(super_simplify(Eshift(e.x, -e.lo)), Iconprec[","], "L")
+               "iand(" || s || ", " || mask(e.n) || ")"
+             }
+"Eshift"   : { "ishift(" || prettyIcon(e.x, Iconprec[","]) || ", " || e.n || ")" }
+<<cases for [[prettyIcon]]>>=
+"Enarrowu" : prettyIcon(e.x, precedence, associativity) # checked, so must be identity
+"Enarrows" : prettyIcon(super_simplify(Eslice(e.x, 0, e.n)), precedence, associativity)
+"Ewiden"   : "sign_extend($t${$o" || prettyIcon(e.x) || ", $o" || e.n || "$}$b)"
+<<cases for [[prettyIcon]]>>=
+"Ediv"     : { s := prettyIcon(e.x, Iconprec["/"]) 
+               s := "integer(" || s || ")" 
+               s ||:= " / " || e.n
+               Iconbracket(s, "/", precedence)
+             }
+"Emod"     : { s := prettyIcon(e.x, Iconprec["%"]) 
+               s ||:= " % " || e.n
+               Iconbracket(s, "%", precedence)
+             }
+@ 
+Have to be careful emitting no tokens.\change{35}
+<<cases for [[prettyIcon]]>>=
+"Semit"    : 
+  if *e.x = 0 then "{ \"emit epsilon\" }" else {
+    s := if *e.x > 1 then "$t${{ $c" else ""
+    <<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>
+    s ||:= commaseparate(maplist(prettyIcon, e.x), " $n")
+    <<restore [[pc_override]]>>
+    s || if *e.x > 1 then " $b$c}$}" else ""
+  } 
+"Stoken" :
+  case emitterstyle of {
+    "direct" : {<<direct call through [[emittername]]>>}
+    "closure": {<<closure call to [[emitter]]>>}
+  } | impossible("emitter style")
+@
+<<direct call through [[emittername]]>>=
+if e.n = 1 then
+  s := "_result ||:= char(" || prettyIcon(e.x, Iconprec[","]) || ")"
+else
+  error("Internal limitation: Can't emit other than 1-byte tokens when generating Icon code")
+@
+For the closure call, we assume that the closure is stored in local variable [[_c]].
+<<closure call to [[emitter]]>>=
+error("Internal limitation: No closure support in Icon emitter")
+o := if e.offset > 0 then " + " || e.offset else ""
+s := "emitter$t(_c->loc.dest_block, $o_c->loc.dest_lc" || o || ", $o" || 
+     prettyIcon(e.x, Iconprec[","]) || ", $o" || e.n || ")"
+Iconbracket("$c" || s, "app", precedence) || ";$b"
+@
+This code fixes bug~5 by using [[ENCODE_pc]] instead of [[cur_pc]] when
+an emitted token other than the first requires the program counter.
+It's needed because [[cur_pc()]] changes as a side effect of [[emit]], 
+but ``the program counter'' always refers to the location of
+the {\em first} token emitted.\change{8}
+<<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>=
+if *e.x > 1 & emitterstyle == "direct" & expwalk(e.x[2:0], equals_pc) then {
+  s ||:= "ENCODE_pc = cur_pc(); $c"
+  save_pc_override := pc_override
+  pc_override := "ENCODE_pc"
+}
+<<restore [[pc_override]]>>=
+pc_override := save_pc_override
+<<local declarations for [[prettyIcon]]>>=
+local save_pc_override
+<<cases for [[prettyIcon]]>>=
+"Epc" : \pc_override | "cur_pc()"
+"Epc_known" : "cur_pc_known()"
+<<cases for [[prettyIcon]]>>=
+"Eclosure_loc"  : "_c.loc"
+"Eclosure_addr" : "_c.v.a" || e.n
+"Eclosure_val"  : "_c.v.u" || e.n
+<<*>>=
+global pc_override
+@
+<<cases for [[prettyIcon]]>>=
+"Efitsu"   : prettyIcon(Ginrange(0, e.x, 2^e.n), precedence, associativity)
+"Efitss"   : prettyIcon(Ginrange(-2^(e.n-1), e.x, 2^(e.n-1)), precedence,associativity)
+<<cases for [[prettyIcon]]>>=
+"Eforce" | "Eforceable"  : {
+		error("no relocation support in Icon")
+                    (if type(e.x) == "Eclosure_loc" then "pc_" else "") || 
+                    "location" ||
+                    (if type(e) == "Eforceable" then "_known" else "") ||
+                    "$t${(" || prettyIcon(e.x) || ")$}$b"
+             }
+<<cases for [[prettyIcon]]>>=
+"Enot"      : { s := "not " || prettyIcon(e.x, Iconprec["not"])
+                Iconbracket(s, "not", precedence)
+              }
+<<cases for [[prettyIcon]]>>=
+"Enosimp"   : prettyIcon(e.x, precedence, associativity)
+<<cases for [[prettyIcon]]>>=
+"Sstmts"    : "$t${{ $c" || commaseparate(maplist2(prettyIcon, e.x), " $n") || " $b$c}$}"
+<<cases for [[prettyIcon]]>>=
+"Gcall" : { l := []; every put(l, prettyIcon(!e.args))
+            Cnoreserve(e.name) || "(" || commaseparate(l) || ")"
+         }
+<<cases for [[prettyIcon]]>>=
+"Einstance_input" : { 
+               s := prettyIcon(e.x, Iconprec["."]) || "." || e.name
+               Iconbracket(s, ".", precedence)
+             }
+"Einstance_tagged" : { 
+               s := "type(" || prettyIcon(e.x, Iconprec["."]) || " == " || 
+				image(e.cons.name)
+               Iconbracket(s, "==", precedence)
+             }
+@
+I assume the if statement has been simplified, so there are no arms beyond
+any [[else]] arm
+<<cases for [[prettyIcon]]>>=
+"Sif"      : { preif := ""
+               s := ""
+               every a := !e.arms do {
+                 s ||:= preif || Icontest(a.guard) || Iconarm(a.x)
+                 preif := "$nelse "
+               }
+               "${" || s || "$}"
+             }
+<<cases for [[prettyIcon]]>>=
+"Efail" : error("Generate-time operation failed: ", e.msg)
+<<*>>=
+procedure Icontest(guard)
+  return if guard_always_satisfied(guard) then ""
+         else "if $t${" || prettyIcon(guard) || " then$}$b "
+end
+<<*>>=
+procedure Iconarm(e)
+  return if type(e) == ("Gblock"|"Sstmts") then prettyIcon(e) || " "
+         else "$t$c${" || prettyIcon(e) || "$}$b "
+end
+<<cases for [[prettyIcon]]>>=
+"Stagcase" : { s := "case type(" || prettyIcon(e.x, Iconprec["."]) ||") of {$t${"
+              every c := kept_constructors(e.type) do
+                s ||:= "$n  " || image(c.name) || " : {$t$c${" ||
+                          prettyIcon(e.arms[c]) || " $c}$}$b"
+              s || "$ndefault: &null+1$}$b$c} # " || prettyIcon(e.x) || "\n"
+            }
+<<cases for [[prettyIcon]]>>=
+"Sfail"    : { s := "fail($t${" || image(escape_dollars(e.fmt))
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= ", $o" || prettyIcon(\a, Iconprec[","])
+               s ||:= "$}$b);"
+               Iconbracket(s, "app", precedence)
+             }
+"Sepsilon" : "{ \"skip\" }"
+<<cases for [[prettyIcon]]>>=
+"Sclosure" : prettyIcon(\e.creation) | impossible("creating closure")
+<<cases for [[prettyIcon]]>>=
+"Glines"    : { s := ""; every s ||:= prettyIcon(!e.x) || "\n"; s }
+"Gresynch"  : "$n#line " || e.line  || " " || image(\e.file | "generated-code")
+<<cases for [[prettyIcon]]>>=
+"Gblock"    : { s := "{ ${$t$c"
+                every s ||:= prettyIcon(!e.decls) || "$n"
+                s ||:= commaseparate(maplist(prettyIcon, e.stmts), "$n")
+                s || "$b $c}$}"
+              }
+"Gdecl"     : "${ " || e.name || " := $t$c" || prettyIcon(\e.init) || "$b$}"
+<<cases for [[prettyIcon]]>>=
+"Gdeclnamearray" : {
+  error("no name arrays in Icon")
+  /na_count := 0
+  /e.na.codename := "MATCH_name_" || e.na.field.field.name || "_" || (na_count +:= 1)
+  /e.na.storageclass := "static"
+  s := e.na.storageclass || " char *" || e.na.codename || "[] = {"
+  s ||:= "${$t"
+  every i := 0 to e.na.hi - 1 do
+    s ||:= " $c" || image(\e.na.tbl[i]|0) || ","
+  s || "$b $c$}}"
+}
+<<local declarations for [[prettyIcon]]>>=
+static na_count
+<<cases for [[prettyIcon]]>>=
+"Gsetname"  :   error("no name arrays in Icon")
+<<cases for [[prettyIcon]]>>=
+"Gcase"     : { s := "case " || prettyIcon(e.x) || " of {$t${ "
+                every s ||:= prettyIcon(!e.arms)
+                s || "$ndefault: &null+1$}$b$c} # " || prettyIcon(e.x) || "\n"
+               }
+"Gcasearm"  : { s := "$n"
+                every i := 1 to *e.tags by 2 do {
+                  if e.tags[i] + 1 = e.tags[i+1] then 
+                    s ||:= "$n " || e.tags[i] || ": " 
+                  else {
+                    every s ||:= "$n " || (e.tags[i] to (e.tags[i+1]-1)) || " | "
+	            s ||:= "&fail : "
+                  }
+                } 
+                s ||:= "{$t$c${" || prettyIcon(e.x) || " $}$b}"
+              }
+<<cases for [[prettyIcon]]>>=
+"Ginrange"  : { x := prettyIcon(e.x, Iconprec["<"])
+                if e.lo + 1 = e.hi then {
+                  Iconbracket(x || " = " || e.lo, "=", precedence)
+                } else {
+                  Iconbracket(e.lo || " <= " || x || " < " || e.hi, "=", precedence)
+                }
+              }
+"Gsetname"  : error("no setname ion Icon")
+"Gasgn"  : "${" || prettyIcon(e.lhs) || " := $t$o" || prettyIcon(e.x, Iconprec[":="]) || "$b$}"
+<<cases for [[prettyIcon]]>>=
+"Gnomatch"  : "&null+1 /* no match */$n"
+"Tunsigned" : error("no types in Icon")
+"Tsigned"   : error("no types in Icon")
+<<*>>=
+<<cases for [[prettyIcon]]>>=
+"absolute_field" : 
+   prettyIcon(super_simplify(Eslice(literal(wordname(e)), e.field.lo, fwidth(e.field))),
+           precedence, associativity, nohex)
+<<*>>=
+global Iconprec, Iconassoc
+procedure Iconbracket(s, op, p, a)
+  /a := "L"
+  return "${" || (if Iconprec[op] > p | (Iconprec[op] = p & Iconassoc[p] == a) then s
+                   else "(" || s || ")") || "$}"
+end
+<<initialize [[Iconprec]] and [[Iconassoc]]>>=
+ops := ["N", ["low"],
+    "L", [","],
+    "L", ["&"],
+    "L", ["?"],
+    "L", [":=","<-",":=:","<->"],
+    "L", ["to"],
+    "L", ["|"],
+    "L", ["<","<=","=",">=",">","~=","@<<","@<<=","==","@>>=","@>>","~==","===","~==="],
+    "L", ["||","|||"],
+    "L", ["++","--"],
+    "L", ["+","-"],
+    "L", ["*","/","%","**"],
+    "L", ["^"],
+    "L", ["\\","@","!"],
+    "N", ["not"],
+    "N", ["app"],
+    "N", ["high"]
+  ]
+Iconprec := table([])  # missed lookups break arithmetic comparisons
+Iconassoc := table()
+every i := 1 to *ops by 2 do {
+  every Iconprec[!ops[i+1]] := i
+  Iconassoc[i] := ops[i]
+}
+@
+<<*>>=
+procedure Iconop(op)
+  return if op == "!=" then "~=" else op
+end
+@
+\section{Support for decoding code in Icon}
+Nonexistent.
+<<*>>=
+procedure Generate_Icon()
+  pretty := prettyIcon
+  hex_prefix := "16r"
+  gen_outer_decls := []
+  gen_file_header := []
+  fetchtab["type"] := "bogus";
+  fetchtab["add"] := "((%a) + %o)"
+  fetchtab["integer"] := "(bogus)(%a)"
+end

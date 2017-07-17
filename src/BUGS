@@ -1,0 +1,62 @@
+ 19. If you use, as a free variable in a matching statement, a name
+     designated relocatable, you'll be told about a failure to do with
+     `rethinking projection'.  The workaround is to use a different
+     name; since it's a binding instance, you can use any name you
+     like. 
+
+*18. In decoder, condition tests use match-word variables before
+     they're defined. 9/96 Rich Piazza, 10/96 cc FIXED #43
+
+*17. Nested instances don't get properly eliminated in matching
+     statements. 10/18/96 cc FIXED #42
+
+*16. Didn't correctly call assembly printer for constructor with no
+     arguments. 8/13/96 FIXED #41
+
+*15. Fits conditions not used to distinguish ``redundant'' disjuncts.
+     Therefore all but the first disjunct gets thrown out, and then
+     when a value doesn't fit, the toolkit goes belly-up at run time.
+     Example: clv in the bytecode spec. 7/11/96.  FIXED #46
+
+*14. Got pattern length wrong because of bad dagging.  
+     Triggered by intlit x; bitshift == bitshiftlit x.  FIXED #38
+
+*13. Some tests should be simplified away that aren't, e.g., testing
+     that imm[0:15]! fits in 16 bits for MIPS li. FIXED AT UNKNOWN TIME.
+
+*12. Impossible arms were trimmed silently if root node always matched
+     --- didn't warn of unmatched disjuncts.  FIXED #20.
+
+*11. In procedure tree() in tree.nw, initial root node needed empty
+     children in order to make sense if first pattern always matched
+     and node wasn't split. FIXED #19.
+ 
+*10. Can't bind an address in a matching statement. FIXED, not sure when.
+ 
+ *9. In bug09.nw, when constraints aren't satisfied we got an
+     assert(0), even though we should get the 'else' clause. FIXED #21
+ 
+ *8. Can't solve for offset in MIPS s.d; see bug08.nw. FIXED #18
+ 
+ *7. Called Generate_C() even when -m3 given. FIXED #14.
+ 
+ *6. Generate_M3() had an old bogus call. FIXED #12.
+ 
+ *5. Emission code in procedure assumes $pc == cur_pc, neglecting the
+     fact that cur_pc() advances as emit() is called.  FIXED #8.
+ 
+ *4. Emission code for multiple tokens in closure doesn't properly
+     advance location counter, so all tokens are emitted at dest_lc.
+     FIXED #8.
+ 
+ *3. Assertion failure in buffer_at_lc when writing empty relocatable block.
+     FIXED #6.
+ 
+ *2. Toolkit can't solve SPARC 
+        | jmpl(dispA(rs1, simm13), rd) => RETURN FollowSet.T{GetReg(m, rs1)+simm13};
+     because it doesn't eliminate disjuncts guarded by {DispA is indexA}
+     and so on.  FIXED #4.
+ 
+ *1. Toolkit doesn't accept a ! after a consructor arg.  Defined to be
+     fixed until we get expressions as constructor args.
+  

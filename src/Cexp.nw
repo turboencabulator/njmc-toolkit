@@ -1,0 +1,443 @@
+% l2h ignore change {
+\chapter{Converting Expressions to C}
+[[prettyC]] returns C code for an expression (or statement)
+with embedded prettyprinting escapes.
+[[nohex]] is a purely internal flag.
+If it is non-null, constants are in hex; otherwise they're in decimal.
+<<*>>=
+procedure prettyC(e, precedence, associativity, nohex)
+  <<local declarations for [[prettyC]]>>
+  initial {<<initialize [[Cprec]] and [[Cassoc]]>>}
+  /precedence := 0
+  /associativity := "L"
+  return case type(e) of {
+    <<cases for [[prettyC]]>>
+    default    : impossible("Bad code to prettyC")
+  }
+end
+@
+<<cases for [[prettyC]]>>=
+"list"     : commaseparate(maplist2(prettyC, e, Cprec[","]), ", $o")
+"set"      : commaseparate(maplist2(prettyC, sort(e), Cprec["&&"]), " && $o")
+"eqn"      : { o := Cop(e.op)
+               Cbracket(prettyC(e.left,  Cprec[o]) || " " || o || " $o" ||
+                        prettyC(e.right, Cprec[o]), "==", precedence)
+             }
+"table"    : {                      # standard normal form
+    <<make [[s]] represent table [[e]], but elide additive and multiplicative units>>
+    "$t${" || s || "$}$b"
+  }
+"string"   : e
+"literal"  : list_to_string(e.s)
+"integer"  : if e > max_decimal then "0x" || hexstring(e) else string(e)
+@ The old version printed in any old order, but the new version prints
+positive terms first, then negative terms, with the constant term last in its group.
+\change{23}
+<<make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  s := ""; leadingsign := ""
+  <<add positive terms to [[s]]>>
+  leadingsign := " - $o"
+  <<add negative terms to [[s]]>>
+  s := if s == "" then "0" else Cbracket(s, "+", precedence)
+}
+<<add positive terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] > 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyC(k, Cprec["*"])
+    leadingsign := " + $o"
+}
+if e[1] > 0 then s ||:= leadingsign || string(e[1])
+<<add negative terms to [[s]]>>=
+every e[k := 1 ~=== key(e)] < 0 do {
+    s ||:= leadingsign 
+    s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+    s ||:= prettyC(k, Cprec["*"])
+}
+if e[1] < 0 then s ||:= leadingsign || string(-e[1])
+@
+<<old make [[s]] represent table [[e]], but elide additive and multiplicative units>>=
+{
+  # print constant term if nonzero
+  if e[1] ~= 0 then { s := string(e[1]) ; leadingsign := " + $o" }
+  else s := leadingsign := ""
+  # print every nonconstant term k
+  every k := 1 ~=== key(e) do {
+      s ||:= if e[k] < 0 then " - " else leadingsign
+      leadingsign := " + $o"
+      s ||:= (1 ~= abs(e[k])) || "*"    # print coefficient if not 1
+      s ||:= prettyC(k, Cprec["*"])
+  }
+  s := if s == "" then "0" else Cbracket(s, "+", precedence)
+}
+<<local declarations for [[prettyC]]>>=
+local leadingsign
+<<cases for [[prettyC]]>>=
+"Eorb"     : { s := prettyC(e.x, Cprec["|"], "L")
+               t := prettyC(e.y, Cprec["|"], "R")
+               Cbracket(s || " | $o" || t, "|", precedence)
+             }
+"Eand"     : { s := prettyC(e.x, Cprec["&&"], "L")
+               t := prettyC(e.y, Cprec["&&"], "R")
+               Cbracket(s || " && $o" || t, "&&", precedence)
+             }
+<<cases for [[prettyC]]>>=
+"Eslice"   : { s := prettyC(super_simplify(Eshift(e.x, -e.lo)), Cprec["&"], "L")
+               Cbracket(s || " & " || mask(e.n), "&", precedence)
+             }
+"Eshift"   : { s := prettyC(e.x, Cprec["<<"]) 
+               s ||:= if e.n < 0 then (" >> " || -e.n) 
+                      else            (" << " ||  e.n)
+               Cbracket(s, "<<", precedence)
+             }
+<<cases for [[prettyC]]>>=
+"Enarrowu" : prettyC(e.x, precedence, associativity) # checked, so must be identity
+"Enarrows" : prettyC(super_simplify(Eslice(e.x, 0, e.n)), precedence, associativity)
+"Ewiden"   : "sign_extend($t${$o" || prettyC(e.x) || ", $o" || e.n || "$}$b)"
+<<cases for [[prettyC]]>>=
+"Ediv"     : { s := prettyC(e.x, Cprec["/"]) 
+               s := "((int)" || s || ")"   # temporary hack to fix a bug
+               s ||:= " / " || e.n
+               Cbracket(s, "/", precedence)
+             }
+"Emod"     : { s := prettyC(e.x, Cprec["%"]) 
+               s ||:= " % " || e.n
+               Cbracket(s, "%", precedence)
+             }
+@ 
+Have to be careful emitting no tokens.\change{35}
+<<cases for [[prettyC]]>>=
+"Semit"    : 
+  if *e.x = 0 then "{/*emit epsilon*/}" else {
+    s := if *e.x > 1 then "$t${{ $c" else ""
+    <<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>
+    s ||:= commaseparate(maplist(prettyC, e.x), " $c")
+    <<restore [[pc_override]]>>
+    s || if *e.x > 1 then " $b$c}$}" else ""
+  } 
+"Stoken" :
+  case emitterstyle of {
+    "direct" : {<<direct call through [[emittername]]>>}
+    "closure": {<<closure call to [[emitter]]>>}
+  } | impossible("emitter style")
+@
+<<direct call through [[emittername]]>>=
+s := emittername || "$t(" || prettyC(e.x, Cprec[","]) || ", $o" || e.n || ")"
+Cbracket("$c" || s, "app", precedence) || ";$b"
+@
+For the closure call, we assume that the closure is stored in local variable [[_c]].
+<<closure call to [[emitter]]>>=
+o := if e.offset > 0 then " + " || e.offset else ""
+s := "emitter$t(_c->loc.dest_block, $o_c->loc.dest_lc" || o || ", $o" || 
+     prettyC(e.x, Cprec[","]) || ", $o" || e.n || ")"
+Cbracket("$c" || s, "app", precedence) || ";$b"
+@
+This code fixes bug~5 by using [[ENCODE_pc]] instead of [[cur_pc]] when
+an emitted token other than the first requires the program counter.
+It's needed because [[cur_pc()]] changes as a side effect of [[emit]], 
+but ``the program counter'' always refers to the location of
+the {\em first} token emitted.\change{8}
+<<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>=
+if *e.x > 1 & emitterstyle == "direct" & expwalk(e.x[2:0], equals_pc) then {
+  s ||:= "unsigned ENCODE_pc = cur_pc(); $c"
+  save_pc_override := pc_override
+  pc_override := "ENCODE_pc"
+}
+<<restore [[pc_override]]>>=
+pc_override := save_pc_override
+<<local declarations for [[prettyC]]>>=
+local save_pc_override
+<<cases for [[prettyC]]>>=
+"Epc" : \pc_override | "cur_pc()"
+"Epc_known" : "cur_pc_known()"
+<<cases for [[prettyC]]>>=
+"Eclosure_loc"  : "_c->loc"
+"Eclosure_addr" : "_c->v.a" || e.n
+"Eclosure_val"  : "_c->v.u" || e.n
+<<*>>=
+global pc_override
+@
+<<cases for [[prettyC]]>>=
+"Efitsu"   : { s := "(unsigned)(" || prettyC(e.x) || ") < " || tworaised(e.n)
+               Cbracket(s, "<", precedence)
+             }
+"Efitss"   : { s := "(unsigned)(" || prettyC(addconst(e.x, 2^(e.n-1))) ||
+                                         ") < " || tworaised(e.n)
+               Cbracket(s, "<", precedence)
+             }
+<<cases for [[prettyC]]>>=
+"Eforce" | "Eforceable"  : {
+                    (if type(e.x) == "Eclosure_loc" then "pc_" else "") || 
+                    "location" ||
+                    (if type(e) == "Eforceable" then "_known" else "") ||
+                    "$t${(" || prettyC(e.x) || ")$}$b"
+             }
+<<cases for [[prettyC]]>>=
+"Enot"      : { s := "!" || prettyC(e.x, Cprec["!"])
+                Cbracket(s, "!", precedence)
+              }
+<<cases for [[prettyC]]>>=
+"Enosimp"   : prettyC(e.x, precedence, associativity)
+<<cases for [[prettyC]]>>=
+"Sstmts"    : "$t${{ $c" || commaseparate(maplist2(prettyC, e.x), " $c") || " $b$c}$}"
+<<cases for [[prettyC]]>>=
+"Gcall" : { l := []; every put(l, prettyC(!e.args))
+            Cnoreserve(e.name) || "(" || commaseparate(l) || ")"
+         }
+<<cases for [[prettyC]]>>=
+"Einstance_input" : { 
+               s := prettyC(e.x, Cprec["."]) || ".u." || e.cons.name || "." || e.name
+               Cbracket(s, ".", precedence)
+             }
+"Einstance_tagged" : { 
+               s := prettyC(e.x, Cprec["="]) || ".tag == " || e.cons.name || "_TAG"
+               Cbracket(s, "==", precedence)
+             }
+@
+I assume the if statement has been simplified, so there are no arms beyond
+any [[else]] arm
+<<cases for [[prettyC]]>>=
+"Sif"      : { preif := ""
+               s := ""
+               every a := !e.arms do {
+                 s ||:= preif || Ctest(a.guard) || Carm(a.x)
+                 preif := "$celse "
+               }
+               "${" || s || "$}"
+             }
+<<cases for [[prettyC]]>>=
+"Efail" : error("Generate-time operation failed: ", e.msg)
+<<*>>=
+procedure Ctest(guard)
+  return if guard_always_satisfied(guard) then ""
+         else "if $t${(" || prettyC(guard) || ")$}$b "
+end
+<<*>>=
+procedure Carm(e)
+  return if type(e) == ("Gblock"|"Sstmts") then prettyC(e) || " "
+         else "$t$c${" || prettyC(e) || "$}$b "
+end
+<<cases for [[prettyC]]>>=
+"Stagcase" : { s := "switch (" || prettyC(e.x, Cprec["."]) || ".tag) {$t${"
+              every c := kept_constructors(e.type) do
+                s ||:= "$ccase " || c.name || "_TAG: $t$c${" ||
+                          prettyC(e.arms[c]) || " $cbreak;$}$b"
+              s || "$cdefault: assert(0);$}$b$c} /* " || 
+                             Cuncomment(prettyC(e.x)) || " */"
+            }
+@ C comments don't nest, but some implemenations might.
+<<*>>=
+procedure Cuncomment(s)
+  r := ""
+  s ? {
+    while r ||:= tab(upto('/*')) do
+      if ="/*" then r ||:= "--"
+      else if ="*/" then r ||:= "--"
+      else r ||:= move(1)
+    return r || tab(0)
+  }
+end
+<<cases for [[prettyC]]>>=
+"Sfail"    : { s := "fail($t${" || image(escape_dollars(e.fmt))
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= ", $o" || prettyC(\a, Cprec[","])
+               s ||:= "$}$b);"
+               Cbracket(s, "app", precedence)
+             }
+"Sepsilon" : "{/* skip */}"
+<<cases for [[prettyC]]>>=
+"Sclosure" : prettyC(\e.creation) | impossible("creating closure")
+<<cases for [[prettyC]]>>=
+"Glines"    : { s := ""; every s ||:= prettyC(!e.x) || "\n"; s }
+"Gresynch"  : "$n#line " || e.line  || " " || image(\e.file | "generated-code")
+<<cases for [[prettyC]]>>=
+"Gblock"    : { s := "{ ${$t$c"
+                every s ||:= prettyC(!e.decls) || ";$n"
+                s ||:= commaseparate(maplist(prettyC, e.stmts), "$c")
+                s || "$b $c}$}"
+              }
+"Gdecl"     : { s := "${" || prettyC(\e.type | infer_C_type(e.init))
+                s ||:= " " || e.name 
+                s ||:= " = $t$c" || prettyC(\e.init) || "$b"
+                s || "$}"
+              }
+<<*>>=
+procedure infer_C_type(value)
+  if /value then impossible("variable with no type and no value")
+  return case type(value) of {
+    "Ewiden" : Tsigned(value.n)
+    default  : Tunsigned(wordsize)
+  }
+end
+<<cases for [[prettyC]]>>=
+"Gdeclnamearray" : {
+  /na_count := 0
+  /e.na.codename := "MATCH_name_" || e.na.field.field.name || "_" || (na_count +:= 1)
+  /e.na.storageclass := "static"
+  s := e.na.storageclass || " char *" || e.na.codename || "[] = {"
+  s ||:= "${$t"
+  every i := 0 to e.na.hi - 1 do
+    s ||:= " $c" || escape_dollars(image(\e.na.tbl[i]|0)) || ","
+  s || "$b $c$}}"
+}
+<<local declarations for [[prettyC]]>>=
+static na_count
+<<cases for [[prettyC]]>>=
+"Gsetname"  : "char *" || e.lhs || " = ${$t$o" || case type(e.name) of {
+                   "string"    : image(e.name)
+                   "namearray" : e.name.codename || "[" || prettyC(e.name.field) || "]"
+                   default     : impossible("type of node name field")
+              } || "$b$}"
+<<cases for [[prettyC]]>>=
+"Gcase"     : { s := "switch (" || prettyC(e.x) || ") {$t${ "
+                every s ||:= prettyC(!e.arms)
+                s || "$cdefault: assert(0);$}$b$c} /* " || 
+				Cuncomment(prettyC(e.x)) || " */"
+               }
+"Gcasearm"  : { s := "$n"
+                every i := 1 to *e.tags by 2 do {
+                  if e.tags[i] + 1 = e.tags[i+1] then 
+                    s ||:= "$ocase " || e.tags[i] || ": " 
+                  else 
+                    every s ||:= "$ocase " || (e.tags[i] to (e.tags[i+1]-1)) || ": "
+                } 
+                s ||:= "$t$c${" || prettyC(e.x) || "$cbreak;$}$b"
+              }
+<<cases for [[prettyC]]>>=
+"Ginrange"  : { x := prettyC(e.x, Cprec["<"])
+                if e.lo + 1 = e.hi then {
+                  Cbracket(x || " == " || e.lo, "==", Cprec["&&"])
+                } else {
+		  c1 := Cbracket(e.lo || " <= " || x, "<=", Cprec["&&"])
+		  c2 := Cbracket(x || " < " || e.hi, "<", Cprec["&&"])
+		  Cbracket(c1 || " && " || c2, "&&", precedence)
+                }
+              }
+"Gsetname"  : "${" || e.lhs || " = $t$o" || case type(e.name) of {
+                   "string"    : image(e.name)
+                   "namearray" : e.name.codename || "[" || e.name.field.name || "]"
+                   default     : impossible("type of node name field")
+              } || ";$b$}"
+"Gasgn"  : "${" || prettyC(e.lhs) || " = $t$o" || prettyC(e.x, Cprec["="]) || ";$b$}"
+<<cases for [[prettyC]]>>=
+"Gnomatch"  : "assert(0); /* no match */$n"
+"Tunsigned" : unsigned_type(e.width)
+"Tsigned"   : signed_type(e.width)
+"Gcomment"  : "/* " || Cuncomment(e.s) || " */"
+"Gcommented" : 
+  prettyC(e.e, precedence, associativity, nohex) || 
+     " /* " || Cuncomment(e.comment) || " */"
+<<*>>=
+procedure unsigned_type(width)
+  return "unsigned" || unsigned_width_comment(width)
+end
+procedure signed_type(width)
+  return "int" || signed_width_comment(width)
+end
+procedure unsigned_width_comment(width)
+  return if \width < wordsize then " /* [0.." || (2^width-1) || "] */" else ""
+end
+procedure signed_width_comment(width)
+  return if \width < wordsize then 
+    " /* [" || -(2^(width-1)) || ".." || (2^(width-1)-1) || "] */" 
+  else 
+    ""
+end
+<<cases for [[prettyC]]>>=
+"absolute_field" : 
+   prettyC(super_simplify(afieldexp(e)), precedence, associativity, nohex)
+<<*>>=
+global Cprec, Cassoc
+procedure Cbracket(s, op, p, a)
+  /a := "L"
+  return "${" || (if Cprec[op] > p | (Cprec[op] = p & Cassoc[p] == a) then s
+                   else "(" || s || ")") || "$}"
+end
+<<initialize [[Cprec]] and [[Cassoc]]>>=
+ops := ["N", ["low"],
+        "L", [";"],
+        "L", [","],
+        "R", ["=", "+=", "-=", "*=", "/=", "%=", "&=", "^=", "|=", ">>=", "<<="],
+        "R", [":?"],
+        "L", ["||"], 
+        "L", ["&&"], 
+        "L", ["|"], 
+        "L", ["^"],
+        "L", ["&"], 
+        "L", ["==", "!="],
+        "L", ["<=", "<", ">=", ">"],
+        "L", [">>", "<<"],
+        "L", ["+", "-"],
+        "L", ["%", "/", "*"],
+        "R", ["!", "~", "++", "--", "cast", "sizeof"],
+        "L", [".", "->", "app"],
+        "N", ["high"]
+       ]
+Cprec := table([])  # missed lookups break arithmetic comparisons
+Cassoc := table()
+every i := 1 to *ops by 2 do {
+  every Cprec[!ops[i+1]] := i
+  Cassoc[i] := ops[i]
+}
+@
+<<*>>=
+procedure Cop(op)
+  return if op == "=" then "==" else op
+end
+<<*>>=
+procedure Cnoreserve(word) 
+  static reserved
+  initial reserved := set([
+        "asm", "auto", "break", "case", "char", "const", "continue",
+        "default", "double", "do", "else", "enum", "extern", "float", "for",
+        "goto", "if", "int", "long", "register", "return", "short",
+        "signed", "sizeof", "static", "struct", "switch", "typedef", "union",
+        "unsigned", "void", "volatile", "while"])
+  return if member(reserved, word) then Cnoreserve(word||"_") else word
+end
+<<*>>=
+procedure hexstring(i,n)
+   local s
+   if i = 0 then s := "0"
+   else {
+      s := ""
+      while i ~= 0 do {
+         s := "0123456789abcdef"[iand(i,15) + 1] || s
+         i := ishift(i,-4)
+         }
+      }
+   if \n > *s then s := right(s,n,"0")
+   return s
+end
+@
+\section{Support for decoding code in C}
+<<*>>=
+procedure Generate_C()
+  pretty := prettyC
+  hex_prefix := "0x"
+  gen_outer_decls := []
+  gen_file_header := ["#include <assert.h>\n",
+     "#define sign_extend(N,SIZE) ", # no newline after #define
+         "(((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) @>> (sizeof(unsigned)*8-(SIZE)))"
+     ]
+  fetchtab["type"] := "unsigned char *";
+  fetchtab["add"] := "((%a) + %o)"
+  fetchtab["integer"] := "(unsigned)(%a)"
+#  fetchtab[8]  := "(unsigned)*(unsigned char *) (%a+%o/8)"
+#  fetchtab[16] := "(unsigned)*(unsigned short *)(%a+%o/16)"
+#  fetchtab[32] := "(unsigned)*(unsigned *)      (%a+%o/32)"
+end
+@ 
+Used to declare functions according to the proper style of
+indirection.
+<<*>>=
+procedure c_function_declaration(pp, returntype, name, args, indirect)
+  emit_template(pp, if \indirectname then "indirect-proto.t" else "direct-proto.t",
+                    "return", returntype, "name", name, "args", args)
+  return
+end
+<<direct-proto.t>>=
+extern %return %name(%args);
+<<indirect-proto.t>>=
+%return (*%name)(%args);

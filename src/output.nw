@@ -1,0 +1,284 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+% l2h ignore bug {
+% l2h ignore change {
+\chapter{Output}
+Routines for producing ASCII and "dag" representations
+of patterns and decision trees.
+<<*>>=
+global equivclasses, symtab
+
+procedure outspec(file)
+    every c := !equivclasses do {
+        writes(file, "fields(", c.size, ") ")
+        every f := !c.fields do writes(file, fieldimage(f))
+        write(file)
+    }
+    outpatterndefs(file, w := set())
+    every c := kept_constructors() do
+      write(file, "constructor ", c.name, " ", outinputs(c), 
+	    " : " || (instructionctype ~=== c.type).name | "")
+    write(file, "%%")
+end
+<<*>>=
+procedure outinputs(cons)
+  s := "("
+  p := ""
+  every i := inputs_of(cons) do {
+    s ||:= p || i.name
+    p := ", "
+  }
+  return s || ")"
+end
+@ 
+<<*>>=
+procedure fieldimage(f) 
+    return f.name || " " || f.lo || ":" || f.hi || " "
+end
+@ %def fieldimage
+<<*>>=
+procedure outpatterndefs(file, written)
+    /written := patnames()
+    pats := sort(symtab)
+    # first do patterns that don't depend on other patterns, then catch as catch can
+    every pair := !pats & name := pair[1] & p := pair[2] & type(p) == "pattern" do {
+        if not ((!p.disjuncts).name ~== name) then # doesn't depend on others
+            outpatterndef(file, name, p, written)
+    }
+    every pair := !pats & type(pair[2]) == "pattern" do
+        outpatterndef(file, pair[1], pair[2], written)
+    return 
+end
+@ %def outpatterndefs
+<<*>>=
+procedure outpatterndef(file, name, p, written)
+    if not member(written, name) then {
+        every d := !p.disjuncts & name ~== \d.name do 
+            outpatterndef(file, d.name, lookup(d.name), written)
+        writes(file, "pattern ", name, " : ")
+        write(file, patternimage(p, written))
+        insert(written, name)
+    }
+    return 
+end
+@ %def outpatterndef
+<<*>>=
+procedure outpattern(file, p, written)
+    /written := patnames()
+    return writes(file, patternimage(p, written))
+end
+<<*>>=
+procedure patnames()
+  static s
+  initial { s := set(); every insert(s, key(symtab)) } # cheat
+  return s
+end
+<<*>>=
+procedure patternimage(p, written)
+    /written := emptyset
+    return if member(written, p.name) then # temporary hack
+        p.name
+    else {
+        l := []; every put(l, disjunctimage(!p.disjuncts, p.name))
+        if *l > 0 then commaseparate(l, " | ") else "<NOMATCH>"
+    }
+end
+<<*>>=
+link commafy
+<<*>>=
+procedure disjunctimage(d, name)
+    return if \name == \d.name | /d.name then
+        case type(d) of {
+            "disjunct" : sequenceimage(d.sequents)
+            "adisjunct" : 
+               if adalwaysmatches(d) then "<ELSE>"
+               else commaseparate(maplist(constraintimage, d.aconstraints), " & ")
+	    default : impossible("disjunct type")
+        }
+    else
+        d.name
+end
+<<*>>=
+procedure sequenceimage(l)
+  return if *l = 0 then "<EPSILON>"
+         else if l[1] === dots then "... " || sequenceimage(l[2:0])
+         else if l[-1] === dots then sequenceimage(l[1:-1]) || " ..."
+         else commaseparate(maplist(sequentimage, l), "; ")
+end
+<<*>>=
+procedure sequentimage(s)
+  return if s === dots then impossible("image of dots")
+         else if type(s) == ("patlabel" | "latent_patlabel") then expimage(s)
+         else if *s.constraints = 0 then "<Impossible ELSE?>"
+         else commaseparate(maplist(constraintimage, s.constraints), " & ")
+end
+<<*>>=
+procedure constraintimage(c)
+    local bitcount
+    s := ""
+    case type(c) of {
+    "constraint": {
+        bitcount := fieldbitcount(c.field)
+        if c.lo + 1 = c.hi then
+            s ||:= patimage(c.field) || " == " || c.lo
+        else if c.lo = 0 & c.hi = 2^bitcount then
+            s ||:= "<ANY " || bitcount || "-bit " || patimage(c.field)|| ">"
+        else if c.lo >= c.hi then
+            s ||:= "<IMPOSSIBLE " || patimage(c.field) || ">"
+        else {
+            if c.lo > 0 then s ||:= patimage(c.field) || " >= " || c.lo
+            if c.lo > 0 & c.hi < 2^bitcount then s ||:= " & "
+            if            c.hi < 2^bitcount then 
+                        s ||:=  patimage(c.field) || " < " || c.hi
+        }
+    }
+    "fieldbinding" : s ||:= patimage(c.field) || " = " || image(c.code)
+    default : impossible("constraint type")
+    }
+    return s
+end
+@ %def constraintimage
+<<*>>=
+procedure fieldbitcount(f)
+   return case type(f) of {
+     "absolute_field" : fieldbitcount(f.field)
+     "field" : fwidth(f)
+     default : impossible("field type")
+   }
+end
+<<*>>=
+procedure patimage(v)
+    return case type(v) of {
+        "list" | "set" :  "[" || commaseparate(maplist(patimage, v)) || "]"
+        "matching_stmt" : "MATCH " || patimage(v.arms) || "ENDMATCH"
+	"arm" : image(v.file) || ", line " || string(v.line) || ": " ||
+		       patimage(v.pattern) || " => " || v.code
+	"pattern" : commaseparate(maplist(patimage, v.disjuncts), " | ")
+	"disjunct" : if *v.sequents = 0 then "epsilon"
+                     else commaseparate(maplist(patimage, v.sequents), "; ")
+        "adisjunct": if *v.aconstraints = 0 then "<MATCH>"
+		     else commaseparate(maplist(patimage, v.aconstraints), " & ")
+        "sequent" : if *v.constraints = 0 then "some " || v.class.name
+                    else commaseparate(maplist(patimage, v.constraints), " & ")
+	"constraint" : stringininterval(patimage(v.field), v.lo, v.hi)
+        "fieldbinding" : patimage(v.field) || " = " || image(v.code)
+        "field" : v.name
+        "absolute_field" : "{" || patimage(v.field) || " at " || v.offset || "}"
+        default : image(v)
+    }
+end
+<<*>>=
+procedure stringininterval(name, lo, hi)
+    local r, result
+    if type(lo) == "set" then {
+        r := sort(lo ++ hi)
+	if *r = 0 then return "<EMPTY RANGE??>"
+        result := "( " ; result ||:= stringininterval(name, get(r), get(r))
+        while result ||:= " | " || stringininterval(name, get(r), get(r))
+        return result || " )"
+    } else if lo + 1 = hi then return name || " == " || fnum(lo)
+    else return fnum(lo) || " <= " || name || "  < " || fnum(hi)
+end 
+<<*>>=
+procedure fnum(n)
+    n := string(n) | impossible("format")
+    if *n < 2 then n := right(n, 2)
+    return n
+end
+@
+\section{Writing trees in ascii format}
+<<*>>=
+procedure outtree(file, n, prefix, shownode)
+  if /prefix then write(file, "TREE ", image(n.name))
+  else write(image(n.name))
+  if *n.children > 0 then {
+    span := *patimage(n.field) + 14
+    every e := !n.children do
+      outtree(file, e.node, (\prefix || " & " | "  ") \ 1 || 
+        right(stringininterval(patimage(n.field), e.lo, e.hi),span), shownode)
+  } else {
+    if *n.cs.arms = 0 then write(file, \prefix | "  ", " : NO MATCH")
+    else 
+      every write(file, (\prefix | "  ANY?  ")\1, " : ", expimage(!n.cs.arms))
+  }
+  if /prefix then write(file, "END TREE\n")
+  return
+end
+@
+\section{Writing trees and dags in {\tt dot(1)} format}
+<<*>>=
+global pagesize
+procedure dotouttree(file, root)
+    write(file, "digraph decisions {")    
+    write(file, "  page=", image(pagesize), ";")
+    write(file, "  ratio=compress;")
+    dotoutnode(file, root, table(), create(seq()))
+    write(file, "}")
+end
+
+procedure dotoutnode(file, n, known, number)
+    if /known[n] then {
+        if *n.children > 0 then {
+	    if alt := alternates(n) then {
+                writes(file, "N", known[n] := @number, " [label=\"")
+                every i := 1 to *alt.constraints do {
+                   if i > 1 then writes(file, ",")
+                   writes(file, alt.constraints[i].field.field.name)
+                   writes(file, "@", 0 < alt.constraints[i].field.offset)
+                }
+                write(file, "\"];")
+                every dotoutnode(file, alt.thennode | alt.elsenode, known, number)
+                <<make [[s]] a label string for [[alt.constraints]]>>
+                write(file, "N", known[n], " -> N", known[alt.thennode], " [label=",
+			     image(s), "];")
+                write(file, "N", known[n], " -> N", known[alt.elsenode], 
+                            " [label=\"else\"];")
+            } else {
+                write(file, "N", known[n] := @number,
+                            " [label=\"", n.field.field.name, 
+                            "@" || (0 < n.field.offset) | "", "\"];")
+                every e := !n.children do {
+                    dotoutnode(file, e.node, known, number)
+                    r := sort(e.lo ++ e.hi)
+                    lo := get(r) & hi := get(r)
+                    s := ""
+                    s ||:= if lo+1 = hi then lo else lo || "-" || (hi - 1)
+                    while lo := get(r) & hi := get(r) do
+                      s ||:= ", " || if lo+1 = hi then lo else lo || "-" || (hi - 1)
+                    write(file, "N", known[n], " -> N", known[e.node], " [label=",
+			  image(commaseparate(split10(s), "\n")), "];")
+                }
+            }
+        } else if *n.cs.arms = 0 then 
+            write(file, "N", known[n] := @number, " [label=", image("NO MATCH"), "];")
+	else { 
+	    writes(file, "N", known[n] := @number, " [label=\"")
+#	    outpattern(file, n.cs.arms[1].original.pattern)
+	    writes(file, \n.cs.arms[1].original.pattern.name | 
+			"[" || n.cs.arms[1].original.line || "]")
+            write(file, "\"];")
+        }
+    }
+    return
+end
+<<make [[s]] a label string for [[alt.constraints]]>>=
+s := ""
+every i := 1 to *alt.constraints do {
+   if i > 1 then s ||:= ","
+   c := alt.constraints[i]
+   if *c.lo > 1 then s ||:= "..."
+   else if ?c.lo + 1 = ?c.hi then s ||:= ?c.lo
+   else s ||:= ?c.lo || "-" || (?c.hi - 1)
+}
+s := split10(s)
+<<*>>=
+procedure split10(s)
+  static N
+  local k
+  initial N := 18  
+  if *s > N & find(", ", s) <= N then {
+     every k := N >= find(", ", s)
+     return s[1:k+1] || "\n" || split10(s[k+2:0]) # keep comma, drop space 
+  } else {
+    return s
+  }
+end

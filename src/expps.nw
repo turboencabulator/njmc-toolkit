@@ -1,0 +1,197 @@
+% l2h ignore change {
+\section{Mapping expressions to postfix strings}
+The idea is to get a postfix, executable representation of function
+bodies.
+As with [[expuniq]], we try to ensure two representations of the same
+function map to the same string.
+<<*>>=
+procedure expps(e)
+  local leadingsign, prefix
+  static psopstab
+  initial {<<init>>}
+  return case type(e) of {
+    <<cases for [[expps]]>>
+    default    : &fail
+  } | impossible("postfix expression ", image(e), " : ", type(e))
+end
+<<cases for [[expps]]>>=
+"list"     : "[" || commaseparate(maplist(expps, e), " ") || "]"
+"set"      : "[" || commaseparate(sort(maplist(expps, sort(e))), ",") || "] set"
+"eqn"      : expps(e.left) || " " || expps(e.right) || " " || \psopstab[e.op]
+<<init>>=
+psopstab := table()
+psopstab["<"]  := "lt"
+psopstab["<="] := "le"
+psopstab[">"]  := "gt"
+psopstab[">="] := "ge"
+psopstab["!="] := "ne"
+psopstab["="]  := "eq"
+<<cases for [[expps]]>>=
+"table"    : {                      # standard normal form
+    <<make [[s]] represent table [[e]]>>
+    s 
+  }
+"string"   : e
+"literal"  : image(e.s) || " lit"
+"integer"  : string(e)
+"null"     : "null"
+@ 
+Be sure to omit multiplicative and additive units.
+Otherwise, it doesn't matter.
+<<make [[s]] represent table [[e]]>>=
+{
+  s := ""; firstterm := 1
+  t := table(0)
+  l := []
+  every e[k := key(e)] do {
+    put(l, x := expps(k))
+    t[x] +:= e[k]
+  }
+  l := sort(l)
+  every x := !l & t[x] ~= 0 do {
+    if \firstterm then 
+      s ||:= psx(x, t[x])
+    else 
+      s ||:= " " || psabs(x, t[x]) || " " || if t[x] > 0 then "add" else "sub"
+    firstterm := &null
+  }
+  if s == "" then s := "0"
+}
+<<*>>=
+procedure psabs(x, mul)
+  return if x == "1" then mul
+         else if abs(mul) = 1 then x
+         else x || " " || abs(mul) || " mul"
+end
+procedure psx(x, mul)
+  return if x == "1" then mul
+         else case mul of {
+            1 : x
+           -1 : x || " neg"
+           default : x || " " || mul || " mul"
+         }
+end
+@
+<<cases for [[expps]]>>=
+"Eorb"     : { l := sort(maplist(expps, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= " " || l[2 to *l] || " orb"
+               s
+             }
+"Eand"     : { l := sort(maplist(expps, flatten(e, type(e))))
+               s := l[1]
+               every s ||:= " " || l[2 to *l] || " and"
+               s
+             }
+<<cases for [[expps]]>>=
+"Eslice"   : expps(e.x) || " " || e.lo || " " || (e.lo + e.n - 1) || " bitslice"
+"Eshift"   : expps(e.x) || " " || e.n || " bitshift"
+<<cases for [[expps]]>>=
+"Enarrowu" : expps(e.x) || " " || e.n || " narrowu"
+"Enarrows" : expps(e.x) || " " || e.n || " narrows"
+"Ewiden"   : expps(e.x) || " " || e.n || " widen"
+<<cases for [[expps]]>>=
+"Ediv"     : expps(e.x) || " " || e.n || " idiv"
+"Emod"     : expps(e.x) || " " || e.n || " mod"
+<<cases for [[expps]]>>=
+"Semit"    : commaseparate(maplist(expps, e.x), "\n") || "\n"
+"Stoken"   : expps(e.x) || " cl-loc force " || 
+             (if e.offset ~= 0 then e.offset || " add " else "") || 
+             e.n || " emit-at"
+<<cases for [[expps]]>>=
+"Efitsu"   : expps(e.x) || " " || e.n || " fitsu"
+"Efitss"   : expps(e.x) || " " || e.n || " fitss"
+<<cases for [[expps]]>>=
+"Epatlabel" : &fail
+<<cases for [[expps]]>>=
+"Eforce"    : expps(e.x) || " force"
+"Eforceable": expps(e.x) || " known"
+<<cases for [[expps]]>>=
+"Epc"       : &fail
+"Epc_known" : &fail
+<<cases for [[expps]]>>=
+"Enot"      : expps(e.x) || " not"
+<<cases for [[expps]]>>=
+"Enosimp"   : expps(e.x)
+<<cases for [[expps]]>>=
+"Sstmts"    : commaseparate(maplist(expps, e.x), "\n") || "\n"
+<<cases for [[expps]]>>=
+"Einstance" : { s := "<< /instance-of " || e.cons.name
+                every i := inputs_of(e.cons) do
+                  s ||:= " /" || i.name || " " || expps(e.argt[i.name])
+                s || " >>"
+              }
+"Einstance_input" : 
+        expps(e.x) || " /" || e.cons.name || " /" || e.name || " get_instance"
+"Einstance_tagged" :      
+        expps(e.x) || " /" || e.cons.name || " is_instance"
+"Ebinding_instance" : &fail
+<<cases for [[expps]]>>=
+"Sif"      : { s := "["
+               every s ||:= "\n" || expps(!e.arms)
+               s || "\n] if-guard"
+             }
+"Sguarded" : psguard(e.guard) || "\n\t{" || expps(e.x) || "}"
+<<*>>=
+procedure psguard(e)
+  return case type(e) of {
+    "integer" : case e of { 0 : "false"; 1 : "true"; default: impossible("condition") }
+    "null" : "true"
+    "set" : {
+       l := sort(maplist(expps, sort(e)))
+       s := l[1]
+       every s ||:= " " || l[2 to *l] || " and"
+       if *l = 0 then "true" else s
+    }
+    default : expps(e)
+  }
+end
+<<cases for [[expps]]>>=
+"Stagcase" : { s := "["
+              every c := kept_constructors(e.type) do
+                s ||:= "\n/" || c.name || " {" || expps(e.arms[c]) || "}"
+              s ||:= "\n]" || expps(e.x) || " tag-case"
+            }
+<<cases for [[expps]]>>=
+"Sfail"    : { s := image(e.fmt) || " ["
+               every a := e.a1 | e.a2 | e.a3 do 
+                 s ||:= " " || expps(\a)
+               s := s || " ] failmsg" 
+             }
+"Sepsilon" : ""
+<<cases for [[expps]]>>=
+"Efail"    : &fail
+<<cases for [[expps]]>>=
+"Glines"    : commaseparate(maplist2(expps, e.x), "\n")
+"Gresynch"  : ""
+"Gblock"    : { s := "enterscope " 
+                every s ||:= expps(!e.decls) || "\n"
+                every s ||:= expps(!e.stmts) || "\n"
+                s || "exitscope"
+              }
+"Gdecl"     : { s := "/" || e.name || " " || expps(e.type) 
+                s ||:= expps(\e.init) | "&uninitialized" 
+                s || " decl"
+              }
+<<cases for [[expps]]>>=
+"Gcase"     : &fail
+"Gcasearm"  : &fail
+"Ginrange"  : &fail
+<<cases for [[expps]]>>=
+"Gasgn"	    : &fail
+"Gsetname"  : &fail
+"Gnomatch"  : &fail
+"Tunsigned" : (\e.width | "wordsize") || " unsigned"
+<<cases for [[expps]]>>=
+"Eapp" : expps(e.args) || " " || image(e.f) || " apply"
+<<cases for [[expps]]>>=
+"Eclosure_loc"  : "cl-loc"
+"Eclosure_addr" : e.n || " cla"
+"Eclosure_val"  : e.n || " clv"
+<<cases for [[expps]]>>=
+"Eclosure" : &fail
+"Elambda" :  {
+  s := "["
+  every s ||:= " /" || !e.formals
+  s ||:= " ] { " || expps(e.body) || " } fn" 
+}

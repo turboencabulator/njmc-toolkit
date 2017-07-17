@@ -1,0 +1,159 @@
+For ???
+
+48. Simplify slice in case for Ewiden in M3 emitter. 11/12/96
+
+47. Changed the way the toolkit generates matchers, so there are no
+    variables declared to hold absolute fields.  Such variables were
+    dead in many cases.  As a result, added Gcommented to comment such
+    expressions, and modified the simplifier generator to insert
+    Gcommented in all rules (where needed).  11/12/96
+
+46. For early branches, merge fits conditions in with the pattern
+    conditions, so they can be used to distinguish disjuncts.  Fixes
+    bug 15 and cleans up the sparc set constructor.  11/8/96
+
+45. Use Eapp in grammar, but fix [[constructors_applied_in]] to handle
+    [[Eapp]].  10/23/96
+
+44. Warn when we don't see what's expected in fetch templates (e.g.,
+    fetch without %a).  10/23/96
+
+43. When generating code for a single node in decision tree, make sure
+    to have declarations for fields and matching words used in
+    conditions. Fixes #18.  10/23/96 
+
+42. Now eliminate instances in a more elaborate way, which preserves
+    info about nested instances long enough to do better
+    elimination. Fixes #17.  10/21/96
+
+41. Make sure initial ( goes into call to print proc even if
+    constructor has no operands. 8/13/96
+
+40. Specify one-bit fields with one integer, by analogy with
+    one-integer specifications of one-bit slices. May 96
+
+39. Reverse bit numbering a total botch because tried to combine
+    negate and swap.  Fixed May 96.
+
+38. Include pattern length in dag info.  Fixes #14.  6/7/96
+
+37. In solve, substitute new values in constraints as well as other
+    places.  Failure to do this tickled a bug in building a decoder
+    with conditions like {n != 0} where n had to be extracted from an
+    absolute field. 6/7/96
+
+36. Added code to simplify  n[!K] = n@[0:K-1] to FITSS(n, K), but this
+    introduced a bug in decoding, so made it part of super_simplify
+    only.  The original improves condition checking in encoding
+    functions for the bytecode interpreter. 6/7/96
+
+35. Changed code in Cexp to generate an empty statement to emit epsilon. 4/10/96
+
+34. Emit one header per closure function, not one per encoding function.
+
+For version 0.4:
+
+33. When no word matches a pattern, toolkit now finds covering patterns. 3/3/96
+
+32. Can now use _ as a wildcard in any expression --- gets turned into a fresh
+    variable in the grammar. 3/3/96
+
+31. Sign-extended variables now get declared int in matching statements 3/3/96
+
+30. stands for myriad changes that are too big to record
+
+For version 0.2:
+
+29. Change the signed and unsigned arg parts of constructor application so
+    that field names are always treated as free variables.  This lets us use
+    the name of a field as a binding instance in a matching statement.  God
+    only knows what other consequences it may have. 9/1/95
+
+28. Use single if statement for some nodes in decoders. 8/18/95
+
+27. Support for alternate bit numbering.  7/19/95
+
+26. Support for octal and binary literals. 7/19/95
+
+25. Many unlogged changes, including using expressions as constructor
+    args and in field bindings.
+
+For version 0.1b:
+
+24. Mysterious & in balance.nw was source of need for *ws?!  No bugs in icont!
+    11/6/94
+
+For version 0.1a:
+
+23. Change printing of linear sums to print out positive terms, then
+    negative terms, with constant term always last in its group. 11/3/94
+
+22. Simplify constraints in solver for prettier output. 11/2/94
+
+21. Pursuant to bug #9, aalwaysmatches() in apply() in tree.nw is too
+    optimistic, so added call to guard_always_satisfied in apply(). 11/1/94
+
+20. Copy case statement in tree(), and pass original case statment to
+    checktree() to fix #12 (unmatching arms silently lost). 11/1/94 
+
+19. Initialize root node with empty children in tree(). 11/1/94
+
+18. Changed rejection test for narrow/widen balances in balance.nw
+    Old test rejected balance a! = b when we had already seen a! = c,
+    but then we lost the information that b = c, leading to bug 8. 11/1/94
+
+17. More debugging for the balancer, -debug-bal option. 11/1/94
+
+16. Move narrow(widen(x)) -> x from super to regular rewrite rules. 11/1/94
+
+15. Error message in match.nw shows just the identifiers not solved for. 11/1/94
+
+14. Moved call of Generate_C() in main.nw to precede argument parsing. 10/31/94
+
+13. Added synthetic branches, multiply, load and move float to mips
+    specification (removed nop() calls from synthetics). 10/25/94
+
+12. Generate_M3() had an old bogus call.  Removed.  10/20/94.
+
+For version 0.1:
+
+11. Change simplify to call itself using simfun macro, and
+    created super_simplify. 10/17/94
+
+10. Removed dclproto from mclib.nw.  Cleaned up chunk names for
+    mclib.h. 10/17/94
+
+ 9. Added definition of sign_extend to asm-header.t in assembly.nw,
+    because it was needed to implement Ewiden. 10/17/94
+
+ 8. Changed representation of groups of tokens for emission.  Now
+    gather them all in single list, and store the offset from the
+    beginning of each token.  This simplifies correct handling of $pc
+    per bugs #4 and #5.  Changes to exp, expwalk, constructors, and
+    Cexp. 10/17/94
+
+ 7. Eliminated save_closure, renamed alloc_closure to mc_alloc_closure,
+    pulled alloc_closure from mclib.nw, and eliminated RClosure_pool.
+    Didn't want two procedures always called one after the other.
+    Explanation in library.nw. 10/17/94
+
+ 6. Changed buffer_at_lc to point to preceding buffer when lc falls on
+    boundary between buffers (see bug #3). 10/17/94
+
+ 5. Beefed up simplification of disjuncts and adisjuncts to eliminate
+    disjuncts containing unfulfillable range constraints. 10/2/94.
+
+ 4. Eliminated some rewrite rules as too strength-reducing, making it
+    possible to use the simplifier in match.nw, so that we could
+    eliminate unsolvable disjuncts that didn't make sense (see bug #2).
+    10/3/94
+
+ 3. Removed declaration of sign_extend from assembly.nw; it is provided
+    by Cexp.nw when needed.
+
+ 2. Took declaration of fail out of assembly.nw; it now appears in
+    mclib.h via library.nw.
+
+ 1. Change #include file for encoder to <mclib.h> (dropping reloc.h)
+
+

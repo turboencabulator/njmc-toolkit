@@ -1,0 +1,373 @@
+% l2h ignore change {
+\let\balances\bowtie
+% l2h substitution balances |&gt;&lt;|
+% l2h substitution mapsto |--&gt;
+
+
+
+\chapter{Balancing out nonlinear expressions}
+This code uses the ``balance'' mechanism defined in the solver to define the 
+relationships among extensions and slices in a set of equations.
+
+{\it This was the old story:
+\begin{quote} 
+Slices make things tricky, since we needn't always have a complete set of them.
+We therefore have to find the slices first, so that we substitute variables in 
+only when we have a complete set.
+This isn't too hard, because the original source of equations is the parser, so
+slices can be applied to variables only.
+
+Extensions are simpler since there's no such thing as an incomplete set,
+so they're computed on the fly by [[balexp]].
+\end{quote}
+}
+
+In the new world, things are harder because the parser is no longer
+the sole source of equations.  Instead, we may be asked to take a
+solution and invert it (for decoding).
+Instead of using only variables that appear in the spec, we have to
+discover new opportunities and introduce balancing variables.
+We do this with a procedure called [[var_for]], which has the property
+that if \hbox{[[exps_eq(e1, e2)]]} then
+\hbox{[[var_for(e1) == var_for(e2)]]}.
+[[var_for]] takes a couple of extra arguments: [[varaux]] to keep track of
+its state, and [[varmap]] to provide an inverting map (from variables to
+expressions). 
+
+We create balances in three passes:
+\begin{enumerate}
+\item
+Find all slices, extensions, 
+narrows, divs, mods, and their arguments.
+Introduce variables in opportune cases, and salt everything away in 
+preliminary sets and tables.
+\item
+Go through the accumulated sets and tables, and create balances
+whenever we have accumulated enough pieces to be able to do so.
+For example, if we see \hbox{[[e MOD 4]]}, we don't have enough to create a
+balance, but if we see \hbox{[[e MOD 4]]} and \hbox{[[e DIV 4]]}, we
+do.
+When we do introduce a balance, add entries to [[balmap]], which maps
+expressions to variables of the balance.
+Sometimes introducing balances also requires introducing new
+equations.
+\item
+Substitute the variables of the balance in the equations.
+This requires an odd form of top-down substitution; see 
+[[balsub_f]] for more information.
+\end{enumerate}
+
+@
+\section{Superstructure}
+This code shows the implementation of the three-pass method
+given above.  The first pass is made using the expression-walking
+function [[balpass1]].
+<<*>>=
+procedure balpass1(e, varaux, varmap <<[[,]] aux tables>>)
+  case type(e) of {
+    <<cases for identifying candidates>>
+  }
+end
+@
+The second pass we do right in line, and the third pass relies on the
+recursive-substition procedure [[balsub_f]], about which more below.
+<<*>>=
+procedure balance_eqns(eqns)
+  local width
+  if *eqns = 0 then return balanced_eqns(eqns, []) # common short cut
+  debug ("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+  pushtrace("BALANCE")
+  every <<aux tables [[|]]>> varaux | varmap := table()
+  expwalk(eqns, balpass1, varaux, varmap <<[[,]] aux tables>>)
+  balances := []
+  neweqns := copy(eqns)
+  balmap := table()
+  <<use auxiliaries to add to [[balances]], [[neweqns]], and [[balmap]]>>
+  neweqns := gsubst(neweqns, balsub_f, balmap)
+  poptrace()
+  <<brain dump>>
+  return balanced_eqns(neweqns, balances)
+end
+record balanced_eqns(eqns, balances)
+<<*>>=
+procedure balsub_f(e, balmap)
+  return gsubst(\balmap[e], balsub_f, balmap)
+end
+@
+\section{Balancing out DIV and MOD}
+Each balancing act has some substitutions, a balance, and some equations.
+For DIV and MOD we have
+{\def\d{\mathbin{\hbox{\tt DIV}}}
+ \def\m{\mathbin{\hbox{\tt MOD}}}
+% l2h substitution d <tt>DIV</tt>
+% l2h substitution m <tt>MOD</tt>
+% l2h substitution times *
+\begin{eqnarray*}
+e \d n &\mapsto&q\\
+e \m n &\mapsto&m\\
+d = q \times n + m &\balances& q = d \d n, m = d \m n\\
+d &=& e\\
+\end{eqnarray*}
+}
+
+I use two auxiliary tables, one to save DIV expressions and one to
+save MOD expressions.
+<<aux tables [[|]]>>=
+divs | mods |
+<<[[,]] aux tables>>=
+, divs, mods
+@
+The [[divs]] table represents a mapping; when [[d = e MOD n]], we have
+\begin{quote}
+[[divs: var_for(e) -> n -> e]]
+\end{quote}
+and analogously for [[mods]].
+<<cases for identifying candidates>>=
+"Ediv" : addnset(divs, var_for(e.x, varaux, varmap), e)
+"Emod" : addnset(mods, var_for(e.x, varaux, varmap), e)
+@
+(Actually, to tell the truth, the result of the mapping is the set of 
+expressions equivalent to [[e]], not just [[e]] itself.)
+<<*>>=
+procedure addnset(t, vx, e)
+  /t[vx] := table()
+  /t[vx, e.n] := set()
+  return insert(t[vx, e.n], e)
+end
+@
+To create balances, we look for dividends [[vd]] that also appear in
+[[mods]] with the same [[n]], and we create a balance for each one.
+If needed, we also introduce the equation making the dividend equal to
+the variable we introduced.
+<<use auxiliaries to add to [[balances]], [[neweqns]], and [[balmap]]>>=
+every vd := key(divs) & n := key(divs[vd]) do
+  if ms := \(\mods[vd])[n] & qs := divs[vd, n] then {
+    vq := var_for(!qs, varaux, varmap)
+    vm := var_for(!ms, varaux, varmap)
+    # vq = vd div n, vm = vd mod n, vd = vq * n + vm
+    put(balances, balance([balitem(vd, n_times_q_plus_r(n, vq, vm))],
+                          [balitem(vq, Ediv(vd, n)), balitem(vm, Emod(vd, n))]))
+    debug("==> New balance:", balimage(balances[-1]))
+    put(neweqns, eqn(vd, "=", vd ~=== varmap[vd])) &
+debug("New balancing equation ", vd, " = ", expimage(varmap[vd]))
+    every balmap[!qs] := vq
+    every balmap[!ms] := vm
+  }  
+@
+Here's a convenient function to compute the sum that forms one side of 
+balances introduced for DIV and MOD:
+<<*>>=
+procedure n_times_q_plus_r(d, q, r)
+  local xtab
+  xtab := table(0); xtab[q] := d; xtab[r] := 1
+  return xtab
+end
+@
+\section{Balancing out narrows and widens}
+Here we have two schemata that could introduce isomorphic balances.
+They are:
+{\let\n=\downarrow \let\w=\uparrow
+\begin{eqnarray*}
+e\w_n &\mapsto&w\\
+w = n\w_n&\balances&n = w\n_n\\
+n &=& e\\
+\end{eqnarray*}
+and
+\begin{eqnarray*}
+e\n_n &\mapsto&n\\
+w = n\w_n&\balances&n = w\n_n\\
+w &=& e\\
+\end{eqnarray*}
+}
+The trick here is to avoid introducing the same balance twice for the
+case where the relevant stuff appears in a seperate narrow and widen.
+<<aux tables [[|]]>>=
+extensions | narrows |
+<<[[,]] aux tables>>=
+, extensions, narrows
+<<cases for identifying candidates>>=
+"Ewiden"   : addnset(extensions, var_for(e.x, varaux, varmap), e)
+"Enarrows" : addnset(narrows,    var_for(e.x, varaux, varmap), e)
+<<*>>=
+@
+Here we have the special problem that, if we weren't careful, we could introduce
+the same balance from both an extension and a narrow.  
+[[baln2w]] maps [[vn]] to the list of [[vw]]'s in every balance using a narrow [[vn]],
+so we don't ever create the same balance twice.
+<<use auxiliaries to add to [[balances]], [[neweqns]], and [[balmap]]>>=
+baln2w := table()
+every vn := key(extensions) & width := key(extensions[vn]) do {
+  ws := extensions[vn, width]
+  vw := var_for(!ws, varaux, varmap) | impossible("no extensions")
+  # vw := vn! >< vn := vw[]
+  if member(\baln2w[vn], vw) then {
+    debug("DUPLICATE balance ", vn, " |><| ", vw)
+  } else {
+    <<add new balance to [[baln2w]]>>
+    put(balances, balance([balitem(vw, Ewiden  (vn, width))], 
+			  [balitem(vn, Enarrows(vw, width))]))
+    debug("==> New balance:", balimage(balances[-1]))
+  }
+  put(neweqns, eqn(vn, "=", vn ~=== varmap[vn])) # could tighten (1-element table)
+#####  *ws # seems to be needed to work around bug in icont!
+  every balmap[!ws] := vw
+}  
+<<use auxiliaries to add to [[balances]], [[neweqns]], and [[balmap]]>>=
+every vw := key(narrows) & width := key(narrows[vw]) do {
+  ns := narrows[vw, width]
+  vn := var_for(!ns, varaux, varmap) | impossible("no narrows")
+  # vw := vn! >< vn := vw[]
+  if member(\baln2w[vn], vw) then {
+    debug("DUPLICATE balance ", vn, " |><| ", vw)
+  } else {
+    <<add new balance to [[baln2w]]>>
+    put(balances, balance([balitem(vw, Ewiden  (vn, width))], 
+			  [balitem(vn, Enarrows(vw, width))]))
+    debug("==> New balance:", balimage(balances[-1]))
+  }
+  put(neweqns, eqn(vw, "=", vw ~=== varmap[vw])) # could tighten (1-element table)
+#####  *ns # seems to be needed to work around bug in icont!
+  every balmap[!ns] := vn
+}
+baln2w := &null	# make it possible to garbage-collect the memory
+<<add new balance to [[baln2w]]>>=
+/baln2w[vn] := set()
+insert(baln2w[vn], vw)
+@
+\section{Balancing out slices}
+Here things are a bit odd, because we can have slices nested within
+slices.
+I ignore that problem for the time being (although I have some code);
+instead I describe the simple case:
+\begin{eqnarray*}
+e[r_1]&\mapsto&s_1\\
+&\vdots&\\
+e[r_n]&\mapsto&s_n\\
+w = \sum_i 2^{l_i} \times s_i&\balances&s_1 = w[r_1], \ldots, s_n = w[r_n]\\
+w &=& e\\
+\end{eqnarray*}
+
+<<aux tables [[|]]>>=
+slices |
+<<[[,]] aux tables>>=
+, slices
+<<cases for identifying candidates>>=
+"Eslice" : { vx := var_for(e.x, varaux, varmap)
+             /slices[vx] := set()
+             insert(slices[vx], e)
+           }
+@
+<<use auxiliaries to add to [[balances]], [[neweqns]], and [[balmap]]>>=
+every vx := key(slices) & xslices := slices[vx] do
+  slicetree(vx, xslices, varaux, varmap, 0, bitsizeof(varmap[vx]),
+            neweqns, balances, balmap)
+@
+I'm not sure I'll be introducing equations properly when it gets to be time
+to slice a tree...
+<<*>>=
+procedure slicetree(vw, xslices, varaux, varmap, lo, hi, neweqns, balances, balmap)
+  return do_slicetree(vw, copy(xslices), varaux, varmap, lo, hi, 
+                      neweqns, balances, balmap)
+end
+
+procedure do_slicetree(vw, xslices, varaux, varmap, lo, hi, neweqns, balances, balmap)
+  sibs := set()
+  sum := table(0)
+  leftbal := []
+  debug("Slicing ", expimage(sort(xslices)), " from ", lo, " to ", hi)
+  while lo < hi do {
+    kids := set()
+    <<make [[first]] the largest slice at [[lo]] ([[fail]] if not there and leftmost)>>
+    insert(sibs, first)
+    delete(xslices, first)   
+    firstv := var_for(first, varaux, varmap)
+    sum[if lo = 0 then firstv else Eshift(firstv, lo)] +:= 1
+    put(leftbal, balitem(firstv, Eslice(vw, first.lo, first.n)))
+    every slice := !xslices do
+      if slice.lo + slice.n <= first.lo + first.n then {
+        insert(kids, slice)
+        delete(xslices, slice)
+      } else if slice.lo < first.lo + first.n then
+        error("Overlapping slices: ", expimage(subst_tab(first, varmap)), " and ", 
+                                      expimage(subst_tab(slice, varmap)))
+    if *kids > 0 then
+      do_slicetree(firstv, kids, varaux, varmap, first.lo, first.lo + first.n,
+                   neweqns, balances, balmap)
+    lo +:= first.n
+  }
+  *xslices = 0 | 
+      impossible("leftover slices: ", expimage(subst_tab(sort(xslices), varmap)))
+  put(balances, balance(leftbal, [balitem(vw, sum)]))
+  debug("==> New balance:", balimage(balances[-1]))
+  every slice := !sibs do
+    balmap[slice] := var_for(slice, varaux, varmap)
+  put(neweqns, eqn(vw, "=", vw ~=== varmap[vw])) &
+debug("New balancing equation ", vw, " = ", expimage(varmap[vw]))
+end
+<<make [[first]] the largest slice at [[lo]] ([[fail]] if not there and leftmost)>>=
+first := &null
+every slice := !xslices do
+  if slice.lo < lo then fail
+  else if slice.lo = lo & not ((\first).n > slice.n) then
+    first := slice
+\first | fail
+@
+\section{Utilities}
+There are now all sorts of places we introduce fresh variables.
+Maintaining the global set of fresh variables might be a bit of a waste of memory,
+but it's a convenient way to avoid putting these auxiliary variables where they
+aren't needed.
+<<*>>=
+global fresh_variables
+procedure fresh_variable(name)
+  static n
+  initial n := 0
+  insert(fresh_variables, s := fresh_base(name) || "#" || (n +:= 1))
+  return s
+end
+<<*>>=
+procedure fresh_base(name)
+  static tail
+  initial tail := '#' ++ &digits
+  name ? return 1(tab(upto('#')|0), tab(many(tail)) | "", pos(0))
+end
+@
+The procedure [[var_for]] produces a fresh variable to stand in for the
+expression [[e]].  Its special property is that 
+\hbox{[[var_for(e1) == var_for(e2)]]} whenever [[exps_eq(e1, e2)]].
+<<*>>=
+procedure var_for(e, aux, var2exp)
+  e := untableexp(e)
+  if type(e) == "string" then
+    return var2exp[e] := e
+  /aux[type(e)] := table()
+  t := aux[type(e)]
+  return \t[e] | {
+    every k := key(t) do
+      if exps_eq(e, k) then {
+        t[e] := t[k]
+        break
+      }
+    var2exp[/t[e] := fresh_variable(free_variables(e) | "???")] := e
+    t[e]
+  }
+end
+@
+\section{Debugging support}
+<<*>>=
+procedure balimage(b) 
+  s := ""
+  every ii := !b.left do 
+    s ||:= "\n  <<< " || ii.v || " = " || expimage(ii.value)
+  s ||:= "\n  -----------------------"
+  every ii := !b.right do 
+    s ||:= "\n  >>> " || ii.v || " = " || expimage(ii.value)
+  return s
+end
+<<brain dump>>=
+debug("Old equations:")
+every debug(" ", expimage(!eqns))
+write(\baldebug, "After substituting:", envimage(balmap, "balmap"))
+debug("New equations:")
+every debug(" ", expimage(!neweqns))
+debug()

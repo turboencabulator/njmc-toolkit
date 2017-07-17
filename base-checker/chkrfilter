@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# Usage: chckfilter <gawk or nawk> <object file name>
+#
+#   Compare pairs of disassembled instructions 
+GNAWK=$1
+shift
+gdb -batch -x gdb-asmoutput $1 | \
+  sed -e 's/^[^:]*://g' >$1.asmoutput
+gdb -batch -x gdb-binoutput $1 | \
+  sed -e 's/^[^:]*://g' >$1.binoutput
+echo "Differences"
+# Display diffs in 2 column format
+diff $1.asmoutput $1.binoutput | expand | \
+  $GNAWK '/^---$/ { next }
+/^< / { left[nextleft++] = substr($0,3); next }
+/^> / { right[nextright++] = substr($0,3); next }
+function dump () { 
+  if (nextright==1 && right[0]=="# ERROR") {
+        nextleft = 1; left[0] = ">>> ERROR <<<"
+  }
+  while (nextleft < nextright) left[nextleft++]=""
+  while (nextright < nextleft) right[nextright++]=""
+  for (i=0; i<nextleft; i++) {
+      printf "%-38.38s | %-38.38s\n", left[i], right[i]
+  }
+  nextleft = nextright = 0
+}
+
+{ dump(); print }
+END {dump()}
+' 
+rm -f $1.asmoutput $1.binoutput

@@ -1,0 +1,32 @@
+DIRS=xs sparc
+
+################################################################
+#
+#	making a distribution
+
+distfiles:V: 
+	for i in $DIRS; do (cd $i; mk $target); done
+dist:V: distfiles
+	for i in $DIRS; do (cd $i; mk $target); done
+distclean:V: clean_this_dir_only
+	for i in $DIRS; do (cd $i; mk $target); done
+
+
+################################################################
+#
+#	cleanup
+
+clean_this_dir_only:V:
+	/bin/rm -f *~
+
+clean:V: clean_this_dir_only
+	for i in $DIRS; do (cd $i; mk $target); done
+
+cleanaux:V: clean_this_dir_only
+	for i in $DIRS; do (cd $i; mk $target); done
+
+clobber:V: clean_this_dir_only
+	for i in $DIRS; do (cd $i; mk $target); done
+
+minimal:V:  clean_this_dir_only
+	for i in $DIRS; do (cd $i; mk $target); done

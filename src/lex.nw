@@ -1,0 +1,269 @@
+% l2h ignore change {
+% l2h ignore change {
+\chapter{Lexical analysis}
+
+[[token]] describes the category of the token, and [[tval]] is its value.
+[[token == tval]] except for integers and identifiers.
+[[file]] and [[line]] describe the source file and line number from which 
+the token came.
+<<*>>=
+global token, tval, file, line
+@
+There are three special tokens.
+<<*>>=
+global EOF, IDENT, INT, CODELINE, CASELINE, NEWLINE, WHITESPACE, lexstate
+<<initialize [[tokens]]>>=
+CASELINE   := " case ... of "
+CODELINE   := " code line "
+EOF        := " end of file "
+IDENT      := " identifier "
+INT        := " integer "
+NEWLINE    := " newline "
+WHITESPACE := " white space "
+<<*>>=
+global SEMANTICS, IDENT, STARTSEM, ENDSEM, succptr
+procedure scantokens(eol)
+  static alpha, alphanum, multichar
+  initial { 
+    alpha      := &letters ++ '_.'
+    alphanum   := alpha ++ &digits
+    multichar  := set(["<=", ">=", "!=", "@>>", "@<<", "=>", "..."])
+    /lexstate  := "INITIAL"
+    <<initialize [[tokens]]>>
+  }
+  if \eol then return possible_newline()
+  case lexstate of {
+    "INITIAL" | "CASEPAT" : {<<lexer for INITIAL and CASEPAT>>}
+    <<cases for other lexical states>>
+  }
+end
+<<refman: lexical structure>>=
+The lexical structure used in specifications is similar to that of C,
+except that dots as well as underscores are treated as letters for
+purposes of finding identifiers.
+In particular, all names are case-sensitive; for example,
+{\tt Address} is not the same as {\tt address}. 
+Strings are delimited with double quotes, but the C ``backslash
+escapes'' aren't used---instead, a double quote within a string is
+represented by two consecutive double quotes, as in Pascal.
+The toolkit supports the C-style
+\lit{0x} and ``leading zero'' notations used to give integer literals in
+hexadecimal or octal bases.
+It also provides a \lit{0b} notation, analogous to \lit{0x}, for specifying 
+integer literals in binary.
+Integer literals may also be specified as C-style character constants.
+For reasons that make no sense whatever, these constants {\em do} use
+the C ``backslash escapes.''
+
+The toolkit reserves the following words as keywords:
+\begin{center}
+<<refman: reserved-word table>>
+\end{center}
+These words cannot be used to name constructors, fields, patterns, etc.
+<<cases for other lexical states>>=
+"CODE": {
+  if (optwhite(), ="match ", optwhite(), 
+             (="[", optwhite(), any(&letters), 
+                 succptr := tab(many(alphanum)), optwhite(), ="]", optwhite()) | 
+         (succptr := &null),
+      tval := tab(find(" to")), =" to", optwhite(), pos(0)) then {
+    lexstate := "CASEPAT"
+    return CASELINE
+  } else if optwhite() & ="match " & tval := tab(find(" to")) & =" to" & 
+                                              optwhite() & pos(0) then {
+    impossible("bogus code in lex")
+    lexstate := "CASEPAT"
+    return CASELINE
+  } else {    # warning message for ill-formed case?
+    tval := tab(0)
+    return CODELINE
+  }
+}
+<<refman: how matching statements begin>>=
+A matching statement begins with
+\begin{quote}
+\lit{match} \term{code} \lit{to}
+\end{quote}
+on a line by itself.
+The \term{code} is an expression that computes a value of type
+``address,'' as specified by the \lit{address type} template.
+This address points into an instruction stream at the point where
+decoding is done.
+<<cases for other lexical states>>=
+"CASEARM": {
+  if optwhite() & tval := (="|" | 1(=("else" | "endmatch"), white() | pos(0))) then {
+    lexstate := 
+        case tval of { "|" : "CASEPAT" ; "else" : "CASEARM" ; "endmatch" : "CODE" }
+    return token := tval
+  } else {
+    tval := tab(0)
+    return CODELINE
+  }
+}
+@
+There's a ghastly hack that makes exactly one newline visible after every 
+opcode of a constructor spec.
+What we do is, before parsing a constructor spec, we turn ``newline-vision''
+on if the next token is an identifier.
+Encountering a newline or reserved word or [[{]] or other stuff turns it off again.
+<<*>>=
+global NEWLINEVISION
+procedure see_newline()
+  if token == IDENT then NEWLINEVISION := 1
+  return NEWLINEVISION
+end
+procedure ignore_newlines()
+  return NEWLINEVISION := &null
+end
+procedure possible_newline()
+  if \NEWLINEVISION then {
+    NEWLINEVISION := &null
+    return NEWLINE
+  }
+  return possible_whitespace()
+end
+@
+There's an equally ghastly hack that makes one unit of white space visible.
+Note that we don't require an identifier.
+<<*>>=
+global WHITESPACEVISION
+procedure see_whitespace()
+  WHITESPACEVISION := 1
+  return WHITESPACEVISION
+end
+procedure ignore_whitespace()
+  return WHITESPACEVISION := &null
+end
+procedure possible_whitespace()
+  if \WHITESPACEVISION then {
+    return WHITESPACE
+  }
+end
+@ 
+<<lexer for INITIAL and CASEPAT>>=
+if tval := white() then  # don't backtrack past white()
+  if token := possible_whitespace() then
+    return token
+if {not pos(0)} then {
+  thispos := &pos
+  if ="#" then {
+    tab(0) & (token := possible_newline() | fail)
+  } else if tval := (hexint() | octalint() | binaryint() | decimalint()) then {
+    token := INT
+  } else if tval := (any(alpha), tab(many(alphanum))) then {
+    token := 1(reserved(tval), ignore_newlines()) | IDENT
+  } else if tval := =!multichar then {
+    token := tval
+    <<change lexer state from [[CASEPAT]] to [[CASEARM]] if [[tval]] is [["=>"]]>>
+  } else if token := ="\"" then {
+    delim := move(-1) # recover quote
+    tval := ""
+    while =delim do {  # turn 'don''t into "don't"
+      tval ||:= tab(upto(delim) | 0)
+      =delim | error("unclosed ", delim)
+    }
+  } else if token := ="'" then { # character constant
+      tval := charconst()
+      ="'" | error("character constant too large (or unclosed single quote)")
+  } else {
+    token := tval := move(1)
+    if token == ("{"|".") then ignore_newlines()
+  }
+  return token
+}
+return possible_newline()
+<<change lexer state from [[CASEPAT]] to [[CASEARM]] if [[tval]] is [["=>"]]>>=
+case tval of {
+  "=>" : if lexstate == "CASEPAT" then lexstate := "CASEARM"
+}
+<<*>>=
+procedure optwhite()
+  suspend white() | ""
+end
+
+procedure white()
+  suspend tab(many(' \t'))
+end
+@ 
+\change{26}
+<<*>>=
+procedure hexint()
+  static hexdigits
+  initial hexdigits  := &digits ++ 'abcdefABCDEF'
+  suspend ="0x" & integer("16r" || tab(many(hexdigits)))
+end
+<<*>>=
+procedure octalint()
+  static octaldigits
+  initial octaldigits  := '01234567'
+  suspend ="0" & integer("8r" || tab(many(octaldigits)))
+end
+<<*>>=
+procedure binaryint()
+  static binarydigits
+  initial binarydigits  := '01'
+  suspend ="0b" & integer("2r" || tab(many(binarydigits)))
+end
+<<*>>=
+procedure decimalint()
+  static decimaldigits
+  initial decimaldigits  := &digits
+  suspend integer(tab(many(&digits)))
+end
+<<*>>=
+procedure codelex(in)
+  lexstate := "CODE"
+  return lex(in)
+end
+@
+\section{Support for character constants}
+<<*>>=
+procedure charconst()
+   local ns, c
+
+   return if ="\\" then {<<backslash escape>>} else move(1)
+end
+<<backslash escape>>=   
+c := map(move(1)) | fail # backslash newline fails
+case c of {
+   "b":  "\b"
+   "d":  "\d"
+   "e":  "\e"
+   "f":  "\f"
+   "l":  "\n"
+   "n":  "\n"
+   "r":  "\r"
+   "t":  "\t"
+   "v":  "\v"
+   "'":  "'"
+   "\"":  "\""
+   "\\" : "\\"
+   "x":  hexchar()
+   !"01234567":  octcode()
+   default:  error("bad backslash escape \\", c, tab(0))
+}
+<<*>>=
+procedure hexcode()
+   local i, s
+   static hdigits
+   initial hdigits := ~'0123456789ABCDEFabcdef'
+   
+   move(i := 2 | 1) ? s := tab(upto(hdigits) | 0)
+   move(*s - i)
+   return char("16r" || s)
+end
+<<*>>=
+procedure octcode()
+   local i, s
+   static odigits
+   initial odigits := ~'01234567'
+   
+   move(-1)
+   move(i := 3 | 2 | 1) ? s := tab(upto(odigits) | 0)
+   move(*s - i)
+   if s > 377 then {    # back off if too large
+      s := s[1:3]
+      move(-1)
+      }
+   return char("8r" || s)
+end

@@ -1,0 +1,47 @@
+% l2h ignore change {
+<<*>>=
+procedure main()
+  letters := &letters ++ '_.'
+  columns := 5
+  while line := read() do
+    if line ? ="procedure reserved" then {
+      <<eat lines>>
+    }
+end
+<<eat lines>>=
+l := []
+while line := read() do line ? {
+  if ="end" then {<<finish>>}
+  if (tab(many(' \t')), ="\"", w := tab(many(letters)), ="\",") then
+    put(l, w)
+}
+<<finish>>=
+m := []
+every i := colmajor(*l, columns) do
+  put(m, l[i])
+write("@<<refman: reserved-word table@>>=")
+write("\\begin{tabular}{", repl("l", columns), "}")
+while *m > 0 do {
+  every c := 1 to columns do
+    writes(if c > 1 then "&" else "", "\\lit{", get(m), "}")
+  write("\\\\")
+}
+write("\\end{tabular}")
+return
+<<*>>=
+# colmajor.icon --- generate 1 to n in cols columns
+
+procedure colmajor(n, cols)
+  local rows, slop, r, c
+  rows := n / cols	# number of first incomplete row
+  slop := n % cols	# number of columns in that row
+
+  r := 0
+  c := -1
+
+  while (c +:= 1, 
+         if c >= cols then { c := 0; r +:= 1 } else &null,
+         r < rows | c < slop) do
+    suspend 1 + # icon lists are 1-based, not 0-based
+            r + c * rows + if c > slop then slop else c
+end

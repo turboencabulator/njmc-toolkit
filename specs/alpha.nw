@@ -1,0 +1,350 @@
+\section{Alpha instruction-set specification}
+The Alpha lies somewhere between the MIPS and SPARC in complexity.
+It has one structured operand, which
+can be either an immediate or register value.
+The Alpha is a 64-bit architecture, but
+all instructions are 32 bits wide.
+
+Readers shouldn't rely completely on this specification, because
+validation identified discrepancies in the assembler's treatment of the
+following instructions:
+\begin{quote}
+\ttfamily jmp jsr ldf ldg lds
+\end{quote}
+The hint seems off in the jump instructions, and the assembler is
+expanding these floating-point loads into two-instruction sequences.
+We haven't yet resolved these discrepancies.
+
+\subsection{Fields}
+As usual for RISC, we have a single token, and the core specification
+has the normal structure.
+<<alpha-core.spec>>=
+fields of instruction (32) <<field specifications>>
+<<[[fieldinfo]] specifications>>
+<<pattern and constructor specifications>>
+@
+According to page 1-4 of the manual \cite{sites:alpha},%
+\footnote{References to the manual are a bit confused because MFF had
+the second edition and NR had the first edition}
+the Alpha has four basic formats, which we show here in the order
+opposite to that in the manual: 
+\begin{quote}
+\newcommand\smallstrut{\vrule height0pt depth 2pt width 0pt\relax}
+\renewcommand\.[2]{\multicolumn{1}{c}{\smallstrut\tiny \kern-5pt #1\hfill#2\kern -5pt}}
+\newcommand\bigstrut{\vrule height 10.5pt depth 3.5pt width 0pt\relax}
+\begin{tabular}{|c|c|c|c|c|l}
+\.{31}{26}&\.{25}{21}&\.{20}{16}&\.{15}{5}&\.{4}{0}\\
+\cline{1-5}
+\bigstrut Opcode&RA&RB&Function&RC&Operate format\\
+\cline{1-5}
+\bigstrut Opcode&RA&RB&\multicolumn{2}{c|}{Memory displacement}&Memory format\\
+\cline{1-5}
+\bigstrut Opcode&RA&\multicolumn{3}{c|}{Branch displacement}&Branch format\\
+\cline{1-5}
+\bigstrut Opcode&\multicolumn{4}{c|}{Number or PAL function}&PALcode format\\
+\cline{1-5}
+\end{tabular}
+\end{quote}
+The operate format comes in both integer and floating-point flavors,
+and the two flavors use different register sets.
+We use one token to specify all formats, and as usual, the real story
+is a bit more complicated---in particular, the area from
+bits~0--20 can be broken up in a variety of ways.
+These field specifications should be suggestive:
+<<field specifications>>=
+opcode_ 26:31   ra 21:25 rb 16:20 sbz 13:15 opfmt 12:12 func 5:11   rc 0:4
+                         imm 13:20
+                fa 21:25 fb 16:20 fpfunc 5:15                       fc 0:4
+                                  mdisp 0:15 
+                                  mop 14:15 mhint 0:13 
+                         bdisp 0:20
+                palfunc 0:25
+                    
+@ Our spec%
+\footnote{Unfortunately [[opcode]] is a reserved word, so we use
+``[[opcode_]]''.}
+ uses a couple of combinations not shown in the table.
+The ``function'' code for integers is split into [[func]] for
+functions, and [[opfmt]] to distinguish register from immediate
+operands.
+Immediate operands live in [[imm]], and when register operands are
+used [[sbz]] Should Be Zero.
+The jump instructions split [[mdisp]] into an operation code and a hint.
+@
+It's easier to specify the integer and floating-point function
+codes by splitting them into two parts.
+<<field specifications>>=
+flo 5:8 fhi 9:11 fplo 5:10 fphi 11:15
+@
+The registers have two sets of names; we've chosen the ones that
+obviously correspond to register numbers.
+<<[[fieldinfo]] specifications>>=
+fieldinfo
+  [ ra rb rc ] is [ <<properties of integer-register fields>> ]
+  [ fa fb fc ] is [ <<properties of floating-point fields>> ]
+<<properties of integer-register fields>>=
+names [ r0  r1  r2  r3  r4  r5  r6  r7
+        r8  r9  r10 r11 r12 r13 r14 r15
+        r16 r17 r18 r19 r20 r21 r22 r23
+        r24 r25 r26 r27 r28 r29 r30 r31 ]
+<<properties of floating-point fields>>=
+names [ f0  f1  f2  f3  f4  f5  f6  f7
+        f8  f9  f10 f11 f12 f13 f14 f15
+        f16 f17 f18 f19 f20 f21 f22 f23
+        f24 f25 f26 f27 f28 f29 f30 f31 ]
+@ 
+\subsection{Integer opcodes}
+The opcodes are specified in in Appendix~C \cite{sites:alpha}.
+Table C-5 includes all the load, store and branch opcodes.
+<<pattern and constructor specifications>>=
+patterns 
+  [ call_pal  _      _     _      _    _      _     _
+    lda       ldah   _     ldq_u  _    _      _     stq_u
+    inta      intl   ints  intm   _    fltv   flti  fltl
+    misc      pal19  jsrs  pal1b  _    pal1d  pal1e pal1f
+    ldf       ldg    lds   ldt    stf  stg    sts   stt
+    ldl       ldq    ldl_l ldq_l  stl  stq    stl_c stq_c
+    br        fbeq   fblt  fble   bsr  fbne   fbge  fbgt
+    blbc      beq    blt   ble    blbs bne    bge   bgt  ] 
+  is opcode_ = { 0 to 63 }
+@ (In NR's edition, the transpose of this table appears as C-9.)
+@
+We group by assembly syntax and encoding semantics.
+<<pattern and constructor specifications>>=
+patterns
+  ldst    is lda | ldah | ldl | ldq | ldq_u | ldl_l | ldq_l 
+                        | stl | stq | stl_c | stq_c | stq_u 
+  fldst   is ldf | ldg | lds | ldt | stf | stg | sts | stt  
+  branch  is br | bsr | blbc | beq | blt | ble | blbs | bne | bge | bgt
+  fbranch is fbeq | fblt | fble | fbne | fbge | fbgt
+  [ jmp jsr ret jsr_co ] is jsrs & mop = {0 to 3} 
+  jump_hint    is jmp | jsr
+  jump_predict is ret | jsr_co
+@
+If transcribed directly, the opcode table C-7 (C-5 in NR's edition)
+is sparse and confusing, 
+so we separate it into sub-tables of related opcodes and use the
+[[flo]]/[[fhi]] trick.
+<<pattern and constructor specifications>>=
+patterns
+  arith is any of 
+    [ addl   s4addl subl   s4subl _      cmpbge 
+      _      s8addl _      s8subl cmpult _ 
+      addq   s4addq subq   s4subq cmpeq  _
+      _      s8addq _      s8subq cmpule _ 
+      addlv  _      sublv  _      cmplt  _ 
+      addqv  _      subqv  _      cmple  _  ], 
+  which is opcode_ = 0x10 & 
+	   fhi = [ 0 1 2 3 4 6 ] & flo = [ 0x0 0x2 0x9 0xb 0xd 0xf ]
+
+  logical is any of 
+    [ and _       _       bic 
+      _   cmovlbs cmovlbc _ 
+      bis cmoveq  cmovne  ornot 
+      xor cmovlt  cmovge  eqv 
+      _   cmovle  cmovgt  _ ], 
+  which is opcode_ = 0x11 & 
+           fhi = [ 0 1 2 4 6 ] & flo = [ 0x0 0x4 0x6 0x8 ] 
+
+  byteops is any of
+    [ _   _      mskbl _    extbl  _     _   _     insbl _ 
+      _   _      mskwl _    extwl  _     _   _     inswl _ 
+      _   _      mskll _    extll  _     _   _     insll _ 
+      zap zapnot mskql srl  extql  _     sll _   insql sra 
+      _   _      mskwh _    _      inswh _   extwh _     _ 
+      _   _      msklh _    _      inslh _   extlh _     _ 
+      _   _      mskqh _    _      insqh _   extqh _     _  ], 
+  which is opcode_ = 0x12 & 
+           fhi = [ 0 1 2 3 5 6 7 ] & flo = [ 0 1 2 4 6 7 9 10 11 12 ]
+ 
+  mulops is any of [ mull mullv mulq mulqv umulh ], 
+    which is intm & func = [ 0x00 0x40 0x20 0x60 0x30 ]
+@
+\subsection{Structured operands}
+Integer register-to-register instructions have two operand formats,
+in which one of the source operands is an integer literal or
+a register.
+The encoding is very much like the SPARC, except instead of unused
+bits the Alpha has an [[sbz]] field, which should be zero.
+Since the Alpha doesn't seem to have a special terminology for these
+operands, we reuse the SPARC terminology.
+<<pattern and constructor specifications>>=
+constructors
+  imode imm : reg_or_imm  is  opfmt = 1 & imm
+  rmode rb  : reg_or_imm  is  opfmt = 0 & sbz = 0 & rb 
+@
+\subsection{Integer instructions}
+The integer load/store instructions appear first~\cite[p4-4]{sites:alpha}.
+<<pattern and constructor specifications>>=
+constructors
+  ldst  ra, mdisp!(rb)
+@
+The control instructions begin on page~4-16~\cite{sites:alpha}.
+The [[branch]] instructions are simliar 
+to the MIPS branch instructions.
+The [[jmp]] and [[jsr]] instructions take a 14-bit ``hint%
+\footnote{We're having a problem with the coding of these hints, as
+noted above.}'', 
+which is used
+to compute the predicted target of the jump as $\mathit{PC} +
+4\times\mathit{hint}$.%
+\footnote{The $\mathit{PC}$ is the updated $\mathit{PC}$.}%
+The [[ret]] and [[jsr_co]] instructions ignore the hint and
+use a prediction implementation stack, if there is one.
+In that case the hint is reserved for use by software and is required
+to be 0~or~1 (page 4-21).
+We could specify these two pairs separately, but we follow
+the manual, which defines them together. 
+<<pattern and constructor specifications>>=
+relocatable target
+placeholder for instruction is call_pal & palfunc = 0  # halt (privileged)
+constructors
+  branch ra, target { target = L + 4 * bdisp! } is branch & ra & bdisp; L: epsilon
+  jump_hint ra, (rb), mhint 
+  proc    "0" : Return is mhint = 0
+  nonproc "1" : Return is mhint = 1
+  jump_predict ra, (rb), Return
+@ We provide alternate versions that take an address and encode the hint:
+<<pattern and constructor specifications>>=
+constructors
+  jump_hint^"*" ra, (rb), target { target = L + 4 * mhint } 
+	is  L: jump_hint & ra & rb & mhint
+@ It's not clear whether these are useful.
+@
+The integer arithmetic instructions begin on page 4-24 (4-22 in NR's edition)
+and can be specified in one line.  Hurray for orthogonality!
+<<pattern and constructor specifications>>=
+patterns alu is arith | logical | byteops | mulops 
+constructors
+  alu ra, reg_or_imm, rc 
+@
+\subsection{Floating-point opcodes}
+The floating-point opcodes are specified in Table
+C-7 of NR's edition.
+Many floating point instructions take suffixes, 
+called ``qualifiers'', which specify a variety of
+rounding and exception modes.  
+The suffixes are described beginning on page~4-61.
+We've aggressively factored the table on page~C-4.
+
+First we attack the row labels, then the column labels.
+For the row labels, we look at column /C, where the column code is
+zero, and for the row labels, we look at row ADDS, where the row code
+is zero.
+For the row labels, we have to slice manually (or shift right 6 bits).
+In a better world, that operation would be in our specification language.
+<<pattern and constructor specifications>>=
+patterns           [ adds addt cmpteq cmptlt cmptle cmptun 
+                     cvtqs cvtqt cvtts divs divt muls mult subs subt cvttq ] 
+  is flti & fplo = [ 0x00 0x20 0x25 0x26 0x27 0x24
+                     0x3c 0x3e 0x2c 0x03 0x23 0x02 0x22 0x01 0x21 0x2f ]
+  fpqual is any of
+  [ none c m d u uc um ud 
+    su suc sum sud sui suic suim suid ], 
+  which is flti & fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
+                           0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
+@ Having done this, we now group both qualifiers and opcodes according
+to the rows of the tables that have the same columns filled in.
+<<pattern and constructor specifications>>=
+patterns
+  cmpqual is none | su
+  cvtqual is none | c | m | d | sui | suic | suim | suid
+  fpop  is adds | addt | divs | divt | muls | mult | subs | subt
+  cmpop is cmpteq | cmptlt | cmptle | cmptun
+  cvtop is cvtqs | cvtqt
+  qqqual is any of [ qq qqc qqm qqd v vc vm vd 
+                     sv svc svm svd svi svic svim svid ],
+  which is flti & fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
+                           0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
+@ The qualifiers for [[cvttq]] mostly have different names.
+The [[qq]] trick enables us to avoid collisions with names of
+qualifiers used in [[fpqual]]. 
+@ 
+\subsection{Floating-point instructions}
+The floating-point load/store and branch instructions are 
+similar to the integer instructions. 
+<<pattern and constructor specifications>>=
+constructors
+  fldst         fa, mdisp(rb)
+  fbranch       fa, target { target = L + 4 * bdisp! } 
+			is fbranch & fa & bdisp; L: epsilon
+@ 
+We use compound opcodes to define instructions that take qualifiers.
+<<pattern and constructor specifications>>=
+constructors
+  fpop^fpqual    fa, fb, fc
+  cvtts^fpqual       fb, fc
+  cvtop^cvtqual      fb, fc
+  cmpop^cmpqual  fa, fb, fc
+  cvttq^qqqual       fb, fc 
+@
+\subsection{PAL instructions}
+The Privileged Access Library provides a large set of 
+hardware and firmware control functions that can be used under 
+the OpenVMS, DEC OSF/1, and Windows NT operating systems.
+We define only those PAL functions that must be recognized
+by all implementations.
+<<[[fieldinfo]] specifications>>=
+fieldinfo palfunc is 
+  [ sparse 
+    [ halt = 0, draina = 2, cserve = 0xa, swppal = 0xb,
+      bpt = 0x80, bugchk = 0x81, imb = 0x86,
+      rdunique = 0x9e, wrunique = 0x9f, gentrap = 0xaa ] ]
+<<pattern and constructor specifications>>=
+constructors 
+ call_pal palfunc 
+@ 
+\subsection{Synthetics}
+Section C.7 of the DEC OSF/1 Assembly Language Programmer's Guide
+lists some of the expansions of synthetic instructions, but not all of
+them.  Being lazy, we define just a handful.
+<<alpha-synth.spec>>=
+constructors
+  andnot ra, rb, rc          is  bic(ra, rmode(rb), rc)
+  clr    rc                  is  bis(r31, rmode(r31), rc)
+  mov    reg_or_imm, rc      is  bis(r31, reg_or_imm, rc)
+  nop                        is  bis(r31, rmode(r31), r31)
+  not    rb, rc              is  ornot(r31, rmode(rb), rc)
+  or     ra, reg_or_imm, rc  is  bis(ra, reg_or_imm, rc)
+@ 
+\subsection{Checking against the Digital OSF/1 Assembler}
+Apparently, unlike in the manual, qualifiers in OSF/1 assembler are not
+preceded by a slash, so all we need to do is fix a couple of names.
+<<alpha-names.spec>>=
+assembly component
+  none*  is ""
+  qq{*} is $1
+  jsr_co is "jsr_coroutine"
+@ The OSF assembler uses the usual DEC conventions about register
+names:
+<<alpha-names.spec>>=
+assembly operand
+  [ ra rb rc ] is "$%d"
+  [ fa fb fc ] is "$%s" 
+@ 
+There's a bug in the toolkit that prevents us from checking [[call_pal]].
+<<alpha-check.spec>>=
+discard call_pal
+discard jump_hint^"*"		# not really in the assembly language
+discard mov nop			# OSF/1 assembler uses different synthetics
+@ 
+When assembling code for checking,
+we might use [[$at]], we don't want instructions out of
+order, and we want screaming and shouting when the assembler expands
+something into a multi-instruction sequence.
+<<alpha-checker.s>>=
+.set noat
+.set noreorder
+.set nomacro
+@ 
+The result of the checking is OK except for the discrepancies noted
+above.
+The other oddity is that the assembler expands multiplication by
+constants into a sequence of add and subtract operations.
+@
+\subsection{Guaranteeing registers}
+Most applications will want to make the usual assumptions about the
+values of register operands.
+<<alpha-regs.spec>>=
+fieldinfo [ra rb rc fa fb fc] is [guaranteed]
+

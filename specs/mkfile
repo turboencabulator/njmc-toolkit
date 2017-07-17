@@ -1,0 +1,210 @@
+CC=gcc -ansi -pedantic -fno-builtin
+#CC=lcc -A
+EMITTER=emitm
+SPECS="mips sparc pentium ppc alpha"
+SPECSREGEXP=`echo $SPECS | sed 's/ /|/g'`
+SPECSDOTSPEC=`echo $SPECS | sed 's/ /.spec /g;s/$/.spec/'`
+SPECSDOTHTML=`echo $SPECS | sed 's/ /.html /g;s/$/.html/'`
+SPARC="sparc"
+NOTSPARC="mips|pentium|spent|ppc|test|tiny|goo|alpha"
+TOOLS=../src
+CFLAGS="-I. -I$TOOLS -DemitX=$EMITTER"
+LATEX=latex
+BUILTINS=
+GDB=gdb
+
+binaries:V:	mipstk.o sparctk.o ppctk.o alphatk.o
+bigbinaries:V: 	pentiumtk.o
+all:V: 		binaries specs.ps
+bigall:V:	all bigbinaries
+specs:V:	$SPECSDOTSPEC
+html:V:		$SPECSDOTHTML
+
+################################################################
+#
+#	metarules for building and running checkers
+#
+# makefile.checker is extracted from checker.nw
+makefile.checker: $TOOLS/checker.nw
+	notangle -R$target $prereq | cpif $target
+
+^(($SPECSREGEXP)-checker|check($SPECSREGEXP)):R: makefile.checker
+	make -f makefile.checker $target
+
+################################################################
+#
+#   sample disassembler 
+#	source in $target-dis.c
+#	test program in $target-decoder
+#
+($SPECSREGEXP)(fetch)'\.'spec:R: '\1'decoder.nw
+	notangle -L -R${stem1}-${stem2}.spec $prereq | cpif $target
+
+($SPECSREGEXP)(-decoder)'\.'c:R: '\1'decoder.nw
+	notangle -L -R$target $prereq | cpif $target
+	notangle -L -R${stem1}${stem2}.h $prereq | cpif ${stem1}${stem2}.h
+
+($SPECSREGEXP)(dis)'\.'spec:R: '\1'dis.nw '\1'-decoder.h
+	notangle -L -R${stem1}-${stem2}.spec $prereq | cpif $target
+
+%-dis.c: %.spec %fetch.spec %dis.spec 
+	$TOOLS/tools -lc-cons-names -c -fieldnames ${stem}-names.h -decoder ${stem}-dis.c -matcher ${stem}dis.spec $stem.spec ${stem}fetch.spec
+
+^(.*)(-dis|-decoder).o:R: '\1''\2'.c $TOOLS/mclib.h chkraddr '\1'-bin.h
+	$CC -c $CFLAGS -DCHKRADDR=`cat chkraddr` ${stem1}${stem2}.c 
+
+%-decoder: %-decoder.o %-dis.o %-bin.o 
+	$CC $prereq $TOOLS/mclib.o -o $target
+
+################################################################
+#
+#	metarules for building encoders
+
+%-asm.o: $TOOLS/asmlib.h
+
+^(.*)(tk|-asm|-bin|-decoder).h:R: '\1\2'.c
+	true # for now, .h is created with .c
+
+^($SPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -lc-cons-names -encoder ${stem}tk $stem.spec
+
+^o($SPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -old-closures -lc-cons-names -encoder o${stem}tk $stem.spec
+
+^n($SPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -token-closures -lc-cons-names -encoder n${stem}tk $stem.spec
+
+^($SPARC)-bin'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -lc-cons-names -indirect ${stem}_bin:${stem}_asm -encoder ${stem}-bin $stem.spec
+
+^($SPARC)-asm'\.c$':R: '\1'.spec '\1'-names.spec $TOOLS/tools
+	$TOOLS/tools -verbose -lc-cons-names -asm-encoder ${stem}-asm -indirect ${stem}_asm $stem.spec ${stem}-names.spec
+
+^($NOTSPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X                -encoder ${stem}tk $stem.spec
+
+^o($NOTSPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -old-closures               -encoder o${stem}tk $stem.spec
+
+^n($NOTSPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -token-closures               -encoder n${stem}tk $stem.spec
+
+^($NOTSPARC)-bin'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X -indirect ${stem}_bin:${stem}_asm -encoder ${stem}-bin $stem.spec
+
+^($NOTSPARC)-asm'\.c$':R: '\1'.spec '\1'-names.spec $TOOLS/tools
+	$TOOLS/tools -verbose -asm-encoder ${stem}-asm -indirect ${stem}_asm $stem.spec ${stem}-names.spec
+
+^($SPECSREGEXP)(.*-asm|-bin|tk)'\.o$':R: '\1''\2'.c $TOOLS/mclib.h
+	$CC -c $CFLAGS ${stem1}${stem2}.c -o $target
+
+^o($SPECSREGEXP)(.*-asm|-bin|tk)'\.o$':R: o'\1''\2'.c $TOOLS/mclib.h
+	$CC -c $CFLAGS o${stem1}${stem2}.c -o $target
+
+^($NOTSPARC)tk'\.c$':R: '\1'.spec $TOOLS/tools
+	$TOOLS/tools -verbose -byteorder X                -encoder ${stem}tk $stem.spec
+
+^(i486)(-.*)'\.'spec'$':R: pentium.nw
+	notangle -L -R$target $prereq | cpif $target 
+
+^($SPECSREGEXP)(-.*)'\.'spec'$':R: '\1'.nw
+	notangle -L -R$target $prereq | cpif $target 
+
+^(alpha|mips|sparc)'\.'spec'$':R: '\1'-core.spec '\1'-synth.spec '\1'-regs.spec
+	cat $prereq | cpif $target
+
+^(pentium|ppc)'\.'spec'$':R: '\1'-core.spec '\1'-synth.spec
+	cat $prereq | cpif $target
+
+spent.spec: pentium.spec pentium-asm-linux.spec
+	cat $prereq | cpif $target
+
+(test|tiny).spec'$':R: pentium.nw
+	notangle -L -R$target $prereq | cpif $target
+
+################################################################
+#
+#	build annotated document
+
+SPECSRC=specs.tex sparc.tex mips.tex pentium.tex alpha.tex
+
+%.ps: %.dvi
+	dvips -o $target -D 300 $stem
+
+%.xdvi:V: %.dvi
+	xdvi $prereq
+
+%.dvi: %.tex
+	$LATEX '\scrollmode \input '"$stem"
+	while grep -s 'Rerun to get cross-references right' $stem.log; do
+	  $LATEX '\scrollmode \input '"$stem"
+	done
+
+%.tex: %.nw
+	noweave -x -n $prereq > $target
+
+%.html: %.nw
+	noweave -filter l2h -x -n -html $prereq > $target
+
+%.bbl: %.tex
+	if [ ! -r $target ]; then $LATEX $stem; fi
+	bibtex $stem
+
+specs.tex: specs.nw
+	noweave -x -delay $prereq > $target
+
+specs.dvi: $SPECSRC specs.bbl
+
+
+
+################################################################
+#
+#	populate base-specs directory
+
+base:V: 
+	/bin/rm -f *.spec
+	mk specs
+	/bin/rm -f ../base-specs/*
+	cp *-*.spec ../base-specs
+
+
+################################################################
+#
+#	making a distribution
+
+distfiles:V: base specs.ps
+dist:V: distfiles
+	mk distclean
+distclean:V:
+	mk clean cleanaux
+
+
+################################################################
+#
+#	jgraph
+
+%.epsi: %.ps
+	/usr/local/pbm/pstoepsi $prereq $target
+%.ps: %.j
+	jgraph -P $prereq > $target
+
+
+################################################################
+#
+#	lcc support
+
+lcc-%.spec: %.nw
+	notangle -L -R$target $prereq > $target
+
+################################################################
+#
+#	cleanup
+
+clean:V:
+	/bin/rm -f *.spec *.out *.[cho] *~ *.dvi *.log *.blg *.tex _* *-checker
+	/bin/rm -f $SPECSDOTHTML
+cleanaux:V:
+	/bin/rm -f *.aux *.bbl *.ind *.idx *.ilg *.nwi *.toc
+clobber:V: clean
+	/bin/rm -f *.ps
+minimal:V: clobber cleanaux

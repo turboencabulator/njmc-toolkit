@@ -1,0 +1,319 @@
+\documentclass{article}
+\usepackage{noweb}
+
+\title{XS\\An Example Application for the Machine-Code Toolkit}
+\author{Norman Ramsey}
+
+\begin{document}
+
+The XS is a fictional microcomputer designed by Karl Lieberherr 
+to exhibit the essential properties of the typical microcomputer of
+the mid-70s.
+With its tiny instruction set, it is a good vehicle for demonstrating
+the toolkit; we can show a machine description and encoding and
+decoding applications, all in one document.
+
+\section{XS Architecture}
+
+XS consists of
+\begin{enumerate}
+\item
+Memory [[MEM]], consisting of 1024 32-bit words with addresses from 0
+to 1023.
+\item
+32-bit accumulator [[AC]].
+\item
+32-bit index register [[XR]].
+\item
+10-bit program counter [[PC]].
+\item
+1-bit flags [[PCHI]].
+\item
+Teletype I/O.
+\end{enumerate}
+We can represent the machine as
+<<declarations for interpreter>>=
+typedef struct machine {
+  unsigned MEM[1024];
+  unsigned AC, XR, PC;
+  unsigned PCHI:1;
+} *Machine;
+@  We ``validate'' memory access to this machine by using only the
+least significant ten bits.
+A better model would be to halt the machine if the other bits of an
+address were nonzero, but checking that is difficult in C without
+risking unpleasant side effects from evaluating the postincrement or
+predecrement more than once.
+<<memory validation>>=
+#define validate(A) ((A) & 0x3ff)
+@ 
+\subsection{Instruction format}
+All instructions have the same format:
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+[[op]]&[[md]]&~~~[[adr]]~~~\\
+\hline
+\omit\vrule height10pt width0pt\footnotesize 15~\hfil 12&
+\omit\footnotesize 11~\hfil 10&
+\omit\footnotesize 9~\hfil 0%
+\end{tabular}
+\end{center}
+We describe this format as follows:
+<<xs.spec*>>=
+fields of instruction (16) op 12:15 md 10:11 adr 0:9
+@ 
+Because instructions are packed two to a word, we use the [[PCHI]]
+flag to distinguish the two instructions; if [[PCHI]] is set, the
+machine executes the instruction in the most significant half-word.
+We always execute the least significant half-word first.
+This scheme suggests some macros:
+<<PC macros>>=
+#define setPC(M, A)  (((M)->PC = validate(A)), ((M)->PCHI = 0))
+#define advancePC(M) ((M)->PCHI ? setPC(M, (M)->PC+1) : ((M)->PCHI = 1))
+@
+\subsection{Addressing modes}
+The XS has direct, indexed, autoincrement, and autodecrement address
+modes: 
+<<xs.spec*>>=
+constructors
+  Direct         reloc : Address  is  md = 0 & adr = reloc 
+  Indirect "XR#" reloc : Address  is  md = 1 & adr = reloc 
+  Inc      "XR+" reloc : Address  is  md = 2 & adr = reloc 
+  Dec      "XR-" reloc : Address  is  md = 3 & adr = reloc 
+@ The address computation associated with each mode is:
+<<procedure to compute address from mode>>=
+unsigned address(Machine M) {
+  match M to
+  | Direct(adr)   => return adr;
+  | Indirect(adr) => return adr + M->XR;
+  | Inc(adr)      => return adr + M->XR++;
+  | Dec(adr)      => return adr + --M->XR;
+  endmatch
+}
+@ Note the side effects on the index register XR.
+@
+\subsection{Opcodes}
+Two sets, based on [[op]] zero or nonzero, plus we identify the
+invalid opcodes for completeness.
+<<xs.spec*>>=
+patterns
+  nullary is any of [ HALT NEG COM SHL SHR READ WRT NEWL NOOP TRA NOTR ],
+      which is op = 0 & adr = { 0 to 10 }
+  invalid is op = 0 & adr > 10
+  unary   is any of [ _ LIT LDA STA LDX STX ADD SUB OR AND INC DEC JMP JPZ JPN JSR ],
+      which is op = { 0 to 15 }
+@ And we have the very simple set of constructors:
+<<xs.spec*>>=
+placeholder for instruction is HALT
+constructors
+  nullary
+  unary Address
+@ 
+\subsection{Interpreter}
+Here's where we interpret the instructions to have side effects on a
+machine state.
+We use a local variable to hold the current PC at the start of each
+instruction.
+The macros [[MEMORY]] and [[BRANCH]] encapsulate common idioms.
+<<interpreter>>=
+static void show_inst(Machine m);
+
+void interpretXS(Machine m, unsigned start_address) {
+  unsigned trace = 0;
+  unsigned branch;
+#define MEMORY(a) (m->MEM[validate(address(a))])
+#define BRANCH(a) (setPC(m, validate(address(a))), branch = 1)
+  for (setPC(m, validate(start_address)); ; branch ? 0 : advancePC(m)) {
+    if (trace) show_inst(m);
+    branch = 0;
+    match m to
+    | HALT => return;
+    | NEG  => m->AC = - m->AC;
+    | COM  => m->AC = ~ m->AC;
+    | SHL  => m->AC <<= 1;
+    | SHR  => m->AC >>= 1;
+    | READ => m->AC = getchar();
+    | WRT  => putchar(m->AC);
+    | NEWL => putchar('\n');
+    | NOOP => /* do nothing */;
+    | TRA  => trace = 1;
+    | NOTR => trace = 0;
+    | invalid => assert(("invalid instruction", 0));
+    | LIT(a) => m->AC = address(a);
+    | LDA(a) => m->AC = MEMORY(a);
+    | STA(a) => MEMORY(a) = m->AC;
+    | LDX(a) => m->XR = MEMORY(a);
+    | STX(a) => MEMORY(a) = m->XR;
+    | ADD(a) => m->AC += MEMORY(a);
+    | SUB(a) => m->AC -= MEMORY(a);
+    | OR(a)  => m->AC |= MEMORY(a);
+    | AND(a) => m->AC &= MEMORY(a);
+    | INC(a) => MEMORY(a)++;
+    | DEC(a) => MEMORY(a)--;
+    | JMP(a) => BRANCH(a);
+    | JPZ(a) => if (m->AC == 0) then BRANCH(a);
+    | JPN(a) => if (m->AC <  0) then BRANCH(a);
+    | JSR(a) => m->XR = m->PC; BRANCH(a);
+    endmatch
+  }
+}
+@ 
+In order to make the baroque treatment of the PC work,
+we supply extremely baroque decoding templates:
+<<interpreter decoding templates>>=
+address type is "Machine"
+address add using "(%o == 0 ? %a : NULL)"
+address to integer using "%a->PC"
+fetch 16 using "(%a->PCHI ? %a->MEM[%a->PC] >> 16 : %a->MEM[%a->PC] & 0xffff)"
+@ Note that we only ever fetch from offset~0, we only ever fetch
+instructions, and each instruction is 16~bits.
+@
+We also supply a tracing procedure.
+<<interpreter>>=
+static char *adrstring(Machine m);
+
+static void show_inst(Machine m) {
+  fprintf(stderr, "%03x%s : ", m->PC, m->PCHI ? "'" : " ");
+  match m to
+  | nullary [name]  => fprintf(stderr, "%s", name);
+  | invalid         => fprintf(stderr, "INVALID [%08x]", m->MEM[validate(m->PC)]);
+  | unary(a) [name] => fprintf(stderr, "%s %s", name, adrstring(a));
+  endmatch
+  fprintf(stderr, "  (AC=%08x, XR=%08x)\n", m->AC, m->XR);
+}
+
+static char *adrstring(Machine m) {
+  static char buf[100];
+  match m to
+  | Direct(adr)   => sprintf(buf, "%08x", adr);
+  | Indirect(adr) => sprintf(buf, "XR#%08x", adr);
+  | Inc(adr)      => sprintf(buf, "XR+%08x", adr);
+  | Dec(adr)      => sprintf(buf, "XR-%08x", adr);
+  endmatch
+  return buf;
+}
+@
+\subsection{Loader and load format}
+The loader format is specified to be a sequence of words in
+little-endian byte order:
+\begin{quote}
+\begin{tabular}{r|l|l}
+\cline{2-2}
+0&\tt LA&LA: load address\\
+\cline{2-2}
+1&$N$&number of memory words that follow\\
+\cline{2-2}
+2&$\vdots$&Initial contents of memory\\
+\cline{2-2}
+$N+2$&\tt START&Start address\\
+\cline{2-2}
+\end{tabular}
+\end{quote}
+@ This format is written by the assembler and read by the loader.
+<<loader>>=
+static unsigned getword(FILE *fp);
+void load_and_goXS(Machine m, FILE *loadfile) {
+  unsigned LA, N, START;  
+  unsigned i;
+  LA = getword(loadfile);
+  N  = getword(loadfile);
+  for (i = 0; i < N; i++)
+    m->MEM[validate(LA+i)] = getword(loadfile);
+  START = getword(loadfile);
+  interpretXS(m, START);
+}
+@ Here's the way we read words from the load file.
+<<loader>>=
+static unsigned getword(FILE *fp) {
+  unsigned u;
+  u = 0;
+  u |= ((unsigned char) getc(fp)) <<  0;
+  u |= ((unsigned char) getc(fp)) <<  8;
+  u |= ((unsigned char) getc(fp)) << 16;
+  u |= ((unsigned char) getc(fp)) << 24;
+  return u;
+}
+@
+\subsection{Interpreter main program}
+<<xs.m*>>=
+#include <stdio.h>
+#include <stdlib.h>
+<<declarations for interpreter>>
+<<memory validation>>
+<<PC macros>>
+<<procedure to compute address from mode>>
+<<interpreter>>
+<<loader>>
+
+main(int argc, char *argv[]) {
+  FILE *loadfile;
+  Machine m;
+  <<insist on [[progname loadfile]]>>
+  loadfile = fopen(argv[1], "r");
+  <<insist on non-NULL [[loadfile]]>>
+  m = (Machine) malloc(sizeof(*m));
+  assert(m);
+  load_and_go(m, loadfile);
+}
+@ 
+<<insist on [[progname loadfile]]>>=
+if (argc != 2) {
+  fprintf(stderr, "Usage: %s loadfile\n", argv[0]);
+  exit(1);
+}
+<<insist on non-NULL [[loadfile]]>>=
+if (loadfile == NULL) {
+  fprintf(stderr, "%s: Could not open file %s for read\n", argv[0], argv[1]);
+  exit(1);
+}
+@ 
+\subsection{Makefile}
+To build direct and indirect encoding procedures:
+<<xs.decode>>=
+<<interpreter decoding templates>>
+<<Makefile>>=
+CCOPTS=
+INCLUDES=-I../src
+CFLAGS=$(CCOPTS) $(INCLUDES)
+CC=gcc
+
+all: xs-direct.o xs-indirect.o xs-asm.o
+
+clean:
+	rm -f *.o *.c *.h *~ *.html *.tex *.dvi *.log *.ps 
+	rm -f xs.spec xs.m xs.decode
+
+Makefile xs.spec xs.m xs.decode : xs.nw
+	noweb -t xs.nw
+<<Makefile>>=
+xs.c: xs.spec xs.decode xs.m
+	tools -decoder xs.c -matcher xs.m xs.decode xs.spec 
+<<Makefile>>=
+xs-direct.c xs-direct.h: xs.spec
+	tools -encoder xs-direct -late-const xs.spec
+<<Makefile>>=
+xs-indirect.c xs-indirect.h: xs.spec
+	tools -encoder xs-indirect -late-const -indirect xs xs.spec
+<<Makefile>>=
+xs-asm.c: xs.spec
+	tools -asm-encoder xs-asm -indirect xsasm xs.spec
+<<Makefile>>=
+xs.html: xs.nw
+	noweave -filter l2h -html -x xs.nw > xs.html
+<<Makefile>>=
+xs.tex: xs.nw
+	noweb -o xs.nw
+xs.dvi: xs.tex
+	latex '\scrollmode \input xs'
+	sh -c "while grep -s 'Rerun to get cross-references right' xs.log; do latex '\scrollmode \input xs'; done"
+xs.ps:	xs.dvi
+	dvips -o xs.ps xs
+distfiles: xs.ps xs.html
+	noweb -t xs.nw
+@ 
+\end{document}
+@
+BUGS:
+  - too many warnings generating interpreter
+  - #line not passed through properly in interpreter (xs.c is bad)
