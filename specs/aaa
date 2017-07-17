@@ -1,0 +1,3122 @@
+static void print_signed_reg(int reg) {
+  
+  asmprintf(asmprintfd, "%d", reg);
+}
+static void print_unsigned_base(unsigned /* [0..7] */ base) {
+  static char *base_names[] = { 
+    "eAX", 
+    "eCX", 
+    "eDX", 
+    "eBX", 
+    "eSP", 
+    "eBP", 
+    "eSI", 
+    "eDI", 
+  };
+  
+  asmprintf(asmprintfd, "%s", base_names[base]);
+}
+static void print_unsigned_ss(unsigned /* [0..3] */ ss) {
+  static char *ss_names[] = { "1", "2", "4", "8", };
+  
+  asmprintf(asmprintfd, "%s", ss_names[ss]);
+}
+static void Abs32_asm(RAddr a) {
+  
+  asmprintf(asmprintfd, "%s", "[");
+  asmprintreloc(a);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Disp32_asm(RAddr d, int reg) {
+  
+  asmprintreloc(d);
+  asmprintf(asmprintfd, "%s", "[");
+  print_signed_reg(reg);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Disp8_asm(RAddr d, int reg) {
+  
+  asmprintreloc(d);
+  asmprintf(asmprintfd, "%s", "[");
+  print_signed_reg(reg);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Index_asm(unsigned /* [0..7] */ base, unsigned /* [0..7] */ index, unsigned /* [0..3] */ ss) {
+  
+  asmprintf(asmprintfd, "%s", "[");
+  print_unsigned_base(base);
+  asmprintf(asmprintfd, "%s", "][");
+  print_unsigned_base(index);
+  asmprintf(asmprintfd, "%s", " * ");
+  print_unsigned_ss(ss);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Index32_asm(RAddr d, unsigned /* [0..7] */ base, unsigned /* [0..7] */ index, unsigned /* [0..3] */ ss) {
+  
+  asmprintreloc(d);
+  asmprintf(asmprintfd, "%s", "[");
+  print_unsigned_base(base);
+  asmprintf(asmprintfd, "%s", "][");
+  print_unsigned_base(index);
+  asmprintf(asmprintfd, "%s", " * ");
+  print_unsigned_ss(ss);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Index8_asm(RAddr d, unsigned /* [0..7] */ base, unsigned /* [0..7] */ index, unsigned /* [0..3] */ ss) {
+  
+  asmprintreloc(d);
+  asmprintf(asmprintfd, "%s", "[");
+  print_unsigned_base(base);
+  asmprintf(asmprintfd, "%s", "][");
+  print_unsigned_base(index);
+  asmprintf(asmprintfd, "%s", " * ");
+  print_unsigned_ss(ss);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void Indir_asm(int reg) {
+  
+  asmprintf(asmprintfd, "%s", "[");
+  print_signed_reg(reg);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void ShortIndex_asm(RAddr d, unsigned /* [0..7] */ index, unsigned /* [0..3] */ ss) {
+  
+  asmprintreloc(d);
+  asmprintf(asmprintfd, "%s", "[");
+  print_unsigned_base(index);
+  asmprintf(asmprintfd, "%s", " * ");
+  print_unsigned_ss(ss);
+  asmprintf(asmprintfd, "%s", "]");
+}
+static void print_Mem(Mem_Instance Mem) {
+  switch (Mem.tag) {
+    case Abs32_TAG: 
+      Abs32_asm(Mem.u.Abs32.a); break;
+    case Disp32_TAG: 
+      Disp32_asm(Mem.u.Disp32.d, Mem.u.Disp32.reg); break;
+    case Disp8_TAG: 
+      Disp8_asm(Mem.u.Disp8.d, Mem.u.Disp8.reg); break;
+    case Index_TAG: 
+      Index_asm(Mem.u.Index.base, Mem.u.Index.index, Mem.u.Index.ss); break;
+    case Index32_TAG: 
+      Index32_asm(Mem.u.Index32.d, Mem.u.Index32.base, Mem.u.Index32.index, Mem.u.Index32.ss); 
+      break;
+    case Index8_TAG: 
+      Index8_asm(Mem.u.Index8.d, Mem.u.Index8.base, Mem.u.Index8.index, Mem.u.Index8.ss); 
+      break;
+    case Indir_TAG: 
+      Indir_asm(Mem.u.Indir.reg); break;
+    case ShortIndex_TAG: 
+      ShortIndex_asm(Mem.u.ShortIndex.d, Mem.u.ShortIndex.index, Mem.u.ShortIndex.ss); 
+      break;
+    default: assert(0);
+  } /* Mem */
+}
+static void print_signed_i8(int /* [-128..127] */ i8) {
+  
+  asmprintf(asmprintfd, "%d", i8);
+}
+static void print_signed_i16(int /* [-32768..32767] */ i16) {
+  
+  asmprintf(asmprintfd, "%d", i16);
+}
+static void E_asm(Mem_Instance Mem) {
+  
+  print_Mem(Mem);
+}
+static void Reg_asm(int reg) {
+  
+  print_signed_reg(reg);
+}
+static void print_Eaddr(Eaddr_Instance Eaddr) {
+  switch (Eaddr.tag) {
+    case E_TAG: 
+      E_asm(Eaddr.u.E.Mem); break;
+    case Reg_TAG: 
+      Reg_asm(Eaddr.u.Reg.reg); break;
+    default: assert(0);
+  } /* Eaddr */
+}
+static void print_unsigned_i16(unsigned /* [0..65535] */ i16) {
+  
+  asmprintf(asmprintfd, "%u", i16);
+}
+static void print_unsigned_sr16(unsigned /* [0..7] */ sr16) {
+  static char *sr16_names[] = { 
+    "??sr16=0?!", 
+    "cs", 
+    "ss", 
+    "ds", 
+    "es", 
+    "fs", 
+    "gs", 
+    "??sr16=7?!", 
+  };
+  
+  asmprintf(asmprintfd, "%s", sr16_names[sr16]);
+}
+static void print_unsigned_r8(unsigned /* [0..7] */ r8) {
+  static char *r8_names[] = { "AL", "CL", "DL", "BL", "AH", "CH", "DH", "BH", };
+  
+  asmprintf(asmprintfd, "%s", r8_names[r8]);
+}
+static void print_unsigned_r16(unsigned /* [0..7] */ r16) {
+  static char *r16_names[] = { 
+    "AX", 
+    "CX", 
+    "DX", 
+    "BX", 
+    "SP", 
+    "BP", 
+    "SI", 
+    "DI", 
+  };
+  
+  asmprintf(asmprintfd, "%s", r16_names[r16]);
+}
+static void print_unsigned_i8(unsigned /* [0..255] */ i8) {
+  
+  asmprintf(asmprintfd, "%u", i8);
+}
+static void print_unsigned_i32(unsigned i32) {
+  
+  asmprintf(asmprintfd, "%u", i32);
+}
+unsigned disassemble_Mem(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | ShortIndex(d, index, ss) => 
+      asmprintreloc(d);
+      asmprintf(asmprintfd, "%s", "[");
+      print_unsigned_base(index);
+      asmprintf(asmprintfd, "%s", " * ");
+      print_unsigned_ss(ss);
+      asmprintf(asmprintfd, "%s", "]");
+  | Indir(reg) => 
+      asmprintf(asmprintfd, "%s", "[");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", "]");
+  | Index8(d, base, index, ss) => 
+      asmprintreloc(d);
+      asmprintf(asmprintfd, "%s", "[");
+      print_unsigned_base(base);
+      asmprintf(asmprintfd, "%s", "][");
+      print_unsigned_base(index);
+      asmprintf(asmprintfd, "%s", " * ");
+      print_unsigned_ss(ss);
+      asmprintf(asmprintfd, "%s", "]");
+  | Index32(d, base, index, ss) => 
+      asmprintreloc(d);
+      asmprintf(asmprintfd, "%s", "[");
+      print_unsigned_base(base);
+      asmprintf(asmprintfd, "%s", "][");
+      print_unsigned_base(index);
+      asmprintf(asmprintfd, "%s", " * ");
+      print_unsigned_ss(ss);
+      asmprintf(asmprintfd, "%s", "]");
+  | Index(base, index, ss) => 
+      asmprintf(asmprintfd, "%s", "[");
+      print_unsigned_base(base);
+      asmprintf(asmprintfd, "%s", "][");
+      print_unsigned_base(index);
+      asmprintf(asmprintfd, "%s", " * ");
+      print_unsigned_ss(ss);
+      asmprintf(asmprintfd, "%s", "]");
+  | Disp8(d, reg) => 
+      asmprintreloc(d);
+      asmprintf(asmprintfd, "%s", "[");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", "]");
+  | Disp32(d, reg) => 
+      asmprintreloc(d);
+      asmprintf(asmprintfd, "%s", "[");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", "]");
+  | Abs32(a) => 
+      asmprintf(asmprintfd, "%s", "[");
+      asmprintreloc(a);
+      asmprintf(asmprintfd, "%s", "]");
+  endmatch
+  return next;
+}
+
+
+unsigned disassemble_Rel8(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | rel8(reloc) => 
+      asmprintreloc(reloc);
+  endmatch
+  return next;
+}
+
+
+unsigned disassemble_Rel32(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | rel32(reloc) => 
+      asmprintreloc(reloc);
+  endmatch
+  return next;
+}
+
+
+unsigned disassemble_instruction(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | POP_SS() => 
+      asmprintf(asmprintfd, "%s", "POP.SS");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NZod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NZod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | MOVmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "MOVmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | FYL2XP1() => 
+      asmprintf(asmprintfd, "%s", "FYL2XP1");
+      asmprintf(asmprintfd, "\n");
+  | ANDiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ANDiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | XADD_Eb_Gb(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XADD.Eb.Gb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | OUT_Ib_eAXow(i8) => 
+      asmprintf(asmprintfd, "%s", "OUT.Ib.eAXow ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_Bow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Bow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FISTP64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FISTP64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | AAS() => 
+      asmprintf(asmprintfd, "%s", "AAS");
+      asmprintf(asmprintfd, "\n");
+  | LAHF() => 
+      asmprintf(asmprintfd, "%s", "LAHF");
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MUL_AXod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MUL.AXod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FFREE(idx) => 
+      asmprintf(asmprintfd, "%s", "FFREE ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ORrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ORrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADCiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "ADCiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | LEAow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LEAow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FST_st_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FST.st.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CLD() => 
+      asmprintf(asmprintfd, "%s", "CLD");
+      asmprintf(asmprintfd, "\n");
+  | ANDid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "ANDid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | STC() => 
+      asmprintf(asmprintfd, "%s", "STC");
+      asmprintf(asmprintfd, "\n");
+  | MOV_Rd_Dd(reg, dr) => 
+      asmprintf(asmprintfd, "%s", "MOV.Rd.Dd ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(dr);
+      asmprintf(asmprintfd, "\n");
+  | FCOMPP() => 
+      asmprintf(asmprintfd, "%s", "FCOMPP");
+      asmprintf(asmprintfd, "\n");
+  | ANDmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ANDmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | CALL_Jvow(reloc) => 
+      asmprintf(asmprintfd, "%s", "CALL.Jvow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NLE(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NLE ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ov_eAXod(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ov.eAXod ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | IMUL_Ibod(reg, Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "IMUL.Ibod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | CMPiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "CMPiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FNSTCW(Mem) => 
+      asmprintf(asmprintfd, "%s", "FNSTCW ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | POP_ES() => 
+      asmprintf(asmprintfd, "%s", "POP.ES");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Zod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Zod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDENV(Mem) => 
+      asmprintf(asmprintfd, "%s", "FLDENV ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | BTiod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTiod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SCASB() => 
+      asmprintf(asmprintfd, "%s", "SCASB");
+      asmprintf(asmprintfd, "\n");
+  | MOVmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "MOVmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | DECod(r32) => 
+      asmprintf(asmprintfd, "%s", "DECod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NOow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NOow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | ORib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ORib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSUBR_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSUBR.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPXCHG_Ev_Gvod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "CMPXCHG.Ev.Gvod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | TEST_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "TEST.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_unsigned_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MUL_AXow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MUL.AXow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IRET() => 
+      asmprintf(asmprintfd, "%s", "IRET");
+      asmprintf(asmprintfd, "\n");
+  | ORrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ORrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ORiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "ORiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | INC_Evod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "INC.Evod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ANDmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_Ivow(i16) => 
+      asmprintf(asmprintfd, "%s", "PUSH.Ivow ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | JMP_Apow(CS, IP) => 
+      asmprintf(asmprintfd, "%s", "JMP.Apow ");
+      print_signed_reg(CS);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(IP);
+      asmprintf(asmprintfd, "\n");
+  | FRNDINT() => 
+      asmprintf(asmprintfd, "%s", "FRNDINT");
+      asmprintf(asmprintfd, "\n");
+  | SETb_LE(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.LE ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ov_eAXow(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ov.eAXow ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | IMUL_Ibow(reg, Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "IMUL.Ibow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FADDP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FADDP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CMPiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "CMPiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NBod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NBod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | BTiow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTiow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FYL2X() => 
+      asmprintf(asmprintfd, "%s", "FYL2X");
+      asmprintf(asmprintfd, "\n");
+  | DECow(r32) => 
+      asmprintf(asmprintfd, "%s", "DECow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | WRMSR() => 
+      asmprintf(asmprintfd, "%s", "WRMSR");
+      asmprintf(asmprintfd, "\n");
+  | OUT_Ib_AL(i8) => 
+      asmprintf(asmprintfd, "%s", "OUT.Ib.AL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_Oow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Oow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FISTP_lsI32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FISTP.lsI32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | AAM() => 
+      asmprintf(asmprintfd, "%s", "AAM");
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | LODSvod() => 
+      asmprintf(asmprintfd, "%s", "LODSvod");
+      asmprintf(asmprintfd, "\n");
+  | FSUBR_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSUBR.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPXCHG_Ev_Gvow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "CMPXCHG.Ev.Gvow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | FDIVRP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIVRP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ADDrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADDrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADDiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "ADDiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LSSod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LSSod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTP80(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTP80 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CLC() => 
+      asmprintf(asmprintfd, "%s", "CLC");
+      asmprintf(asmprintfd, "\n");
+  | SMSW(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SMSW ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Dd_Rd(dr, reg) => 
+      asmprintf(asmprintfd, "%s", "MOV.Dd.Rd ");
+      print_signed_reg(dr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | INC_Evow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "INC.Evow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FCOMP_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FCOMP.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | SBBmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SBBmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | BTSiod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTSiod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SUBiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "SUBiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FADD_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FADD.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | FSAVE(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSAVE ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | POPod(r32) => 
+      asmprintf(asmprintfd, "%s", "POPod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | Jv_Bod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Bod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDCW(Mem) => 
+      asmprintf(asmprintfd, "%s", "FLDCW ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "CMPib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SAHF() => 
+      asmprintf(asmprintfd, "%s", "SAHF");
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVmrb(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "MOVmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | FISTP_lsI16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FISTP.lsI16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | LODSvow() => 
+      asmprintf(asmprintfd, "%s", "LODSvow");
+      asmprintf(asmprintfd, "\n");
+  | ADDiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADDiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | TEST_eAX_Ivod(i32) => 
+      asmprintf(asmprintfd, "%s", "TEST.eAX.Ivod ");
+      print_unsigned_i32(i32);
+      asmprintf(asmprintfd, "\n");
+  | MUL_AL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MUL.AL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | INVLPG(Mem) => 
+      asmprintf(asmprintfd, "%s", "INVLPG ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FDIVR_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIVR.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ADDrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADDrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LSSow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LSSow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SBBid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "SBBid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | FCOM_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FCOM.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | SBBmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SBBmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_Ib(i8) => 
+      asmprintf(asmprintfd, "%s", "PUSH.Ib ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | JMP_Jvod(reloc) => 
+      asmprintf(asmprintfd, "%s", "JMP.Jvod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FPTAN() => 
+      asmprintf(asmprintfd, "%s", "FPTAN");
+      asmprintf(asmprintfd, "\n");
+  | BTSiow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTSiow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SETb_L(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.L ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ob_AL(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ob.AL ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | IMULrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IMULrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FADD_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FADD.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | POPow(r32) => 
+      asmprintf(asmprintfd, "%s", "POPow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NOod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NOod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | BTod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FXTRACT() => 
+      asmprintf(asmprintfd, "%s", "FXTRACT");
+      asmprintf(asmprintfd, "\n");
+  | DEC_Evod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DEC.Evod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | WBINVD() => 
+      asmprintf(asmprintfd, "%s", "WBINVD");
+      asmprintf(asmprintfd, "\n");
+  | NOTod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NOTod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NLE(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NLE ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FIST_lsI32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FIST.lsI32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | AAD() => 
+      asmprintf(asmprintfd, "%s", "AAD");
+      asmprintf(asmprintfd, "\n");
+  | ADDib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADDib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FSUBP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUBP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CMPXCHG_Eb_Gb(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "CMPXCHG.Eb.Gb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | ADDiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADDiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FDIVR_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIVR.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CMPiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "CMPiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | LGSod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LGSod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTP_lsR64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTP.lsR64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CWDE() => 
+      asmprintf(asmprintfd, "%s", "CWDE");
+      asmprintf(asmprintfd, "\n");
+  | SLDT(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SLDT ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Rd_Cd(reg, cr) => 
+      asmprintf(asmprintfd, "%s", "MOV.Rd.Cd ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(cr);
+      asmprintf(asmprintfd, "\n");
+  | INC_Eb(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "INC.Eb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADCmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ADCmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NP(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NP ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IMULrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IMULrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FCLEX() => 
+      asmprintf(asmprintfd, "%s", "FCLEX");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Ood(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Ood ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDZ() => 
+      asmprintf(asmprintfd, "%s", "FLDZ");
+      asmprintf(asmprintfd, "\n");
+  | RSM() => 
+      asmprintf(asmprintfd, "%s", "RSM");
+      asmprintf(asmprintfd, "\n");
+  | BTow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | LTR(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LTR ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | DEC_Evow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DEC.Evow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SBBiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SBBiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | NOTow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NOTow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_LE(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.LE ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FIST_lsI16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FIST.lsI16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | LODSB() => 
+      asmprintf(asmprintfd, "%s", "LODSB");
+      asmprintf(asmprintfd, "\n");
+  | FSUB_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUB.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | TEST_eAX_Ivow(i16) => 
+      asmprintf(asmprintfd, "%s", "TEST.eAX.Ivow ");
+      print_unsigned_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVZX_Gv_Ew(r16, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVZX.Gv.Ew ");
+      print_unsigned_r16(r16);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | INVD() => 
+      asmprintf(asmprintfd, "%s", "INVD");
+      asmprintf(asmprintfd, "\n");
+  | CMPrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "CMPrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XORiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "XORiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LGSow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LGSow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTP_lsR32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTP.lsR32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FCOMP_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FCOMP.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ADCmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ADCmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSHod(r32) => 
+      asmprintf(asmprintfd, "%s", "PUSHod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | JMP_Jvow(reloc) => 
+      asmprintf(asmprintfd, "%s", "JMP.Jvow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FPREM1() => 
+      asmprintf(asmprintfd, "%s", "FPREM1");
+      asmprintf(asmprintfd, "\n");
+  | BTSod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTSod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | ANDiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "ANDiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SETb_P(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.P ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_eAX_Ovod(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.eAX.Ovod ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | FADD_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FADD.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | POP_Evod(Mem) => 
+      asmprintf(asmprintfd, "%s", "POP.Evod ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FLDLN2() => 
+      asmprintf(asmprintfd, "%s", "FLDLN2");
+      asmprintf(asmprintfd, "\n");
+  | XORib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "XORib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FXCH(idx) => 
+      asmprintf(asmprintfd, "%s", "FXCH ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | SBBiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SBBiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | WAIT() => 
+      asmprintf(asmprintfd, "%s", "WAIT");
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NL(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NL ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | AAA() => 
+      asmprintf(asmprintfd, "%s", "AAA");
+      asmprintf(asmprintfd, "\n");
+  | CMPiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "CMPiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | FSUB_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUB.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CMPSvodad() => 
+      asmprintf(asmprintfd, "%s", "CMPSvodad");
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FDIVR_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FDIVR.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | XORrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "XORrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SUBiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "SUBiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | LFSod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LFSod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FST_lsR64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FST.lsR64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CBW() => 
+      asmprintf(asmprintfd, "%s", "CBW");
+      asmprintf(asmprintfd, "\n");
+  | ADCid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "ADCid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SHLD_CLod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SHLD.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", CL");
+      asmprintf(asmprintfd, "\n");
+  | MOV_Cd_Rd(cr, reg) => 
+      asmprintf(asmprintfd, "%s", "MOV.Cd.Rd ");
+      print_signed_reg(cr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | IN_eAX_DXod() => 
+      asmprintf(asmprintfd, "%s", "IN.eAX.DXod");
+      asmprintf(asmprintfd, "\n");
+  | FCOMP_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FCOMP.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ORmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ORmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSHow(r32) => 
+      asmprintf(asmprintfd, "%s", "PUSHow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NS(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NS ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | BTSow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTSow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | MOV_eAX_Ovow(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.eAX.Ovow ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | IMULod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IMULod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FADD_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FADD.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | XORiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "XORiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | XLATB() => 
+      asmprintf(asmprintfd, "%s", "XLATB");
+      asmprintf(asmprintfd, "\n");
+  | POP_Evow(Mem) => 
+      asmprintf(asmprintfd, "%s", "POP.Evow ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NLEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NLEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDLG2() => 
+      asmprintf(asmprintfd, "%s", "FLDLG2");
+      asmprintf(asmprintfd, "\n");
+  | BSWAP(r32) => 
+      asmprintf(asmprintfd, "%s", "BSWAP ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | RET_far_Iw(i16) => 
+      asmprintf(asmprintfd, "%s", "RET.far.Iw ");
+      print_unsigned_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | LSLod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LSLod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | DEC_Eb(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DEC.Eb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_L(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.L ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FINIT() => 
+      asmprintf(asmprintfd, "%s", "FINIT");
+      asmprintf(asmprintfd, "\n");
+  | XORiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "XORiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LOCK() => 
+      asmprintf(asmprintfd, "%s", "LOCK");
+      asmprintf(asmprintfd, "\n");
+  | CMPSvodaw() => 
+      asmprintf(asmprintfd, "%s", "CMPSvodaw");
+      asmprintf(asmprintfd, "\n");
+  | TEST_AL_Ib(i8) => 
+      asmprintf(asmprintfd, "%s", "TEST.AL.Ib ");
+      print_unsigned_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MOVZX_Gv_Ebod(r32, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVZX.Gv.Ebod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | INTO() => 
+      asmprintf(asmprintfd, "%s", "INTO");
+      asmprintf(asmprintfd, "\n");
+  | FDIVR_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FDIVR.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SUBrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SUBrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "ANDiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | PUSHFod() => 
+      asmprintf(asmprintfd, "%s", "PUSHFod");
+      asmprintf(asmprintfd, "\n");
+  | LFSow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LFSow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FST_lsR32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FST.lsR32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SHLD_CLow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SHLD.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", CL");
+      asmprintf(asmprintfd, "\n");
+  | IN_eAX_DXow() => 
+      asmprintf(asmprintfd, "%s", "IN.eAX.DXow");
+      asmprintf(asmprintfd, "\n");
+  | FCOM_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FCOM.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ORmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ORmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | JMP_Jb(reloc) => 
+      asmprintf(asmprintfd, "%s", "JMP.Jb ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FPREM() => 
+      asmprintf(asmprintfd, "%s", "FPREM");
+      asmprintf(asmprintfd, "\n");
+  | SETb_S(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.S ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IMULow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IMULow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XORiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "XORiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_LEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.LEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDPI() => 
+      asmprintf(asmprintfd, "%s", "FLDPI");
+      asmprintf(asmprintfd, "\n");
+  | LSLow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LSLow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FXAM() => 
+      asmprintf(asmprintfd, "%s", "FXAM");
+      asmprintf(asmprintfd, "\n");
+  | VERW(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "VERW ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SARB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NP(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NP ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | CMPrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "CMPrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SUBiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "SUBiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSUB_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSUB.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPSvowad() => 
+      asmprintf(asmprintfd, "%s", "CMPSvowad");
+      asmprintf(asmprintfd, "\n");
+  | MOVZX_Gv_Ebow(r32, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVZX.Gv.Ebow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ANDrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SBBiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "SBBiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | PUSHFow() => 
+      asmprintf(asmprintfd, "%s", "PUSHFow");
+      asmprintf(asmprintfd, "\n");
+  | LESod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LESod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SHRD_CLod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SHRD.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", CL");
+      asmprintf(asmprintfd, "\n");
+  | CALL_Evod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "CALL.Evod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ev_Ivod(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ev.Ivod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | FCOM_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FCOM.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ADDmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ADDmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_Evod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "PUSH.Evod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | BTRiod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTRiod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NBE(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NBE ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SBBiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "SBBiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | MOV_AL_Ob(offset) => 
+      asmprintf(asmprintfd, "%s", "MOV.AL.Ob ");
+      print_signed_reg(offset);
+      asmprintf(asmprintfd, "\n");
+  | FABS() => 
+      asmprintf(asmprintfd, "%s", "FABS");
+      asmprintf(asmprintfd, "\n");
+  | XCHG_Ev_Gvod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XCHG.Ev.Gvod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | OUTSvod() => 
+      asmprintf(asmprintfd, "%s", "OUTSvod");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NLow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NLow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDL2E() => 
+      asmprintf(asmprintfd, "%s", "FLDL2E");
+      asmprintf(asmprintfd, "\n");
+  | BSRod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "BSRod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SUBib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SUBib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RET_Iw(i16) => 
+      asmprintf(asmprintfd, "%s", "RET.Iw ");
+      print_unsigned_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | DAS() => 
+      asmprintf(asmprintfd, "%s", "DAS");
+      asmprintf(asmprintfd, "\n");
+  | NOTb(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NOTb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_P(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.P ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FILD64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FILD64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "CMPrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "ANDiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | LMSW(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LMSW ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSUB_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSUB.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPSvowaw() => 
+      asmprintf(asmprintfd, "%s", "CMPSvowaw");
+      asmprintf(asmprintfd, "\n");
+  | STR(Mem) => 
+      asmprintf(asmprintfd, "%s", "STR ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | INT_Ib(i8) => 
+      asmprintf(asmprintfd, "%s", "INT.Ib ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FDIVP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIVP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | SBBrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SBBrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADCiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "ADCiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | PUSHAod() => 
+      asmprintf(asmprintfd, "%s", "PUSHAod");
+      asmprintf(asmprintfd, "\n");
+  | LESow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LESow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSQRT() => 
+      asmprintf(asmprintfd, "%s", "FSQRT");
+      asmprintf(asmprintfd, "\n");
+  | CALL_Evow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "CALL.Evow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHRD_CLow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SHRD.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", CL");
+      asmprintf(asmprintfd, "\n");
+  | ORid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "ORid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IN_AL_DX() => 
+      asmprintf(asmprintfd, "%s", "IN.AL.DX");
+      asmprintf(asmprintfd, "\n");
+  | ADDmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "ADDmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_Evow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "PUSH.Evow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NLEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NLEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FPATAN() => 
+      asmprintf(asmprintfd, "%s", "FPATAN");
+      asmprintf(asmprintfd, "\n");
+  | BTRiow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTRiow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SETb_BE(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.BE ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IMULb(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IMULb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XCHG_Ev_Gvow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XCHG.Ev.Gvow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | OUTSvow() => 
+      asmprintf(asmprintfd, "%s", "OUTSvow");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Low(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Low ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLDL2T() => 
+      asmprintf(asmprintfd, "%s", "FLDL2T");
+      asmprintf(asmprintfd, "\n");
+  | BSRow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "BSRow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LOOPNEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPNEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FUCOMPP() => 
+      asmprintf(asmprintfd, "%s", "FUCOMPP");
+      asmprintf(asmprintfd, "\n");
+  | VERR(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "VERR ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NS(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NS ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | XORrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "XORrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SBBiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "SBBiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVSX_Gv_Ew(r16, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVSX.Gv.Ew ");
+      print_unsigned_r16(r16);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FDIV_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIV.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ADCrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADCrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ORiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "ORiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | PUSHAow() => 
+      asmprintf(asmprintfd, "%s", "PUSHAow");
+      asmprintf(asmprintfd, "\n");
+  | LDSod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LDSod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ev_Ivow(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ev.Ivow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | FNCLEX() => 
+      asmprintf(asmprintfd, "%s", "FNCLEX");
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_LEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.LEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NZ(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NZ ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Sw_Ew(Mem, sr16) => 
+      asmprintf(asmprintfd, "%s", "MOV.Sw.Ew ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_unsigned_sr16(sr16);
+      asmprintf(asmprintfd, "\n");
+  | F2XM1() => 
+      asmprintf(asmprintfd, "%s", "F2XM1");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NPow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NPow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLD1() => 
+      asmprintf(asmprintfd, "%s", "FLD1");
+      asmprintf(asmprintfd, "\n");
+  | RET_far() => 
+      asmprintf(asmprintfd, "%s", "RET.far");
+      asmprintf(asmprintfd, "\n");
+  | LOOPNEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPNEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | DAA() => 
+      asmprintf(asmprintfd, "%s", "DAA");
+      asmprintf(asmprintfd, "\n");
+  | ADCiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADCiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | NOP() => 
+      asmprintf(asmprintfd, "%s", "NOP");
+      asmprintf(asmprintfd, "\n");
+  | Jb_S(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.S ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FILD_lsI32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FILD.lsI32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | XORrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "XORrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADCiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "ADCiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | LLDT(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LLDT ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSTSW_AX() => 
+      asmprintf(asmprintfd, "%s", "FSTSW.AX");
+      asmprintf(asmprintfd, "\n");
+  | CMPSBad() => 
+      asmprintf(asmprintfd, "%s", "CMPSBad");
+      asmprintf(asmprintfd, "\n");
+  | STOSvod() => 
+      asmprintf(asmprintfd, "%s", "STOSvod");
+      asmprintf(asmprintfd, "\n");
+  | CMPid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "CMPid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | INT3() => 
+      asmprintf(asmprintfd, "%s", "INT3");
+      asmprintf(asmprintfd, "\n");
+  | FDIV_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FDIV.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ORrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ORrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADDiAL(i8) => 
+      asmprintf(asmprintfd, "%s", "ADDiAL ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LDSow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LDSow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSINCOS() => 
+      asmprintf(asmprintfd, "%s", "FSINCOS");
+      asmprintf(asmprintfd, "\n");
+  | CALL_aPod(CS, IP) => 
+      asmprintf(asmprintfd, "%s", "CALL.aPod ");
+      print_signed_reg(CS);
+      asmprintf(asmprintfd, "%s", ": ");
+      print_signed_reg(IP);
+      asmprintf(asmprintfd, "\n");
+  | SHLD_Ibod(Eaddr, reg, count) => 
+      asmprintf(asmprintfd, "%s", "SHLD.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(count);
+      asmprintf(asmprintfd, "\n");
+  | IN_eAX_Ibod(i8) => 
+      asmprintf(asmprintfd, "%s", "IN.eAX.Ibod ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | CMPmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "CMPmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | POPFod() => 
+      asmprintf(asmprintfd, "%s", "POPFod");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NLod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NLod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FNOP() => 
+      asmprintf(asmprintfd, "%s", "FNOP");
+      asmprintf(asmprintfd, "\n");
+  | BTRod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTRod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | ADCiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "ADCiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SETb_Z(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.Z ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IDIVeAX(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IDIVeAX ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XCHG_Eb_Gb(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XCHG.Eb.Gb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | OUTSB() => 
+      asmprintf(asmprintfd, "%s", "OUTSB");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Pow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Pow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | BSFod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "BSFod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ANDib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | LOOPEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FUCOMP(idx) => 
+      asmprintf(asmprintfd, "%s", "FUCOMP ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | TEST_Ev_Gvod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "TEST.Ev.Gvod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | ADCiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADCiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NBE(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NBE ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FILD_lsI16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FILD.lsI16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SUBrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SUBrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ORiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "ORiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | CMPSBaw() => 
+      asmprintf(asmprintfd, "%s", "CMPSBaw");
+      asmprintf(asmprintfd, "\n");
+  | STOSvow() => 
+      asmprintf(asmprintfd, "%s", "STOSvow");
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MOVSX_Gv_Ebod(r32, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVSX.Gv.Ebod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADDrmb(reg8, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADDrmb ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_GS() => 
+      asmprintf(asmprintfd, "%s", "PUSH.GS");
+      asmprintf(asmprintfd, "\n");
+  | ADDid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "ADDid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SHLD_Ibow(Eaddr, reg, count) => 
+      asmprintf(asmprintfd, "%s", "SHLD.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(count);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "MOV.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | IN_eAX_Ibow(i8) => 
+      asmprintf(asmprintfd, "%s", "IN.eAX.Ibow ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FCHS() => 
+      asmprintf(asmprintfd, "%s", "FCHS");
+      asmprintf(asmprintfd, "\n");
+  | XORmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "XORmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | FWAIT() => 
+      asmprintf(asmprintfd, "%s", "FWAIT");
+      asmprintf(asmprintfd, "\n");
+  | POPFow() => 
+      asmprintf(asmprintfd, "%s", "POPFow");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Lod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Lod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | BTRow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTRow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NB(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NB ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOV_Ew_Sw(Mem, sr16) => 
+      asmprintf(asmprintfd, "%s", "MOV.Ew.Sw ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_unsigned_sr16(sr16);
+      asmprintf(asmprintfd, "\n");
+  | ENTER(i16, i8) => 
+      asmprintf(asmprintfd, "%s", "ENTER ");
+      print_unsigned_i16(i16);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SUBiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SUBiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NSow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NSow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLD_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FLD.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | BSFow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "BSFow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | RET() => 
+      asmprintf(asmprintfd, "%s", "RET");
+      asmprintf(asmprintfd, "\n");
+  | LOOPEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FUCOM(idx) => 
+      asmprintf(asmprintfd, "%s", "FUCOM ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CDQ() => 
+      asmprintf(asmprintfd, "%s", "CDQ");
+      asmprintf(asmprintfd, "\n");
+  | TEST_Ev_Gvow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "TEST.Ev.Gvow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | NEGod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NEGod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_BE(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.BE ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SUBrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SUBrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ADDiEAX(i32) => 
+      asmprintf(asmprintfd, "%s", "ADDiEAX ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | RORB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RORB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LIDT(Mem) => 
+      asmprintf(asmprintfd, "%s", "LIDT ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTSW(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTSW ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | MOVSX_Gv_Ebow(r32, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVSX.Gv.Ebow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | INSvod() => 
+      asmprintf(asmprintfd, "%s", "INSvod");
+      asmprintf(asmprintfd, "\n");
+  | FDIV_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FDIV.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_FS() => 
+      asmprintf(asmprintfd, "%s", "PUSH.FS");
+      asmprintf(asmprintfd, "\n");
+  | JMP_Epod(Mem) => 
+      asmprintf(asmprintfd, "%s", "JMP.Epod ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSIN() => 
+      asmprintf(asmprintfd, "%s", "FSIN");
+      asmprintf(asmprintfd, "\n");
+  | CALL_aPow(CS, IP) => 
+      asmprintf(asmprintfd, "%s", "CALL.aPow ");
+      print_signed_reg(CS);
+      asmprintf(asmprintfd, "%s", ": ");
+      print_signed_reg(IP);
+      asmprintf(asmprintfd, "\n");
+  | SHRD_Ibod(Eaddr, reg, count) => 
+      asmprintf(asmprintfd, "%s", "SHRD.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(count);
+      asmprintf(asmprintfd, "\n");
+  | SUBmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "SUBmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | POPAod() => 
+      asmprintf(asmprintfd, "%s", "POPAod");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NPod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NPod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FMULP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FMULP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | SETb_B(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.B ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IDIVAX(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IDIVAX ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XCHGeAXod(r32) => 
+      asmprintf(asmprintfd, "%s", "XCHGeAXod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | SUBiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SUBiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | OUT_DX_eAXod() => 
+      asmprintf(asmprintfd, "%s", "OUT.DX.eAXod");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Sow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Sow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | LOOPod(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | NEGow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NEGow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NZ(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NZ ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FICOMP_I16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FICOMP.I16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ANDrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ANDrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SHRB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SHRB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | CMC() => 
+      asmprintf(asmprintfd, "%s", "CMC");
+      asmprintf(asmprintfd, "\n");
+  | XORid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "XORid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | STOSB() => 
+      asmprintf(asmprintfd, "%s", "STOSB");
+      asmprintf(asmprintfd, "\n");
+  | INSvow() => 
+      asmprintf(asmprintfd, "%s", "INSvow");
+      asmprintf(asmprintfd, "\n");
+  | FDIV_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FDIV.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "CMPmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_ES() => 
+      asmprintf(asmprintfd, "%s", "PUSH.ES");
+      asmprintf(asmprintfd, "\n");
+  | JMP_Epow(Mem) => 
+      asmprintf(asmprintfd, "%s", "JMP.Epow ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SHRD_Ibow(Eaddr, reg, count) => 
+      asmprintf(asmprintfd, "%s", "SHRD.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(count);
+      asmprintf(asmprintfd, "\n");
+  | MOVid(r32, i32) => 
+      asmprintf(asmprintfd, "%s", "MOVid ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | IN_AL_Ib(i8) => 
+      asmprintf(asmprintfd, "%s", "IN.AL.Ib ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | FBSTP(Mem) => 
+      asmprintf(asmprintfd, "%s", "FBSTP ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ANDmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "ANDmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | FNSTSW_AX() => 
+      asmprintf(asmprintfd, "%s", "FNSTSW.AX");
+      asmprintf(asmprintfd, "\n");
+  | POPAow() => 
+      asmprintf(asmprintfd, "%s", "POPAow");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Pod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Pod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FMUL_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FMUL.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | BTCiod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTCiod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | ORiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "ORiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SETb_NO(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.NO ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | DIVeAX(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DIVeAX ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XCHGeAXow(r32) => 
+      asmprintf(asmprintfd, "%s", "XCHGeAXow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | ROLB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ROLB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | OUT_DX_eAXow() => 
+      asmprintf(asmprintfd, "%s", "OUT.DX.eAXow");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NBEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NBEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLD80(Mem) => 
+      asmprintf(asmprintfd, "%s", "FLD80 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | BOUNDod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "BOUNDod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SBBib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "SBBib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | REPNE() => 
+      asmprintf(asmprintfd, "%s", "REPNE");
+      asmprintf(asmprintfd, "\n");
+  | LOOPow(reloc) => 
+      asmprintf(asmprintfd, "%s", "LOOPow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FTST() => 
+      asmprintf(asmprintfd, "%s", "FTST");
+      asmprintf(asmprintfd, "\n");
+  | CWD() => 
+      asmprintf(asmprintfd, "%s", "CWD");
+      asmprintf(asmprintfd, "\n");
+  | TEST_Eb_Gb(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "TEST.Eb.Gb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | Jb_Z(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.Z ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FICOMP_I32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FICOMP.I32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ANDrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ANDrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | CMPiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "CMPiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | LGDT(Mem) => 
+      asmprintf(asmprintfd, "%s", "LGDT ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTENV(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTENV ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | MOVSvod() => 
+      asmprintf(asmprintfd, "%s", "MOVSvod");
+      asmprintf(asmprintfd, "\n");
+  | CMPmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "CMPmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_DS() => 
+      asmprintf(asmprintfd, "%s", "PUSH.DS");
+      asmprintf(asmprintfd, "\n");
+  | FSCALE() => 
+      asmprintf(asmprintfd, "%s", "FSCALE");
+      asmprintf(asmprintfd, "\n");
+  | CALL_Epod(Mem) => 
+      asmprintf(asmprintfd, "%s", "CALL.Epod ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SBBmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "SBBmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NSod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NSod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FMUL_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FMUL.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | BTCiow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "BTCiow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | SETb_O(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SETb.O ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | IDIV(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "IDIV ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jv_BEow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.BEow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | BOUNDow(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "BOUNDow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NB(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NB ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SBBrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SBBrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XORiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "XORiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | CLTS() => 
+      asmprintf(asmprintfd, "%s", "CLTS");
+      asmprintf(asmprintfd, "\n");
+  | STI() => 
+      asmprintf(asmprintfd, "%s", "STI");
+      asmprintf(asmprintfd, "\n");
+  | MOVSvow() => 
+      asmprintf(asmprintfd, "%s", "MOVSvow");
+      asmprintf(asmprintfd, "\n");
+  | INSB() => 
+      asmprintf(asmprintfd, "%s", "INSB");
+      asmprintf(asmprintfd, "\n");
+  | FDECSTP() => 
+      asmprintf(asmprintfd, "%s", "FDECSTP");
+      asmprintf(asmprintfd, "\n");
+  | XORmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XORmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_SS() => 
+      asmprintf(asmprintfd, "%s", "PUSH.SS");
+      asmprintf(asmprintfd, "\n");
+  | JMP_Evod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "JMP.Evod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | CALL_Epow(Mem) => 
+      asmprintf(asmprintfd, "%s", "CALL.Epow ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | CMPiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "CMPiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SIDT(Mem) => 
+      asmprintf(asmprintfd, "%s", "SIDT ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | MOViw(r16, i16) => 
+      asmprintf(asmprintfd, "%s", "MOViw ");
+      print_unsigned_r16(r16);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | IMUL_Ivd(reg, Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "IMUL.Ivd ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | FBLD(Mem) => 
+      asmprintf(asmprintfd, "%s", "FBLD ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FNSTSW(Mem) => 
+      asmprintf(asmprintfd, "%s", "FNSTSW ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ADCmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "ADCmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | POP_GS() => 
+      asmprintf(asmprintfd, "%s", "POP.GS");
+      asmprintf(asmprintfd, "\n");
+  | Jv_Sod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Sod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SHLSALB_Eb_1(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SHLSALB.Eb.1 ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | DIVAX(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DIVAX ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | XADD_Ev_Gvod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XADD.Ev.Gvod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | OUT_DX_AL() => 
+      asmprintf(asmprintfd, "%s", "OUT.DX.AL");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NZow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NZow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLD_lsR64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FLD.lsR64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | REP() => 
+      asmprintf(asmprintfd, "%s", "REP");
+      asmprintf(asmprintfd, "\n");
+  | LARod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LARod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSUBRP_STi_ST(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUBRP.STi.ST ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CPUID() => 
+      asmprintf(asmprintfd, "%s", "CPUID");
+      asmprintf(asmprintfd, "\n");
+  | ORiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ORiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | TEST_Ed_Id(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "TEST.Ed.Id ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_unsigned_i32(i32);
+      asmprintf(asmprintfd, "\n");
+  | Jb_B(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.B ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FICOM_I16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FICOM.I16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SBBrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SBBrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SUBiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "SUBiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | LEAVE() => 
+      asmprintf(asmprintfd, "%s", "LEAVE");
+      asmprintf(asmprintfd, "\n");
+  | FSTCW(Mem) => 
+      asmprintf(asmprintfd, "%s", "FSTCW ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SUBid(Eaddr, i32) => 
+      asmprintf(asmprintfd, "%s", "SUBid ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | XORmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XORmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_Ibod(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.Ibod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_1od(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.1od ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_CS() => 
+      asmprintf(asmprintfd, "%s", "PUSH.CS");
+      asmprintf(asmprintfd, "\n");
+  | JMP_Evow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "JMP.Evow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FNSAVE(Mem) => 
+      asmprintf(asmprintfd, "%s", "FNSAVE ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ORmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "ORmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | POP_FS() => 
+      asmprintf(asmprintfd, "%s", "POP.FS");
+      asmprintf(asmprintfd, "\n");
+  | Jv_NBEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NBEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FMUL_R64(Mem) => 
+      asmprintf(asmprintfd, "%s", "FMUL.R64 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | BTCod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTCod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | ADDiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "ADDiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SCASvod() => 
+      asmprintf(asmprintfd, "%s", "SCASvod");
+      asmprintf(asmprintfd, "\n");
+  | MOVrmb(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "MOVrmb ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | HLT() => 
+      asmprintf(asmprintfd, "%s", "HLT");
+      asmprintf(asmprintfd, "\n");
+  | XADD_Ev_Gvow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "XADD.Ev.Gvow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | Jv_Zow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.Zow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FLD_lsR32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FLD.lsR32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ARPL(Eaddr, reg16) => 
+      asmprintf(asmprintfd, "%s", "ARPL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg16);
+      asmprintf(asmprintfd, "\n");
+  | ADCib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ADCib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCLB_Eb_CL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCLB.Eb.CL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | LARow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "LARow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FSUBR_STi_St(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUBR.STi.St ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | ORiowb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ORiowb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | NEGb(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "NEGb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | Jb_NO(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.NO ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FICOM_I32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FICOM.I32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ADCrmod(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADCrmod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "ANDiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | CLI() => 
+      asmprintf(asmprintfd, "%s", "CLI");
+      asmprintf(asmprintfd, "\n");
+  | STD() => 
+      asmprintf(asmprintfd, "%s", "STD");
+      asmprintf(asmprintfd, "\n");
+  | RORB_Eb_Ib(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RORB.Eb.Ib ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | MOVSB() => 
+      asmprintf(asmprintfd, "%s", "MOVSB");
+      asmprintf(asmprintfd, "\n");
+  | INCod(r32) => 
+      asmprintf(asmprintfd, "%s", "INCod ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | FCOS() => 
+      asmprintf(asmprintfd, "%s", "FCOS");
+      asmprintf(asmprintfd, "\n");
+  | SUBmrod(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SUBmrod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_Ibow(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.Ibow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | RCRB_Ev_1ow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "RCRB.Ev.1ow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | CALL_Jvod(reloc) => 
+      asmprintf(asmprintfd, "%s", "CALL.Jvod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | SGDT(Mem) => 
+      asmprintf(asmprintfd, "%s", "SGDT ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_CLod(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.CLod ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | MOVib(r8, i8) => 
+      asmprintf(asmprintfd, "%s", "MOVib ");
+      print_unsigned_r8(r8);
+      asmprintf(asmprintfd, "%s", ",  ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | IMUL_Ivw(reg, Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "IMUL.Ivw ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | FIADD_I16(Mem) => 
+      asmprintf(asmprintfd, "%s", "FIADD.I16 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | ADDmrb(Eaddr, reg8) => 
+      asmprintf(asmprintfd, "%s", "ADDmrb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg8);
+      asmprintf(asmprintfd, "\n");
+  | FNSTENV(Mem) => 
+      asmprintf(asmprintfd, "%s", "FNSTENV ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | POP_DS() => 
+      asmprintf(asmprintfd, "%s", "POP.DS");
+      asmprintf(asmprintfd, "\n");
+  | Jv_BEod(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.BEod ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | FMUL_R32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FMUL.R32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | BTCow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "BTCow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | SCASvow() => 
+      asmprintf(asmprintfd, "%s", "SCASvow");
+      asmprintf(asmprintfd, "\n");
+  | DIVAL(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "DIVAL ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | ANDiodb(Eaddr, i8) => 
+      asmprintf(asmprintfd, "%s", "ANDiodb ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | OUT_Ib_eAXod(i8) => 
+      asmprintf(asmprintfd, "%s", "OUT.Ib.eAXod ");
+      print_signed_i8(i8);
+      asmprintf(asmprintfd, "\n");
+  | Jv_NBow(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jv.NBow ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | RDMSR() => 
+      asmprintf(asmprintfd, "%s", "RDMSR");
+      asmprintf(asmprintfd, "\n");
+  | FSUBR_ST_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FSUBR.ST.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | CMPXCHG8B(Mem) => 
+      asmprintf(asmprintfd, "%s", "CMPXCHG8B ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | TEST_Ew_Iw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "TEST.Ew.Iw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_unsigned_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | Jb_O(reloc) => 
+      asmprintf(asmprintfd, "%s", "Jb.O ");
+      asmprintreloc(reloc);
+      asmprintf(asmprintfd, "\n");
+  | ADCrmow(reg, Eaddr) => 
+      asmprintf(asmprintfd, "%s", "ADCrmow ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | SBBiAX(i16) => 
+      asmprintf(asmprintfd, "%s", "SBBiAX ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | LEAod(reg, Mem) => 
+      asmprintf(asmprintfd, "%s", "LEAod ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | FSTP_st_STi(idx) => 
+      asmprintf(asmprintfd, "%s", "FSTP.st.STi ");
+      print_signed_reg(idx);
+      asmprintf(asmprintfd, "\n");
+  | INCow(r32) => 
+      asmprintf(asmprintfd, "%s", "INCow ");
+      print_unsigned_base(r32);
+      asmprintf(asmprintfd, "\n");
+  | SUBmrow(Eaddr, reg) => 
+      asmprintf(asmprintfd, "%s", "SUBmrow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(reg);
+      asmprintf(asmprintfd, "\n");
+  | PUSH_Ivod(i32) => 
+      asmprintf(asmprintfd, "%s", "PUSH.Ivod ");
+      print_signed_reg(i32);
+      asmprintf(asmprintfd, "\n");
+  | JMP_Apod(CS, IP) => 
+      asmprintf(asmprintfd, "%s", "JMP.Apod ");
+      print_signed_reg(CS);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_reg(IP);
+      asmprintf(asmprintfd, "\n");
+  | FRSTOR(Mem) => 
+      asmprintf(asmprintfd, "%s", "FRSTOR ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  | XORiw(Eaddr, i16) => 
+      asmprintf(asmprintfd, "%s", "XORiw ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "%s", ", ");
+      print_signed_i16(i16);
+      asmprintf(asmprintfd, "\n");
+  | SARB_Ev_CLow(Eaddr) => 
+      asmprintf(asmprintfd, "%s", "SARB.Ev.CLow ");
+      print_Eaddr(Eaddr);
+      asmprintf(asmprintfd, "\n");
+  | FIADD_I32(Mem) => 
+      asmprintf(asmprintfd, "%s", "FIADD.I32 ");
+      print_Mem(Mem);
+      asmprintf(asmprintfd, "\n");
+  endmatch
+  return next;
+}
+
+
+unsigned disassemble_Eaddr(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | Reg(reg) => 
+      print_signed_reg(reg);
+  | E(Mem) => 
+      print_Mem(Mem);
+  endmatch
+  return next;
+}
+
+
+unsigned disassemble_Rel16(void *state, unsigned pc) {
+  unsigned next;
+  match [next] pc to
+  | rel16(reloc) => 
+      asmprintreloc(reloc);
+  endmatch
+  return next;
+}
+
+

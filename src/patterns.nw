@@ -826,7 +826,8 @@ procedure constructors_applied_in(p)
         "Papp" : suspend (if type(p.cons) == "list" then
                             constructors_applied_in(explode_apps(p.cons,p.args))
                           else p.cons) |
-                          constructors_applied_in(!p.args)
+                          constructors_applied_in(
+                             1(a := !p.args, type(a) == ("Papp" | "Eapp")))
 	"Eapp" : suspend cons_named(p.f) | 
                     (a := !p.args, type(a) == "Eapp", constructors_applied_in(a))
         default : impossible("pattern AST")

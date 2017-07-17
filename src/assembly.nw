@@ -358,6 +358,9 @@ syntax, then possibly a newline.
 <<*>>=
 procedure emit_assembler_body(pp, cons) 
   local asmname
+  static bodies_emitted
+  initial bodies_emitted := set()
+  if member(bodies_emitted, cons) then return else insert(bodies_emitted, cons)
   every create_input_print_proc(pp, inputs_of(cons))
   emit_template(pp, "emitter-body.t", 
                     "safename", Cnoreserve(assembler_proc_name(cons)),
@@ -498,6 +501,7 @@ procedure create_constype_print_proc(pp, argname, constype)
   static constype_syntax
   initial constype_syntax := operand_syntax("")
   if p := lookup_printproc(constype_syntax, constype.name) then return p
+  every emit_assembler_body(pp, kept_constructors(constype))
   emit_template(pp, "constype-print-header.t", "type", constype.name)
   s := Stagcase(argname, constype, table())
   every cons := kept_constructors(constype) do {
@@ -558,6 +562,7 @@ procedure emit_asm_grammar(outfilename)
   (outfile := openfile(outfilename, "w")) | 
 		error("could not open ", image(outfilename), " for writing")
   pushtrace("ASMGRAMMAR")
+  write(outfile, "%%")
   every emit_cons_production(outfile, kept_constructors())
   poptrace()
   return

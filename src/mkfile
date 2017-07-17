@@ -3,7 +3,7 @@ CFLAGS=-g
 BUILTINS=
 TOOLS="lex Cexp M3exp Iconexp constructors tclos checker exp expwalk expps expbc \
 fieldinfo grammar patterns output solve balance environment debug code tree \
-dag gencode encoding main match assembly disassemble checker bytecode"
+dag gencode encoding main match assembly disassemble symdis checker bytecode"
 TOOLSDOTNW=`echo    $TOOLS | sed 's/ /.nw /g;s/$/.nw/'`
 TOOLSDOTICN=`echo    $TOOLS | sed 's/ /.icn /g;s/$/.icn/'`
 TOOLSDOTU1=`echo    $TOOLS | sed 's/ /.u1 /g;s/$/.u1/'`
@@ -23,7 +23,9 @@ CTEMPLATES=reloc-call.t constructor-labels.t input-test.t cons-call.t closure-ty
            emitter-body.t no-labels.t create-closure.t create-closure-at.t \
 	   proc-structure.t \
 	   int-print-header.t constype-print-header.t assembly-impl.t \
-           checker.t inchecker.t afterchecker.t closure-header.t
+           checker.t inchecker.t afterchecker.t closure-header.t emitclo-call.t \
+           emitclo.t disassembler-body.t
+
 NWLIB1=/usr/public/pkg/noweb/lib
 NWLIB2=/usr/local/lib/noweb
 NWLIB3=/usr/cs/contrib/lib/noweb
@@ -71,7 +73,7 @@ all:V: binaries headers docs
 	makeindex $stem
 
 %.html: %.nw   ################ for browsing
-	noweave -filter l2h -autodefs icon -index -html $prereq > $target
+	noweave -filter l2h -autodefs icon -index -html $prereq | htmltoc > $target
 
 ################ defined identifiers (Icon and C)
 
@@ -152,15 +154,15 @@ counts:V: $TOOLSDOTNW
 	icont -c $prereq 
 
 %.ll: 	%.g
-	ebnf -flatten -parser $stem.g >$target 
+	ebnf -picky -flatten -parser $stem.g >$target 
 
 %.lr: 	%.g
-	ebnf -slr $stem.g >$target 
+	ebnf -picky -slr $stem.g >$target 
 
 %.g: %.nw
 	notangle -L $prereq | cpif $target
 
-$CTEMPLATES:	constructors.nw encoding.nw Cexp.nw assembly.nw checker.nw
+$CTEMPLATES:	constructors.nw encoding.nw Cexp.nw assembly.nw checker.nw disassemble.nw
 	PATH="$NWLIB1:$NWLIB2:$NWLIB3:$NWLIB4:$PATH"
 	markup $prereq | mnt $CTEMPLATES
 
@@ -190,6 +192,20 @@ rewriteg.g: rewrite.nw
 	notangle -L -Rgrammar $prereq | cpif $target
 
 rewrite: rewrite.u1 rewriteg.u1
+	icont -o $target $prereq
+
+################################################################
+#
+#	tree viewer
+
+htmltree:V: htmltree.u1
+
+
+################################################################
+#
+#	#line renumberer
+
+ungenerate: ungenerate.u1
 	icont -o $target $prereq
 
 ################################################################
@@ -271,10 +287,10 @@ html:V:	$TOOLSDOTHTML rewrite.html
 #
 #	populate base directory
 
-base:V: lump.icn mclib.c mclib.h refman.ps
+base:V: lump.icn htmltree.icn ungenerate.icn mclib.c mclib.h refman.ps
 	/bin/rm -f ../base/*
 	cp lump.icn ../base/tools.icn
-	cp mclib.c mclib.h refman.ps ../base
+	cp htmltree.icn ungenerate.icn mclib.c mclib.h refman.ps ../base
 
 
 ################################################################
@@ -365,7 +381,7 @@ distclean:V:
 #	cleanup
 
 clean:V:
-	/bin/rm -f showreserved reserved.xw cdecls
+	/bin/rm -f showreserved htmltree ungenerate reserved.xw cdecls
 	/bin/rm -f *.u[12] *.icn *~ *.g *.ll *.dvi *.log *.t *.[cho] *.html
 	/bin/rm -f tools rewrite hoist *.tex *.defs *.sml *.out *.blg
 	/bin/rm -f simp.spec simp.gen supersimp.spec supersimp.gen
@@ -376,5 +392,6 @@ cleanaux:V:
 
 clobber:V: clean
 	/bin/rm -f *.ps
+	/bin/rm -f bytecode.spec
 
 minimal:V: clobber cleanaux

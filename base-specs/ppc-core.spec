@@ -594,7 +594,7 @@ constructors
    extlwi A,S,n,p    is rlwinm( A,S,p,     0,   n- 1   )
    extrwi A,S,n,p    is rlwinm( A,S,p+n,   32-n,31    ) 
    inslwi A,S,n,p    is rlwimi( A,S,32-p,  p,   p+n- 1 )
-   insrwi A,S,n,p    is rlwimi( A,S,32-p+n,p,   p+n- 1 )
+   insrwi A,S,n,p    is rlwimi( A,S,32-p-n,p,   p+n- 1 )
    rotlwi A,S,n      is rlwinm( A,S,n,     0,   31    )
    rotrwi A,S,n      is rlwinm( A,S,32-n,  0,   31    )
    rotlw  A,S,B      is rlwnm(  A,S,B,     0,   31    )  

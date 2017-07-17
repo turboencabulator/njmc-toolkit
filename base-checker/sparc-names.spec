@@ -1,4 +1,4 @@
-#line 756 "../specs/sparc.nw"
+#line 760 "../specs/sparc.nw"
 assembly component
   decode_{*}             is $1
   {LDF,LDFSR,LDC,LDCSR}  is LD
@@ -14,6 +14,6 @@ assembly component
   SWAP.                  is SWAP
   {*}{_,__}              is $1
   _{*}                   is $1
-#line 774 "../specs/sparc.nw"
+#line 778 "../specs/sparc.nw"
 assembly syntax
   absoluteA "%g0 + " simm13!

@@ -4,7 +4,7 @@
 %\documentstyle[twoside,noweb,multicol,ofields]{book}
 %\includeonly{grammar,patterns,exp,solve}
 %\includeonly{match,tree}
-%\includeonly{library,reloc,mclib}
+\includeonly{checker}
 \ifx\mathtt\undefined\def\mathtt#1{{\tt #1}}\fi % for non-NFSS
 \title{New Jersey Machine-Code Toolkit\\Source Code}
 \author{Norman Ramsey and Mary F. Fernandez}

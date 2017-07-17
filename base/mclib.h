@@ -122,6 +122,13 @@ typedef struct closurepostfix {
     ApplyMethod apply;
     char *postfix;
 } ClosurePostfix;
+typedef void (*IntCallback)(void *closure, unsigned n);
+typedef void (*FieldEnumerator)(struct rclosure *cp, RelocCallback r,
+                                IntCallback i, void *closure);
+typedef struct closureemitter {
+    ApplyMethod apply;
+    FieldEnumerator walk_fields;
+} ClosureEmitter;
 #define location_known(raddr)      ((raddr) && label_location_known((raddr)->label))
 #define location(raddr)            (label_location((raddr)->label) + (raddr)->offset)
 #define MARGIN 8

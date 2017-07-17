@@ -66,6 +66,9 @@ sparcdis.spec: sparcdis.nw
 sparcdis.c: sparcdis.m sparcdis.spec $SPEC
 	tools $MDEBUG -c -lc-pat-names -matcher sparcdis.m -decoder $target $SPEC sparcdis.spec
 
+sparcdis.icn: sparcdis.m sparcdis.spec $SPEC
+	tools $MDEBUG -lc-pat-names -matcher sparcdis.m -icon-dag $target $SPEC sparcdis.spec
+
 sparcdis.o: sparc-names.h sparcdis.h
 
 driver.o: sparcdis.h

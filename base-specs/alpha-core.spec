@@ -1,6 +1,6 @@
-#line 22 "alpha.nw"
+#line 26 "alpha.nw"
 fields of instruction (32) 
-#line 55 "alpha.nw"
+#line 59 "alpha.nw"
 opcode_ 26:31   ra 21:25 rb 16:20 sbz 13:15 opfmt 12:12 func 5:11   rc 0:4
                          imm 13:20
                 fa 21:25 fb 16:20 fpfunc 5:15                       fc 0:4
@@ -9,33 +9,33 @@ opcode_ 26:31   ra 21:25 rb 16:20 sbz 13:15 opfmt 12:12 func 5:11   rc 0:4
                          bdisp 0:20
                 palfunc 0:25
                     
-#line 77 "alpha.nw"
+#line 81 "alpha.nw"
 flo 5:8 fhi 9:11 fplo 5:10 fphi 11:15
-#line 82 "alpha.nw"
+#line 86 "alpha.nw"
 fieldinfo
   [ ra rb rc ] is [ 
-#line 86 "alpha.nw"
+#line 90 "alpha.nw"
 names [ r0  r1  r2  r3  r4  r5  r6  r7
         r8  r9  r10 r11 r12 r13 r14 r15
         r16 r17 r18 r19 r20 r21 r22 r23
         r24 r25 r26 r27 r28 r29 r30 r31 ]
-#line 83 "alpha.nw"
+#line 87 "alpha.nw"
                                                               ]
   [ fa fb fc ] is [ 
-#line 91 "alpha.nw"
+#line 95 "alpha.nw"
 names [ f0  f1  f2  f3  f4  f5  f6  f7
         f8  f9  f10 f11 f12 f13 f14 f15
         f16 f17 f18 f19 f20 f21 f22 f23
         f24 f25 f26 f27 f28 f29 f30 f31 ]
-#line 84 "alpha.nw"
+#line 88 "alpha.nw"
                                                             ]
-#line 288 "alpha.nw"
+#line 292 "alpha.nw"
 fieldinfo palfunc is 
   [ sparse 
     [ halt = 0, draina = 2, cserve = 0xa, swppal = 0xb,
       bpt = 0x80, bugchk = 0x81, imb = 0x86,
       rdunique = 0x9e, wrunique = 0x9f, gentrap = 0xaa ] ]
-#line 100 "alpha.nw"
+#line 104 "alpha.nw"
 patterns 
   [ call_pal  _      _     _      _    _      _     _
     lda       ldah   _     ldq_u  _    _      _     stq_u
@@ -46,7 +46,7 @@ patterns
     br        fbeq   fblt  fble   bsr  fbne   fbge  fbgt
     blbc      beq    blt   ble    blbs bne    bge   bgt  ] 
   is opcode_ = { 0 to 63 }
-#line 114 "alpha.nw"
+#line 118 "alpha.nw"
 patterns
   ldst    is lda | ldah | ldl | ldq | ldq_u | ldl_l | ldq_l 
                         | stl | stq | stl_c | stq_c | stq_u 
@@ -56,7 +56,7 @@ patterns
   [ jmp jsr ret jsr_co ] is jsrs & mop = {0 to 3} 
   jump_hint    is jmp | jsr
   jump_predict is ret | jsr_co
-#line 129 "alpha.nw"
+#line 133 "alpha.nw"
 patterns
   arith is any of 
     [ addl   s4addl subl   s4subl _      cmpbge 
@@ -90,14 +90,14 @@ patterns
  
   mulops is any of [ mull mullv mulq mulqv umulh ], 
     which is intm & func = [ 0x00 0x40 0x20 0x60 0x30 ]
-#line 172 "alpha.nw"
+#line 176 "alpha.nw"
 constructors
   imode imm : reg_or_imm  is  opfmt = 1 & imm
   rmode rb  : reg_or_imm  is  opfmt = 0 & sbz = 0 & rb 
-#line 179 "alpha.nw"
+#line 183 "alpha.nw"
 constructors
   ldst  ra, mdisp!(rb)
-#line 199 "alpha.nw"
+#line 203 "alpha.nw"
 relocatable target
 placeholder for instruction is call_pal & palfunc = 0  # halt (privileged)
 constructors
@@ -106,15 +106,15 @@ constructors
   proc    "0" : Return is mhint = 0
   nonproc "1" : Return is mhint = 1
   jump_predict ra, (rb), Return
-#line 209 "alpha.nw"
+#line 213 "alpha.nw"
 constructors
   jump_hint^"*" ra, (rb), target { target = L + 4 * mhint } 
 	is  L: jump_hint & ra & rb & mhint
-#line 217 "alpha.nw"
+#line 221 "alpha.nw"
 patterns alu is arith | logical | byteops | mulops 
 constructors
   alu ra, reg_or_imm, rc 
-#line 237 "alpha.nw"
+#line 241 "alpha.nw"
 patterns           [ adds addt cmpteq cmptlt cmptle cmptun 
                      cvtqs cvtqt cvtts divs divt muls mult subs subt cvttq ] 
   is flti & fplo = [ 0x00 0x20 0x25 0x26 0x27 0x24
@@ -124,7 +124,7 @@ patterns           [ adds addt cmpteq cmptlt cmptle cmptun
     su suc sum sud sui suic suim suid ], 
   which is flti & fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
                            0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
-#line 249 "alpha.nw"
+#line 253 "alpha.nw"
 patterns
   cmpqual is none | su
   cvtqual is none | c | m | d | sui | suic | suim | suid
@@ -135,18 +135,18 @@ patterns
                      sv svc svm svd svi svic svim svid ],
   which is flti & fphi = [ 0x02 0x00 0x01 0x03 0x06 0x04 0x05 0x07
                            0x16 0x14 0x15 0x17 0x1e 0x1c 0x1d 0x1f ]
-#line 267 "alpha.nw"
+#line 271 "alpha.nw"
 constructors
   fldst         fa, mdisp(rb)
   fbranch       fa, target { target = L + 4 * bdisp! } 
 			is fbranch & fa & bdisp; L: epsilon
-#line 274 "alpha.nw"
+#line 278 "alpha.nw"
 constructors
   fpop^fpqual    fa, fb, fc
   cvtts^fpqual       fb, fc
   cvtop^cvtqual      fb, fc
   cmpop^cmpqual  fa, fb, fc
   cvttq^qqqual       fb, fc 
-#line 294 "alpha.nw"
+#line 298 "alpha.nw"
 constructors 
  call_pal palfunc 

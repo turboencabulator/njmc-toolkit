@@ -1,0 +1,144 @@
+<html><head><title>NJ Machine-Code Toolkit -- ML Source Distribution</title></head><body>
+
+<h1>The New Jersey Machine-Code Toolkit --- Source for ML Version</h1>
+
+This ML implementation of the <a href=index.html>New Jersey
+Machine-Code Toolkit</a> is distributed ``as is,'' for experimental
+purposes only.
+If you can figure out how to make it do useful things, we're both
+surprised.
+<p>
+The toolkit is written in a combination of Icon and Standard&nbsp;ML.
+(Actually, the toolkit does not run any Icon code, but Icon is used to
+<em>generate</em> some of the ML&nbsp;code that makes up the toolkit.)
+To make things even more interesting, the source code is written in 
+<a href="http://www.cs.virginia.edu/~nr/noweb/">noweb</a>.
+Finally, the toolkit uses special 
+<A href=http://cm.bell-labs.com/cm/cs/what/smlnj/index.html>Standard ML
+of New Jersey</a> features, especially the Compilation Manager.
+
+<h3>Preliminaries</h3>
+
+First, get and install the software tools you will need.
+<ol>
+<li>Get and install Icon from the  
+<a href=http://www.cs.arizona.edu/icon>Icon Project</a> (FAQ 
+<a href=http://www.cs.arizona.edu/icon/faq.htm>here</a>) at the 
+<a href=http://www.cs.arizona.edu>University of Arizona</a>.
+You can get binaries for
+<a href=ftp://ftp.cs.arizona.edu/icon/binaries/msdos-386>386 DOS</a>,
+<a href=ftp://ftp.cs.arizona.edu/icon/binaries/unix/linux-icon.tar.gz>Linux</a>,
+<a href=ftp://ftp.cs.arizona.edu/icon/binaries/unix/sunos-icon.tar.gz>SPARC SunOS</a>,
+<a href=http://sunsite.unc.edu/pub/packages/solaris/sparc/icon.9.3.SPARC.Solaris.2.5.pkg.tgz>SPARC Solaris</a>,
+<a href=ftp://ringer.cs.utsa.edu/pub/icon/nt/console/>32-bit Windows</a>,
+and <a href=ftp://ftp.cs.arizona.edu/icon/binaries>other</a> targets.
+
+<li>Get and install the 
+<a href="http://www.cs.virginia.edu/~nr/noweb/">noweb</a>
+literate-programming tool.
+
+<li>Get and install
+<A href=http://cm.bell-labs.com/cm/cs/what/smlnj/index.html>Standard ML
+of New Jersey</a>, version 110 or later.
+Avoid the ``experimental'' versions; use something matching 110.0.*.
+</ol>
+Naturally, you will need the binaries for these things on your
+execution path.
+
+<p>
+The final preliminary is to <em>download the <a href=mltk.tgz>Toolkit
+source package</a>.</em> 
+
+</ol>
+
+
+<h3>Building the tools and the toolkit</h3>
+
+Untar the toolkit source package, which will create an <tt>mltk</tt>
+directory.
+ Edit the shell script
+<tt>mltk/install</tt>, setting the variables in the script according to the
+comments.
+Then run <tt>cd&nbsp;mltk;&nbsp;./install</tt>, which should
+<ol>
+<li>Compile and install the tools needed to build the toolkit.
+<li>Build <tt>sml-nw</tt>, a version of Standard&nbsp;ML of New Jersey that
+understands how to use these tools build the toolkit.
+If an error occurs during this step, see below.
+<li>Compile the toolkit itself.
+</ol>
+<p>
+You can then change to the <tt>mltk/src</tt> directory and use the toolkit.
+You have to start <tt>sml-nw</tt> and tell it <tt>CM.make();</tt>
+to get access to the innards.  You'll have to read the ML&nbsp;code to see
+what's there.  Most of the useful stuff is in the <tt>main.nw</tt>
+module.
+
+
+<h3>Potential errors building <tt>sml-nw</tt></h3>
+
+An error may occur when building <tt>sml-nw</tt>, because not all
+SML/NJ versions beyond 110 treat CM tools in the same way.
+If you are using an older version like 110.0.3, you will have to
+change <tt>tools/export.sml</tt> to conform.
+As distributed, the file contains the following binding:
+<pre>
+	val runlex =
+	    Tools.stdShellProcessor 
+               ( { command = command, tool = "ML-Lex+" }  (* old style *)
+               ; { mkCommand = fn () => command, tool = "ML-Lex+" }  (* new style *)
+               )
+</pre>
+If the compiler complains, you can simply remove the line marked `new style'.
+
+<p>
+Another potential error may occur because of other version
+incompatibilities; you may have to remove line&nbsp;3 from
+<tt>tools/export.sml</tt>:
+<pre>
+val _ = Compiler.Control.MC.bindContainsVar := false;
+</pre>
+
+
+<h2>Using the ML version</h2>
+
+The ML version of the toolkit can be used reliably to generate
+decoders, and it has some optimizations that are not in the Icon
+version.
+For generating encoding procedures, this version should be considered
+wildly experimental; it is missing some crucial pieces, and it has
+some untried and untested code.
+<p>
+Regrettably, I have not had time to develop a command-line
+interface or a manual, even for the decoding stuff.
+Your best bet is to study the two modules in the source file
+<tt>usercode.nw</tt>, which can be used to generate matchers.
+<ul>
+<li>The <tt>templates</tt> represent the user's choice of how to fetch
+values, how to do address arithmetic, etc. 
+(They correspond to the templates in the Icon version, which are
+documented in the manual.)
+
+<li>The [[matcher]] is a curried version of the decoder builder.
+It is curried so that you can suck in a bunch of specifications once,
+then use those specifications to generate many different decoders (or
+different versions of the same decoder).
+</ul>
+For example,
+<pre>
+ val mike = CC.matcher ["../cc/mike/pentium.spec", "../cc/mike/penwait.spec"];
+</pre>
+reads these specs and turns mike into a match compiler.
+Then
+<pre>
+ mike "../cc/mike/dis.m";
+</pre>
+runs the match compiler and writes the results on <tt>../cc/mike/dis.m.d</tt>.
+
+
+<h2>Correspondence</a></h2>
+
+Send all correspondence to 
+<a href=mailto:toolkit@cs.princeton.edu>toolkit@cs.princeton.edu</a>.
+
+</body></html>

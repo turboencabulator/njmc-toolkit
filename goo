@@ -1,0 +1,7 @@
+set -x
+
+	if [ '"'"$VERSION"'"' != "`notangle -R'version string' src/main.nw | 
+			           sed 's@ of [0-9]*/[0-9]*/[0-9]*@@`" ]; then
+	  echo "Version mismatch! mkfile $VERSION, main.nw `notangle -R'version string' src/main.nw`" 1>&2
+	  exit 1
+	fi

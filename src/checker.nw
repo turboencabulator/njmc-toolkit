@@ -641,6 +641,7 @@ RBlock rb;
 RAddr  reloc;
 fail = &checkerfail;
 asmprintreloc = &reloc_print;
+asmprintfd = stdout;
 rb = block_new(0);
 block_label(rb)->name = "reloc";
 set_block(rb);

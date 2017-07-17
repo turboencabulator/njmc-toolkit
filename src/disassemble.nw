@@ -13,22 +13,30 @@ procedure emit_disassembler(outfilename)
 
   pushtrace("DIS")
   every create_input_print_proc(pp, inputs_of(kept_constructors()))
-  PPxwrite(pp, "$t")
-  constypes := set([&null])
+  constypes := set()
   every insert(constypes, kept_constructors().type)
-  every constype := !constypes do {
-    PPwrite(pp, "match pc to")
-    l := []
-    every push(l, kept_constructors(constype)) # reverse order
-    every emit_disassembler_match(pp, !l)
-    PPwrite(pp, "endmatch")
-  }
-  PPwrite(pp)	# flush prettyprinter
+  every emit_constype_disassembler(pp, !constypes)
   return
 end
 @ 
+<<*>>=
+procedure emit_constype_disassembler(pp, constype)
+  emit_template(pp, "disassembler-body.t", "name", (\constype).name | "instruction")
+  PPwrite(pp, "match [next] pc to")
+  l := []
+  every push(l, kept_constructors(constype)) # reverse order
+  every emit_disassembler_match(pp, !l)
+  PPwrite(pp, "endmatch")
+  PPxwrite(pp, "return next;$b$n}$n")
+  PPwrite(pp)	# flush prettyprinter
+  return
+end
+<<disassembler-body.t>>=
+unsigned disassemble_%name(void *state, unsigned pc) {$t
+unsigned next;
+@ 
 [[emit_disassembler_match]] emits a line in a matching statement for
-constructor [[cons]].  
+constructor [[cons]].
 Right now we emit a bunch of print statments flagrantly borrowed from
 the assembler encoding stuff.  
 Eventually, we will just want indirect calls on encoding procedures.

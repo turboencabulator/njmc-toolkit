@@ -1,0 +1,213 @@
+<html><head><title>NJ Machine-Code Toolkit --- Old Release Notes</title></head><body>
+
+<h2>Old Toolkit Release Notes</h1>
+
+
+
+
+This page contains notes from previous releases of the toolkit.
+
+<h3>Toolkit news for September, 1996</h3>
+
+Mary Fernandez now has full-time responsibilities at AT&amp;T, which
+means she has very little time to devote to the toolkit.
+Mary will continue to help maintain the toolkit, but unfortunately she
+will not be able to be involved in new development to the extent that
+she would like.
+<p>
+I (Norman Ramsey) have moved from Purdue to the University of
+Virginia, where I am Research Assistant Professor in the Deparment of
+Computer Science.  My primary responsibility is my work on the
+Zephyr project; we are working with Princeton, Stanford, and others to
+build a National Compiler Infrastructure.
+I expect to focus on machine descriptions,
+including writing tools to process them, and I expect the toolkit work
+to dovetail nicely with Zephyr.
+<p>
+The toolkit's home page has moved with me; it is
+now at <a href=http://www.cs.virginia.edu/~nr/toolkit>http://www.cs.virginia.edu/~nr/toolkit</a>.
+The contact address for questions and problems continues to be
+<tt><a
+href=mailto:toolkit@cs.princeton.edu>toolkit@cs.princeton.edu</a></tt>,
+and for now I intend to maintain the 
+<tt>toolkit-interest</tt> and <tt>toolkit-users</tt> mailing lists at
+Purdue.
+
+<h3>Name that language!</h3>
+
+Mary and I would like to give the ``toolkit specification language'' a
+real name.  
+We have a couple of ideas but no great ones, and we hope maybe you all
+will have better ones.
+Here's what we're hoping for:
+<ul>
+<li>An acronym that says something about what the language is for:
+encoding, decoding, assembly, and disassembly of machine
+instructions (or other binary specifications).
+<li>Something pronounceable!
+<li>Ideally, we would like an acronym that works out to a concrete noun,
+so we can have a picture of it, make a logo, put it on our web page,
+etcetera.
+This sort of nonsense helps visibility, which means it helps me beg
+for money, which means I can spend more time improving the toolkit.
+</ul>
+Send suggestions to <tt><a
+href=mailto:toolkit@cs.princeton.edu>toolkit@cs.princeton.edu</a></tt>.
+
+
+
+<h3>Software news</h3>
+
+In May I made several small changes and extensions to the toolkit,
+including
+<ul>
+<li>Fixed several bugs in handling matching statements and generating
+decoders.
+<li>Added more support for automatic generation of assemblers and
+disassemblers. 
+</ul>
+I have not taken the time to build another official release, but if
+you think you need these fixes or extensions, send me mail.
+<p>
+The big news is that <em>work on version 1.0 is on underway</em>.
+Thanks to many interesting discussions with members of Dave MacQueen's
+group at Bell Labs, I have a plan for re-implementing the toolkit in
+Standard ML.
+I have done some work already, reaching a point where
+I can elaborate many constructor definitions, and I hope I will soon
+be in a position to generate code.
+<p>
+It says here there the rewrite will have the following wonderful benefits:
+<ul>
+<li>Better error messages, with better relationsihp to source locations.
+The toolkit may no longer always halt after the first message.
+<li>The toolkit will run faster.
+<li>The toolkit may be more reliable.
+<li>We should be able to support at least C, Modula-3, and Standard ML
+without too much trouble.
+<li>We should be able to support variations on code generation.
+<li>The new implementation should be a much better vehicle for
+research and future extension.
+</ul>
+<p>
+Thanks for your interest in the toolkit.
+
+<h3>Changes in Version 0.4 (March 1996)</h3>
+
+The toolkit is now in version&nbsp;0.4.
+The primary reason for this new release is to enable users to validate
+specifications using the <em>specification checker</em>.
+The release includes these changes:
+<ul>
+<li>The checker described in our 
+<a href=../pubs/tk-toplas.ps>overview paper</a> is included.
+
+<li>The reference manual now describes how to use the toolkit to emit
+assembly language as well as binary.  This feature was in the last
+release but not in the manual.
+
+<li>The examples directory now includes a rudimentary disassembler for
+the SPARC.  Thanks to 
+<a href=http://www.cs.utas.edu.au/Staff/Cifuentes,Cristina/CNC.html>Cristina
+Cifuentes</a> for providing the impetus.
+
+<li>We have validated our specifications and corrected a handful of
+lingering bugs.
+
+<li>It is now possible to use <code>_</code> in expressions as a true
+``wildcard'' value.  
+Unlike in previous releases, different instances of <code>_</code> are
+really different, even if they appear in the same arm of a matching statement.
+It works by representing a different, otherwise
+unnameable variable at each instance.
+Suggested uses include:
+<menu>
+<li>Use it in matching statements for uninteresting arguments to constructors.
+<li>To constrain value <code>n</code> to be a multiple of 4, write the
+    equation <code>n&nbsp;=&nbsp;4&nbsp;*&nbsp;_</code>.
+</menu>
+
+<li>We have better diagnostics to help you figure out what is wrong
+when you write a matching statement and some arms never match.
+
+<li>We have fixed some more bugs, including an insidious bug with
+names in matching statements.
+
+<li>We have added a few procedures to the toolkit's library.
+
+<li>We have introduced new bugs.
+</ul>
+
+We are now saving
+<a href=oldnews.html>release notes from previous versions of the
+toolkit</a>.
+ <p>
+There is no ``upgrade path'' from earlier versions to 0.4.
+Get new everything.
+
+<h3>Changes in version 0.3 (December 1995)</h3>
+
+The toolkit is now in version&nbsp;0.3.
+This is a major new release, incorporating the following changes:
+<ul>
+<li>One no longer needs 
+<tt><a href=http://www.cs.purdue.edu/homes/nr/noweb>noweb</a></tt> to use the
+toolkit.
+
+<li>We have changed the specification language:
+<ul>
+<li>Field bindings can now be full expressions.
+<li>As a result, the syntax for bit slicing has changed.
+<li>Patterns can now include labels.
+<li>As a result, the ``$pc hack'' is no more.
+</ul>
+
+<li>We have a new, much more efficient treatment of relocation
+closures, as described in 
+<i><a href=http://www.cs.purdue.edu/homes/nr/pubs/relocating.ps>Relocating
+machine instructions by currying</a></i>.
+Unfortunately, the searching required to get the efficiency into the
+encoders increases the running time of the toolkit significantly.
+
+<li>We have fixed many, many bugs.
+<ul>
+<li>Constructor types in matching statements now work properly.
+<li>Generated decoders use cleaner, more idiomatic, more efficient code.
+</ul>
+
+<li>We have introduced a number of new features, including support for
+assembly-language syntax:
+<ul>
+<li>Specify syntax separately from constructors, if desired.
+<li>Generate encoding procedures that emit assembly language.
+<li>Preliminary work on generating a grammar that recognizes parts of
+assembly language.
+</ul>
+We wish we had a version of the toolkit library that emits
+assembly language.
+
+<li>We have introduced new bugs.
+</ul>
+
+<h3>Changes in version 0.2</h3>
+<ul> 
+<li>The toolkit can now generate encoding procedures that emit assembly
+language.
+New assembly-syntax specs can change form of this assembly language.
+<li>It is now legal to use expressions, not just identifiers,
+in field bindings and constructor applications.
+<li>To support wider use of expressions, we were forced to change the
+syntax of the bit-slicing operation from, e.g.,  <tt>n[0:4]</tt> to <tt>n@[0:4]</tt>.
+<li>We now support unary minus in expressions.
+<li><tt>$pc</tt> is gone, having been replaced with a more general
+mechanism: pattern labels.
+<li>The toolkit now supports both little-endian and big-ending bit
+numbering (but big-ending hasn't been tested).
+<li>Integer literals can be written in octal or binary formats as well as
+decimal and hexadecimal.
+<li>Many bugs have been fixed.  Many more remain.
+<li>We changed the precedence of the pattern operators so it more
+accurately reflects the normal form.
+</ul>
+
+</body></html>

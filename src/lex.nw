@@ -109,7 +109,7 @@ Encountering a newline or reserved word or [[{]] or other stuff turns it off aga
 <<*>>=
 global NEWLINEVISION
 procedure see_newline()
-  if token == IDENT then NEWLINEVISION := 1
+  if token == (IDENT|"address") then NEWLINEVISION := 1
   return NEWLINEVISION
 end
 procedure ignore_newlines()

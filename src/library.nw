@@ -141,6 +141,10 @@ mclib.o: mclib.c mclib.h
 app: app.o encoder.o mclib.o
 	cc  app.o encoder.o mclib.o -o app
 \end{verbatim}
+When compiling \texttt{mclib.c},
+compilers for 32-bit hosts may issue warnings about a ``shift
+count larger than the size of the type.''  
+These warnings are to be expected and should be ignored.
 @
 The rest of this chapter describes the types, functions, and macros
 that appear in [[mclib.h]].
@@ -157,6 +161,8 @@ with each section in an object file.
 An incremental linker might associate one relocatable block with each
 procedure, which would facilitate relocation of individual procedures
 at link time.
+
+% l2h letenv fields* quote
 
 A relocatable block [[rb]] has the following fields:
 \begin{fields*}

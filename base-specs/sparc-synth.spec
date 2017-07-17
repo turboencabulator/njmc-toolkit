@@ -1,15 +1,14 @@
-#line 267 "sparc.nw"
+#line 271 "sparc.nw"
 patterns
   B    is BA
   BGEU is BCC
   BLU  is BCS
   BNZ  is BNE
   branch.synonyms is B | BGEU | BLU | BNZ
-#line 600 "sparc.nw"
+#line 604 "sparc.nw"
 constructors
-  cmp rs1, reg_or_imm   is SUBcc(rs1, reg_or_imm, "%g0")
-  jmp address_          is JMPL (address_, "%g0")
-  calla address_        is JMPL (address_, "%o7")
+  jmp address          is JMPL (address, "%g0")
+  calla address        is JMPL (address, "%o7")
   tst  rs2              is ORcc ("%g0", rmode(rs2), "%g0")
   ret                   is JMPL (dispA("%i7",8), "%g0")
   retl                  is JMPL (dispA("%o7",8), "%g0")
@@ -23,17 +22,18 @@ constructors
   inccc val, rd         is ADDcc (rd, imode(val), rd)
   dec   val, rd         is SUB (rd, imode(val), rd)
   deccc val, rd       	is SUBcc (rd, imode(val), rd)
+  cmp rs1, reg_or_imm   is SUBcc(rs1, reg_or_imm, "%g0")   # must follow dec
   btst reg_or_imm, rs1  is ANDcc(rs1, reg_or_imm, "%g0")
   bset reg_or_imm, rd   is OR  (rd, reg_or_imm, rd)
   bclr reg_or_imm, rd   is ANDN(rd, reg_or_imm, rd)
   btog reg_or_imm, rd   is XOR (rd, reg_or_imm, rd)
-  clr  rd               is OR  ("%g0", rmode("%g0"), rd)
-  clrw [address_]       is ST  ("%g0", address_)
-  clrb [address_]       is STB ("%g0", address_)
-  clrh [address_]      	is STH ("%g0", address_)
   mov  reg_or_imm, rd   is OR  ("%g0", reg_or_imm, rd)
   movr rs2, rd          is OR  ("%g0", rmode(rs2),   rd)
-#line 645 "sparc.nw"
+  clr  rd               is OR  ("%g0", rmode("%g0"), rd)
+  clrw [address]       is ST  ("%g0", address)
+  clrb [address]       is STB ("%g0", address)
+  clrh [address]      	is STH ("%g0", address)
+#line 649 "sparc.nw"
 constructors
   set val, rd  
     when { val@[0:9] = 0 }  is  sethi(val, rd)

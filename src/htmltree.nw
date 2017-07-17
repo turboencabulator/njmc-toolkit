@@ -1,0 +1,358 @@
+% -*- mode: Noweb; noweb-code-mode: icon-mode -*-
+Turn toolkit trees into browsable html docs via CGI.
+<<*>>=
+global url, qmark, base
+procedure main(args)
+  server := getenv("SERVER_NAME") | "some_server"
+  base := getenv("SCRIPT_NAME") | "/htmlview"
+  url := "http://" || server || base 
+  path := args
+  qmark := if upto('?', base) then "+" else "?"
+
+  if args[1] == ("-gif"|"-dot"|"-nodemap"|"-clickable") then
+      return gifout(args, get(args))
+  write("Content-type: text/html")
+  write()
+  write("<html><head><title>NJ Machine-Code Toolkit Tree Explorer</title>")
+  write("</head><body>")
+  if *path = 0 then {
+    i := 1
+    while tree(i) do {
+      write("<a href=", url, qmark, i, ">Matching statement #", i, "</a> ",
+	    "(has ", leafphrase(tree(i)), ")<p>")
+      i +:= 1
+    }
+  } else {
+    i := get(path)
+    display_node(tree(i), [i], path)
+  }
+  write("</body></html>")
+  return
+end
+@ 
+<<*>>=
+record treenode(name, offset, edges)
+record edge(ranges, node)
+record arm(file, line, name, code)
+
+procedure display_node(n, old, path)
+  if i := get(path) then {
+    write("<a href=", pathurl(old), ">", fieldname(n), "</a>",
+          inedge(n.edges[i]), 
+          " [<a href=", pathurl(old, "-clickable"), ">graphics view</a>]",
+          " (reaches ", leafphrase(n.edges[i].node), ")", 
+          "<p>")
+    put(old, i)
+    display_node(n.edges[i].node, old, path)
+  } else if type(n) == "treenode" then {
+    write("<a href=", pathurl(old), ">", fieldname(n), "</a> ",
+	  "[<a href=", pathurl(old, "-clickable"), ">graphics view</a>] in range ")
+    c := ""
+    every i := 1 to *n.edges do {
+      put(old, i)
+      writes(c, "<a href=", pathurl(old), ">", n.edges[i].ranges, "</a>")
+      pull(old)
+      writes(" (", leafphrase(n.edges[i].node), ")")
+      c := ",\n"
+    }
+    write("<p>")
+  } else if type(n) == "list" then {
+    every display_arm(!n)
+  } else if type(n) == "string" then {
+    write("<b>", escape(n), "</b>")
+  }
+  return
+end
+@ 
+<<*>>=
+procedure leafcount(n)
+  s := set()
+  every insert(s, leafnames(n))
+  return *s
+end
+
+procedure leafnames(n)
+  suspend case type(n) of {
+    "treenode" : leafnames((!n.edges).node)
+    "list" : {
+       s := ""
+       every a := !n do {
+	 s ||:= "\n" || a.file || ":" || a.line
+	 s ||:= "\n(" || \a.name || ")"
+       }
+       if *s > 1 then s[2:0] else s
+     }
+    "string" : n
+  }
+end
+
+procedure leafphrase(n)
+  x := leafcount(n)
+  return x || " distinct " || (if x = 1 then "leaf" else "leaves")
+end
+@ 
+<<*>>=
+procedure pathurl(p, front, base)
+  p := [\front] ||| p # makes copy
+  u := \base | url
+  u ||:= qmark || p[1]
+  every u ||:= "+" || p[2 to *p]
+  return u
+end
+
+procedure inedge(e)
+  return if upto(',-', e.ranges) then " in " || e.ranges else " = " || e.ranges
+end
+
+procedure fieldname(n)
+  return n.name || " at " || n.offset
+end
+@ 
+<<*>>=
+procedure display_arm(a)
+  write("(Conditions not shown)")
+  write("Execute code at ", a.file, ", line ", a.line, " with ",
+        "name " || image(\a.name) | "no name", ":<br><pre>") 
+  every write(escape(!a.code))
+  write("</pre><p>")
+  return
+end
+
+procedure escape(s)
+  s ? {
+    r := ""
+    while r ||:= tab(upto('&<')) do
+      if ="&" then r ||:= "&amp;"
+      else if ="<" then r ||:= "&lt;"
+    return r || tab(0)
+  }
+end
+@ 
+\section{GIF output}
+<<*>>=
+procedure gifout(path, ty)
+  local treenum
+  case ty of {
+    "-gif" : {
+      write("Content-type: image/gif")
+      write()
+      f := open("/usr/cs/contrib/bin/dot -Tgif", "wp") |
+	  { write("could not start dot"); return }
+    }
+    "-dot" : {
+      write("Content-type: text/plain")
+      write()
+      f := &output
+    }
+    "-nodemap" : {
+      f := open("/usr/cs/contrib/bin/dot -Tplain > /tmp/gifplain", "wp") |
+	  { write("could not start dot"); return }
+    }
+    "-clickable" : {
+      write("Content-type: text/html")
+      write()
+      write("<html><head><title>NJ Machine-Code Toolkit Tree Explorer</title>")
+      write("</head><body>")
+      f := open("/usr/cs/contrib/bin/dot -Tplain > /tmp/gifplain", "wp") |
+	  { write("could not start dot"); return }
+      write("<img usemap=", image("#tree"),
+	    " src=", pathurl(path, "-gif"), "><map name=tree>")
+    }
+    "-old-clickable" : {
+      write("Content-type: text/html")
+      write()
+      write("<html><head><title>NJ Machine-Code Toolkit Tree Explorer</title>")
+      write("</head><body>")
+      write("<a href=", "/~nr/view.map", # pathurl(path, "-nodemap"),
+	    "><img ismap src=",
+	    pathurl(path, "-gif"), "></a>")
+      write("<p><a href=", "/cgi-bin/cgiwrap/~nr/test-cgi", # pathurl(path, "-nodemap"),
+	    "><img ismap src=",
+	    pathurl(path, "-gif"), "></a>")
+      write("</body></html>")
+      return
+    }
+    default : stop("this can't happen")
+  }
+  t := tree(treenum := integer(get(path))) | {write("Bad path"); return}
+  k := dotouttree(f, t, path)
+  close(f)
+  if ty == ("-nodemap" | "-clickable") then donodemap(k, t, path, treenum, ty)
+  if ty == "-clickable" then {
+    write("</map><br>Go to the <a href=", pathurl(path, treenum), ">text view</a>")
+    write("<hr><font size=\"-1\">Trees drawn by <tt>dot</tt>, from the ",
+	  "<A href=http://www.research.att.com/~north/graphviz/graphviz.html>graphviz</a>",
+	  " package.  Visit the ",
+	  "<a href=http://www.cs.princeton.edu/software/toolkit/>Toolkit home page</a>.",
+	  "</font>")
+    write("</body></html>")
+  }
+  return
+end
+<<*>>=
+procedure dotouttree(file, root, path, treenum)
+    local known, number, prev
+    write(file, "digraph decisions {")    
+    known := table()
+    number := create(seq())
+    n := root
+    every i := integer(!path) do {
+      write(file, "N", /known[n] := @number,
+	    " [peripheries=2,label=\"", n.name, "@" || (0 < n.offset) | "", "\"];")
+# write("known[", image(n), "] = ", image(known[n]))
+      n := n.edges[i].node
+    }
+    dotoutnode(file, n, known, number)
+    n := root
+    every i := integer(!path) & e := n.edges[i] do {
+      write(file, "N", known[n], " -> N", known[e.node], " [style=dashed,label=",
+		  image(split10(e.ranges)),  "];")
+      n := e.node
+    }
+    write(file, "}")
+    return known
+end
+
+procedure dotoutnode(file, n, known, number)
+  if /known[n] then
+    case type(n) of {
+      "treenode" : {
+	  write(file, "N", known[n] := @number,
+		" [label=\"", n.name, "@" || (0 < n.offset) | "", "\"];")
+# write("known[", image(n), "] := ", image(known[n]))
+	  every e := !n.edges do {
+	    dotoutnode(file, e.node, known, number)
+	    write(file, "N", known[n], " -> N", known[e.node], " [label=",
+		  image(split10(e.ranges)),  "];")
+	  }
+	}
+      "list" : {
+	  if /known[l := leafnames(n)] then
+            write(file, "N", known[l] := @number, " [shape=box,label=", 
+		  image(if *l = 0 then "NO MATCH" else l), "];")
+	  known[n] := known[l]
+# write("known[", image(n), "] := ", image(known[n]))
+	}
+      "string" : write(file, "N", known[n] := @number, " [label=", image(n), "];")
+    }
+  return
+end
+<<*>>=
+procedure donodemap(known, root, path, treenum, ty)
+  local file
+  if ty == "-nodemap" then {
+    write("Content-type: text/x-imagemap")
+    write()
+    write("default /youlose.html")
+  }
+  f := open("/tmp/gifplain") | {
+    write("Cannot open /tmp/gifplain"); return }
+  bbs := readbbs(f)
+  close(f)
+  remove("/tmp/gifplain")
+  n := root
+  file := &output
+  every i := 1 to *path do {
+# write("mapping ", image(n))
+    emit_rect(file, ty, pathurl(path[1:i], "-clickable+" || treenum), bbs["N" || known[n]])
+    n := n.edges[path[i]].node
+  }
+# write("next up: ", image(n))
+  nodemapnode(file, n, path, known, bbs, ty, treenum)
+  return
+end
+
+procedure nodemapnode(file, n, path, known, bbs, ty, treenum)
+# write("Mapping ", image(n))
+  case type(n) of {
+    "treenode" : {
+      emit_rect(file, ty, pathurl(path, "-clickable+" || treenum),
+		bbs["N" || known[n]])
+      every e := n.edges[i := 1 to *n.edges] do {
+	put(path, i)
+	nodemapnode(file, e.node, path, known, bbs, ty, treenum)
+	pull(path)
+      }
+    }
+    "list" : emit_rect(file, ty, pathurl(path, treenum), bbs["N" || known[n]])
+    "string" : &null
+  }
+  return
+end
+<<*>>=
+procedure emit_rect(file, ty, url, bb)
+  case ty of { 
+    "-nodemap" : write(file, "rect ", url, " ",
+		       bb.llx, ",", bb.lly, " ", bb.urx, ",", bb.ury)
+    "-clickable" : write(file, "<area shape=", image("RECT"), " coords=",
+			 image(bb.llx || "," || bb.lly || "," || bb.urx ||
+			       "," || bb.ury), " href=", image(url), ">")
+  }
+  return
+end
+<<*>>=
+record bbox(llx, lly, urx, ury)
+record graph(bbs, w, h)
+procedure readbbs(file)
+  local scale, width, height, bb, cx, cy, w, h, dx, dy, pixw, pixh
+  bb := table()
+  while line := read(file) do
+    line ?
+      if ="graph" & tab(many(' \t')) then {
+	every scale | width | height := float()
+	pixw := round(72*width) + 2
+	pixh := round(72*height) + 2
+      } else if ="node" & tab(many(' \t')) then {
+        n := tab(upto(' \t'))
+	every cx | cy | w | h := float()
+        cy := height - cy  # invert to put 0 at top
+	dx := w / 2.0
+	dy := h / 2.0
+        bb[n] := bbscale(bbox((cx - dx)/width, (cy - dy)/height,
+			      (cx + dx)/width, (cy + dy)/height), pixw, pixh)
+      }
+  return bb
+end
+
+procedure float()
+  tab(many(' \t'))
+  return numeric(tab(upto(' \t')|0))
+end
+
+procedure round(f)
+  return integer(f+0.5)
+end
+@ 
+<<*>>=
+procedure bbscale(bb, w, h)
+  bb.llx := scale(bb.llx, w); bb.lly := scale(bb.lly, h)
+  bb.urx := scale(bb.urx, w); bb.ury := scale(bb.ury, h)
+  return bb
+end
+
+procedure scale(x, w)
+  return integer(x * w)
+end
+<<make [[s]] a label string for [[alt.constraints]]>>=
+s := ""
+every i := 1 to *alt.constraints do {
+   if i > 1 then s ||:= ","
+   c := alt.constraints[i]
+   if *c.lo > 1 then s ||:= "..."
+   else if ?c.lo + 1 = ?c.hi then s ||:= ?c.lo
+   else s ||:= ?c.lo || "-" || (?c.hi - 1)
+}
+s := split10(s)
+<<*>>=
+procedure split10(s)
+  static N
+  local k
+  initial N := 18  
+  if *s > N & find(", ", s) <= N then {
+     every k := N >= find(", ", s)
+     return s[1:k+1] || "\n" || split10(s[k+2:0]) # keep comma, drop space 
+  } else {
+    return s
+  }
+end
+    

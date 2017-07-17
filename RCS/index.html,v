@@ -1,0 +1,211 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	96.03.07.20.59.36;	author nr;	state Exp;
+branches;
+next	;
+
+
+desc
+@homepage
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@<html><head><title>NJ Machine-Code Toolkit</title></head><body>
+
+<h1>The New Jersey Machine-Code Toolkit</h1>
+
+The New Jersey Machine-Code Toolkit
+helps programmers write
+applications that
+process machine code---assemblers, disassemblers, 
+code generators, tracers, profilers, and debuggers.
+The toolkit is a joint project of 
+<a href=http://www.cs.princeton.edu/~mff>Mary Fern&aacute;ndez</a>
+<!-- http://www.research.att.com/orgs/ssr/people/maryf/ -->
+and 
+<a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a>.
+
+<h2>Mailing lists</h2>
+
+To keep up to date with the toolkit, you can send messages to the
+authors at 
+<tt><a href=mailto:toolkit@@cs.princeton.edu>toolkit@@cs.princeton.edu</a></tt>.
+We also have two mailing lists about the toolkit;
+<tt><a href=mailto:toolkit-interest@@cs.purdue.edu>toolkit-interest@@cs.purdue.edu</a></tt>
+goes to people who have expressed some interest 
+in the toolkit, and it carries most general announcements about the toolkit.
+<tt><a href=mailto:toolkit-users@@cs.purdue.edu>toolkit-users@@cs.purdue.edu</a></tt>
+goes to people who  are actually
+using the toolkit, 
+and it carries discussion among users.
+You can subscribe by sending one of
+<pre>
+mailer add me to toolkit-interest
+mailer add me to toolkit-users
+</pre>
+to <tt><a href=mailto:mailer@@cs.purdue.edu>mailer@@cs.purdue.edu</a></tt>.
+The inverse operations are
+<pre>
+mailer delete me from toolkit-interest
+mailer delete me from toolkit-users
+</pre>
+<p>
+It's still a good idea to report problems to  
+<tt><a href=mailto:toolkit@@cs.princeton.edu>toolkit@@cs.princeton.edu</a></tt>.
+
+
+
+<h2>Version 0.4 (March 1996)</h2>
+
+The toolkit is now in version&nbsp;0.4.
+The primary reason for this new release is to enable users to validate
+specifications using the <em>specification checker</em>.
+The release includes these changes:
+<ul>
+<li>The checker described in our 
+<a href=../pubs/tk-toplas.ps>overview paper</a> is included.
+
+<li>The reference manual now describes how to use the toolkit to emit
+assembly language as well as binary.  This feature was in the last
+release but not in the manual.
+
+<li>The examples directory now includes a rudimentary disassembler for
+the SPARC.  Thanks to 
+<a href=http://www.cs.utas.edu.au/Staff/Cifuentes,Cristina/CNC.html>Cristina
+Cifuentes</a> for providing the impetus.
+
+<li>We have validated our specifications and corrected a handful of
+lingering bugs.
+
+<li>It is now possible to use <code>_</code> in expressions as a true
+``wildcard'' value.  
+Unlike in previous releases, different instances of <code>_</code> are
+really different, even if they appear in the same arm of a matching statement.
+It works by representing a different, otherwise
+unnameable variable at each instance.
+Suggested uses include:
+<menu>
+<li>Use it in matching statements for uninteresting arguments to constructors.
+<li>To constrain value <code>n</code> to be a multiple of 4, write the
+    equation <code>n&nbsp;=&nbsp;4&nbsp;*&nbsp;_</code>.
+</menu>
+
+<li>We have better diagnostics to help you figure out what is wrong
+when you write a matching statement and some arms never match.
+
+<li>We have fixed some more bugs, including an insidious bug with
+names in matching statements.
+
+<li>We have added a few procedures to the toolkit's library.
+
+<li>We have introduced new bugs.
+</ul>
+
+We are now saving
+<a href=oldnews.html>release notes from previous versions of the
+toolkit</a>.
+
+
+<h2>Distribution</h2>
+
+If you think you might want to use the toolkit, 
+a <a href=src/refman.ps>reference
+manual</a> and <a href=readme.html>source distribution</a> are available.
+There are annotated specifications
+(read the 
+<a href=specs/specs.ps>report</a>
+or browse the <a href=specs>source directory</a>
+ for the <a href=specs/mips.nw>MIPS</a>, <a href=specs/sparc.nw>SPARC</a>, 
+and <a href=specs/pentium.nw>Intel Pentium</a>, which
+show how to use the toolkit to describe real machines.
+There is also an unannotated specification for the <a
+href=specs/ppc.nw>PowerPC 604</a>.
+Finally there is a <a href=examples/xs/index.html>toy example</a> that
+will give you more ideas about how to build applications, and there is
+a <a href=examples/sparc/index.html>rudimentary disassembler for the
+SPARC</a> that you may find useful.
+
+
+
+<h2>Papers</h2>
+
+There are two papers describing the main ideas:
+<ul>
+<li><a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a> and
+<a href=http://www.cs.princeton.edu/~mff>Mary Fern&aacute;ndez</a>.
+   <A HREF=http://www.cs.purdue.edu/homes/nr/pubs/tk-usenix.ps>The New Jersey Machine-Code Toolkit</a>.
+ <i>Proceedings of the 1995 USENIX Technical Conference</i>, New Orleans, LA,
+  January 1995, pp 289-302.
+<a href=http://www.cs.purdue.edu/homes/nr/pubs/toolkit-abstract.html>[Abstract]</a>
+<a href=http://www.cs.purdue.edu/homes/nr/pubs/toolkit.html>[HTML version]</a>.<br>
+An overview, and the place to begin.
+
+<li><a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a> and
+<a href=http://www.cs.princeton.edu/~mff>Mary Fern&aacute;ndez</a>.
+   <A href="http://www.cs.purdue.edu/homes/nr/pubs/tk-toplas.ps">The New Jersey machine-code toolkit</a>.
+Technical Report 95-082, Purdue University, Dept of Computer
+Sciences, December 1995.
+Submitted to <i>ACM Transactions on Programming Languages and Systems</i>.
+<a href="http://www.cs.purdue.edu/homes/nr/pubs/tk-toplas-abstract.html">[Abstract]</a>
+<a href="http://www.cs.purdue.edu/homes/nr/pubs/tk-toplas.html">[HTML version]</a>
+<br>
+This is a comprehensive journal paper on the toolkit.
+It includes major sections on the toolkit's specification language,
+what it's like to use the toolkit, and how the toolkit is implemented.
+</ul>
+Those who actually want to use the toolkit will probably find the
+following technical reports useful:
+<ul>
+<li><a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a> and
+<a href=http://www.cs.princeton.edu/~mff>Mary Fern&aacute;ndez</a>.
+   <A HREF=http://www.cs.princeton.edu/Document/PRINCETONCS:TR-470-94>New
+Jersey Machine-Code Toolkit architecture specifications.</a>
+Technical Report TR-470-94, Department of Computer Science, Princeton
+University, October 1994.
+<br>
+These annotated descriptions of the MIPS, SPARC, and Intel Pentium
+show the toolkit's specification language in action.
+Highly recommended for anyone planning to write machine descriptions
+for the toolkit.
+<li><a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a> and
+<a href=http://www.cs.princeton.edu/~mff>Mary Fern&aacute;ndez</a>.
+   <A HREF=http://www.cs.princeton.edu/Document/PRINCETONCS:TR-471-94>New
+Jersey Machine-Code Toolkit reference manual</a>.
+Technical Report TR-471-94, Department of Computer Science, Princeton
+  University, October 1994.
+<br>
+The manual describes the complete specification language and explains
+how to use version 0.2.
+</ul>
+The toolkit project has also led to a machine-independent method of
+relocating instructions, described in
+<blockquote>
+<a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a>.
+   <a href=http://www.cs.purdue.edu/homes/nr/pubs/relocating.ps>Relocating machine instructions by currying</a>.
+Technical Report 95-068, Purdue University, Dept of Computer
+Sciences, October 1995.
+Submitted to the ACM SIGPLAN '96 Conference on Programming Language
+Design and Implementation.
+<a href=http://www.cs.purdue.edu/homes/nr/pubs/relocating-abstract.html>[Abstract]</a>
+</blockquote>
+The toolkit's equation solver is described in
+<blockquote>
+<a href=http://www.cs.purdue.edu/homes/nr>Norman Ramsey</a>.
+A simple solver for linear equations containing nonlinear operators.
+<i>Software---Practice &amp;Experience</i>, 1995.
+To appear.
+</blockquote>
+
+</body></html>
+@

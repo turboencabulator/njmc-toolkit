@@ -23,7 +23,7 @@ The [[members]] field is initially a set.
 When the type is first used, it must be complete, so the [[members]] are
 turned into a list (in alphabetical order by constructor name).
 <<*>>=
-record constructor(name, opcode, operands, type, branches, rho, tag)
+record constructor(name, opcode, operands, type, branches, rho, tag, original_name)
 record branch(eqns, soln, pat)
 record constype(name, members, used, ntags)
 @ The solution ([[soln]]) in a branch has appropriate expressions substituted 
@@ -95,7 +95,7 @@ procedure constemplate(type, opcode, operands, branches)
     put(B, branch(b[1], inject_soln(solve(balance_eqns(b[1]), inputs_labs)), 
                   \b[2] | implicit_pattern(opcode, operands)))
   }
-  return constructor(&null, &null, operands, type, B, &null, &null)
+  return constructor(&null, &null, operands, type, B, &null, &null, &null)
 end
 @
 [[instantiate_template]] instantiates the templates by assigning name, environment,
@@ -106,7 +106,8 @@ procedure instantiate_template(op, t, rho)
   /t.type.ntags := 0
   t.type.ntags +:= 1
   <<check that [[t.type.ntags]] doesn't overflow tag bits>>
-  return constructor(iname(op), op, t.operands, t.type, t.branches, rho, t.type.ntags)
+  return constructor(iname(op), op, t.operands, t.type, t.branches, rho, t.type.ntags,
+                     iname(op, 1))
 end
 <<make [[inputs]] the set of input names, barfing if duplicates exist>>=
 inputs := set()
@@ -219,12 +220,12 @@ end
 @
 These auxiliary functions help choose names for constructors.
 <<*>>=
-procedure iname(opcode)
+procedure iname(opcode, nomap)
   local name
   name := ""
   every name ||:= opcode_component_name(!opcode)
   if \lowercons then name := map(name)
-  return mapoutbadchars(name)
+  return if /nomap then mapoutbadchars(name) else name
 end
 
 procedure opcode_component_name(op)
@@ -1113,6 +1114,7 @@ while *p.disjuncts > 1 do { # early branches
   cknown := known_conditions(conds)
   early_branch(s.arms, cknown, conds, disjunct_to_emission(d))
 }
+<<turn pattern [[p]] into emitter and return it>>=
 if d := get(p.disjuncts) then { # last branch --- fits conditions not folded in!
   *p.disjuncts = 0 | impossible("bug in constructors")
   set_patlabel_offsets(d)
@@ -1320,6 +1322,25 @@ procedure widthfailure(c)
                c.n || " " || s || " bits.", c.x)
 end
 @
+[[extract_conditions]] returns the list
+[[ [cknown, conds, fknown, fits] ]]; the four elements contain the
+conditions associated with disjunct [[d]].
+<<*>>=
+procedure extract_conditions(d,cons)
+    if *\d.conditions > 0 then {
+        conds := d.conditions
+        <<from [[conds]], compute [[conds_narrows_ok]]>>=
+        if *conds_narrows_ok > 0 then
+            conds ++:= conds_narrows_ok
+        cknown := known_conditions(d.conditions)
+    } else 
+        conds := cknown := 1
+    fknown := known_conditions(d.sequents)
+    <<strip [[fknown]] of conditions already in [[cknown]]>>
+    <<from [[d]], compute [[fits]]>>
+    return [ cknown, conds, fknown, fits]
+end
+@
 \subsection{Conditions}
 <<*>>=
 procedure known_conditions(e)
@@ -1341,6 +1362,20 @@ if type(cknown) == "set" then
       delete(fknown, ff)
 if *fknown = 0 then fknown := 1
 @
+<<from [[d]], compute [[fits]]>>=
+fits := set()
+every ff := subterms_matching(d.sequents, "fieldbinding") &
+    not member(unchecked_fields, ff.field) do
+  if not known_to_fit(input_fitsu, ff.code,cons, fwidth(ff.field)) then
+    insert_width_condition(fits, Efitsu(ff.code, fwidth(ff.field)))
+every ee := subterms_matching(d.sequents,"Enarrowu") do
+    if not known_to_fit(input_fitsu, ee.x,cons,ee.n) then
+      insert_width_condition(fits,Efitsu(ee.x,ee.n))
+every ee := subterms_matching(d.sequents,"Enarrows") do
+    if not known_to_fit(input_fitss, ee.x,cons,ee.n) then
+      insert_width_condition(fits,Efitss(ee.x,ee.n))
+@ 
+
 At this point, we know that field and extended inputs satisfy the appropriate width
 conditions. 
 <<*>>=
@@ -1377,6 +1412,15 @@ branch of the SPARC [[set]] constructor.
 By seeking out narrows in conditions, we make sure to include the
 correct check (although we continue to emit C~code for the tautology,
 which is annoying).
+<<from [[conds]], compute [[conds_narrows_ok]]>>=
+  conds_narrows_ok := set()
+  every ee := subterms_matching(conds,"Enarrowu") do
+   if not known_to_fit(input_fitsu, ee.x,cons,ee.n) then
+     insert_width_condition(conds_narrows_ok,Efitsu(ee.x,ee.n))
+  every ee := subterms_matching(conds,"Enarrows") do
+   if not known_to_fit(input_fitss, ee.x,cons,ee.n) then
+     insert_width_condition(conds_narrows_ok,Efitss(ee.x,ee.n))
+@ 
 <<*>>=
 procedure narrows_ok_conditions(e, cons)
   local ok
@@ -1449,18 +1493,20 @@ but its branch.
 Here's the template:
 <<instance-type.t>>=
 typedef struct %{name}_instance {$t
-int tag;
+%tagtype tag;
 union {$t%constructors$b
 } u;$b
 } %{name}_Instance;
 @ And here's the code the does the emission.
 <<*>>=
-procedure emit_instance_type(pp, ct)
+procedure emit_instance_type(pp, ct, tagtype)
   local constructors
-  enforce_instance(ct)
+  # enforce_instance(ct) # now permitting instances of instructions even!
   constructors := []
   every put(constructors, input_record_for(kept_constructors(ct)))
-  emit_template(pp, "instance-type.t", "name", ct.name, "constructors", constructors)
+  emit_template(pp, "instance-type.t", "name", Cnoreserve(ct.name),
+		                       "tagtype", \tagtype | "int",
+		                       "constructors", constructors)
   return
 end
 @
@@ -1488,7 +1534,7 @@ procedure input_record_for(cons, struct_name)
     }
   if not inputs_of(cons) then
     put(pp, "\nchar avoid_empty_structures;")
-  put(pp, "$b$n} " || (\struct_name | cons.name) || ";")
+  put(pp, "$b$n} " || Cnoreserve(\struct_name | cons.name) || ";")
   return pp
 end
 @
@@ -1543,6 +1589,7 @@ procedure emit_original_closure_function(pp, cons, name, cl)
   mt := meaningtab(nt, cons)
   emit_original_closure_typedef(pp, name, cons, mt)
   emit_original_closure_relocfn(pp, name, cons, mt)
+  emit_original_closure_emitter(pp, name, cons, mt)
   emit_original_closure_function_def(pp, name, cl, nt)
   emit_closure_header_def(pp, name, name || "_app", cl)
   <<make [[cl.creation]] to create closure and emit placeholder>>
@@ -1662,11 +1709,41 @@ procedure emit_original_closure_relocfn(pp, name, cons, t)
                                  "name", name, "calls", calls)
   return
 end
+@ 
+Code to serialize a closure.  Emits all fields (and bytecode)?
+<<*>>=
+procedure emit_original_closure_emitter(pp, name, cons, t)
+  local calls
+  calls := []
+  /closure_functions_emitters := table()
+  every fname := key(t) do
+     case type(t[fname]) of {
+       "string" :
+           put(calls, template_to_list("emitclo-call.t", "emit", "emit_addr",
+                                       "input", fname))
+       "field" | "integer" :
+           put(calls, template_to_list("emitclo-call.t", "emit", "emit_int ",
+                                       "input", fname))
+       default : impossible("unknown type ", image(t[fname]))
+     }
+  emit_template(pp, "emitclo.t", "ptrtype", name || "_Closure",
+                                 "name", name, "calls", calls)
+  return
+end
+<<emitclo.t>>=
+void %{name}_emitclosure(RClosure c, RelocCallback emit_addr,$t$t
+void (*emit_int)(void *closure, unsigned u), void *closure) $b$b
+{$t 
+%ptrtype _c = (%ptrtype) c;
+%calls$b}
+<<emitclo-call.t>>=
+(*%emit)(closure, _c->v.%input);
 @
 The  emitter code in [[Cexp]] assumes that the closure is stored in [[_c]].
 <<*>>=
 procedure emit_original_closure_function_def(pp, name, cl, t)
-  local es
+  local es, body
+  initial closure_functions_bytecode := table()
   tt := copy(t)
   every k := key(t) do tt[k] := literal("_c->v." || tt[k])
   tt[the_global_pc] := Eforce(Eclosure_loc())
@@ -1675,7 +1752,7 @@ procedure emit_original_closure_function_def(pp, name, cl, t)
                name, "_Closure _c = (", name, "_Closure) c;$n")
   es := emitterstyle
   emitterstyle := "closure"
-  PPxwrite(pp, pretty(
+  PPxwrite(pp, pretty(body := 
      super_simplify(Sif([Sguarded(subst_table_elements(cl.conditions, tt), 
                                   disjunct_to_emission(
 				      subst_table_elements(cl.disjunct, tt))),
@@ -1683,6 +1760,7 @@ procedure emit_original_closure_function_def(pp, name, cl, t)
                    Sguarded(1, 
                       Sfail("Conditions not satisfied for constructor " || name))]))))
   emitterstyle := es
+  closure_functions_bytecode[name || "_app"] := expbc(body)
   PPxwrite(pp, "$b$n}")
 end
 <<apply-fun.t>>=
@@ -1795,7 +1873,7 @@ end
 @
 <<*>>=
 procedure emit_proc_declaration(pp, cons)
-  if cons.type === instructionctype then
+  if cons.type === instructionctype & /encode_as_data then
     emit_emitter_proto(pp, cons)
   else
     emit_create_instance_proto(pp, cons)
@@ -1810,7 +1888,8 @@ end
 procedure emit_create_instance_body(pp, cons)
   a := []
   every i := inputs_of(cons).name do
-     put(a, template_to_list("instance-assignment.t", "name", cons.name, "l", i, "r", i))
+     put(a, template_to_list("instance-assignment.t",
+			     "name", Cnoreserve(cons.name), "l", i, "r", i))
   emit_template(pp, "create-instance-body.t", "safename", Cnoreserve(cons.name),
                    "name", cons.name, "type", cons.type.name, "args", arg_decls(cons), 
 	           "class", if \indirectname then "static " else "",
@@ -1944,6 +2023,7 @@ procedure hoist(pp, e, latevars)
 
        clotype := closure_type(pp, values, addresses)
        clofun := closure_function(pp, clotype, addresses, body)
+       closure_functions_emitters[clofun] := clotype || "_emitclosure"
        hd := closure_header_type(pp, clofun, clotype, body)
        <<make [[cloargs]] the list of closure args, using [[values]] and [[sigma]]>>
        p := hoistlist(pp, cloargs, latevars)
@@ -2134,25 +2214,37 @@ end
 The function [[closure_type]] looks at the number of free and bound
 variables and finds (or emits) a type suitable for use as the closure.
 If it has to emit a new type, it also emits a ``reloc function'' to go
-with it.      
+with it, plus a serialization function.
 <<*>>=
 procedure closure_type(pp, values, addresses)
   static closure_types
-  local clname, calls
-  initial closure_types := set()
+  local clname
+  local calls # calls for the reloc function
+  local scalls # calls for the serialization function
+  initial {
+    closure_types := set()
+    /closure_functions_emitters := table()
+  }
   clname := "O" || *addresses || "_" || *values
   if not member(closure_types, clname) then {
     insert(closure_types, clname)
-    every calls | l := []
+    every calls | scalls | l := []
     every i := 1 to *addresses do {
       put(l, " $cRAddr a" || i || ";")
       put(calls, template_to_list("reloc-call.t", "irec", "v", "input", "a" || i))
+      put(scalls, template_to_list("emitclo-call.t", "emit", "emit_addr",
+                                                     "input", "a" || i))
     }
-    every i := 1 to *values do
+    every i := 1 to *values do {
       put(l, " $cunsigned u" || i || ";")
+      put(scalls, template_to_list("emitclo-call.t", "emit", "emit_int ",
+                                                     "input", "u" || i))
+    }
     emit_template(pp, "closure-type.t", "name", clname, "decls", l)
     emit_template(pp, "constructor-labels.t", "ptrtype", clname || "_Closure",
                                  "name", clname, "calls", calls)
+    emit_template(pp, "emitclo.t", "ptrtype", clname || "_Closure",
+                                   "name", clname, "calls", scalls)
   }
   return clname
 end
@@ -2194,7 +2286,7 @@ procedure showsigma(pp, sigma)
   return
 end
 <<*>>=
-global closure_functions_postfix
+global closure_functions_postfix, closure_functions_bytecode
 procedure emit_closure_functions_postfix(pp, interfacebasename)
   if *\closure_functions_postfix > 0 then {
     PPxwrite(pp, "/*****************************$t")
@@ -2211,10 +2303,43 @@ procedure emit_closure_functions_postfix(pp, interfacebasename)
   return
 end
 <<*>>=
+procedure emit_closure_functions_bytecode(pp, interfacebasename)
+  local total, bc
+  total := 0
+  PPxwrites(pp, "ClosurePostfix ", 
+                mapoutbadchars(interfacebasename), "_clobytes[] = {$t")
+  every k := key(\closure_functions_bytecode) do {
+    bc := closure_functions_bytecode[k]
+    PPxwrites(pp, "$n{ ", k, ", ", "/* ", *bc, " */ ", image(bc), " }, ")
+    total +:= *bc
+  }
+  PPxwrites(pp, "$n{ (ApplyMethod) 0, (char *) 0 }")
+  PPxwrite(pp, "$b$n};")
+  PPxwrite(pp, "$n/* Bytecode total is ", total, " */")
+  return
+end
+<<*>>=
+global closure_functions_emitters
+procedure emit_closure_functions_emitclosure_map(pp, interfacebasename)
+  local ec
+  PPxwrites(pp, "ClosureEmitter ", 
+                mapoutbadchars(interfacebasename), "_cloemitters[] = {$t")
+  every k := key(\closure_functions_emitters) do {
+    ec := closure_functions_emitters[k]
+    PPxwrites(pp, "$n{ ", k, ", ", ec, " }, ")
+  }
+  PPxwrites(pp, "$n{ (ApplyMethod) 0, (void *) 0 /*type is a lie and a cheat*/ }")
+  PPxwrite(pp, "$b$n};")
+  return
+end
+<<*>>=
 procedure closure_function(pp, cloty, addresses, body)
   static cache, count
   local bodyimage, es, orig_body, bytecode
-  initial { every closure_functions_postfix | cache := table(); count := 0 }
+  initial { 
+    every closure_functions_postfix | closure_functions_bytecode | cache := table()
+    count := 0 
+  }
   tt := table()
   every i := 1 to *addresses do tt[addresses[i]] := Eclosure_addr(i)
   tt[the_global_pc] := Eforce(Eclosure_loc())
@@ -2223,7 +2348,8 @@ procedure closure_function(pp, cloty, addresses, body)
   bodyimage := expps(body)
   if /cache[bodyimage] then {
     cache[bodyimage] := "_clofun_" || (count +:= 1)
-    closure_functions_postfix[cache[bodyimage]] := bodyimage
+    closure_functions_postfix [cache[bodyimage]] := bodyimage
+    closure_functions_bytecode[cache[bodyimage]] := expbc(body)
     verbose("New closure function for \n", bodyimage)
     PPxwrite(pp, "/* CLOSURE FUNCTION _clofun_", count, " is $t$n", bodyimage, "$b$n */")
     bytecode := expbc(body) || bc_halt()

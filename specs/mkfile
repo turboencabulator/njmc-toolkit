@@ -1,12 +1,12 @@
 CC=gcc -ansi -pedantic -fno-builtin
 #CC=lcc -A
 EMITTER=emitm
-SPECS="mips sparc pentium ppc alpha"
+SPECS="mips sparc pentium ppc alpha z80" 
 SPECSREGEXP=`echo $SPECS | sed 's/ /|/g'`
 SPECSDOTSPEC=`echo $SPECS | sed 's/ /.spec /g;s/$/.spec/'`
 SPECSDOTHTML=`echo $SPECS | sed 's/ /.html /g;s/$/.html/'`
 SPARC="sparc"
-NOTSPARC="mips|pentium|spent|ppc|test|tiny|goo|alpha"
+NOTSPARC="mips|pentium|spent|ppc|test|tiny|goo|alpha|z80"
 TOOLS=../src
 CFLAGS="-I. -I$TOOLS -DemitX=$EMITTER"
 LATEX=latex
@@ -116,6 +116,9 @@ makefile.checker: $TOOLS/checker.nw
 ^(pentium|ppc)'\.'spec'$':R: '\1'-core.spec '\1'-synth.spec
 	cat $prereq | cpif $target
 
+^(z80)'\.'spec'$':R: '\1'-core.spec
+	cat $prereq | cpif $target
+
 spent.spec: pentium.spec pentium-asm-linux.spec
 	cat $prereq | cpif $target
 
@@ -144,7 +147,7 @@ SPECSRC=specs.tex sparc.tex mips.tex pentium.tex alpha.tex
 	noweave -x -n $prereq > $target
 
 %.html: %.nw
-	noweave -filter l2h -x -n -html $prereq > $target
+	noweave -filter l2h -x -n -html $prereq | htmltoc > $target
 
 %.bbl: %.tex
 	if [ ! -r $target ]; then $LATEX $stem; fi

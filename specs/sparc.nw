@@ -1,3 +1,7 @@
+\ifhtml\section*{Contents}
+\tableofcontents
+\fi
+
 \section{SPARC instruction-set specification}
 This section specifies the SPARC instruction set.
 It uses two specification techniques not needed in the
@@ -311,11 +315,11 @@ abbreviations:%
 \footnote{As far as {\tt lcc} goes, we could revert to the original mechanism}
 <<pattern and constructor specifications>>=
 constructors
-  generalA  rs1 + reg_or_imm : address_
-  dispA     rs1 + simm13!    : address_  is  generalA(rs1, imode(simm13!))
-  absoluteA simm13!          : address_  is  generalA(0,   imode(simm13!))
-  indexA    rs1 + rs2        : address_  is  generalA(rs1, rmode(rs2))
-  indirectA rs1              : address_  is  generalA(rs1, rmode(0))
+  generalA  rs1 + reg_or_imm : address  is  rs1 & reg_or_imm
+  dispA     rs1 + simm13!    : address  is  generalA(rs1, imode(simm13!))
+  absoluteA simm13!          : address  is  generalA(0,   imode(simm13!))
+  indexA    rs1 + rs2        : address  is  generalA(rs1, rmode(rs2))
+  indirectA rs1              : address  is  generalA(rs1, rmode(0))
 @ Unfortunately We can't call the type [[address]] 
 because [[address]] is reserved for the toolkit 
 to describe the treatment of addresses in decoding specifications.
@@ -336,7 +340,7 @@ patterns
   storea is STBA  | STHA | STA
 @
 The constructors for the load and store instructions illustrate
-the use of the typed constructor [[address_]] as an operand.
+the use of the typed constructor [[address]] as an operand.
 Addresses are bracketed, as in SPARC assembly language.
 Because the constructors' output patterns are the
 conjunctions of the opcodes and operands, they can be omitted.
@@ -349,19 +353,19 @@ spec, but we want them when we validate the spec, so I have arranged
 for the command \mbox{[[sed 's/# {/{/']]} to uncomment them
 <<pattern and constructor specifications>>=
 constructors
-  loadg  [address_], rd
-  LDD    [address_], rd    # { rd = 2 * _ }
-  LDF    [address_], fd
-  LDDF   [address_], fd    # { fd = 2 * _ }
-  LDC    [address_], cd
-  LDDC   [address_], cd    # { cd = 2 * _ }
+  loadg  [address], rd
+  LDD    [address], rd    # { rd = 2 * _ }
+  LDF    [address], fd
+  LDDF   [address], fd    # { fd = 2 * _ }
+  LDC    [address], cd
+  LDDC   [address], cd    # { cd = 2 * _ }
 
-  storeg rd, [address_]
-  STD    rd, [address_]    # { rd = 2 * _ }
-  STF    fd, [address_]
-  STDF   fd, [address_]    # { fd = 2 * _ }
-  STC    cd, [address_]
-  STDC   cd, [address_]    # { cd = 2 * _ }
+  storeg rd, [address]
+  STD    rd, [address]    # { rd = 2 * _ }
+  STF    fd, [address]
+  STDF   fd, [address]    # { fd = 2 * _ }
+  STC    cd, [address]
+  STDC   cd, [address]    # { cd = 2 * _ }
 @ We use the synonyms [[fd]] and [[cd]] for the destination register
 [[rd]] when the affected register is a floating-point or 
 coprocessor register; same trick applies to [[fs1]] and [[fs2]].
@@ -374,10 +378,10 @@ The [[loada]] and [[storea]] only accept address operands constructed
 from registers.  
 As in the SPARC manual, we introduce the constructor type [[regaddr]]
 to describe this
-operand.\footnote{In fact, [[address_]] is a subtype of [[regaddr]].
+operand.\footnote{In fact, [[address]] is a subtype of [[regaddr]].
 The constructors [[indexA]] and [[indirectA]] are equivalent to
 [[indexR]] and [[indirectR]]. We could specify these addresses by
-adding a constructor to create an [[address_]] from a [[regaddr]],
+adding a constructor to create an [[address]] from a [[regaddr]],
 but that pollutes the name space. 
 It would be better to have subtypes.}
 <<pattern and constructor specifications>>=
@@ -422,12 +426,12 @@ This technique helps us generate a disassembler, but more
 importantly, it makes the specification easier to read and understand.
 <<pattern and constructor specifications>>=
 constructors
-  LDFSR  [address_], "%fsr"
-  LDCSR  [address_], "%csr"
-  STFSR  "%fsr", [address_]
-  STCSR  "%csr", [address_]
-  STDFQ  "%fq",  [address_]
-  STDCQ  "%cq",  [address_]
+  LDFSR  [address], "%fsr"
+  LDCSR  [address], "%csr"
+  STFSR  "%fsr", [address]
+  STCSR  "%csr", [address]
+  STDFQ  "%fq",  [address]
+  STDCQ  "%cq",  [address]
 @
 A similar group of instructions modify a different set of registers.
 Perhaps because they move information between special-purpose
@@ -502,9 +506,9 @@ these suffixes the names of the values of the [[a]] bit:
 fieldinfo a is [ names [ "" ",a" ] ]
 @ We then use [[a]] as a suffix to the branch instruction:
 <<pattern and constructor specifications>>=
-relocatable reloc
+relocatable target raddr
 constructors
-  branch^a reloc  { reloc = L + 4 * disp22! } is L: branch & a & disp22
+  branch^a target  { target = L + 4 * disp22! } is L: branch & a & disp22
 @ This declaration creates 96~constructors, two for each disjunct of
 the [[branch]] pattern.
 @
@@ -520,7 +524,7 @@ The [[call]] instruction is like the branches, except it uses a
  30-bit displacement, and there is no annul bit.
 <<pattern and constructor specifications>>=
 constructors
-  call  reloc   { reloc = L + 4 * disp30! } is L: CALL & disp30
+  call  target   { target = L + 4 * disp30! } is L: CALL & disp30
 @ We write the constructor name with two trailing underscores because
 we play overloading games below.
 @
@@ -564,10 +568,10 @@ The remaining instructions don't belong to any particular grouping.
 <<pattern and constructor specifications>>=
 constructors
   NOP
-  FLUSH address_
-  JMPL  address_, rd
-  RETT  address_
-  trap  address_
+  FLUSH address
+  JMPL  address, rd
+  RETT  address
+  trap  address
   UNIMP imm22
 @
 The SPARC architecture manual defines [[sethi]] such that 
@@ -583,8 +587,8 @@ constrained; [[decode_sethi]] constrains the 10 low-order
 bits of [[val]] and should be used for decoding. 
 <<pattern and constructor specifications>>=
 constructors
-  sethi        "%hi("val")", rd                   is  SETHI & rd & imm22 = val@[10:31]
-  decode_sethi "%hi("val")", rd { val@[0:9] = 0 } is  SETHI & rd & imm22 = val@[10:31]
+  sethi        "%hi("n")", rd                 is SETHI & rd & imm22 = n@[10:31]
+  decode_sethi "%hi("n")", rd { n@[0:9] = 0 } is SETHI & rd & imm22 = n@[10:31]
 @
 \subsection{Synthetic instructions}
 \label{sec:sparc-synth}
@@ -598,9 +602,8 @@ either semi-mnemonic names (e.g., [[movr]] fopr move-register or
 [[???_]]) for other variants. 
 <<sparc-synth.spec>>=
 constructors
-  cmp rs1, reg_or_imm   is SUBcc(rs1, reg_or_imm, "%g0")
-  jmp address_          is JMPL (address_, "%g0")
-  calla address_        is JMPL (address_, "%o7")
+  jmp address          is JMPL (address, "%g0")
+  calla address        is JMPL (address, "%o7")
   tst  rs2              is ORcc ("%g0", rmode(rs2), "%g0")
   ret                   is JMPL (dispA("%i7",8), "%g0")
   retl                  is JMPL (dispA("%o7",8), "%g0")
@@ -614,18 +617,19 @@ constructors
   inccc val, rd         is ADDcc (rd, imode(val), rd)
   dec   val, rd         is SUB (rd, imode(val), rd)
   deccc val, rd       	is SUBcc (rd, imode(val), rd)
+  cmp rs1, reg_or_imm   is SUBcc(rs1, reg_or_imm, "%g0")   # must follow dec
   btst reg_or_imm, rs1  is ANDcc(rs1, reg_or_imm, "%g0")
   bset reg_or_imm, rd   is OR  (rd, reg_or_imm, rd)
   bclr reg_or_imm, rd   is ANDN(rd, reg_or_imm, rd)
   btog reg_or_imm, rd   is XOR (rd, reg_or_imm, rd)
-  clr  rd               is OR  ("%g0", rmode("%g0"), rd)
-  clrw [address_]       is ST  ("%g0", address_)
-  clrb [address_]       is STB ("%g0", address_)
-  clrh [address_]      	is STH ("%g0", address_)
   mov  reg_or_imm, rd   is OR  ("%g0", reg_or_imm, rd)
   movr rs2, rd          is OR  ("%g0", rmode(rs2),   rd)
+  clr  rd               is OR  ("%g0", rmode("%g0"), rd)
+  clrw [address]       is ST  ("%g0", address)
+  clrb [address]       is STB ("%g0", address)
+  clrh [address]      	is STH ("%g0", address)
 @ Some of the constructors applied in
-the output patterns use [[reg_or_imm]] or [[address_]] 
+the output patterns use [[reg_or_imm]] or [[address]] 
 operands.  
 When such a value is a literal constant (e.g., register~[[%g0]]), we
 apply either the [[imode]] or [[rmode]] constructor to it to get a
@@ -664,12 +668,12 @@ constructors
 \subsection{Application-specific specifications for the {\tt lcc} compiler}
 @
 [[lcc]] uses set, load, and store constructors that operate on
-relocatable addresses instead of SPARC operands of type [[address_]].
+relocatable addresses instead of SPARC operands of type [[address]].
 <<lcc-sparc.spec>>=
 constructors
-  setr reloc, rd  is  set(reloc, rd)
-#  ldr  reloc, rd  is  sethi(reloc, "%g1"); ld(dispA("%g1", reloc@[0:9]), rd)
-#  str  rd, reloc  is  sethi(reloc, "%g1"); st(rd, dispA("%g1", reloc@[0:9]))
+  setr raddr, rd  is  set(raddr, rd)
+#  ldr  raddr, rd  is  sethi(raddr, "%g1"); ld(dispA("%g1", raddr@[0:9]), rd)
+#  str  rd, raddr  is  sethi(raddr, "%g1"); st(rd, dispA("%g1", raddr@[0:9]))
 @ 
 {\tt lcc} also supports a synthetic doubleword load and store
 operating on base-displacement addresses only.
@@ -684,7 +688,7 @@ It is the same as that defined for the MIPS.
 fields of addrtoken (32) addr32 0:31
 placeholder for addrtoken is addr32 = 7
 constructors
-  emit_raddr reloc is addr32 = reloc
+  emit_raddr raddr is addr32 = raddr
 @
 As on the MIPS, {\tt mld} doesn't want to pay the overhead of checking
 register numbers:
@@ -694,24 +698,24 @@ fieldinfo [ rs1 rs2 rd fd fs1 fs2 cd ] is [ guaranteed ]
 \subsection{Application-specific specifications for the {\tt mld} linker}
 @
 [[mld]], defines set, load, and store constructors that operate on
-relocatable addresses instead of SPARC operands of type [[address_]].
+relocatable addresses instead of SPARC operands of type [[address]].
 <<mld-sparc.spec>>=
 constructors
-  setr reloc, rd  is  set(reloc, rd)
-  ldr  reloc, rd  is  sethi(reloc, "%o2"); ld(dispA("%o2", reloc@[0:9]), rd)
-  str  rd, reloc  is  sethi(reloc, "%o2"); st(rd, dispA("%o2", reloc@[0:9]))
+  setr raddr, rd  is  set(raddr, rd)
+  ldr  raddr, rd  is  sethi(raddr, "%o2"); ld(dispA("%o2", raddr@[0:9]), rd)
+  str  rd, raddr  is  sethi(raddr, "%o2"); st(rd, dispA("%o2", raddr@[0:9]))
 @
 {\tt mld} uses the synonyms we've defined for the branch instructions.
 <<mld-sparc.spec>>=
 constructors
-  branch.synonyms^a reloc  { reloc = L + 4 * disp22! }  is
+  branch.synonyms^a target  { target = L + 4 * disp22! }  is
         L: branch.synonyms & a & disp22
 @
 \label{overloading-trick}
 
 Like the load and store instructions,
 the SPARC call instruction is overloaded;
-it accepts either a relocatable address or an SPARC-style [[address_]].
+it accepts either a relocatable address or an SPARC-style [[address]].
 The first style, which we've named [[call]], uses the real [[CALL]]
 instruction, the second, which we've named [[calla]], uses [[JMPL]].
 Because {\tt mld} generates code using a bottom-up tree walk,
@@ -723,8 +727,8 @@ The toolkit supports this trick using typed constructors; the cookie
 is a value of type [[Function]].
 <<mld-sparc.spec>>=
 constructors
-  relocfun reloc    : Function  is  call(reloc)
-  addrfun  address_ : Function  is  calla(address_)
+  relocfun target    : Function  is  call(target)
+  addrfun  address : Function  is  calla(address)
 @ [[relocfun]] and [[addrfun]] create the cookies.
 It looks like these constructors emit the calls, but actually they
 don't have any side effects; the just return patterns representing the
@@ -741,7 +745,7 @@ It is the same as that defined for the MIPS.
 fields of addrtoken (32) addr32 0:31
 placeholder for addrtoken is addr32 = 7
 constructors
-  emit_raddr reloc is addr32 = reloc
+  emit_raddr raddr is addr32 = raddr
 @
 As on the MIPS, {\tt mld} doesn't want to pay the overhead of checking
 register numbers:

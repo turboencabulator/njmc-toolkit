@@ -101,6 +101,9 @@ constructors
      when {lit8! = n@[24:31]!} is sint32; lit8 = n@[0:7]; lit8 = n@[8:15];
 			                  lit8 = n@[16:23]; lit8
   unary n!  is sint(n); unary  
+@ 
+Converts our internal representation of expressions into a sequence of
+bytecode operations.
 <<*>>=
 procedure expbc(e)
   local leadingsign, prefix
@@ -135,6 +138,11 @@ psopstab["="]  := bc_eq()
 <<*>>=
 procedure bc_stringout(s)
   return bc_stringlit() || bc_sint(*s) || s
+end
+<<*>>=
+procedure bc_lit()
+  initial warning("bc_lit is BOGUS!!!")
+  return "?"
 end
 @ 
 Be sure to omit multiplicative and additive units.

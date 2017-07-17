@@ -1,0 +1,463 @@
+procedure tree(n)
+  static trees
+  initial {
+    trees := []
+  put(trees,
+    treenode("i", 0, [
+      edge("0", treenode("rs2", 0, [
+          edge("0", [arm("sparcdis.nw", 81, &null, [" return RS1;"])]), 
+          edge("1-31", [arm("sparcdis.nw", 82, &null, 
+                [" sprintf(buf, \"%s+%s\", RS1, RS2);"])])    ])), 
+      edge("1", treenode("rs1", 0, [
+          edge("0", [arm("sparcdis.nw", 83, &null, 
+                [" sprintf(buf, \"%d\", i);"])]), edge("1-31", 
+            [arm("sparcdis.nw", 84, &null, 
+                
+                [" sprintf(buf, \"%s%s%d\", RS1, (int)i < 0 ? \"\" : \"+\", i);"])])    ]))    ]))
+  put(trees,
+    treenode("i", 0, [
+      edge("0", [arm("sparcdis.nw", 98, &null, [" return RS2;"])]), edge("1", 
+        [arm("sparcdis.nw", 97, &null, 
+            [" sprintf(buf, \"%d\", i); return buf;"])])    ]))
+  put(trees,
+    treenode("i", 0, [
+      edge("0", treenode("rs2", 0, [
+          edge("0", [arm("sparcdis.nw", 107, &null, [" return RS1;"])]), 
+          edge("1-31", [arm("sparcdis.nw", 108, &null, 
+                [" sprintf(buf, \"%s+%s\", RS1, RS2);"])])    ])), 
+      edge("1", [arm("sparcdis.nw", 109, &null, 
+            
+            ["sprintf(buf, \"??%s??\", dis_addr(fetch_word, fet, lc)); "])])    ]))
+  put(trees,
+    treenode("op", 0, [
+      edge("0", treenode("op2", 0, [
+          edge("0", [arm("sparcdis.nw", 208, "unimp", 
+                [" print(pr, \"unimp 0x%x\", n);", ""])]), edge("1, 3, 5", 
+            [arm("sparcdis.nw", 210, &null, 
+                [" print(pr, \".word 0x%08x\", n);"])]), edge("2", 
+            treenode("a", 0, [
+              edge("0", [arm("sparcdis.nw", 198, "namearray 1", 
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])]), 
+              edge("1", [arm("sparcdis.nw", 198, "namearray 2", 
+                    
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])])    ])), 
+          edge("4", treenode("imm22", 0, [
+              edge("0", treenode("rd", 0, [
+                  edge("0", [arm("sparcdis.nw", 145, &null, 
+                        [" print(pr, \"nop\");", 
+                          
+                          "   /*   | decode_sethi(hi, r); bset(imode(lo), r) => ", 
+                          "\t\tprint(pr, \"set 0x%x, %s\", hi+lo, rs1_names[r]); */"])]), 
+                  edge("1-31", [arm("sparcdis.nw", 148, &null, 
+                        
+                        [" print(pr, \"sethi %%hi(0x%x), %s\", val, rs1_names[r]);"])])    ])), 
+              edge("1-4194303", [arm("sparcdis.nw", 148, &null, 
+                    
+                    [" print(pr, \"sethi %%hi(0x%x), %s\", val, rs1_names[r]);"])])    ])), 
+          edge("6", treenode("a", 0, [
+              edge("0", [arm("sparcdis.nw", 198, "namearray 3", 
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])]), 
+              edge("1", [arm("sparcdis.nw", 198, "namearray 4", 
+                    
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])])    ])), 
+          edge("7", treenode("a", 0, [
+              edge("0", [arm("sparcdis.nw", 198, "namearray 5", 
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])]), 
+              edge("1", [arm("sparcdis.nw", 198, "namearray 6", 
+                    
+                    [" print(pr, \"%s %s\", name, dis_rel(rel, tgt));"])])    ]))    ])), 
+      edge("1", [arm("sparcdis.nw", 199, &null, 
+            [" print(pr, \"call %s\", dis_rel(rel, tgt));", ""])]), edge("2", 
+        treenode("op3", 0, [
+          edge("0", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 197, "add", 
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+              edge("1", [arm("sparcdis.nw", 160, "add", 
+                    [" print(pr, \"inc %d, %s\", val, RD);"]), 
+                  arm("sparcdis.nw", 197, "add", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("1", [arm("sparcdis.nw", 197, "and", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("2", treenode("rs1", 0, [
+              edge("0", treenode("i", 0, [
+                  edge("0", treenode("rs2", 0, [
+                      edge("0", [arm("sparcdis.nw", 165, &null, 
+                            [" print(pr, \"bset %s, %s\", ROI, RD);"]), 
+                          arm("sparcdis.nw", 168, &null, 
+                            [" print(pr, \"clr %s\", RD);"])]), edge("1-31", 
+                        [arm("sparcdis.nw", 165, &null, 
+                            [" print(pr, \"bset %s, %s\", ROI, RD);"]), 
+                          arm("sparcdis.nw", 172, &null, 
+                            [" print(pr, \"mov %s, %s\", ROI, RD);"])])    ])), 
+                  edge("1", [arm("sparcdis.nw", 149, &null, 
+                        [" print(pr, \"set %d, %s\", val, RD);"])])    ])), 
+              edge("1-31", [arm("sparcdis.nw", 165, "or", 
+                    [" print(pr, \"bset %s, %s\", ROI, RD);"]), 
+                  arm("sparcdis.nw", 197, "or", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("3", [arm("sparcdis.nw", 167, "xor", 
+                [" print(pr, \"btog %s, %s\", ROI, RD);"]), 
+              arm("sparcdis.nw", 197, "xor", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("4", treenode("i", 0, [
+              edge("0", treenode("rs1", 0, [
+                  edge("0", [arm("sparcdis.nw", 158, &null, 
+                        [" print(pr, \"neg %s\", RD);"]), 
+                      arm("sparcdis.nw", 159, &null, 
+                        [" print(pr, \"neg %s, %s\", RS2, RD);"])]), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "sub", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", [arm("sparcdis.nw", 162, "sub", 
+                    [" print(pr, \"dec %d, %s\", val, RD);"]), 
+                  arm("sparcdis.nw", 197, "sub", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("5", [arm("sparcdis.nw", 166, "andn", 
+                [" print(pr, \"bclr %s, %s\", ROI, RD);"]), 
+              arm("sparcdis.nw", 197, "andn", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("6", [arm("sparcdis.nw", 197, "orn", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("7", treenode("i", 0, [
+              edge("0", treenode("rs2", 0, [
+                  edge("0", [arm("sparcdis.nw", 156, &null, 
+                        [" print(pr, \"not %s\", RD);"]), 
+                      arm("sparcdis.nw", 157, &null, 
+                        [" print(pr, \"not %s, %s\", RS1, RD);"])]), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "xnor", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", [arm("sparcdis.nw", 197, "xnor", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("8", [arm("sparcdis.nw", 197, "addx", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("9, 13, 25, 29, 40-51, 54-55, 59, 62-63", 
+            [arm("sparcdis.nw", 210, &null, 
+                [" print(pr, \".word 0x%08x\", n);"])]), edge("10", 
+            [arm("sparcdis.nw", 197, "umul", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("11", [arm("sparcdis.nw", 197, "smul", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("12", [arm("sparcdis.nw", 197, "subx", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("14", [arm("sparcdis.nw", 197, "udiv", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("15", [arm("sparcdis.nw", 197, "sdiv", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("16", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 197, "addcc", 
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+              edge("1", [arm("sparcdis.nw", 161, "addcc", 
+                    [" print(pr, \"inccc %d, %s\", val, RD);"]), 
+                  arm("sparcdis.nw", 197, "addcc", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("17", treenode("rd", 0, [
+              edge("0", [arm("sparcdis.nw", 164, &null, 
+                    [" print(pr, \"btst %s, %s\", ROI, RS1);"])]), edge("1-31", 
+                [arm("sparcdis.nw", 197, "andcc", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("18", treenode("i", 0, [
+              edge("0", treenode("rs1", 0, [
+                  edge("0", treenode("rd", 0, [
+                      edge("0", [arm("sparcdis.nw", 155, &null, 
+                            [" print(pr, \"tst %s\", RS2);"])]), edge("1-31", 
+                        [arm("sparcdis.nw", 197, "orcc", 
+                            
+                            [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "orcc", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", [arm("sparcdis.nw", 197, "orcc", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("19", [arm("sparcdis.nw", 197, "xorcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("20", treenode("i", 0, [
+              edge("0", treenode("rd", 0, [
+                  edge("0", [arm("sparcdis.nw", 150, &null, 
+                        [" print(pr, \"cmp %s, %s\", RS1, ROI);"])]), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "subcc", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", treenode("rd", 0, [
+                  edge("0", [arm("sparcdis.nw", 150, &null, 
+                        [" print(pr, \"cmp %s, %s\", RS1, ROI);"])]), 
+                  edge("1-31", [arm("sparcdis.nw", 163, "subcc", 
+                        [" print(pr, \"deccc %d, %s\", val, RD);"]), 
+                      arm("sparcdis.nw", 197, "subcc", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ]))    ])), 
+          edge("21", [arm("sparcdis.nw", 197, "andncc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("22", [arm("sparcdis.nw", 197, "orncc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("23", [arm("sparcdis.nw", 197, "xnorcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("24", [arm("sparcdis.nw", 197, "addxcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("26", [arm("sparcdis.nw", 197, "umulcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("27", [arm("sparcdis.nw", 197, "smulcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("28", [arm("sparcdis.nw", 197, "subxcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("30", [arm("sparcdis.nw", 197, "udivcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("31", [arm("sparcdis.nw", 197, "sdivcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("32", [arm("sparcdis.nw", 197, "taddcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("33", [arm("sparcdis.nw", 197, "tsubcc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("34", [arm("sparcdis.nw", 197, "taddcctv", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("35", [arm("sparcdis.nw", 197, "tsubcctv", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("36", [arm("sparcdis.nw", 197, "mulscc", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("37", [arm("sparcdis.nw", 197, "sll", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("38", [arm("sparcdis.nw", 197, "srl", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("39", [arm("sparcdis.nw", 197, "sra", 
+                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])]), 
+          edge("52", treenode("opf", 0, [
+              edge("0, 2-4, 6-8, 10-40, 44-64, 68, 72, 76, 80-104, 106-109, 111-195, 197, 202, 207-208, 212-511", 
+                [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])]), 
+              edge("1, 5, 9, 41-43", [arm("sparcdis.nw", 201, "namearray 7", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("65-67, 69-71, 73-75, 77-79, 105, 110", 
+                [arm("sparcdis.nw", 202, "namearray 7", 
+                    [" print(pr, \"%s %s, %s, %s\", name, FS1, FS2, FD);"])]), 
+              edge("196", [arm("sparcdis.nw", 201, "fitos", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("198", [arm("sparcdis.nw", 201, "fdtos", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("199", [arm("sparcdis.nw", 201, "fqtos", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("200", [arm("sparcdis.nw", 201, "fitod", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("201", [arm("sparcdis.nw", 201, "fstod", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("203", [arm("sparcdis.nw", 201, "fqtod", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("204", [arm("sparcdis.nw", 201, "fitoq", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("205", [arm("sparcdis.nw", 201, "fstoq", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("206", [arm("sparcdis.nw", 201, "fdtoq", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("209", [arm("sparcdis.nw", 201, "fstoi", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("210", [arm("sparcdis.nw", 201, "fdtoi", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])]), 
+              edge("211", [arm("sparcdis.nw", 201, "fqtoi", 
+                    
+                    [" print(pr, \"%s %s, %s\",     name,      FS2, FD);"])])    ])), 
+          edge("53", treenode("opf", 0, [
+              edge("0-80, 84, 88-511", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])]), 
+              edge("81-83, 85-87", [arm("sparcdis.nw", 203, "namearray 7", 
+                    [" print(pr, \"%s %s, %s\",     name,      FS1, FS2);", 
+                      ""])])    ])), 
+          edge("56", treenode("i", 0, [
+              edge("0", treenode("rd", 0, [
+                  edge("0", [arm("sparcdis.nw", 153, &null, 
+                        [" print(pr, \"jmp %s\", ADDR);"])]), 
+                  edge("1-14, 16-31", [arm("sparcdis.nw", 205, "jmpl", 
+                        [" print(pr, \"jmpl %s, %s\", ADDR, RD);"])]), 
+                  edge("15", [arm("sparcdis.nw", 154, &null, 
+                        [" print(pr, \"call %s\", ADDR);"])])    ])), 
+              edge("1", treenode("rd", 0, [
+                  edge("0", treenode("simm13", 0, [
+                      edge("0-7, 9-8191", [arm("sparcdis.nw", 153, &null, 
+                            [" print(pr, \"jmp %s\", ADDR);"])]), edge("8", 
+                        treenode("rs1", 0, [
+                          edge("0-14, 16-30", [arm("sparcdis.nw", 153, &null, 
+                                [" print(pr, \"jmp %s\", ADDR);"])]), 
+                          edge("15", [arm("sparcdis.nw", 152, &null, 
+                                [" print(pr, \"retl\");"])]), edge("31", 
+                            [arm("sparcdis.nw", 151, &null, 
+                                [" print(pr, \"ret\");"])])    ]))    ])), 
+                  edge("1-14, 16-31", [arm("sparcdis.nw", 205, "jmpl", 
+                        [" print(pr, \"jmpl %s, %s\", ADDR, RD);"])]), 
+                  edge("15", [arm("sparcdis.nw", 154, &null, 
+                        [" print(pr, \"call %s\", ADDR);"])])    ]))    ])), 
+          edge("57", [arm("sparcdis.nw", 206, "rett", 
+                [" print(pr, \"rett [%s]\", ADDR);"])]), edge("58", 
+            [arm("sparcdis.nw", 207, "namearray 8", 
+                [" print(pr, \"%s [%s]\", ADDR);"])]), edge("60", 
+            treenode("i", 0, [
+              edge("0", treenode("rs2", 0, [
+                  edge("0", treenode("rs1", 0, [
+                      edge("0", treenode("rd", 0, [
+                          edge("0", [arm("sparcdis.nw", 174, &null, 
+                                [" print(pr, \"save\");", "", 
+                                  "         /* end of synthetics */", ""])]), 
+                          edge("1-31", [arm("sparcdis.nw", 197, "save", 
+                                
+                                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+                      edge("1-31", [arm("sparcdis.nw", 197, "save", 
+                            
+                            [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "save", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", [arm("sparcdis.nw", 197, "save", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+          edge("61", treenode("i", 0, [
+              edge("0", treenode("rs1", 0, [
+                  edge("0", treenode("rd", 0, [
+                      edge("0", treenode("rs2", 0, [
+                          edge("0", [arm("sparcdis.nw", 173, &null, 
+                                [" print(pr, \"restore\");"])]), edge("1-31", 
+                            [arm("sparcdis.nw", 197, "restore", 
+                                
+                                [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+                      edge("1-31", [arm("sparcdis.nw", 197, "restore", 
+                            
+                            [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+                  edge("1-31", [arm("sparcdis.nw", 197, "restore", 
+                        
+                        [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ])), 
+              edge("1", [arm("sparcdis.nw", 197, "restore", 
+                    
+                    [" print(pr, \"%s %s, %s, %s\", name, RS1, ROI, RD);"])])    ]))    ])), 
+      edge("3", treenode("op3", 0, [
+          edge("0", [arm("sparcdis.nw", 178, "ld", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("1", 
+            [arm("sparcdis.nw", 178, "ldub", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("2", 
+            [arm("sparcdis.nw", 178, "lduh", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("3", 
+            [arm("sparcdis.nw", 178, "ldd", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("4", 
+            treenode("rd", 0, [
+              edge("0", [arm("sparcdis.nw", 169, &null, 
+                    [" print(pr, \"clr [%s]\", ADDR);"])]), edge("1-31", 
+                [arm("sparcdis.nw", 183, "st", 
+                    [" print(pr, \"%s %s, [%s]\", name, RD, ADDR);"])])    ])), 
+          edge("5", treenode("rd", 0, [
+              edge("0", [arm("sparcdis.nw", 170, &null, 
+                    [" print(pr, \"clrb [%s]\", ADDR);"])]), edge("1-31", 
+                [arm("sparcdis.nw", 183, "stb", 
+                    [" print(pr, \"%s %s, [%s]\", name, RD, ADDR);"])])    ])), 
+          edge("6", treenode("rd", 0, [
+              edge("0", [arm("sparcdis.nw", 171, &null, 
+                    [" print(pr, \"clrh [%s]\", ADDR);"])]), edge("1-31", 
+                [arm("sparcdis.nw", 183, "sth", 
+                    [" print(pr, \"%s %s, [%s]\", name, RD, ADDR);"])])    ])), 
+          edge("7", [arm("sparcdis.nw", 183, "std", 
+                [" print(pr, \"%s %s, [%s]\", name, RD, ADDR);"])]), 
+          edge("8, 11-12, 14, 24, 27-28, 30, 34, 40-47, 50, 56-63", 
+            [arm("sparcdis.nw", 210, &null, 
+                [" print(pr, \".word 0x%08x\", n);"])]), edge("9", 
+            [arm("sparcdis.nw", 178, "ldsb", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("10", 
+            [arm("sparcdis.nw", 178, "ldsh", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("13", 
+            [arm("sparcdis.nw", 178, "ldstub", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("15", 
+            [arm("sparcdis.nw", 178, "swap_", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, RD);"])]), edge("16", 
+            treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "lda", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("17", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "lduba", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("18", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "lduha", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("19", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "ldda", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("20", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 186, "sta", 
+                    [" print(pr, \"%s %s, [%s]%d\", name, RD, ADDR, asi);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("21", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 186, "stba", 
+                    [" print(pr, \"%s %s, [%s]%d\", name, RD, ADDR, asi);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("22", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 186, "stha", 
+                    [" print(pr, \"%s %s, [%s]%d\", name, RD, ADDR, asi);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("23", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 186, "stda", 
+                    [" print(pr, \"%s %s, [%s]%d\", name, RD, ADDR, asi);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("25", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "ldsba", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("26", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "ldsha", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("29", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "ldstuba", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("31", treenode("i", 0, [
+              edge("0", [arm("sparcdis.nw", 181, "swapa", 
+                    [" print(pr, \"%s [%s]%d, %s\", name, ADDR, asi, RD);", 
+                      ""])]), edge("1", [arm("sparcdis.nw", 210, &null, 
+                    [" print(pr, \".word 0x%08x\", n);"])])    ])), 
+          edge("32", [arm("sparcdis.nw", 179, "ldf", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, FD);"])]), edge("33", 
+            [arm("sparcdis.nw", 188, "ldfsr", 
+                [" print(pr, \"%s [%s], %%fsr\", name, ADDR);"])]), edge("35", 
+            [arm("sparcdis.nw", 179, "lddf", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, FD);"])]), edge("36", 
+            [arm("sparcdis.nw", 184, "stf", 
+                [" print(pr, \"%s %s, [%s]\", name, FD, ADDR);"])]), edge("37", 
+            [arm("sparcdis.nw", 190, "stfsr", 
+                [" print(pr, \"%s %%fsr, [%s]\", name, ADDR);"])]), edge("38", 
+            [arm("sparcdis.nw", 192, "stdfq", 
+                [" print(pr, \"%s %%fq, [%s]\", name, ADDR);"])]), edge("39", 
+            [arm("sparcdis.nw", 184, "stdf", 
+                [" print(pr, \"%s %s, [%s]\", name, FD, ADDR);"])]), edge("48", 
+            [arm("sparcdis.nw", 180, "ldc", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, CD);"])]), edge("49", 
+            [arm("sparcdis.nw", 189, "ldcsr", 
+                [" print(pr, \"%s [%s], %%csr\", name, ADDR);"])]), edge("51", 
+            [arm("sparcdis.nw", 180, "lddc", 
+                [" print(pr, \"%s [%s], %s\", name, ADDR, CD);"])]), edge("52", 
+            [arm("sparcdis.nw", 185, "stc", 
+                [" print(pr, \"%s %s, [%s]\", name, CD, ADDR);"])]), edge("53", 
+            [arm("sparcdis.nw", 191, "stcsr", 
+                [" print(pr, \"%s %%csr, [%s]\", name, ADDR);"])]), edge("54", 
+            [arm("sparcdis.nw", 193, "stdcq", 
+                [" print(pr, \"%s %%cq, [%s]\", name, ADDR);", "", 
+                  "  /* don't bother with RDY, WRY, and friends */", ""])]), 
+          edge("55", [arm("sparcdis.nw", 185, "stdc", 
+                
+                [" print(pr, \"%s %s, [%s]\", name, CD, ADDR);"])])    ]))    ]))
+  }
+  return trees[n]
+end

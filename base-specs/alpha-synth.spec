@@ -1,4 +1,4 @@
-#line 302 "alpha.nw"
+#line 306 "alpha.nw"
 constructors
   andnot ra, rb, rc          is  bic(ra, rmode(rb), rc)
   clr    rc                  is  bis(r31, rmode(r31), rc)

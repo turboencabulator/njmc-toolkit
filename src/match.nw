@@ -70,6 +70,7 @@ procedure new_matching_arms(a, succptr)
   a.pattern := gsubst(a.pattern, always_fail)  	# remove wildcards and instances,
 						# turn latent to real labels
   PPxwrite(\pp, "after anf+subst we have case arm $t$o", ppexpimage(a.pattern), "$b")
+<<*>>=
   <<remove from [[freevars]] names of pattern labels in [[a.pattern]]>>
   if *freevars > 0 then
     write(\mdebug, "caught free variables:", envimage(freevars, "freevars"))

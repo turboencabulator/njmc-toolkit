@@ -1,0 +1,17 @@
+#!/bin/sh
+#
+# Usage: chckfilter <gawk or nawk> <object file name>
+#
+#   Compare pairs of disassembled instructions 
+AWK=$1
+shift
+tmp=/tmp/alpha$$
+dis -h -d $1 | sed 's/^[ 	]*//' > $tmp
+cat -n $tmp | grep 'lda	r26, -16727' |
+$AWK 'BEGIN { spot[0] = 0; n = 0 }
+{ spot[n++] = $1 }
+END { 
+      printf "sed -n %d,%dp '$tmp' > binout\n", spot[0], spot[1] - 1
+      printf "sed -n \"%d,/bis	r31, r31, r31/\"p '$tmp' > asmout\n", spot[1] }' | sh
+diff binout asmout | disdiffs
+rm -f $tmp

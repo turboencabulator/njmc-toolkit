@@ -19,14 +19,14 @@ global instructionctype	# the type of instruction constructors
 global bit_zero_is_lsb  # non-null if bits are numbered with 0 == least significant
 global vanishing_latent_patlabel  # should vanish
 global fieldname_literals, operands_and_ids, warned_literals # find conflicts
+global all_types	# list of all possible constructor types, in order
 <<toplevel>>=
 procedure init_parser()
     every symtab | constructors := table()
     globals := [symtab]
     every unchecked_fields | guaranteed_fields := set()
     every fieldname_literals | operands_and_ids | warned_literals := set()
-    every conslist | equivclasses := []
-    instructionctype := constype("(anonymous constructor type)", set())
+    every conslist | equivclasses | all_types := []
     bit_zero_is_lsb := 1
     vanishing_latent_patlabel := latent_patlabel()
     <<initialization>>
@@ -795,7 +795,7 @@ NLBranches   : Branches
              ;
 Branches     : SingleBranch /* [ii1] */
              | WhenBranch {WhenBranch | OtherwiseBranch}
-                /* push(ii2, ii1); put(ii2, \ii3); ii2 */
+                /* push(ii2, ii1); ii2 */
              ;
 SingleBranch : "{" Equations "}" [ "is" Pattern ] /* [ ii2, \ii4 | &null] */ 
              | "is" Pattern    /* [ [] , ii2 ] */ 
@@ -932,10 +932,12 @@ and we issue a warning message if they do.)}
 
 @ 
 <<grammar>>=
-Operand      : Ident ["!"] /* {<<note new operand or id [[ii1]]>>};
+Operand      : (Ident | AddressAsIdent) ["!"] /* {<<note new operand or id [[ii1]]>>};
                               name_to_input(ii1, ii2) */
              | (Literal | GlobOperator | White) /* literal(ii1) */
              ;
+AddressAsIdent : (/*NEWLINEVISION := 1*/) "address" SeeWhite /* ii2 */;
+  # reserved word automatically causes newlines to be ignored, so fix it
 Literal      : String | Integer /* string(ii1) */ | Relop | "=>" 
              | "[" | "]" | "(" | ")" | "+" | "-" | "/" 
              | "&" | "@" | "#" | "%" | ";" | "|" 
@@ -963,7 +965,8 @@ with our usage in specifications:
 A [[ConstType]] is defined implicitly by the first declaration of a constructor
 of that type.
 <<grammar>>=
-ConstType : Ident /* (/symtab[ii1] := constype(ii1, set())) | 
+ConstType : (Ident | "address")
+            /* 1(/symtab[ii1] := t := constype(ii1, set()), put(all_types ,t)) |
                      lookuptype(ii1, "constype")  */;
 @ %def ConstType
 <<refman: constructor types>>=
@@ -1083,7 +1086,8 @@ global the_relocatable	# we only need one...
 <<initialization>>=
 the_relocatable := relocatable()
 <<grammar>>=
-RelocSpec : "relocatable" Ident {Ident} /* every make_relocatable(ii2 | !ii3) */;
+RelocSpec : "relocatable" Ident {Ident} 
+                /* if /no_reloc then every make_relocatable(ii2 | !ii3) */;
 <<*>>=
 procedure make_relocatable(name)
   return (/symtab[name] := the_relocatable) | deferror("Relocatable name", image(name))
@@ -1102,9 +1106,13 @@ relocatable addresses when used as operands.
 @
 A constructor type is marked when it is first used as an input.
 <<*>>=
+global used_types
 procedure mark_ct_as_used(type)
-  if /type.used := lineno then
-    {<<sort members of type>>}
+  initial used_types := []
+  if /type.used := lineno then {
+    put(used_types, type)
+    <<sort members of type>>
+  }
   return type
 end
 <<sort members of type>>=
@@ -1210,9 +1218,9 @@ Mop       : "*" | "/" ;
 Factor    : Integer
           | String /* literal(ii1) */   # legal only in constructor apps
           | "_" /* fresh_variable("_") */
-          | IDENT ( [ Bitrange ] [ "!" ]          /* SyntaxRange(ii1, ii2) */
-                  | "(" Args ")" 
-                  ) 
+          | (IDENT|"address") ( [ Bitrange ] [ "!" ]       /* SyntaxRange(ii1, ii2) */
+                              | "(" Args ")" 
+                              ) 
              /* <<note new operand or id [[ii1]]>>
                 if type(ii2) == "SyntaxRange" then mkfactor(ii1, ii2.bits, ii2.bang) 
                 else Eapp(ii1, ii2) */
@@ -1223,6 +1231,7 @@ Bitrange  : "@" "[" INT [":" INT /*ii2*/] "]" /* [ii3, (\ii4|ii3)+1] */ ;
 Args      : AppExpr {"," AppExpr} /* push(ii2, ii1) */
           | /* [] */
           ;
+
 @ Can't use a square-bracket syntax for bit ranges because it creates parsing conflict
 with list of names on left-hand side of pattern binding, list of patterns in square
 brackets, and optional name in arm of case statement.
@@ -1351,6 +1360,8 @@ to the name of the \nt{pattern}.
 This name may be a name introduced by a \verb+patterns+ declaration,
 or it may be the name of a constructor that was applied to produce the
 pattern. 
+(Patterns lose their names when combined with other patterns 
+using the pattern operators.) 
 The \term{code} may occupy multiple lines; the toolkit takes all the
 text between the \lit{=>} and the next initial \litbar, or the end of
 the matching statement.
@@ -1432,6 +1443,29 @@ used to assign values  to labels.\index{labels!template for conversion}
 <<refman: address add template>>
 <<refman: address to integer template>>
 The \lit{address type} template doesn't use any escapes.
+
+Judicious definitions of the templates can help handle standard object
+files, in which the address of an instruction in memory need not
+correspond to the address that instruction would occupy in a running
+program. 
+For example, if the pointer \verb+instr+ pointer points to a buffer
+containing instructions, and the integer \verb+pc+ indicates the
+address that buffer would occupy in a running program, the following
+templates may prove helpful:\footnote{This code has not been tested.}
+\begin{verbatim}
+address type is "unsigned char *"
+address fetch 8 using "*(%a)"
+address add using "%a+%o"
+address to integer using "(%a-instr)+pc"
+\end{verbatim}
+These templates would be suitable for use with a matching statement
+beginning, e.g., \mbox{\texttt{match instr to}}.
+This transformation requires care; matching on an address (e.g. for
+addressing modes) produces an answer in ``integer-space,'' where the
+beginning of the block is at~\texttt{pc}.
+To use that answer in another matching statement, it would have to be 
+transformed back into ``address-space,'' where the beginning of the
+block is at~\texttt{instr}.
 @ 
 This warning may help people who are hung up on left-to-right.\change{44}
 <<issue warnings for chars in [[expected]] not in [[template]]>>=

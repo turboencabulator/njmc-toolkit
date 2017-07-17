@@ -1,3 +1,7 @@
+\ifhtml\section*{Contents}
+\tableofcontents
+\fi
+
 \section{Alpha instruction-set specification}
 The Alpha lies somewhere between the MIPS and SPARC in complexity.
 It has one structured operand, which
@@ -306,6 +310,24 @@ constructors
   nop                        is  bis(r31, rmode(r31), r31)
   not    rb, rc              is  ornot(r31, rmode(rb), rc)
   or     ra, reg_or_imm, rc  is  bis(ra, reg_or_imm, rc)
+@ 
+\subsection{Span-dependent branches}
+Dirty-trick central. 
+First, opposite branches:
+<<alpha-span.spec>>=
+patterns xbranch is any of 
+  [ xbeq xbne xble xblt xbge xbgt xblbc xblbs ], which is
+  [  bne  beq  bgt  bge  blt  ble  blbs  blbc ]
+constructors
+  xbranch ra, target { target = L + 4 * bdisp! } is xbranch & ra & bdisp; L: epsilon
+constructors
+  "span"^branch ra, target 
+     where { } is branch ra, target
+     otherwise is
+       "x"^branch ra, L;
+       bis(r31, imode(target@[0:7]), 1); # bogus -- must set 64 bits
+       jmp(r31, 1, 0);
+     L: epsilon
 @ 
 \subsection{Checking against the Digital OSF/1 Assembler}
 Apparently, unlike in the manual, qualifiers in OSF/1 assembler are not

@@ -1,3 +1,7 @@
+\ifhtml\section*{Contents}
+\tableofcontents
+\fi
+
 \section{MIPS instruction-set specification}
 This section is a complete specification of the MIPS instruction set.
 The MIPS is a good machine to start with
@@ -528,7 +532,7 @@ for the command \mbox{[[sed 's/# {/{/']]} to uncomment them.
 constructors
   arith3.^format fd, fs, ft # { fd = 2 * _, fs = 2 * _, ft = 2 * _ }
   arith2.^format fd, fs     # { fd = 2 * _, fs = 2 * _ }
-  movec1         rt, fs     
+  movec1         rt, rd
   c.cond^"."^format  fs, ft # { fs = 2 * _, ft = 2 * _ }
   convert^"."^format fd, fs # { fd = 2 * _, fs = 2 * _ }
   "bc1f" reloc { reloc = L + 4 * offset! } is bc1f & offset; L: epsilon

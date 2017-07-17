@@ -188,8 +188,7 @@ end
 \section{Writing trees in ascii format}
 <<*>>=
 procedure outtree(file, n, prefix, shownode)
-  if /prefix then write(file, "TREE ", image(n.name))
-  else write(image(n.name))
+  if /prefix then write(file, "TREE")
   if *n.children > 0 then {
     span := *patimage(n.field) + 14
     every e := !n.children do
@@ -198,11 +197,97 @@ procedure outtree(file, n, prefix, shownode)
   } else {
     if *n.cs.arms = 0 then write(file, \prefix | "  ", " : NO MATCH")
     else 
-      every write(file, (\prefix | "  ANY?  ")\1, " : ", expimage(!n.cs.arms))
+      every a := !n.cs.arms do
+        write(file, (\prefix | "  ANY?  ")\1, " @", a.file, ":", a.line, " ", 
+	      expimage(a.code))
   }
   if /prefix then write(file, "END TREE\n")
   return
 end
+@
+\section{Writing Icon for trees}
+<<*>>=
+procedure icontree(pp, n, prefix)
+  local comma
+  if /prefix then {
+     PPxwrite(pp, "  put(trees,$t$t")
+     icontree(pp, n, "    ")
+     PPxwrite(pp, "$b$b)")
+  } else if *n.children > 0 then {
+    PPxwrites(pp, "treenode(${$t", image(n.field.field.name), ", ",
+	  n.field.offset, ", [$c")
+    t := table()
+    every e := !n.children do
+      t[edgeleast(e.lo, e.hi)] := [edgestring(e.lo, e.hi), e.node]
+    t := sort(t)
+    comma := ""
+    every e := (!t)[2] do {
+      PPxwrites(pp, comma, "edge(${$t", image(e[1]), ", $o")
+      icontree(pp, e[2], prefix)
+      PPxwrites(pp, "$b$})")
+      comma := if *e[2].children = 0 then ", $o" else ", $c"
+    }
+    PPxwrites(pp, prefix, "]$b$})")
+  } else {
+    if *n.cs.arms = 0 then PPwrites(pp, image("no match"))
+    else {
+      PPxwrites(pp, "[${$t")
+      comma := ""
+      every a := !n.cs.arms do {
+        PPxwrites(pp, comma, "arm(${$t", image(a.file), ", ", a.line, ", ",
+		  image(if type(n.name) == "namearray" then naid(n.name)
+		        else n.name), ", $o")
+	iconblastcode(pp, a.code)
+#	if match(" F", a.code[1]) then { pushtrace(5); callfor(n, a) }
+	PPxwrites(pp, "$b$})")
+	comma := ", $o"
+      }
+      PPxwrites(pp, "$b$}]")
+    }
+  }
+  return
+end
+
+procedure naid(x)
+  static t
+  initial t := table()
+  /t[x] := "namearray " || (1+*t)
+  return t[x]
+end
+
+procedure callfor(n, a)
+  case type(n) of {
+     "node" : callfor(n.name)
+   }
+  return n
+end
+
+procedure iconblastcode(pp, lines)
+  PPxwrites(pp, "[${$t")
+  c := ""
+  every l := !lines do {
+    PPxwrites(pp, c, image(l))
+    c := ", $o"
+  }
+  PPxwrites(pp, "$b$}]")
+  return
+end
+<<*>>=
+procedure edgeleast(lo, hi)
+  return if type(lo) == "set" then sort(lo)[1] else lo
+end
+
+procedure edgestring(lo, hi)
+    local r, result
+    if type(lo) == "set" then {
+        r := sort(lo ++ hi)
+	if *r = 0 then return "<EMPTY RANGE??>"
+        result := edgestring(get(r), get(r))
+        while result ||:= ", " || edgestring(get(r), get(r))
+	return result
+    } else if lo + 1 = hi then return string(lo)
+    else return string(lo) || "-" || string(hi-1)
+end 
 @
 \section{Writing trees and dags in {\tt dot(1)} format}
 <<*>>=

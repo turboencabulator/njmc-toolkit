@@ -1,4 +1,8 @@
+% -*- mode: Noweb; noweb-code-mode: c-mode -*-
 % l2h ignore change {
+
+\ifhtml\tableofcontents\fi
+
 \chapter{The library}
 This file implements the toolkit library.
 The declarations of exported procedures and types appear in {\tt library.nw}.
@@ -329,7 +333,7 @@ into a known block at a known location.  Also, since we're guaranteed that
 placeholder tokens have already been emitted into these slots, we don't
 have to worry about maintaining low or high water marks or about allocating buffers.
 The code that actually spits out the bits (but not the slow path) can be
-re-used as the chunk \LA{}emit [[n]] bytes of [[val]] at [[p]]\RA.
+re-used as the chunk [[<<emit [[n]] bytes of [[val]] at [[p]]>>]].
 <<local declarations>>=
 static void initial_cl_emitm(RBlock rb, unsigned lc, unsigned long bits, unsigned size);
 <<definitions>>=
@@ -373,8 +377,8 @@ void cl_emitb(rb, lc, val, n) RBlock rb; unsigned lc; unsigned long val; unsigne
 <<slow path for big-endian closure emission>>=
 { unsigned roomhere = cb->limit - p;
   assert(roomhere > 0 && roomhere < n);
-  cl_emitl(rb, lc, val >> 8*roomhere, roomhere);
-  cl_emitl(rb, lc+roomhere, val, n - roomhere);
+  cl_emitb(rb, lc, val >> 8*roomhere, roomhere);
+  cl_emitb(rb, lc+roomhere, val, n - roomhere);
 }
 @
 \subsubsection{Allocating new buffers}
@@ -953,6 +957,16 @@ typedef struct closurepostfix {
     ApplyMethod apply;
     char *postfix;
 } ClosurePostfix;
+@ 
+We also need to be able to walk the internal fields.
+<<exported data declarations>>=
+typedef void (*IntCallback)(void *closure, unsigned n);
+typedef void (*FieldEnumerator)(struct rclosure *cp, RelocCallback r,
+                                IntCallback i, void *closure);
+typedef struct closureemitter {
+    ApplyMethod apply;
+    FieldEnumerator walk_fields;
+} ClosureEmitter;
 @
 The library provides the closure-independent procedure [[apply_closure]].
 [[apply_closure]] checks that
@@ -1014,6 +1028,7 @@ RClosure mc_create_closure_here(unsigned size, ClosureHeader h) {
 \section{Support for printing relocatable addresses}
 <<definitions>>=
 static void label_print(struct label *label) {
+  if (!asmprintfd) asmprintfd = stdout;
   asmprintf(asmprintfd, "%s", label->name ? label->name : "???");
 }
 <<local declarations>>=
@@ -1022,7 +1037,7 @@ static void label_print(struct label *label);
 typedef void (*asmprinter)(void *closure, const char *fmt, ...);
 extern int fprintf(FILE *stream, const char *fmt, ...); /* needed at Purdue -- ugh */
 void (*asmprintf)(void *closure, const char *fmt, ...) = (asmprinter) fprintf;
-void *asmprintfd = (void *)stdout;
+void *asmprintfd = (void *)0;
 void (*asmprintreloc)(RAddr reloc) = reloc_print; /* calls asmprintf */
 @
 \section{Boilerplate}
@@ -1052,6 +1067,8 @@ Note the [[roundup]] macro is good only for powers of two.
 <<mclib.c>>=
 #include <mclib.h>
 #include <stdio.h> 
+#include <sys/types.h>
+  /* get size_t, I hope */
 
 #define max(X,Y) ((X) > (Y) ? (X) : (Y))
 #define min(X,Y) ((X) < (Y) ? (X) : (Y))

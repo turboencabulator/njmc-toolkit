@@ -54,7 +54,7 @@ All instructions have the same format:
 \hline
 [[op]]&[[md]]&~~~[[adr]]~~~\\
 \hline
-\omit\vrule height10pt width0pt\footnotesize 15~\hfil 12&
+\omit\relax\ifhtml\else\vrule height10pt width0pt\fi\footnotesize 15~\hfil 12&
 \omit\footnotesize 11~\hfil 10&
 \omit\footnotesize 9~\hfil 0%
 \end{tabular}
@@ -71,6 +71,7 @@ This scheme suggests some macros:
 <<PC macros>>=
 #define setPC(M, A)  (((M)->PC = validate(A)), ((M)->PCHI = 0))
 #define advancePC(M) ((M)->PCHI ? setPC(M, (M)->PC+1) : ((M)->PCHI = 1))
+#define getPC(A)     ((A)->PC)
 @
 \subsection{Addressing modes}
 The XS has direct, indexed, autoincrement, and autodecrement address
@@ -140,21 +141,21 @@ void interpretXS(Machine m, unsigned start_address) {
     | TRA  => trace = 1;
     | NOTR => trace = 0;
     | invalid => assert(("invalid instruction", 0));
-    | LIT(a) => m->AC = address(a);
-    | LDA(a) => m->AC = MEMORY(a);
-    | STA(a) => MEMORY(a) = m->AC;
-    | LDX(a) => m->XR = MEMORY(a);
-    | STX(a) => MEMORY(a) = m->XR;
-    | ADD(a) => m->AC += MEMORY(a);
-    | SUB(a) => m->AC -= MEMORY(a);
-    | OR(a)  => m->AC |= MEMORY(a);
-    | AND(a) => m->AC &= MEMORY(a);
-    | INC(a) => MEMORY(a)++;
-    | DEC(a) => MEMORY(a)--;
-    | JMP(a) => BRANCH(a);
-    | JPZ(a) => if (m->AC == 0) then BRANCH(a);
-    | JPN(a) => if (m->AC <  0) then BRANCH(a);
-    | JSR(a) => m->XR = m->PC; BRANCH(a);
+    | LIT(a) => m->AC = address(m);
+    | LDA(a) => m->AC = MEMORY(m);
+    | STA(a) => MEMORY(m) = m->AC;
+    | LDX(a) => m->XR = MEMORY(m);
+    | STX(a) => MEMORY(m) = m->XR;
+    | ADD(a) => m->AC += MEMORY(m);
+    | SUB(a) => m->AC -= MEMORY(m);
+    | OR(a)  => m->AC |= MEMORY(m);
+    | AND(a) => m->AC &= MEMORY(m);
+    | INC(a) => MEMORY(m)++;
+    | DEC(a) => MEMORY(m)--;
+    | JMP(a) => BRANCH(m);
+    | JPZ(a) => if (m->AC == 0) then BRANCH(m);
+    | JPN(a) => if (m->AC <  0) then BRANCH(m);
+    | JSR(a) => m->XR = m->PC; BRANCH(m);
     endmatch
   }
 }
@@ -168,6 +169,8 @@ address to integer using "%a->PC"
 fetch 16 using "(%a->PCHI ? %a->MEM[%a->PC] >> 16 : %a->MEM[%a->PC] & 0xffff)"
 @ Note that we only ever fetch from offset~0, we only ever fetch
 instructions, and each instruction is 16~bits.
+<<fetch macro>>=
+#define FETCH16(A) ((A)->PCHI ? (A)->MEM[(A)->PC] >> 16 : (A)->MEM[(A)->PC] & 0xffff)
 @
 We also supply a tracing procedure.
 <<interpreter>>=
@@ -178,7 +181,7 @@ static void show_inst(Machine m) {
   match m to
   | nullary [name]  => fprintf(stderr, "%s", name);
   | invalid         => fprintf(stderr, "INVALID [%08x]", m->MEM[validate(m->PC)]);
-  | unary(a) [name] => fprintf(stderr, "%s %s", name, adrstring(a));
+  | unary(a) [name] => fprintf(stderr, "%s %s", name, adrstring(m));
   endmatch
   fprintf(stderr, "  (AC=%08x, XR=%08x)\n", m->AC, m->XR);
 }
@@ -242,6 +245,7 @@ static unsigned getword(FILE *fp) {
 <<declarations for interpreter>>
 <<memory validation>>
 <<PC macros>>
+<<fetch macro>>
 <<procedure to compute address from mode>>
 <<interpreter>>
 <<loader>>

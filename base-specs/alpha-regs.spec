@@ -1,3 +1,3 @@
-#line 349 "alpha.nw"
+#line 371 "alpha.nw"
 fieldinfo [ra rb rc fa fb fc] is [guaranteed]
 

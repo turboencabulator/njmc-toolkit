@@ -1,6 +1,7 @@
-\section{SPARC disassembler}
+\section{Disassembler for the SPARC(TM) instruction set}
 
-Disassembler for the SPARC by Cristina Cifuentes and Norman Ramsey
+Disassembler for the SPARC(TM)  instruction set by Cristina Cifuentes
+and Norman Ramsey. 
 
 Revision history:
 \begin{quote}
@@ -8,7 +9,8 @@ Revision history:
 Date&Toolkit Version&Author\\
 Sep 1995&0.1a (Dec 1994)&Cifuentes\\
 Jan 1996&0.3 (Dec 1995)&Cifuentes\\
-Mar 1996&0.4 (Mar 1996)&Ramsey
+Mar 1996&0.4 (Mar 1996)&Ramsey\\
+Apr 1999&0.4 (Mar 1996)&Ramsey (legal compliance)\\
 \end{tabular}
 \end{quote}
 
@@ -151,7 +153,7 @@ void sparc_disassemble(unsigned lc,
   | ret()                 => print(pr, "ret");
   | retl()                => print(pr, "retl");
   | jmp (addr)            => print(pr, "jmp %s", ADDR);
-  | call_ (addr)          => print(pr, "call %s", ADDR);
+  | calla (addr)          => print(pr, "call %s", ADDR);
   | tst (rs2)             => print(pr, "tst %s", RS2);
   | not (rd)              => print(pr, "not %s", RD);
   | not2 (rs1, rd)        => print(pr, "not %s, %s", RS1, RD);
@@ -166,7 +168,7 @@ void sparc_disassemble(unsigned lc,
   | bclr (roi, rd)        => print(pr, "bclr %s, %s", ROI, RD);
   | btog (roi, rd)        => print(pr, "btog %s, %s", ROI, RD);
   | clr (rd)              => print(pr, "clr %s", RD);
-  | clr_ (addr)           => print(pr, "clr [%s]", ADDR);
+  | clrw (addr)           => print(pr, "clr [%s]", ADDR);
   | clrb (addr)           => print(pr, "clrb [%s]", ADDR);
   | clrh (addr)           => print(pr, "clrh [%s]", ADDR);
   | mov (roi, rd)         => print(pr, "mov %s, %s", ROI, RD);
@@ -196,7 +198,7 @@ void sparc_disassemble(unsigned lc,
 
   | alu (rs1, roi, rd) [name] => print(pr, "%s %s, %s, %s", name, RS1, ROI, RD);
   | branch^a (tgt)     [name] => print(pr, "%s %s", name, dis_rel(rel, tgt));
-  | call__ (tgt)              => print(pr, "call %s", dis_rel(rel, tgt));
+  | call (tgt)                => print(pr, "call %s", dis_rel(rel, tgt));
 
   | float_2 (fs2, fd)      [name] => print(pr, "%s %s, %s",     name,      FS2, FD);
   | float_3 (fs1, fs2, fd) [name] => print(pr, "%s %s, %s, %s", name, FS1, FS2, FD);
@@ -216,5 +218,11 @@ void sparc_disassemble(unsigned lc,
 \nowebchunks
 \subsection{Identifiers}
 \nowebindex
+\section{Legal Disclaimer}
+All SPARC trademarks are used under license and are trademarks or
+registered trademarks of SPARC International, Inc. in the U.S. and
+other countries.
+Products bearing SPARC trademarks are based on an architecture
+developed by Sun Microsystems, Inc.
 @
 

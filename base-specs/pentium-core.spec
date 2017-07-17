@@ -1,117 +1,117 @@
-#line 278 "pentium.nw"
+#line 282 "pentium.nw"
 fields of opcodet (8) row 4:7 col 0:2 page 3:3
                      
-#line 313 "pentium.nw"
+#line 317 "pentium.nw"
 r32 0:2
-#line 318 "pentium.nw"
+#line 322 "pentium.nw"
 sr16 0:2
-#line 323 "pentium.nw"
+#line 327 "pentium.nw"
 r16 0:2
-#line 382 "pentium.nw"
+#line 386 "pentium.nw"
 r8 0:2
-#line 315 "pentium.nw"
+#line 319 "pentium.nw"
 fieldinfo r32 is [names [ eAX eCX eDX eBX eSP eBP eSI eDI ]]
-#line 320 "pentium.nw"
+#line 324 "pentium.nw"
 fieldinfo sr16 is [sparse [ cs=1, ss=2, ds=3, es=4, fs=5, gs=6 ] ]
-#line 325 "pentium.nw"
+#line 329 "pentium.nw"
 fieldinfo r16 is [names [ AX CX DX BX SP BP SI DI ]]
-#line 384 "pentium.nw"
+#line 388 "pentium.nw"
 fieldinfo r8 is [names [ AL CL DL BL AH CH DH BH ]]
-#line 481 "pentium.nw"
+#line 485 "pentium.nw"
 fields of modrm (8) mod 6:7 reg_opcode 3:5 r_m 0:2
 fields of sib   (8) ss 6:7 index 3:5 base 0:2
-#line 484 "pentium.nw"
+#line 488 "pentium.nw"
 fieldinfo [ base index ] is 
           [ names [ eAX eCX eDX eBX eSP eBP eSI eDI ] ]
 fieldinfo ss is [ sparse [ "1" = 0, "2" = 1, "4" = 2, "8" = 3 ] ]
-#line 568 "pentium.nw"
+#line 572 "pentium.nw"
 fields of I8   (8) i8  0:7
 fields of I16 (16) i16 0:15
 fields of I32 (32) i32 0:31
-#line 238 "pentium.nw"
+#line 242 "pentium.nw"
 patterns 
-#line 289 "pentium.nw"
+#line 293 "pentium.nw"
 arith is any of [ ADD OR
                   ADC SBB
                   AND SUB
                   XOR CMP ], which is row = {0 to 3} & page = [0 1]
 [ Eb.Gb Ev.Gv Gb.Eb Gv.Ev AL.Ib eAX.Iv ] is col = {0 to 5}
-#line 297 "pentium.nw"
+#line 301 "pentium.nw"
 [ PUSH.ES POP.ES    PUSH.CS esc2
   PUSH.SS POP.SS    PUSH.DS POP.DS
   SEG.ES  DAA	    SEG.CS  DAS
   SEG.SS  AAA       SEG.DS  AAS   ] is row = {0 to 3} & page = [0 1] & col = [6 7]
-#line 309 "pentium.nw"
+#line 313 "pentium.nw"
 regops is any of [ INC  DEC 
                    PUSH POP ], which is row = [4 5] & page = [0 1]
-#line 331 "pentium.nw"
+#line 335 "pentium.nw"
 [ PUSHA   POPA    BOUND   ARPL    SEG.FS  SEF.GS   OpPrefix AddrPrefix 
   PUSH.Iv IMUL.Iv PUSH.Ib IMUL.Ib INSB    INSv     OUTSB    OUTSv      
 ] is page = [0 1] & row = 6 & col = {0 to 7} 
-#line 340 "pentium.nw"
+#line 344 "pentium.nw"
 Jb is row = 7
 cond is any of [ .O .NO .B .NB .Z .NZ .BE .NBE .S .NS .P .NP .L .NL .LE .NLE ], 
       which is page = [0 1] & col = {0 to 7}
-#line 352 "pentium.nw"
+#line 356 "pentium.nw"
 [ Eb.Ib Ev.Iv MOVB Ev.Ib TEST.Eb.Gb TEST.Ev.Gv  XCHG.Eb.Gb XCHG.Ev.Gv ] is
                row = 8 & page = 0 & col = {0 to 7}
 MOV is row = 8 & page = 1
 [ MOV.Ew.Sw LEA MOV.Sw.Ew POP.Ev ] is row = 8 & page = 1 & col = {4 to 7}
-#line 362 "pentium.nw"
+#line 366 "pentium.nw"
 XCHG is row = 9 & page = 0
 NOP is XCHG & col = 0
 [ CBW CWDQ CALL.aP WAIT PUSHF POPF SAHF LAHF ] is row = 9 & page = 1 & col = {0 to 7}
-#line 371 "pentium.nw"
+#line 375 "pentium.nw"
 [ MOV.AL.Ob  MOV.eAX.Ov  MOV.Ob.AL  MOV.Ov.eAX MOVSB    MOVSv     CMPSB   CMPSv
   TEST.AL.Ib TEST.eAX.Iv STOSB      STOSv      LODSB    LODSv     SCASB   SCASv
 ] is row = 10 & page = [0 1] & col = {0 to 7} 
-#line 379 "pentium.nw"
+#line 383 "pentium.nw"
 MOVib is row = 11 & page = 0
 MOViv is row = 11 & page = 1
-#line 389 "pentium.nw"
+#line 393 "pentium.nw"
 [ B.Eb.Ib B.Ev.Ib RET.Iw  RET     LES LDS MOV.Eb.Ib MOV.Ev.Iv      	
   B.Eb.1  B.Ev.1  B.Eb.CL B.Ev.CL AAM AAD _         XLAT
 ]   is row = [12 13] & page = 0 & col = {0 to 7}
 [ ENTER LEAVE RET.far.Iw RET.far INT3 INT.Ib INTO IRET ]
     is row = 12      & page = 1 & col = {0 to 7}
 ESC is row = 13      & page = 1
-#line 399 "pentium.nw"
+#line 403 "pentium.nw"
 [ LOOPNE  LOOPE   LOOP    JCXZ    IN.AL.Ib  IN.eAX.Ib  OUT.Ib.AL OUT.Ib.eAX
   LOCK    _       REPNE   REP     HLT       CMC        grp3.Eb   grp3.Ev
 
   CALL.Jv JMP.Jv  JMP.Ap  JMP.Jb  IN.AL.DX  IN.eAX.DX  OUT.DX.AL OUT.DX.eAX
   CLC     STC     CLI     STI     CLD       STD        grp4      grp5       
 ] is page = [0 1] & row = [14 15] & col = {0 to 7}
-#line 416 "pentium.nw"
+#line 420 "pentium.nw"
 [ grp6       grp7       LAR        LSL       
   MOV.Eb.Gb  MOV.Gv.Ev  MOV.Gb.Eb  MOV.Ev.Gv ]
 is esc2; page = 0 & row = [0 1] & col = {0 to 3}
 CLTS is esc2; page = 0 & row = 0 & col = 6
-#line 423 "pentium.nw"
+#line 427 "pentium.nw"
 [ MOV.Rd.Cd  MOV.Rd.Dd  MOV.Cd.Rd  MOV.Dd.Rd  MOV.Rd.Td _  MOV.Td.Rd ]
 is esc2; page = 0 & row = 3 & col = {0 to 6}
-#line 428 "pentium.nw"
+#line 432 "pentium.nw"
 [ WRMSR RDTSC RDMSR ] is esc2; page = 0 & row = 4 & col = {0 to 2}
-#line 434 "pentium.nw"
+#line 438 "pentium.nw"
 Jv   is esc2; row = 8
 SETb is esc2; row = 9
-#line 439 "pentium.nw"
+#line 443 "pentium.nw"
 [ PUSH.FS       POP.FS        CPUID  BT   SHLD.Ib SHLD.CL _            _
   CMPXCHG.Eb.Gb CMPXCHG.Ev.Gv LSS    BTR  LFS     LGS     MOVZX.Gv.Eb  MOVZX.Gv.Ew ]
 is esc2; page = 0 & row = [10 11] & col = {0 to 7}
-#line 445 "pentium.nw"
+#line 449 "pentium.nw"
 [ XADD.Eb.Gb XADD.Ev.Gv grp9 ] is esc2; page = 0 & row = 12 & col = [0 1 7]
-#line 450 "pentium.nw"
+#line 454 "pentium.nw"
 [INVD WBINVD] is esc2; row = 0 & page = 1 & col = [0 1]
-#line 455 "pentium.nw"
+#line 459 "pentium.nw"
 [ PUSH.GS POP.GS RSM  BTS   SHRD.Ib SHRD.CL _ IMUL.Gv.Ev] 
 is esc2; row = 10 & page = 1 & col = {0 to 7}
-#line 460 "pentium.nw"
+#line 464 "pentium.nw"
 [ grp8 BTC BSF BSR MOVSX.Gv.Eb MOVSX.Gv.Ew] 
 is esc2; page = 1 & row = 11 & col = {2 to 7}
-#line 465 "pentium.nw"
+#line 469 "pentium.nw"
 BSWAP is esc2; row = 12 & page = 1
-#line 649 "pentium.nw"
+#line 653 "pentium.nw"
 patterns
   arithI    is any of [ ADDi ORi ADCi SBBi ANDi SUBi XORi CMPi ], 	# group 1
 		       which is (Eb.Ib | Ev.Iv | Ev.Ib); reg_opcode = {0 to 7} ...
@@ -135,7 +135,7 @@ patterns
   bittestI  is any of [ BTi BTSi BTRi BTCi ], 
                        which is grp8; reg_opcode = {4 to 7} ...
   CMPXCHG8B is                  grp9; reg_opcode = 1 ...
-#line 716 "pentium.nw"
+#line 720 "pentium.nw"
 patterns
   [ D8 D9 DA DB DC DD DE DF ] is ESC & col = {0 to 7}
   [ FADD FMUL FCOM FCOMP FSUB FSUBR FDIV FDIVR ] is reg_opcode = {0 to 7}
@@ -158,7 +158,7 @@ patterns
   [ FADDP _ FUBSRP FDIVRP FMULP _ FSUBP FDIVP ] is mod = 3 & reg_opcode = {0 to 7}
   FCOMPP    is DE; mod = 3 & reg_opcode = 3 & r_m = 1
   FSTSW.AX  is DF; mod = 3 & reg_opcode = 4 & r_m = 0
-#line 742 "pentium.nw"
+#line 746 "pentium.nw"
 patterns
   .STi      is DD; mod = 3
   Fstack is any of [ .ST.STi .STi.St P.STi.ST ], which is [ D8 DC DE ]; mod = 3
@@ -166,60 +166,60 @@ patterns
   Fmem   is any of [.R32 .R64], which is [D8 DC]
   FlsI   is any of [.lsI16 .lsI32], which is [DF DB]
   FlsR   is any of [.lsR32 .lsR64], which is [D9 DD]
-#line 923 "pentium.nw"
+#line 927 "pentium.nw"
    patterns FCOMs is FCOM | FCOMP
-#line 951 "pentium.nw"
+#line 955 "pentium.nw"
    patterns FISTs is FIST | FISTP
-#line 1011 "pentium.nw"
+#line 1015 "pentium.nw"
    patterns
 FSTs is FST | FSTP
 FSTs.st is FST.st | FSTP.st
-#line 1050 "pentium.nw"
+#line 1054 "pentium.nw"
    patterns FUCOMs is FUCOM | FUCOMP
-#line 1129 "pentium.nw"
+#line 1134 "pentium.nw"
    patterns lfp is LDS | LES | LFS | LGS | LSS
-#line 1143 "pentium.nw"
+#line 1148 "pentium.nw"
     patterns LOOPs is LOOP | LOOPE | LOOPNE
-#line 1211 "pentium.nw"
+#line 1216 "pentium.nw"
    patterns POPs is POP.ES | POP.SS | POP.DS | POP.FS | POP.GS 
             POPv is POPA | POPF
-#line 1223 "pentium.nw"
+#line 1228 "pentium.nw"
    patterns PUSHs is PUSH.CS | PUSH.SS | PUSH.DS | PUSH.ES | PUSH.FS | PUSH.GS
             PUSHv is PUSHA | PUSHF
-#line 1264 "pentium.nw"
+#line 1270 "pentium.nw"
   patterns shdIb is SHRD.Ib | SHLD.Ib
            shdCL is SHRD.CL | SHLD.CL
-#line 693 "pentium.nw"
+#line 697 "pentium.nw"
 patterns ow is OpPrefix
          od is epsilon
          ov is ow | od
-#line 700 "pentium.nw"
+#line 704 "pentium.nw"
 patterns aw is AddrPrefix
          ad is epsilon
          av is aw | ad
-#line 281 "pentium.nw"
+#line 285 "pentium.nw"
 placeholder for opcodet is HLT
-#line 489 "pentium.nw"
+#line 493 "pentium.nw"
 placeholder for modrm is HLT
 placeholder for sib is HLT
-#line 572 "pentium.nw"
+#line 576 "pentium.nw"
 placeholder for I8  is HLT
 placeholder for I16 is HLT; HLT
 placeholder for I32 is HLT; HLT; HLT; HLT
-#line 242 "pentium.nw"
+#line 246 "pentium.nw"
 relocatable reloc
-#line 835 "pentium.nw"
+#line 839 "pentium.nw"
 constructors
   rel8  reloc : Rel8  { reloc = L + i8!  } is i8;  L: epsilon
   rel16 reloc : Rel16 { reloc = L + i16! } is i16; L: epsilon
   rel32 reloc : Rel32 { reloc = L + i32! } is i32; L: epsilon
-#line 510 "pentium.nw"
+#line 514 "pentium.nw"
 relocatable d a
 constructors
   Indir    [reg] : Mem { reg != 4, reg != 5 } is mod = 0 & r_m = reg
   Disp8   d[reg] : Mem { reg != 4 }           is mod = 1 & r_m = reg; i8  = d
   Disp32  d[reg] : Mem { reg != 4 }           is mod = 2 & r_m = reg; i32 = d
-  Abs32   a      : Eaddr                      is mod = 0 & r_m = 5;   i32 = a
+  Abs32    [a]   : Mem                        is mod = 0 & r_m = 5;   i32 = a
   Reg     reg    : Eaddr                      is mod = 3 & r_m = reg
   Index    [base][index * ss] : Mem { index != 4, base != 5 } is 
                         mod = 0 & r_m = 4; index & base     & ss
@@ -230,7 +230,7 @@ constructors
   ShortIndex    d[index * ss] : Mem { index != 4 } is 
                         mod = 0 & r_m = 4; index & base = 5 & ss; i32 = d
   E Mem : Eaddr is Mem
-#line 762 "pentium.nw"
+#line 766 "pentium.nw"
 constructors
   arith^"iAL"    i8!          is      arith & AL.Ib ; i8
   arith^"iAX"    i16!         is  ow; arith & eAX.Iv; i16
@@ -243,16 +243,16 @@ constructors
   arith^"mr"^ov  Eaddr, reg   is  ov; arith & Ev.Gv; Eaddr & reg_opcode = reg ...
   arith^"rmb"    reg8, Eaddr  is      arith & Gb.Eb; Eaddr & reg_opcode = reg8 ...
   arith^"rm"^ov  reg, Eaddr   is  ov; arith & Gv.Ev; Eaddr & reg_opcode = reg ...
-#line 246 "pentium.nw"
+#line 250 "pentium.nw"
 constructors
-#line 797 "pentium.nw"
+#line 801 "pentium.nw"
 AAA
 AAD is AAD; i8 = 10
 AAM is AAM; i8 = 10
 AAS
 # ADC, ADD, AND are in arith group
 ARPL     Eaddr, reg16  is  ARPL;      Eaddr & reg_opcode = reg16 ...
-#line 813 "pentium.nw"
+#line 817 "pentium.nw"
 constructors
 BOUND^ov reg, Mem    is  ov; BOUND; Mem   & reg_opcode = reg ...
 BSF^ov   reg, Eaddr  is  ov; BSF;   Eaddr & reg_opcode = reg ...
@@ -266,13 +266,13 @@ BTR^ov   Eaddr, reg  is  ov; BTR;   Eaddr  & reg_opcode = reg ...
 BTRi^ov  Eaddr, i8!  is  ov; (grp8; Eaddr) & BTRi; i8
 BTS^ov   Eaddr, reg  is  ov; BTS;   Eaddr  & reg_opcode = reg ...
 BTSi^ov  Eaddr, i8!  is  ov; (grp8; Eaddr) & BTSi; i8
-#line 842 "pentium.nw"
+#line 846 "pentium.nw"
 CALL.Jv^ow reloc    is  ow; CALL.Jv; rel16(reloc)
 CALL.Jv^od reloc    is  od; CALL.Jv; rel32(reloc)
 CALL.Ep^ov Mem      is  ov; (grp5; Mem) & CALL.Ep
 CALL.aP^ow CS":" IP is  ow; CALL.aP; i16 = CS; i16 = IP
 CALL.aP^od CS":" IP is  od; CALL.aP; i16 = CS; i32 = IP
-CALL.Ev^ov Mem      is  ov; (grp5; Mem) & CALL.Ev
+CALL.Ev^ov Eaddr    is  ov; (grp5; Eaddr) & CALL.Ev
 CBW  is ow; CBW
 CWDE is od; CBW
 CLC
@@ -280,7 +280,7 @@ CLD
 CLI
 CLTS
 CMC
-#line 862 "pentium.nw"
+#line 866 "pentium.nw"
 # CMP  is in the arith group
 CMPSB^av    is av; CMPSB
 CMPSv^ov^av is (av; ov | ov; av); CMPSv
@@ -290,7 +290,7 @@ CMPXCHG8B        Mem        is     (grp9; Mem) & CMPXCHG8B
 CPUID
 CWD  is ow; CWDQ
 CDQ  is od; CWDQ
-#line 880 "pentium.nw"
+#line 884 "pentium.nw"
 DAA
 DAS
 DEC.Eb     Eaddr  is      (grp4; Eaddr) & DEC.Eb
@@ -299,104 +299,104 @@ DEC^ov     r32    is  ov; DEC & r32
 DIV^"AL"   Eaddr  is      (grp3.Eb; Eaddr) & DIV.AL.eAX
 DIV^"AX"   Eaddr  is  ow; (grp3.Ev; Eaddr) & DIV.AL.eAX
 DIV^"eAX"  Eaddr  is  od; (grp3.Ev; Eaddr) & DIV.AL.eAX
-#line 893 "pentium.nw"
+#line 897 "pentium.nw"
 ENTER   i16, i8!  is  ENTER; i16; i8
 F2XM1
-#line 905 "pentium.nw"
+#line 909 "pentium.nw"
 FABS
 FADD^Fmem   Mem  is  Fmem; Mem & FADD ...
 FADD^Fstack idx  is  Fstack & ... (FADD & r_m = idx)
-#line 911 "pentium.nw"
+#line 915 "pentium.nw"
 FIADD^Fint  Mem  is  Fint; Mem & FIADD ...
 FBLD        Mem  is  DF; Mem & FBLD
 FBSTP       Mem  is  DF; Mem & FBSTP
-#line 915 "pentium.nw"
+#line 919 "pentium.nw"
 FCHS
-#line 921 "pentium.nw"
-FNCLEX           is  FCLEX
 #line 925 "pentium.nw"
+FNCLEX           is  FCLEX
+#line 929 "pentium.nw"
    constructors
 FCOMs^Fmem     Mem  is  Fmem; Mem & FCOMs ...		# includes FICOM, FICOMP
 FCOMs^.ST.STi  idx  is  .ST.STi & ... (FCOMs & r_m = idx)
 FCOMPP
 FCOS
-#line 935 "pentium.nw"
+#line 939 "pentium.nw"
 FDECSTP
 FDIV^Fmem     Mem  is  Fmem; Mem & FDIV ...
 FDIV^Fstack   idx  is  Fstack & ... (FDIV & r_m = idx)
 FDIVR^Fmem    Mem  is  Fmem; Mem & FDIVR ...
 FDIVR^Fstack  idx  is  Fstack & ... (FDIVR & r_m = idx)
-#line 943 "pentium.nw"
+#line 947 "pentium.nw"
 FFREE         idx  is  DD; FFREE & r_m = idx
-#line 945 "pentium.nw"
+#line 949 "pentium.nw"
 FICOM^Fint   Mem is Fint; Mem & FICOM
 FICOMP^Fint  Mem is Fint; Mem & FICOMP
 FILD^FlsI Mem is FlsI; Mem & FILD
 FILD64    Mem is DF;  Mem & FLD.ext ...
 FINIT
-#line 953 "pentium.nw"
+#line 957 "pentium.nw"
    constructors
 FISTs^FlsI  Mem  is  FlsI; Mem & FISTs
 FISTP64     Mem  is  DF;   Mem & FSTP.ext
-#line 971 "pentium.nw"
+#line 975 "pentium.nw"
 FLD^FlsR    Mem  is  FlsR; Mem & FLD
 FLD80       Mem  is  DB;   Mem & FLD.ext ... 
 FLD.STi     idx  is  D9;    mod = 3 & FLD & r_m = idx
 Fconstants
 FLDCW       Mem  is  D9;   Mem & FLDCW
 FLDENV      Mem  is  D9;   Mem & FLDENV
-#line 980 "pentium.nw"
+#line 984 "pentium.nw"
 FMUL^Fmem   Mem  is  Fmem; Mem & FMUL ...
 FMUL^Fstack idx  is  Fstack & ... (FMUL & r_m = idx)
-#line 985 "pentium.nw"
-FNOP
 #line 989 "pentium.nw"
+FNOP
+#line 993 "pentium.nw"
 FPATAN
 FPREM
 FPREM1
 FPTAN
-#line 996 "pentium.nw"
+#line 1000 "pentium.nw"
 FRNDINT
 FRSTOR Mem  is DD; Mem & FRSTOR
-#line 1000 "pentium.nw"
+#line 1004 "pentium.nw"
 FNSAVE Mem  is DD; Mem & FSAVE
-#line 1006 "pentium.nw"
+#line 1010 "pentium.nw"
 FSCALE
 FSIN
 FSINCOS
 FSQRT
-#line 1015 "pentium.nw"
+#line 1019 "pentium.nw"
    constructors
 FSTs^FlsR     Mem  is  FlsR; Mem & FSTs
 FSTP80        Mem  is  DB;   Mem & FSTP.ext
 FSTs.st^.STi  idx  is  .STi & ... (FSTs.st & r_m = idx)
 FSTCW         Mem  is  D9;   Mem & FSTCW
-#line 1025 "pentium.nw"
+#line 1029 "pentium.nw"
 FSTENV        Mem  is  D9;   Mem & FSTENV
-#line 1031 "pentium.nw"
+#line 1035 "pentium.nw"
 FSTSW         Mem  is  DD;   Mem & FSTSW
 FSTSW.AX
-#line 1039 "pentium.nw"
+#line 1043 "pentium.nw"
 FSUB^Fmem     Mem  is  Fmem; Mem & FSUB ...
 FSUB^Fstack   idx  is  Fstack & ... (FSUB & r_m = idx)
 FSUBR^Fmem    Mem  is  Fmem; Mem & FSUBR ...
 FSUBR^Fstack  idx  is  Fstack & ... (FSUBR & r_m = idx)
-#line 1046 "pentium.nw"
+#line 1050 "pentium.nw"
 FTST
-#line 1052 "pentium.nw"
+#line 1056 "pentium.nw"
    constructors
 FUCOMs  idx   is  DD; FUCOMs & r_m = idx
 FUCOMPP
-#line 1062 "pentium.nw"
+#line 1066 "pentium.nw"
 FXAM
 FXCH idx  is  FXCH & ... r_m = idx
 FXTRACT
-#line 1068 "pentium.nw"
+#line 1072 "pentium.nw"
 FYL2X
 FYL2XP1
-#line 1079 "pentium.nw"
-HLT
 #line 1083 "pentium.nw"
+HLT
+#line 1087 "pentium.nw"
 IDIV        Eaddr  is      (grp3.Eb; Eaddr) & IDIV.AL.eAX
 IDIV^"AX"   Eaddr  is  ow; (grp3.Ev; Eaddr) & IDIV.AL.eAX
 IDIV^"eAX"  Eaddr  is  od; (grp3.Ev; Eaddr) & IDIV.AL.eAX
@@ -421,10 +421,11 @@ INTO
 INVD
 INVLPG  Mem  is  (grp7; Mem) & INVLPG
 IRET
-#line 1111 "pentium.nw"
+#line 1115 "pentium.nw"
 Jb^cond    reloc   is      Jb & cond;     rel8(reloc)
 Jv^cond^ow reloc   is  ow; Jv & ... cond; rel16(reloc)
 Jv^cond^od reloc   is  od; Jv & ... cond; rel32(reloc)
+JCXZ       reloc   is      JCXZ         ; rel8(reloc)
 JMP.Jb     reloc   is      JMP.Jb; rel8(reloc)
 JMP.Jv^ow  reloc   is  ow; JMP.Jv; rel16(reloc)
 JMP.Jv^od  reloc   is  od; JMP.Jv; rel32(reloc)
@@ -432,15 +433,27 @@ JMP.Ap^ow  CS, IP  is  ow; JMP.Ap; i16 = CS; i16 = IP
 JMP.Ap^od  CS, IP  is  od; JMP.Ap; i16 = CS; i32 = IP
 JMP.Ev^ov Eaddr    is  ov; (grp5; Eaddr) & JMP.Ev
 JMP.Ep^ov Mem      is  ov; (grp5; Mem  ) & JMP.Ep
-#line 1126 "pentium.nw"
+#line 1136 "pentium.nw"
+   constructors
+lfp^ov  reg, Mem    is  ov; lfp; Mem & reg_opcode = reg ...
+LEA^ov  reg, Mem    is  ov; LEA; Mem & reg_opcode = reg ...
+LEAVE
+LGDT  Mem   is  (grp7; Mem) & LGDT
+LIDT  Mem   is  (grp7; Mem) & LIDT
+LLDT  Eaddr is  (grp6; Eaddr) & LLDT
+LMSW  Eaddr is  (grp7; Eaddr) & LMSW
+LOCK
+LODSB
+LODSv^ov is ov; LODSv
+#line 1131 "pentium.nw"
 LAHF
 LAR^ov  reg, Eaddr  is  ov; LAR; Eaddr & reg_opcode = reg ...
-#line 1145 "pentium.nw"
+#line 1150 "pentium.nw"
     constructors
-LOOPs  reloc  is  LOOPs; rel8(reloc)
+LOOPs^ov  reloc  is  ov; LOOPs; rel8(reloc)
 LSL^ov  reg, Eaddr  is  ov; LSL; Eaddr & reg_opcode = reg ...
 LTR  Eaddr  is  (grp6; Eaddr) & LTR
-#line 1152 "pentium.nw"
+#line 1157 "pentium.nw"
 MOV^"mrb"    Eaddr, reg    is      MOV & Eb.Gb; Eaddr & reg_opcode = reg ...
 MOV^"mr"^ov  Eaddr, reg    is  ov; MOV & Ev.Gv; Eaddr & reg_opcode = reg ...
 MOV^"rmb"    reg, Eaddr    is      MOV & Gb.Eb; Eaddr & reg_opcode = reg ...
@@ -453,30 +466,30 @@ MOV.eAX.Ov^ov  offset      is  ov; MOV.eAX.Ov; i32 = offset
 MOV.Ob.AL      offset      is      MOV.Ob.AL;  i32 = offset
 MOV.Ov.eAX^ov  offset      is  ov; MOV.Ov.eAX; i32 = offset
 MOVib          r8,  i8!    is      MOVib & r8; i8
-MOViw          r32, i16!   is  ow; MOViv & r32; i16
+MOViw          r16, i16!   is  ow; MOViv & r16; i16
 MOVid          r32, i32!   is  od; MOViv & r32; i32
 MOV.Eb.Ib      Eaddr, i8!  is      MOV.Eb.Ib; Eaddr & reg_opcode = 0 ...; i8
-MOV.Eb.Iv^ow   Eaddr, i16! is  ow; MOV.Ev.Iv; Eaddr & reg_opcode = 0 ...; i16
-MOV.Eb.Iv^od   Eaddr, i32! is  od; MOV.Ev.Iv; Eaddr & reg_opcode = 0 ...; i32
+MOV.Ev.Iv^ow   Eaddr, i16! is  ow; MOV.Ev.Iv; Eaddr & reg_opcode = 0 ...; i16
+MOV.Ev.Iv^od   Eaddr, i32! is  od; MOV.Ev.Iv; Eaddr & reg_opcode = 0 ...; i32
 MOV.Cd.Rd      cr, reg     is  MOV.Cd.Rd; mod = 3 & r_m = reg & reg_opcode = cr
 MOV.Rd.Cd      reg, cr     is  MOV.Rd.Cd; mod = 3 & r_m = reg & reg_opcode = cr
 MOV.Dd.Rd      dr, reg     is  MOV.Dd.Rd; mod = 3 & r_m = reg & reg_opcode = dr
 MOV.Rd.Dd      reg, dr     is  MOV.Rd.Dd; mod = 3 & r_m = reg & reg_opcode = dr
 MOVSB
 MOVSv^ov is ov; MOVSv
-MOVSX.Gv.Eb^ov    r32, Mem    is ov; MOVSX.Gv.Eb; Mem & reg_opcode = r32 ...
-MOVSX.Gv.Ew       r16, Mem    is     MOVSX.Gv.Ew; Mem & reg_opcode = r16 ...
-MOVZX.Gv.Eb^ov    r32, Mem    is ov; MOVZX.Gv.Eb; Mem & reg_opcode = r32 ...
-MOVZX.Gv.Ew       r16, Mem    is     MOVZX.Gv.Ew; Mem & reg_opcode = r16 ...
+MOVSX.Gv.Eb^ov    r32, Eaddr    is ov; MOVSX.Gv.Eb; Eaddr & reg_opcode = r32 ...
+MOVSX.Gv.Ew       r16, Eaddr    is     MOVSX.Gv.Ew; Eaddr & reg_opcode = r16 ...
+MOVZX.Gv.Eb^ov    r32, Eaddr    is ov; MOVZX.Gv.Eb; Eaddr & reg_opcode = r32 ...
+MOVZX.Gv.Ew       r16, Eaddr    is     MOVZX.Gv.Ew; Eaddr & reg_opcode = r16 ...
 MUL.AL      Eaddr  is      (grp3.Eb; Eaddr) & MUL.AL.eAX
 MUL.AX^ov   Eaddr  is  ov; (grp3.Ev; Eaddr) & MUL.AL.eAX
-#line 1190 "pentium.nw"
+#line 1195 "pentium.nw"
 NEGb    Eaddr  is      (grp3.Eb; Eaddr) & NEG
 NEG^ov  Eaddr  is  ov; (grp3.Ev; Eaddr) & NEG
 NOP
 NOTb    Eaddr  is      (grp3.Eb; Eaddr) & NOT
 NOT^ov  Eaddr  is  ov; (grp3.Ev; Eaddr) & NOT
-#line 1198 "pentium.nw"
+#line 1203 "pentium.nw"
 # OR is in the arith group
 OUT.Ib.AL       i8! is      OUT.Ib.AL;  i8
 OUT.Ib.eAX^ov   i8! is  ov; OUT.Ib.eAX; i8
@@ -484,10 +497,10 @@ OUT.DX.AL
 OUT.DX.eAX^ov       is  ov; OUT.DX.eAX
 OUTSB
 OUTSv^ov is ov; OUTSv
-#line 1208 "pentium.nw"
+#line 1213 "pentium.nw"
 POP.Ev^ov   Mem   is  ov; POP.Ev; Mem & reg_opcode = 0 ...
 POP^ov      r32   is  ov; POP & r32
-#line 1214 "pentium.nw"
+#line 1219 "pentium.nw"
    constructors
 POPs
 POPv^ov  is  ov; POPv
@@ -496,17 +509,17 @@ PUSH^ov     r32    is  ov; PUSH & r32
 PUSH.Ib     i8!    is      PUSH.Ib; i8
 PUSH.Iv^ow  i16!   is  ow; PUSH.Iv; i16
 PUSH.Iv^od  i32!   is  od; PUSH.Iv; i32
-#line 1226 "pentium.nw"
+#line 1231 "pentium.nw"
    constructors
 PUSHs
 PUSHv^ov  is  ov; PUSHv
-#line 1232 "pentium.nw"
+#line 1237 "pentium.nw"
 # ROL ROR RCL RCR SHLSAL SHR SAR
 rot^bshifts    Eaddr       is     (bshifts; Eaddr) & rot
 rot^vshifts^ov Eaddr       is ov; (vshifts; Eaddr) & rot
 rot^B.Eb.Ib    Eaddr, i8!  is     (B.Eb.Ib; Eaddr) & rot; i8
 rot^B.Ev.Ib^ov Eaddr, i8!  is ov; (B.Ev.Ib; Eaddr) & rot; i8
-#line 1240 "pentium.nw"
+#line 1245 "pentium.nw"
 RDMSR
 REP
 REPNE
@@ -515,16 +528,17 @@ RET.far
 RET.Iw      i16  is RET.Iw; i16
 RET.far.Iw  i16  is RET.far.Iw; i16
 RSM
-#line 1253 "pentium.nw"
+#line 1258 "pentium.nw"
 SAHF
 # SAL SAR SHL SR above with rot
 # SBB is in the arith group
 SCASB
 SCASv^ov  is  ov; SCASv
-SETb^cond  Mem  is  SETb & ... cond; Mem
+## SETb^cond Mem  is  SETb & ... cond; Mem
+SETb^cond Eaddr  is SETb & ... cond; Eaddr
 SGDT  Mem  is (grp7; Mem) & SGDT
 SIDT  Mem  is (grp7; Mem) & SIDT
-#line 1267 "pentium.nw"
+#line 1273 "pentium.nw"
   constructors
 shdIb^ov  Eaddr, reg, count  is  ov; shdIb; Eaddr & reg_opcode = reg ... ; i8 = count
 shdCL^ov  Eaddr, reg, "CL"   is  ov; shdCL; Eaddr & reg_opcode = reg ...
@@ -537,7 +551,7 @@ STOSB
 STOSv^ov is ov; STOSv
 STR  Mem  is  (grp6; Mem) & STR
 # SUB is in the arith group
-#line 1282 "pentium.nw"
+#line 1288 "pentium.nw"
 TEST.AL.Ib      i8          is     TEST.AL.Ib; i8
 TEST.eAX.Iv^ow  i16         is ow; TEST.eAX.Iv; i16
 TEST.eAX.Iv^od  i32         is od; TEST.eAX.Iv; i32
@@ -546,14 +560,14 @@ TEST.Ew.Iw      Eaddr, i16  is ow; (grp3.Ev; Eaddr) & TEST.Ib.Iv; i16
 TEST.Ed.Id      Eaddr, i32  is od; (grp3.Ev; Eaddr) & TEST.Ib.Iv; i32
 TEST.Eb.Gb      Eaddr, reg  is     TEST.Eb.Gb; Eaddr & reg_opcode = reg ...
 TEST.Ev.Gv^ov   Eaddr, reg  is ov; TEST.Ev.Gv; Eaddr & reg_opcode = reg ...
-#line 1294 "pentium.nw"
+#line 1300 "pentium.nw"
 VERR  Eaddr  is (grp6; Eaddr) & VERR
 VERW  Eaddr  is (grp6; Eaddr) & VERW
-#line 1299 "pentium.nw"
+#line 1305 "pentium.nw"
 WAIT
 WBINVD
 WRMSR
-#line 1307 "pentium.nw"
+#line 1313 "pentium.nw"
 XADD.Eb.Gb     Eaddr, reg  is     XADD.Eb.Gb; Eaddr & reg_opcode = reg ...
 XADD.Ev.Gv^ov  Eaddr, reg  is ov; XADD.Ev.Gv; Eaddr & reg_opcode = reg ...
 XCHG^"eAX"^ov  r32         is ov; XCHG & r32

@@ -1,3 +1,6 @@
+ 20. Extracted operand refers to match_word that's never declared.
+     Rich Piazza, 11/21/96.  Led to change #49.
+
  19. If you use, as a free variable in a matching statement, a name
      designated relocatable, you'll be told about a failure to do with
      `rethinking projection'.  The workaround is to use a different

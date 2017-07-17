@@ -221,7 +221,7 @@ procedure tree(cs)
             armcount := *n.cs.arms
             trim_impossible_arms(n.cs)
             n.name := case *n.cs.arms of {
-                        0 : "-NOMATCH-"
+                        0 : &null # was "-NOMATCH-", caused bogus arrays
                         default: get_nodename(n)
                       }
 	    if \lc_pat_names then n.name := map(\n.name)

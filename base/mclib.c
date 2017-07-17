@@ -1,6 +1,8 @@
-#line 1053 "mclib.nw"
+#line 1068 "mclib.nw"
 #include <mclib.h>
 #include <stdio.h> 
+#include <sys/types.h>
+  /* get size_t, I hope */
 
 #define max(X,Y) ((X) > (Y) ? (X) : (Y))
 #define min(X,Y) ((X) < (Y) ? (X) : (Y))
@@ -14,25 +16,25 @@ void (*fail)(char *fmt, ...) = &mcfail;
 
 #define BUFSZ 1024
 
-#line 193 "mclib.nw"
+#line 197 "mclib.nw"
 static unsigned char bogus_buffer[MARGIN];
-#line 334 "mclib.nw"
+#line 338 "mclib.nw"
 static void initial_cl_emitm(RBlock rb, unsigned lc, unsigned long bits, unsigned size);
-#line 436 "mclib.nw"
+#line 440 "mclib.nw"
 static void initial_emitm(unsigned long bits, unsigned size);
-#line 673 "mclib.nw"
+#line 677 "mclib.nw"
 struct reloc_block undefrblock;
-#line 783 "mclib.nw"
+#line 787 "mclib.nw"
 static Buffer buffer_at_lc(RBlock rb, unsigned start);
-#line 838 "mclib.nw"
+#line 842 "mclib.nw"
 static unsigned long initial_block_fetchm(RBlock rb, unsigned lc, unsigned size);
-#line 964 "mclib.nw"
+#line 978 "mclib.nw"
 static void fail_if_undef(void *, RAddr);
-#line 1020 "mclib.nw"
+#line 1035 "mclib.nw"
 static void label_print(struct label *label);
 #line 98 "reloc.nw"
 static void reloc_print(RAddr addr);
-#line 168 "mclib.nw"
+#line 172 "mclib.nw"
 void make_clean() {
   if (currb) {
     unsigned curlc = lc();
@@ -40,22 +42,22 @@ void make_clean() {
     if (currb->size < curlc) currb->size = curlc;
   }
 }
-#line 179 "mclib.nw"
+#line 183 "mclib.nw"
 void set_block(rb) RBlock rb; {
   make_clean();
   currb = rb;
   currb_p = currb->p;
   currb_safe = currb->curbuf->limit - MARGIN;
 }
-#line 199 "mclib.nw"
+#line 203 "mclib.nw"
 RBlock currb = (RBlock) 0;
 unsigned char *currb_p, *currb_safe;
-#line 225 "mclib.nw"
+#line 229 "mclib.nw"
 void emitl(val, n) unsigned long val; unsigned n; {
   if (currb_p <= currb_safe || currb_p + n <= currb->curbuf->limit) {
     register unsigned char *p = currb_p;
     
-#line 235 "mclib.nw"
+#line 239 "mclib.nw"
 switch (n) {
   #define BYTE(N) case N+1: p[N] = val >> 8*N; /* fall through */
   BYTE(7) BYTE(6) BYTE(5) BYTE(4) BYTE(3) BYTE(2) BYTE(1) BYTE(0)
@@ -64,11 +66,11 @@ switch (n) {
     break;
   default: assert(("unsigned long bigger than 8 bytes", 0));
 }
-#line 229 "mclib.nw"
+#line 233 "mclib.nw"
     currb_p = p + n;
   } else {
     
-#line 392 "mclib.nw"
+#line 396 "mclib.nw"
 if (!currb->curbuf->next) {
   int curbufsize = (currb->curbuf->limit - currb->curbuf->data);
   int minsize = 32 + (currb_p - currb->curbuf->data) - curbufsize;
@@ -82,29 +84,29 @@ if (!currb->curbuf->next) {
   currb->curbuf->next = b;
   currb->size_hint = BUFSZ;
 }
-#line 291 "mclib.nw"
+#line 295 "mclib.nw"
 { unsigned roomhere = 
         currb_p < currb->curbuf->limit ? currb->curbuf->limit - currb_p : 0;
   if (roomhere > 0) emitl(val, roomhere);
   
-#line 315 "mclib.nw"
+#line 319 "mclib.nw"
 { unsigned templc = lc();
   currb->curbuf = currb->curbuf->next;
   currb_safe = currb->curbuf->limit - MARGIN;
   currb_p = templc - currb->curbuf->datalc + currb->curbuf->data;
 }
-#line 295 "mclib.nw"
+#line 299 "mclib.nw"
   emitl(val >> 8*roomhere, n - roomhere);
 }
-#line 232 "mclib.nw"
+#line 236 "mclib.nw"
   }
 }
-#line 255 "mclib.nw"
+#line 259 "mclib.nw"
 void emitb(val, n) unsigned long val; unsigned n; {
   if (currb_p <= currb_safe || currb_p + n <= currb->curbuf->limit) {
     register unsigned char *p = currb_p;
     
-#line 265 "mclib.nw"
+#line 269 "mclib.nw"
 switch (n) {
   #define S(POS, N) (p[POS] = val >> 8*N)
   case 0: break;
@@ -118,11 +120,11 @@ switch (n) {
   case 8: S(0,7); S(1,6); S(2,5); S(3,4); S(4,3); S(5,2); S(6,1); S(7,0); break;
   default: assert(("unsigned long bigger than 8 bytes", 0));
 }
-#line 259 "mclib.nw"
+#line 263 "mclib.nw"
     currb_p = p + n;
   } else {
     
-#line 392 "mclib.nw"
+#line 396 "mclib.nw"
 if (!currb->curbuf->next) {
   int curbufsize = (currb->curbuf->limit - currb->curbuf->data);
   int minsize = 32 + (currb_p - currb->curbuf->data) - curbufsize;
@@ -136,24 +138,24 @@ if (!currb->curbuf->next) {
   currb->curbuf->next = b;
   currb->size_hint = BUFSZ;
 }
-#line 305 "mclib.nw"
+#line 309 "mclib.nw"
 { unsigned roomhere = 
         currb_p < currb->curbuf->limit ? currb->curbuf->limit - currb_p : 0;
   if (roomhere > 0) emitb(val >> 8*(n-roomhere), roomhere);
   
-#line 315 "mclib.nw"
+#line 319 "mclib.nw"
 { unsigned templc = lc();
   currb->curbuf = currb->curbuf->next;
   currb_safe = currb->curbuf->limit - MARGIN;
   currb_p = templc - currb->curbuf->datalc + currb->curbuf->data;
 }
-#line 309 "mclib.nw"
+#line 313 "mclib.nw"
   emitb(val, n - roomhere);
 }
-#line 262 "mclib.nw"
+#line 266 "mclib.nw"
   }
 }
-#line 336 "mclib.nw"
+#line 340 "mclib.nw"
 static void initial_cl_emitm(rb, lc, bits, size) 
          RBlock rb; unsigned lc; unsigned long bits; unsigned size; 
 {
@@ -166,14 +168,14 @@ static void initial_cl_emitm(rb, lc, bits, size)
   (*cl_emitm)(rb, lc, bits, size);
 }
 void (*cl_emitm)(RBlock rb, unsigned lc, unsigned long, unsigned) = &initial_cl_emitm; 
-#line 350 "mclib.nw"
+#line 354 "mclib.nw"
 void cl_emitl(rb, lc, val, n) RBlock rb; unsigned lc; unsigned long val; unsigned n; {
   struct rblock_buffer *cb;
   register unsigned char *p;
   for (cb = &rb->firstbuf; cb->next && lc >= cb->next->datalc; cb = cb->next);
   p = cb->data + (lc - cb->datalc);
   if (p + n <= cb->limit) {
-#line 235 "mclib.nw"
+#line 239 "mclib.nw"
 switch (n) {
   #define BYTE(N) case N+1: p[N] = val >> 8*N; /* fall through */
   BYTE(7) BYTE(6) BYTE(5) BYTE(4) BYTE(3) BYTE(2) BYTE(1) BYTE(0)
@@ -182,26 +184,26 @@ switch (n) {
     break;
   default: assert(("unsigned long bigger than 8 bytes", 0));
 }
-#line 355 "mclib.nw"
+#line 359 "mclib.nw"
                                                                                    }
   else {
-#line 368 "mclib.nw"
+#line 372 "mclib.nw"
 { unsigned roomhere = cb->limit - p;
   assert(roomhere > 0 && roomhere < n);
   cl_emitl(rb, lc, val, roomhere);
   cl_emitl(rb, lc+roomhere, val >> 8*roomhere, n - roomhere);
 }
-#line 356 "mclib.nw"
+#line 360 "mclib.nw"
                                                         }
 }
-#line 359 "mclib.nw"
+#line 363 "mclib.nw"
 void cl_emitb(rb, lc, val, n) RBlock rb; unsigned lc; unsigned long val; unsigned n; {
   struct rblock_buffer *cb;
   register unsigned char *p;
   for (cb = &rb->firstbuf; cb->next && lc >= cb->next->datalc; cb = cb->next);
   p = cb->data + (lc - cb->datalc);
   if (p + n <= cb->limit) {
-#line 265 "mclib.nw"
+#line 269 "mclib.nw"
 switch (n) {
   #define S(POS, N) (p[POS] = val >> 8*N)
   case 0: break;
@@ -215,19 +217,19 @@ switch (n) {
   case 8: S(0,7); S(1,6); S(2,5); S(3,4); S(4,3); S(5,2); S(6,1); S(7,0); break;
   default: assert(("unsigned long bigger than 8 bytes", 0));
 }
-#line 364 "mclib.nw"
+#line 368 "mclib.nw"
                                                                                 }
   else {
-#line 374 "mclib.nw"
+#line 378 "mclib.nw"
 { unsigned roomhere = cb->limit - p;
   assert(roomhere > 0 && roomhere < n);
-  cl_emitl(rb, lc, val >> 8*roomhere, roomhere);
-  cl_emitl(rb, lc+roomhere, val, n - roomhere);
+  cl_emitb(rb, lc, val >> 8*roomhere, roomhere);
+  cl_emitb(rb, lc+roomhere, val, n - roomhere);
 }
-#line 365 "mclib.nw"
+#line 369 "mclib.nw"
                                                      }
 }
-#line 438 "mclib.nw"
+#line 442 "mclib.nw"
 static void initial_emitm(bits, size) unsigned long bits; unsigned size; {
   static union { unsigned u; unsigned char c[sizeof(unsigned)]; } u = { 0xaabbccdd };
   switch (u.c[0]) {
@@ -238,17 +240,17 @@ static void initial_emitm(bits, size) unsigned long bits; unsigned size; {
   (*emitm)(bits, size);
 }
 void (*emitm)(unsigned long, unsigned) = &initial_emitm; 
-#line 605 "mclib.nw"
+#line 609 "mclib.nw"
 void set_lc(rb, newlc) RBlock rb; unsigned newlc; {
     
-#line 632 "mclib.nw"
+#line 636 "mclib.nw"
 if (!currb->firstbuf.next) {
   assert(currb->curbuf == &currb->firstbuf);
   currb->firstbuf.datalc = newlc;
   currb_p = currb->curbuf->data; /* might have been advanced by addlc */
   return;
 }
-#line 607 "mclib.nw"
+#line 611 "mclib.nw"
     if (newlc < currb->curbuf->datalc) {
       currb->curbuf = &currb->firstbuf;
       currb_safe = currb->curbuf->limit - MARGIN;
@@ -256,7 +258,7 @@ if (!currb->firstbuf.next) {
     assert(("above low water", newlc >= currb->curbuf->datalc));
     currb_p = newlc - currb->curbuf->datalc + currb->curbuf->data;
 }
-#line 642 "mclib.nw"
+#line 646 "mclib.nw"
 void align(n) unsigned n; {
     unsigned oldlc = lc();
     unsigned newlc;
@@ -264,7 +266,7 @@ void align(n) unsigned n; {
     newlc -= newlc % n;
     addlc(newlc-oldlc);
 }
-#line 657 "mclib.nw"
+#line 661 "mclib.nw"
 void set_register(rb, reg, rlc) RBlock rb; unsigned reg, rlc; {
     assert(!rb->known.reg);
     rb->reg = reg;
@@ -272,52 +274,52 @@ void set_register(rb, reg, rlc) RBlock rb; unsigned reg, rlc; {
     rb->known.reg = 1;
 }
 
-#line 685 "mclib.nw"
+#line 689 "mclib.nw"
 RBlock block_new(size) unsigned size; {
     RBlock rb, tmprb; 
     
     rb = (RBlock) mc_alloc(sizeof(*rb), RBlock_pool);
     
-#line 89 "mclib.nw"
+#line 93 "mclib.nw"
 rb->curbuf = &rb->firstbuf;
-#line 195 "mclib.nw"
+#line 199 "mclib.nw"
 rb->firstbuf.data = rb->firstbuf.limit = bogus_buffer + MARGIN;
-#line 91 "mclib.nw"
+#line 95 "mclib.nw"
 rb->p = rb->firstbuf.data;
 rb->firstbuf.next = (Buffer)0;
 rb->firstbuf.datalc = 0;	/* lc is initially 0 */
-#line 117 "mclib.nw"
+#line 121 "mclib.nw"
 rb->known.address = rb->known.reg = 0;
 rb->label = label_new("unnamed");
 rb->label->block = rb;
 rb->label->offset = 0;
-#line 390 "mclib.nw"
+#line 394 "mclib.nw"
 rb->size_hint = BUFSZ;
-#line 690 "mclib.nw"
+#line 694 "mclib.nw"
     rb->size_hint = size > 0 ? size : BUFSZ;
     
-#line 701 "mclib.nw"
+#line 705 "mclib.nw"
 nblocks++; /* do we really need this instrumentation? */
 rb->next = defined_rbs;		/* instrumentation */
 defined_rbs = rb; 		/* instrumentation */
-#line 692 "mclib.nw"
+#line 696 "mclib.nw"
     return rb;
 }
-#line 710 "mclib.nw"
+#line 714 "mclib.nw"
 RBlock defined_rbs = (RBlock) 0;/* instrumentation */
 int nblocks = 0;		/* instrumentation */
-#line 718 "mclib.nw"
+#line 722 "mclib.nw"
 void set_address(rb, address) RBlock rb; unsigned address; {
     assert(rb);
     rb->address = address;
     rb->known.address = 1;
 }
-#line 738 "mclib.nw"
+#line 742 "mclib.nw"
 void block_copy(dest, rb, start, n) unsigned char *dest; RBlock rb; unsigned start, n; {
   void *memcpy(void *dest, const void *src, size_t n);
   #define TRANSFER(SRC, N) (memcpy(dest, (SRC), (N)), dest += (N))
   
-#line 745 "mclib.nw"
+#line 749 "mclib.nw"
 { Buffer buf;
   unsigned char *p;
   for (buf = buffer_at_lc(rb, start), p = buf->data + (start - buf->datalc);
@@ -330,14 +332,14 @@ void block_copy(dest, rb, start, n) unsigned char *dest; RBlock rb; unsigned sta
   }
   assert(n == 0);
 }
-#line 742 "mclib.nw"
+#line 746 "mclib.nw"
   #undef TRANSFER
 }
-#line 759 "mclib.nw"
+#line 763 "mclib.nw"
 void block_write(fd, rb, start, n) RBlock rb; unsigned start, n; {
   #define TRANSFER(SRC, N) (write(fd, SRC, N))
   
-#line 745 "mclib.nw"
+#line 749 "mclib.nw"
 { Buffer buf;
   unsigned char *p;
   for (buf = buffer_at_lc(rb, start), p = buf->data + (start - buf->datalc);
@@ -350,10 +352,10 @@ void block_write(fd, rb, start, n) RBlock rb; unsigned start, n; {
   }
   assert(n == 0);
 }
-#line 762 "mclib.nw"
+#line 766 "mclib.nw"
   #undef TRANSFER
 }
-#line 772 "mclib.nw"
+#line 776 "mclib.nw"
 static Buffer buffer_at_lc(rb, start) RBlock rb; unsigned start; {
   Buffer b = rb->curbuf;
   if (start < b->datalc)
@@ -364,7 +366,7 @@ static Buffer buffer_at_lc(rb, start) RBlock rb; unsigned start; {
   assert(b);
   return b;
 }
-#line 789 "mclib.nw"
+#line 793 "mclib.nw"
 unsigned long block_fetchl(rb, lc, n) 
     RBlock rb; unsigned lc; unsigned n; 
 {
@@ -373,7 +375,7 @@ unsigned long block_fetchl(rb, lc, n)
   assert(n <= sizeof(bytes));
   block_copy(bytes, rb, lc, n);
   
-#line 811 "mclib.nw"
+#line 815 "mclib.nw"
 val = 0;
 switch (n) {
   #define BYTE(N) case N+1: val |= bytes[N] << 8*N; /* fall through */
@@ -383,10 +385,10 @@ switch (n) {
     break;
   default: assert(("unsigned long bigger than 8 bytes", 0));
 }
-#line 797 "mclib.nw"
+#line 801 "mclib.nw"
   return val;
 }
-#line 800 "mclib.nw"
+#line 804 "mclib.nw"
 unsigned long block_fetchb(rb, lc, n) 
     RBlock rb; unsigned lc; unsigned n; 
 {
@@ -395,7 +397,7 @@ unsigned long block_fetchb(rb, lc, n)
   assert(n <= sizeof(bytes));
   block_copy(bytes, rb, lc, n);
   
-#line 821 "mclib.nw"
+#line 825 "mclib.nw"
 switch (n) {
   #define B(POS, N) (bytes[POS] << 8*N)
   case 0: break;
@@ -411,10 +413,10 @@ switch (n) {
   default: assert(("unsigned long bigger than 8 bytes", 0));
   #undef B
 }
-#line 808 "mclib.nw"
+#line 812 "mclib.nw"
   return val;
 }
-#line 840 "mclib.nw"
+#line 844 "mclib.nw"
 static unsigned long initial_block_fetchm(rb, lc, size) 
          RBlock rb; unsigned lc; unsigned size; 
 {
@@ -427,7 +429,7 @@ static unsigned long initial_block_fetchm(rb, lc, size)
   return (*block_fetchm)(rb, lc, size);
 }
 unsigned long (*block_fetchm)(RBlock rb, unsigned lc, unsigned) = &initial_block_fetchm; 
-#line 882 "mclib.nw"
+#line 886 "mclib.nw"
 void label_define(lbl, offset) RLabel lbl; int offset; {
     label_define_at(lbl, currb, lc() + offset);
 }
@@ -437,7 +439,7 @@ void label_define_at(lbl, block, lc) RLabel lbl; RBlock block; unsigned lc; {
     lbl->block = block;
     lbl->offset = lc;
 }
-#line 894 "mclib.nw"
+#line 898 "mclib.nw"
 RLabel label_new(name) char *name; {
     RLabel lbl;
 
@@ -446,18 +448,18 @@ RLabel label_new(name) char *name; {
     lbl->name = name;
     return lbl;
 }
-#line 966 "mclib.nw"
+#line 980 "mclib.nw"
 static void fail_if_undef(void *closure, RAddr a) {
     if (!location_known(a)) 
        ((FailCont)closure)("Label %s undefined or unbound", a->label->name);
 }
 
-#line 972 "mclib.nw"
+#line 986 "mclib.nw"
 void apply_closure(RClosure cl, Emitter emitter, FailCont fail) {
     (*cl->h->relocfn)(cl, &fail_if_undef, (void*)fail);
     (*cl->h->apply)(cl, emitter, fail);
 }
-#line 996 "mclib.nw"
+#line 1010 "mclib.nw"
 RClosure mc_create_closure_at_offset(unsigned size, ClosureHeader h, unsigned offset) {
   RBlock   this_block = crb();
   unsigned this_lc    = lc() + offset;
@@ -467,19 +469,20 @@ RClosure mc_create_closure_at_offset(unsigned size, ClosureHeader h, unsigned of
   c->loc.dest_lc    = this_lc;
   return c;
 }
-#line 1010 "mclib.nw"
+#line 1024 "mclib.nw"
 RClosure mc_create_closure_here(unsigned size, ClosureHeader h) {
   return mc_create_closure_at_offset(size, h, 0);
 }
-#line 1016 "mclib.nw"
+#line 1030 "mclib.nw"
 static void label_print(struct label *label) {
+  if (!asmprintfd) asmprintfd = stdout;
   asmprintf(asmprintfd, "%s", label->name ? label->name : "???");
 }
-#line 1022 "mclib.nw"
+#line 1037 "mclib.nw"
 typedef void (*asmprinter)(void *closure, const char *fmt, ...);
 extern int fprintf(FILE *stream, const char *fmt, ...); /* needed at Purdue -- ugh */
 void (*asmprintf)(void *closure, const char *fmt, ...) = (asmprinter) fprintf;
-void *asmprintfd = (void *)stdout;
+void *asmprintfd = (void *)0;
 void (*asmprintreloc)(RAddr reloc) = reloc_print; /* calls asmprintf */
 #line 79 "reloc.nw"
 RAddr addr_new(label, offset) RLabel label; int offset; {

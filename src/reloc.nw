@@ -66,7 +66,7 @@ extern RAddr addr_new(RLabel label, int offset);
 extern RAddr unsigned_to_raddr(unsigned lc);
 @
 
-\ifx\refman\relax
+\ifx\refman\undefined
 
 Here's the concrete representation of a relocatable address:
 <<exported data declarations>>=

@@ -69,26 +69,21 @@ procedure gennode(n, wordsmatched)
     local firstif, decls, added, single_range, other_child, answer
     while *n.children = 1 do 
         n := n.children[1].node
+    decls := []
     if *n.children > 0 then {
-        decls := []
-pushtrace("DECLS")
         added := add_decls(decls, wordsmatched, node_fields(n.field))
-poptrace()
 	if *n.children = 2 & single_range := !n.children & *single_range.lo = 1 then {
           <<set [[answer]] to single [[if]] statement>>
         } else {
           <<split children into [[if]] and case tests, and make combination [[answer]]>>
         }
-        every delete(wordsmatched, !added)
-	return answer
     } else {
-        decls := []
         added := add_decls(decls, wordsmatched, constraint_fields(n.cs.arms))
 	s := genarms(n.cs.arms, n, wordsmatched)
 	answer := subst_for_pc(Gblock(decls, [s]), address_to_integer("MATCH_p"))
-        every delete(wordsmatched, !added)
-        return answer
     }
+    every delete(wordsmatched, !added)
+    return answer
 end
 <<split children into [[if]] and case tests, and make combination [[answer]]>>=
 edges := table()
@@ -233,13 +228,18 @@ which means they were declared twice.  Omitting the code to
 declare pattern labels seems to solve the problem, but why?
 Notice also that the omitted code could never have been right to begin
 with, since it bound the label to an \emph{offset}, not to its true value.
+
+Both implicit and explicit solutions contribute to fields used.\change{49}
 <<*>>=
 procedure genarm(a, thenode, wordsmatched)
     local bindings, fused, block, decls, stmts, patlabels
     /continue := 0
     <<insist there are no field bindings in arm [[a]]>>
     fused := set(); 
-    every insert(fused, subterms_matching(!(\a.imp_soln).answers, "absolute_field"))
+    every e := (t := (\a.soln | \a.imp_soln).answers,
+		id := key(t) & not is_wildcard(id),
+		t[id]) do
+      every insert(fused, absolute_fields(e))
     decls := []
     added := add_decls(decls, wordsmatched, fused)
 #    patlabels := a.pattern.disjuncts[1].patlabelbindings
@@ -249,8 +249,10 @@ procedure genarm(a, thenode, wordsmatched)
       put(decls, Gdecl(id, &null, a.imp_soln.answers[id]))
     every id := key((\a.soln).answers) & not is_wildcard(id)  do
       put(decls, Gdecl(id, &null, a.soln.answers[id]))
-    if (\a.name & /thenode.name) then 
+    if (\a.name & /thenode.name) then {
       warning("Name `" || a.name || "' in pattern arm is unbound.\n")
+      put(decls, Gsetname(a.name, "??name of unnamed pattern??"))
+    }
     put(decls, Gsetname(\a.name, \thenode.name))
     every delete(wordsmatched, !added)
     stmts := armscode(a)

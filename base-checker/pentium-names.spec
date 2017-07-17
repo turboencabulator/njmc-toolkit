@@ -1,4 +1,4 @@
-#line 1499 "../specs/pentium.nw"
+#line 1505 "../specs/pentium.nw"
 assembly component 
     {iAL,AL}                is b
     {iAX,AX}                is w
@@ -16,7 +16,7 @@ assembly component
     {.STi,.ST.STi,.STi.St}  is ""
     P.STi.ST                is P
     .{O,NO,B,NB,Z,NZ,BE,NBE,S,NS,P,NP,L,NL,LE,NLE} is $1
-#line 1524 "../specs/pentium.nw"
+#line 1530 "../specs/pentium.nw"
 assembly component
     {CALL}.*                is $1
     {CALL}l                 is $1
@@ -38,7 +38,7 @@ assembly component
     JMP.Ep                  is lJMP
     {JMP}.*                 is $1
     MOV{.Eb.Ib,.AL.Ob,.Ob.AL} is MOVb
-    {MOViv,MOV.Eb.Iv}       is MOV
+    {MOViv,MOV.Ev.Iv}       is MOV
     MOVSX.Gv.Ew             is MOVSwl
     {MOV.Ew.Sw,MOV.Sw.Ew} is MOVw
     {MOVS,MOVZ}X.Gv.Eb      is $1b
@@ -62,7 +62,7 @@ assembly component
     {XADD*}.*               is $1
     {XCHG*}.*               is $1
     {*}i                    is $1
-#line 1572 "../specs/pentium.nw"
+#line 1578 "../specs/pentium.nw"
 assembly component 
     {"mr","rm"}             is ""
     {"mrb","rmb"}           is b
@@ -82,7 +82,7 @@ assembly component
     TEST.Ew.Iw              is TESTw
     TEST.Ed.Id              is TESTl
     SETb                    is SET
-#line 1593 "../specs/pentium.nw"
+#line 1599 "../specs/pentium.nw"
 assembly opcode
   CALL.{Ev}{od}	            is CALL
   CALL.{Jv,Ep}{od,ow}       is lCALL
@@ -98,22 +98,22 @@ assembly opcode
   SHLSAL{B.Ev.*}ow          is SHLw
   XCHGeAXow                 is XCHGw
   XCHGeAXod                 is XCHGl
-#line 1622 "../specs/pentium.nw"
+#line 1628 "../specs/pentium.nw"
 assembly operand
     [count i8 i16 i32]           is "$%d"
     [r32 sr16 r16 r8 base index] is "%%%s"
-#line 1633 "../specs/pentium.nw"
+#line 1639 "../specs/pentium.nw"
 assembly operand
     [reg reg8 sreg cr dr]      	is "%%%s" using field base
-#line 1642 "../specs/pentium.nw"
+#line 1648 "../specs/pentium.nw"
 assembly operand
     dx    is "%%dx"
     ax    is "%%ax"
-#line 1473 "../specs/pentium.nw"
+#line 1479 "../specs/pentium.nw"
 assembly component 
     {Indir,{Disp*},Abs32,Reg,{*Index*},E,rel{8,16,32}} is ""
     {*}  is   	$1
-#line 1673 "../specs/pentium.nw"
+#line 1679 "../specs/pentium.nw"
 assembly syntax
   arith^"iAL"     i8!, "%al"
   arith^"iAX"     i16!, "%ax"
@@ -127,19 +127,19 @@ assembly syntax
   arithI^"d"     i32!, Eaddr
   arithI^ov^"b"  i8!,  Eaddr
   MOV.Eb.Ib      i8!,  Eaddr
-  MOV.Eb.Iv^ow   i16!, Eaddr
-  MOV.Eb.Iv^od   i32!, Eaddr
-#line 1690 "../specs/pentium.nw"
+  MOV.Ev.Iv^ow   i16!, Eaddr
+  MOV.Ev.Iv^od   i32!, Eaddr
+#line 1696 "../specs/pentium.nw"
 assembly syntax
   arith^"rmb"    Eaddr, reg8
   arith^"rm"^ov  Eaddr, reg
   IMULrm^ov      Eaddr, reg
   MOV^"rmb"      Eaddr, reg
   MOV^"rm"^ov    Eaddr, reg
-  MOVZX.Gv.Ew    Mem, r16
-  MOVSX.Gv.Ew    Mem, r16
-  MOVZX.Gv.Eb^ov Mem, r32
-  MOVSX.Gv.Eb^ov Mem, r32
+  MOVZX.Gv.Ew    Eaddr, r16
+  MOVSX.Gv.Ew    Eaddr, r16
+  MOVZX.Gv.Eb^ov Eaddr, r32
+  MOVSX.Gv.Eb^ov Eaddr, r32
   BSF^ov  Eaddr, reg
   BSR^ov  Eaddr, reg
   LAR^ov  Eaddr, reg
@@ -159,7 +159,7 @@ assembly syntax
   BTSi^ov        i8!, Eaddr
   CMPXCHG.Eb.Gb  reg, Eaddr
   CMPXCHG.Ev.Gv^ov reg, Eaddr
-#line 1721 "../specs/pentium.nw"
+#line 1727 "../specs/pentium.nw"
 patterns
   fstack    is FADD | FDIV | FDIVR | FMUL | FSUB | FSUBR
   fsti      is fstack | FCOMs
@@ -190,7 +190,7 @@ assembly syntax
   LEA^ov         Mem, reg
 
   MOVib          i8!, r8
-  MOViw          i16!, r32
+  MOViw          i16!, r16
   MOVid          i32!, r32
 
   MOV.AL.Ob      offset, "%al"
@@ -230,7 +230,7 @@ assembly syntax
   shdIb^ov  count, reg, Eaddr
   shdCL^ov  "%cl", reg, Eaddr
 
-#line 1792 "../specs/pentium.nw"
+#line 1798 "../specs/pentium.nw"
   TEST.AL.Ib     i8, "%al"
   TEST.eAX.Iv^ow i16, "%ax"
   TEST.eAX.Iv^od i32, "%ax"
@@ -245,7 +245,7 @@ assembly syntax
   XCHG^"eAX"^ov  "%eax", r32
   XCHG.Ev.Gv^ov  reg, Eaddr
 
-#line 1808 "../specs/pentium.nw"
+#line 1814 "../specs/pentium.nw"
 assembly syntax
   Indir       (reg)
   Disp32      d(reg)

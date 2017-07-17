@@ -1,4 +1,11 @@
-For ???
+For 0.5a
+
+50. Don't simplify absolute fields, ever.  FIXES #20?
+
+49. Both implicit and explicit solutions contribute to fields used in
+    [[genarm]].  11/21/96
+
+For 0.5
 
 48. Simplify slice in case for Ewiden in M3 emitter. 11/12/96
 

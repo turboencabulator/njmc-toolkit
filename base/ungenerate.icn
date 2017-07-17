@@ -1,0 +1,35 @@
+#line 5 "ungenerate.nw"
+procedure main(args)
+  if *args = 0 then {
+    write(&errout, "Usage: ungenerate files")
+    write(&errout, "  (can't be used as a filter)")
+    exit(1)
+  }
+  every ungenerate(!args)
+end
+#line 14 "ungenerate.nw"
+procedure ungenerate(fname)
+  local line, lines, file
+  lines := []
+  file := open(fname, "r") | stop("Cannot open file ", fname, " for read")
+  while line := read(file) do
+    line ?
+      if (optwhite(), ="#", optwhite(), ="line", white(), tab(many(&digits)),
+	  white(), =image("generated-code"), optwhite(), pos(0)) then
+        put(lines, "#line " || (*lines + 2) || " " || image(fname))
+      else
+        put(lines, line)
+  close(file)
+  file := open(fname, "w") | stop("Cannot open file ", fname, " for write")
+  every write(file, !lines)
+  close(file)
+  return
+end
+#line 32 "ungenerate.nw"
+procedure white()
+  suspend tab(many(' \t'))
+end
+
+procedure optwhite()
+  suspend white() | ""
+end

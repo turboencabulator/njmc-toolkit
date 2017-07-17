@@ -1,0 +1,126 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	96.03.07.21.01.27;	author nr;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	96.03.07.20.59.36;	author nr;	state Exp;
+branches;
+next	;
+
+
+desc
+@mkfile
+@
+
+
+1.2
+log
+@update for checker
+@
+text
+@DIRS=src specs examples checker
+VERSION=0.4
+TARFILE=v$VERSION.tar
+TARZIP=$TARFILE.gz
+SMALLTARS=base.tar src.tar base-specs.tar base-checker.tar specs.tar example.tar
+QUIET_FGREP=fgrep -s
+
+all:V:
+	# do nothing
+
+%.tar:V:
+	tar cvf $target $stem
+
+distfiles:V: version_check
+	for i in $DIRS; do (cd $i; mk distfiles); done
+
+distclean:V: clean
+	for i in $DIRS; do (cd $i; mk distclean); done
+
+dist:VQ: version_check
+	if [ -r ../archive/$TARZIP ]; then
+          echo "Need to bump VERSION in mkfile; $TARZIP already in ../archive" 1>&2
+	  exit 1
+	fi
+	if [ ! -d ../$VERSION ]; then
+	  mkdir ../$VERSION
+	fi
+	for i in $DIRS; do (cd $i; mk distfiles); done
+	if [ -x "`which copy`" ]; then
+	  copy -R * ../$VERSION
+	else
+	  /bin/rm -rf ../$VERSION/*
+	  tar cf - . | (cd ../$VERSION; tar xvf -)
+	fi
+	cd ../$VERSION
+	/bin/rm -rf *.tar.gz */RCS
+	mk distclean
+	tar cvf ../$TARFILE .
+	mv ../$TARFILE .
+	mk $SMALLTARS
+	gzip -v $TARFILE $SMALLTARS
+
+archive:V: dist
+	cp -i ../$VERSION/$TARZIP ../archive
+
+version_check:VQ:
+	if [ '"'"$VERSION"'"' != "`notangle -R'version string' src/main.nw | 
+			           sed 's@@ of [0-9]*/[0-9]*/[0-9]*@@@@`" ]; then
+	  echo "Version mismatch! mkfile $VERSION, main.nw `notangle -R'version string' src/main.nw`" 1>&2
+	  exit 1
+	fi
+	if [ "$VERSION" != "`notangle -Rversion src/refman.nw`" ]; then
+	  echo "Version mismatch! mkfile $VERSION, refman.nw `notangle -Rversion src/refman.nw`" 1>&2
+	  exit 1
+	fi
+	if $QUIET_FGREP $TARZIP readme.html; then
+	  : ok
+	else
+	  echo "Version mismatch! readme.html doesn't refer to $TARZIP"
+	  exit 1
+	fi
+	if $QUIET_FGREP "Toolkit version~$VERSION}" specs/specs.nw; then
+	  : ok
+	else
+	  echo "Version mismatch in title of specs/specs.nw"
+	  exit 1
+	fi
+	if $QUIET_FGREP "<title>NJ Machine-Code Toolkit Source Distribution v$VERSION</title>" readme.html; then
+	  : ok
+	else
+	  echo "Version mismatch! <title> of readme.html isn't version $VERSION"
+	  exit 1
+	fi
+	echo "=========== Version $VERSION OK ========================================"
+
+clean:V:
+	for i in $DIRS; do (cd $i; mk clean); done
+	/bin/rm -f *~ *.tar.gz
+
+minimal:V:
+	for i in $DIRS; do (cd $i; mk minimal); done
+	/bin/rm -f *~ *.tar.gz 
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+DIRS=src specs examples
+d5 1
+a5 1
+SMALLTARS=base.tar src.tar base-specs.tar specs.tar example.tar
+@

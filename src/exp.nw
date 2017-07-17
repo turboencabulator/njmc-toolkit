@@ -21,7 +21,7 @@ I give definitions in terms of Modula-3.
 record Eorb(x, y)                       # Word.Or(x, y)
 record Eand(x, y)                       # x AND y               -- short-circuit Boolean
 record Eslice(x, lo, n)                 # Word.Extract(x, lo, width)
-record Eshift(x, n)                     # Word.Shift(x, n)
+record Eshift(x, n)                     # Word.Shift(x, n) -- n>0 shifts left
 record Enarrowu(x, n)                   # narrow to n bits, unsigned, with check
 record Enarrows(x, n)                   # narrow to n bits,   signed, with check
 record Ewiden(x, n)                     # sign-extend low n bits
@@ -372,11 +372,9 @@ end
 "constraint"   : e
 "fieldbinding" : if (x := simfun(e.code)) === e.code then e 
                  else fieldbinding(e.field, x)
-"absolute_field" : 
-  if simfun === super_simplify then
-    afieldexp(e)
-  else
-    e
+"absolute_field" : e
+  # don't call super_simplify --- can't spot which fields are used any more!
+  # change 50
 "set"   : {<<simplify set of conditions>>}
 "table" : {<<simplify table>>}
 "list"  : {l := maplist(simfun, e); if lists_match(e, l) then e else l}

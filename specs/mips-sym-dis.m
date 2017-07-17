@@ -1,0 +1,184 @@
+#include <mclib.h>
+#include <mips-sym-dis.h>
+void disassemble_instruction(ProgramCounter pc) {
+  match pc to
+  | bc1f(the_reloc) => bc1f(int_to_raddr(the_reloc));
+  | jal(the_reloc) => jal(int_to_raddr(the_reloc));
+  | cvt.d.d(the_fd, the_fs) => cvt_d_d(the_fd, the_fs);
+  | cvt.s.s(the_fd, the_fs) => cvt_s_s(the_fd, the_fs);
+  | c.le.d(the_fs, the_ft) => c_le_d(the_fs, the_ft);
+  | bgtz(the_rs, the_reloc) => bgtz(the_rs, int_to_raddr(the_reloc));
+  | jr(the_rs) => jr(the_rs);
+  | c.nge.s(the_fs, the_ft) => c_nge_s(the_fs, the_ft);
+  | swc0(the_ft, the_offset, the_base) => swc0(the_ft, the_offset, the_base);
+  | c.ngl.w(the_fs, the_ft) => c_ngl_w(the_fs, the_ft);
+  | c.ngle.d(the_fs, the_ft) => c_ngle_d(the_fs, the_ft);
+  | c.sf.s(the_fs, the_ft) => c_sf_s(the_fs, the_ft);
+  | mtlo(the_rs) => mtlo(the_rs);
+  | c.ole.w(the_fs, the_ft) => c_ole_w(the_fs, the_ft);
+  | c.olt.d(the_fs, the_ft) => c_olt_d(the_fs, the_ft);
+  | c.ueq.s(the_fs, the_ft) => c_ueq_s(the_fs, the_ft);
+  | sra(the_rd, the_rt, the_shamt) => sra(the_rd, the_rt, the_shamt);
+  | xor(the_rd, the_rs, the_rt) => xor(the_rd, the_rs, the_rt);
+  | mtc1.d(the_rt, the_fs) => mtc1_d(the_rt, the_fs);
+  | c.un.w(the_fs, the_ft) => c_un_w(the_fs, the_ft);
+  | subu(the_rd, the_rs, the_rt) => subu(the_rd, the_rs, the_rt);
+  | bgtu(the_rs, the_rt, the_reloc) => bgtu(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | lui(the_rt, the_offset) => lui(the_rt, the_offset);
+  | mov.w(the_fd, the_fs) => mov_w(the_fd, the_fs);
+  | blt(the_rs, the_rt, the_reloc) => blt(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | sb(the_rt, the_offset, the_base) => sb(the_rt, the_offset, the_base);
+  | nop() => nop();
+  | mul.w(the_fd, the_fs, the_ft) => mul_w(the_fd, the_fs, the_ft);
+  | add.d(the_fd, the_fs, the_ft) => add_d(the_fd, the_fs, the_ft);
+  | lh(the_rt, the_offset, the_base) => lh(the_rt, the_offset, the_base);
+  | j(the_reloc) => j(int_to_raddr(the_reloc));
+  | cvt.d.w(the_fd, the_fs) => cvt_d_w(the_fd, the_fs);
+  | bgezal(the_rs, the_reloc) => bgezal(the_rs, int_to_raddr(the_reloc));
+  | c.le.w(the_fs, the_ft) => c_le_w(the_fs, the_ft);
+  | blez(the_rs, the_reloc) => blez(the_rs, int_to_raddr(the_reloc));
+  | c.lt.d(the_fs, the_ft) => c_lt_d(the_fs, the_ft);
+  | lwc3(the_ft, the_offset, the_base) => lwc3(the_ft, the_offset, the_base);
+  | c.ngl.s(the_fs, the_ft) => c_ngl_s(the_fs, the_ft);
+  | c.ngle.w(the_fs, the_ft) => c_ngle_w(the_fs, the_ft);
+  | break(the_breakcode) => break(the_breakcode);
+  | mthi(the_rs) => mthi(the_rs);
+  | c.ule.d(the_fs, the_ft) => c_ule_d(the_fs, the_ft);
+  | divu(the_rs, the_rt) => divu(the_rs, the_rt);
+  | c.ole.s(the_fs, the_ft) => c_ole_s(the_fs, the_ft);
+  | srav(the_rd, the_rt, the_rs) => srav(the_rd, the_rt, the_rs);
+  | c.olt.w(the_fs, the_ft) => c_olt_w(the_fs, the_ft);
+  | c.eq.d(the_fs, the_ft) => c_eq_d(the_fs, the_ft);
+  | srl(the_rd, the_rt, the_shamt) => srl(the_rd, the_rt, the_shamt);
+  | or(the_rd, the_rs, the_rt) => or(the_rd, the_rs, the_rt);
+  | c.un.s(the_fs, the_ft) => c_un_s(the_fs, the_ft);
+  | sub(the_rd, the_rs, the_rt) => sub(the_rd, the_rs, the_rt);
+  | li(the_rt, the_imm) => li(the_rt, the_imm);
+  | ctc1(the_rt, the_fs) => ctc1(the_rt, the_fs);
+  | neg.d(the_fd, the_fs) => neg_d(the_fd, the_fs);
+  | bleu(the_rs, the_rt, the_reloc) => bleu(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | mov.s(the_fd, the_fs) => mov_s(the_fd, the_fs);
+  | sltiu(the_rt, the_rs, the_offset) => sltiu(the_rt, the_rs, the_offset);
+  | swr(the_rt, the_offset, the_base) => swr(the_rt, the_offset, the_base);
+  | sub.d(the_fd, the_fs, the_ft) => sub_d(the_fd, the_fs, the_ft);
+  | lwr(the_rt, the_offset, the_base) => lwr(the_rt, the_offset, the_base);
+  | b(the_reloc) => b(int_to_raddr(the_reloc));
+  | mul.s(the_fd, the_fs, the_ft) => mul_s(the_fd, the_fs, the_ft);
+  | add.w(the_fd, the_fs, the_ft) => add_w(the_fd, the_fs, the_ft);
+  | lbu(the_rt, the_offset, the_base) => lbu(the_rt, the_offset, the_base);
+  | cvt.w.d(the_fd, the_fs) => cvt_w_d(the_fd, the_fs);
+  | cvt.d.s(the_fd, the_fs) => cvt_d_s(the_fd, the_fs);
+  | c.ngt.d(the_fs, the_ft) => c_ngt_d(the_fs, the_ft);
+  | bltzal(the_rs, the_reloc) => bltzal(the_rs, int_to_raddr(the_reloc));
+  | c.le.s(the_fs, the_ft) => c_le_s(the_fs, the_ft);
+  | swc3(the_ft, the_offset, the_base) => swc3(the_ft, the_offset, the_base);
+  | c.lt.w(the_fs, the_ft) => c_lt_w(the_fs, the_ft);
+  | lwc2(the_ft, the_offset, the_base) => lwc2(the_ft, the_offset, the_base);
+  | c.seq.d(the_fs, the_ft) => c_seq_d(the_fs, the_ft);
+  | c.ngle.s(the_fs, the_ft) => c_ngle_s(the_fs, the_ft);
+  | c.ule.w(the_fs, the_ft) => c_ule_w(the_fs, the_ft);
+  | div(the_rs, the_rt) => div(the_rs, the_rt);
+  | c.ult.d(the_fs, the_ft) => c_ult_d(the_fs, the_ft);
+  | srlv(the_rd, the_rt, the_rs) => srlv(the_rd, the_rt, the_rs);
+  | c.olt.s(the_fs, the_ft) => c_olt_s(the_fs, the_ft);
+  | c.eq.w(the_fs, the_ft) => c_eq_w(the_fs, the_ft);
+  | sll(the_rd, the_rt, the_shamt) => sll(the_rd, the_rt, the_shamt);
+  | and(the_rd, the_rs, the_rt) => and(the_rd, the_rs, the_rt);
+  | s.d(the_ft, the_offset, the_base) => s_d(the_ft, the_offset, the_base);
+  | c.f.d(the_fs, the_ft) => c_f_d(the_fs, the_ft);
+  | addu(the_rd, the_rs, the_rt) => addu(the_rd, the_rs, the_rt);
+  | bgt(the_rs, the_rt, the_reloc) => bgt(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | cfc1(the_rt, the_fs) => cfc1(the_rt, the_fs);
+  | neg.w(the_fd, the_fs) => neg_w(the_fd, the_fs);
+  | xori(the_rt, the_rs, the_offset) => xori(the_rt, the_rs, the_offset);
+  | slti(the_rt, the_rs, the_offset) => slti(the_rt, the_rs, the_offset);
+  | abs.d(the_fd, the_fs) => abs_d(the_fd, the_fs);
+  | swl(the_rt, the_offset, the_base) => swl(the_rt, the_offset, the_base);
+  | bgeu(the_rs, the_rt, the_reloc) => bgeu(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | sub.w(the_fd, the_fs, the_ft) => sub_w(the_fd, the_fs, the_ft);
+  | lwl(the_rt, the_offset, the_base) => lwl(the_rt, the_offset, the_base);
+  | bc1t(the_reloc) => bc1t(int_to_raddr(the_reloc));
+  | div.d(the_fd, the_fs, the_ft) => div_d(the_fd, the_fs, the_ft);
+  | add.s(the_fd, the_fs, the_ft) => add_s(the_fd, the_fs, the_ft);
+  | lb(the_rt, the_offset, the_base) => lb(the_rt, the_offset, the_base);
+  | cvt.w.w(the_fd, the_fs) => cvt_w_w(the_fd, the_fs);
+  | bne(the_rs, the_rt, the_reloc) => bne(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | cvt.s.d(the_fd, the_fs) => cvt_s_d(the_fd, the_fs);
+  | c.ngt.w(the_fs, the_ft) => c_ngt_w(the_fs, the_ft);
+  | bgez(the_rs, the_reloc) => bgez(the_rs, int_to_raddr(the_reloc));
+  | jalr(the_rd, the_rs) => jalr(the_rd, the_rs);
+  | c.nge.d(the_fs, the_ft) => c_nge_d(the_fs, the_ft);
+  | swc2(the_ft, the_offset, the_base) => swc2(the_ft, the_offset, the_base);
+  | c.lt.s(the_fs, the_ft) => c_lt_s(the_fs, the_ft);
+  | lwc1(the_ft, the_offset, the_base) => lwc1(the_ft, the_offset, the_base);
+  | c.seq.w(the_fs, the_ft) => c_seq_w(the_fs, the_ft);
+  | c.sf.d(the_fs, the_ft) => c_sf_d(the_fs, the_ft);
+  | syscall() => syscall();
+  | mflo(the_rd) => mflo(the_rd);
+  | c.ule.s(the_fs, the_ft) => c_ule_s(the_fs, the_ft);
+  | multu(the_rs, the_rt) => multu(the_rs, the_rt);
+  | c.ult.w(the_fs, the_ft) => c_ult_w(the_fs, the_ft);
+  | c.ueq.d(the_fs, the_ft) => c_ueq_d(the_fs, the_ft);
+  | sllv(the_rd, the_rt, the_rs) => sllv(the_rd, the_rt, the_rs);
+  | mfc1.d(the_rt, the_fs) => mfc1_d(the_rt, the_fs);
+  | c.eq.s(the_fs, the_ft) => c_eq_s(the_fs, the_ft);
+  | sltu(the_rd, the_rs, the_rt) => sltu(the_rd, the_rs, the_rt);
+  | c.f.w(the_fs, the_ft) => c_f_w(the_fs, the_ft);
+  | add(the_rd, the_rs, the_rt) => add(the_rd, the_rs, the_rt);
+  | mul(the_rd, the_rs, the_rt) => mul(the_rd, the_rs, the_rt);
+  | mtc1(the_rt, the_fs) => mtc1(the_rt, the_fs);
+  | neg.s(the_fd, the_fs) => neg_s(the_fd, the_fs);
+  | ori(the_rt, the_rs, the_offset) => ori(the_rt, the_rs, the_offset);
+  | addiu(the_rt, the_rs, the_offset) => addiu(the_rt, the_rs, the_offset);
+  | bltu(the_rs, the_rt, the_reloc) => bltu(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | abs.w(the_fd, the_fs) => abs_w(the_fd, the_fs);
+  | sw(the_rt, the_offset, the_base) => sw(the_rt, the_offset, the_base);
+  | mov(the_rd, the_rs) => mov(the_rd, the_rs);
+  | sub.s(the_fd, the_fs, the_ft) => sub_s(the_fd, the_fs, the_ft);
+  | lw(the_rt, the_offset, the_base) => lw(the_rt, the_offset, the_base);
+  | div.w(the_fd, the_fs, the_ft) => div_w(the_fd, the_fs, the_ft);
+  | cvt.w.s(the_fd, the_fs) => cvt_w_s(the_fd, the_fs);
+  | beq(the_rs, the_rt, the_reloc) => beq(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | cvt.s.w(the_fd, the_fs) => cvt_s_w(the_fd, the_fs);
+  | c.ngt.s(the_fs, the_ft) => c_ngt_s(the_fs, the_ft);
+  | bltz(the_rs, the_reloc) => bltz(the_rs, int_to_raddr(the_reloc));
+  | c.nge.w(the_fs, the_ft) => c_nge_w(the_fs, the_ft);
+  | swc1(the_ft, the_offset, the_base) => swc1(the_ft, the_offset, the_base);
+  | c.ngl.d(the_fs, the_ft) => c_ngl_d(the_fs, the_ft);
+  | lwc0(the_ft, the_offset, the_base) => lwc0(the_ft, the_offset, the_base);
+  | c.seq.s(the_fs, the_ft) => c_seq_s(the_fs, the_ft);
+  | c.sf.w(the_fs, the_ft) => c_sf_w(the_fs, the_ft);
+  | mfhi(the_rd) => mfhi(the_rd);
+  | c.ole.d(the_fs, the_ft) => c_ole_d(the_fs, the_ft);
+  | mult(the_rs, the_rt) => mult(the_rs, the_rt);
+  | c.ult.s(the_fs, the_ft) => c_ult_s(the_fs, the_ft);
+  | c.ueq.w(the_fs, the_ft) => c_ueq_w(the_fs, the_ft);
+  | nor(the_rd, the_rs, the_rt) => nor(the_rd, the_rs, the_rt);
+  | c.un.d(the_fs, the_ft) => c_un_d(the_fs, the_ft);
+  | slt(the_rd, the_rs, the_rt) => slt(the_rd, the_rs, the_rt);
+  | l.d(the_ft, the_offset, the_base) => l_d(the_ft, the_offset, the_base);
+  | c.f.s(the_fs, the_ft) => c_f_s(the_fs, the_ft);
+  | ble(the_rs, the_rt, the_reloc) => ble(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | mfc1(the_rt, the_fs) => mfc1(the_rt, the_fs);
+  | mov.d(the_fd, the_fs) => mov_d(the_fd, the_fs);
+  | andi(the_rt, the_rs, the_offset) => andi(the_rt, the_rs, the_offset);
+  | addi(the_rt, the_rs, the_offset) => addi(the_rt, the_rs, the_offset);
+  | abs.s(the_fd, the_fs) => abs_s(the_fd, the_fs);
+  | sh(the_rt, the_offset, the_base) => sh(the_rt, the_offset, the_base);
+  | bge(the_rs, the_rt, the_reloc) => bge(the_rs, the_rt, 
+          int_to_raddr(the_reloc));
+  | mul.d(the_fd, the_fs, the_ft) => mul_d(the_fd, the_fs, the_ft);
+  | div.s(the_fd, the_fs, the_ft) => div_s(the_fd, the_fs, the_ft);
+  | lhu(the_rt, the_offset, the_base) => lhu(the_rt, the_offset, the_base);
+  endmatch
+}
+

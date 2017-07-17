@@ -2,7 +2,7 @@
 % l2h ignore change {
 % This document should never be woven; it is tangled to produce a manual.
 <<version>>=
-0.5
+0.5a
 <<refman.tex>>=
 \documentclass{book}
 %\usepackage{draftcopy}
@@ -134,6 +134,8 @@ might do different things depending on whether this symbol is defined.}
 
 %\DeclareGraphicsRule{epsi}{eps}{epsi}{}  % not needed; killed epsi
 
+\newcommand\tkopt[1]{{\ttfamily -#1}}
+
 \begin{document}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -200,7 +202,7 @@ using a vendor's assembler and disassembler.
 
 \section{Caveat user}
 
-Version~0.5 has been exercised more heavily than other versions, but
+Version~0.5a has been exercised more heavily than other versions, but
 we believe that errors
 linger in both the manual and the code.
  If you have a problem with the toolkit, please tell us.
@@ -210,11 +212,11 @@ Send email to {\tt toolkit@cs.princeton.edu}.
 
 \section{Discussing the toolkit}
 
-Starting with the release of version~0.5, the mailing lists related 
-to the toolkit have moved (with Ramsey) to the University of Virginia.
-{\tt toolkit-interest@cs.virginia.edu} goes to people who have expressed some interest
+Starting with the release of version~0.5a, the mailing lists related 
+to the toolkit have moved (with Ramsey) to Harvard University.
+{\tt toolkit-interest@lists.eecs.harvard.edu} goes to people who have expressed some interest
 in the toolkit, and it carries most general announcemnets about the toolkit.
-{\tt toolkit-users@cs.virginia.edu} goes to people who  are actually using the toolkit,
+{\tt toolkit-users@lists.eecs.harvard.edu} goes to people who  are actually using the toolkit,
 and it carries discussion among users.
 It's still a good idea to report problems to  {\tt toolkit@cs.princeton.edu}.
 
@@ -240,7 +242,7 @@ the details of making the generator truly support multiple languages.
 \section{Known bugs}
 
 Almost all of the open bugs that actually bit people have been fixed
-in version~0.5. 
+in version~0.5a. 
 We still have plenty of open bugs that nobody has complained about yet.
 Pester us if you want them fixed.
 \begin{itemize}
@@ -282,6 +284,17 @@ that has exceptions!).
 
 
 \section{Change history}
+
+\subsection{Changes in version 0.5a}
+
+\begin{itemize}
+\item
+Better generation of disassemblers.
+\item
+Toolkit library no longer depends on [[stdout]] being a static value.
+\item
+Other bug fixes lost in the mists of time.
+\end{itemize}
 
 \subsection{Changes in version 0.5}
 
@@ -504,6 +517,12 @@ We use large metasymbols to make them easy to distinguish from literals.
 
 <<refman: lexical structure>>
 
+Comments in SLED specifications begin with \verb+#+ and go to the end of
+the line.
+Comments in matching statements are the comments of the target
+programming language, and they may appear only where target-language
+code may appear.
+
 \chapter[Decoding applications, matching statements]
         {Decoding applications and matching statements}
 \label{ch:decoding}
@@ -560,6 +579,78 @@ templates.
 
 <<refman: fetching templates>>
 
+\section{Debugging generated decoders}
+
+% l2h argblock tkopt <tt>- </tt>
+
+It can be tricky to understand the structure of a decoder by looking
+at the generated code.
+The \tkopt{ascii-dag} and \tkopt{ascii-tree} options dump complete
+listings of decision dags and trees, but it can be difficult to
+understand these dumps.
+The toolkit can also generate Icon code that you can use to explore
+trees, viewing one path at a time.
+This Icon code, when combined with a suitable main program, can act as
+a CGI script on the World-Wide Web, and you can explore the trees
+using your favorite Web browser.
+This section shows how to set up that facility.
+
+Let's suppose you have a SLED specification called
+\texttt{problem.spec}, and you've written one or more matching
+statements in the file \texttt{problem.m}.
+\begin{enumerate}
+\item
+Create the Icon file used to describe the matching statements:
+\begin{verbatim}
+tools -icon-dag problem.icn -matcher problem.m problem.spec
+\end{verbatim}
+The writes a description of the generated matchers into
+\texttt{problem.icn}.
+\item
+Combine this Icon file with the \texttt{htmltree.icn} file supplied
+with the toolkit distribution, and call the resulting program
+\texttt{problem}:
+\begin{verbatim}
+icont -o problem problem.icn htmltree.icn
+\end{verbatim}
+\item
+Put the resulting executable where it can be executed as a CGI script.
+You'll probably need help from your friendly local systems
+administrator.
+Here's what I had to do at my site, which runs the Apache 1.0.3
+server; your mileage may vary: 
+\begin{enumerate}
+\item
+Put the executable Icon program in the directory
+\verb+/home/nr/public_html/cgi-bin/trees/+.
+The corresponding URL is 
+\verb=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/=.
+\item
+The code in \texttt{htmltree.icn} uses the environment variables
+\verb+SERVER_NAME+ and \verb+SCRIPT_NAME+ to reconstruct the URL.
+With luck, these will be independent of server.  Ha ha.
+\item 
+For some unknown reason, Icon programs won't run as CGI scripts at my
+site, so I had to wrap things in this shell script:
+\begin{verbatim}
+#!/bin/sh
+tree="$1"
+shift
+SCRIPT_NAME="${SCRIPT_NAME}?$tree"
+export SCRIPT_NAME
+exec /home/nr/public_html/cgi-bin/trees/$tree "$@"
+\end{verbatim}
+\end{enumerate}
+\item
+Use the URL to explore the matching statements.
+You can see matcher for the sample SPARC disassembler at
+\verb=http://www.cs.virginia.edu/cgi-bin/cgiwrap/nr/trees/view?sparcdis=.
+\end{enumerate}
+
+
+
+
+
 
 \input{manlibrary}
 
@@ -609,8 +700,6 @@ semantic errors in a specification.
 \def\indextkoption#1{\index{#1@{\protect\tt -#1}}}
 
 \makeatother
-
-\newcommand\tkopt[1]{{\ttfamily -#1}}
 
 \let\optcattab=\sffamily
 \let\optcat=\textsf
@@ -1116,7 +1205,7 @@ by the ellipsis.
 <<refman: list of known bugs>>=
 @
 <<refman: summary of matching grammar>>=
- Wildly abusing notation, we could summarize the matching
+Wildly abusing notation, we could summarize the matching
 statement as follows:
 \begin{quote}
 \lit{match} \term{code} \lit{to}\\
@@ -1125,4 +1214,23 @@ statement as follows:
 \optional{\lit{else} \term{code}}\\
 \lit{endmatch}
 \end{quote}
+That's not quite the whole story, however.
+It's common to want to know how many tokens are consumed by a
+matching statement.
+One can do this by adding, e.g., \lit{; tail: epsilon} to every
+pattern, and by saving \lit{tail} in every arm, but the bookkeeping
+gets old quickly.
+It's possible instead to put an identifier in square brackets
+immediately after \lit{match}; the toolkit will assign the address of
+the first unread token to that identifier.
+The syntax is therefore
+\begin{quote}
+\lit{match} \optional{\lit[ \term{var-name} \lit]} \term{code} \lit{to}\\
+\sequence{\litbar \nt{pattern} \optional{\lit\lbr \nt{equations} \lit\rbr} 
+                   \optional{\lit[ \term{name} \lit]} \lit{=>} \term{code}}\\
+\optional{\lit{else} \term{code}}\\
+\lit{endmatch}
+\end{quote}
+\term{var-name} should be declared as a variable of address type
+(\emph{outside} the matching statement).
 @

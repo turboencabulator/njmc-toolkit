@@ -39,6 +39,7 @@ and we wouldn't want to walk a null.
 "Ediv" | "Emod" | "Semit" | "Stoken" | "Efitsu" | "Efitss" | 
   "Einstance_input" | "Einstance_tagged" :
                     do_expwalk(e.x, f, closure) 
+<<cases for [[do_expwalk]]>>=
 "Epatlabel"       : do_expwalk(e.l, f, closure)
 "Eforce" | "Eforceable" | "Enot" | "Enosimp" | "Sstmts" : 
                     do_expwalk(e.x, f, closure) 
@@ -46,6 +47,7 @@ and we wouldn't want to walk a null.
 "Einstance"       : do_expwalk(!e.argt, f, closure)
 "Ebinding_instance" : do_expwalk(e.name, f, closure)
 "Eapp"            : do_expwalk(!e.args, f, closure)
+<<cases for [[do_expwalk]]>>=
 "Eclosure_loc"  : &fail
 "Eclosure_addr" : &fail
 "Eclosure_val"  : &fail

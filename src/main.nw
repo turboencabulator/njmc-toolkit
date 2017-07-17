@@ -1,7 +1,7 @@
 % l2h ignore change {
 \chapter{Main program}
 <<version string>>=
-"0.5"
+"0.5a"
 <<*>>=
 link pushtrace
 <<*>>=
@@ -135,6 +135,20 @@ in a program, e.g., how many loads are generated.
 <<refman: counter functions>>
 \endtkoption
 @
+<<usage lines>>=
+"    -data             encoding procedures return data",
+<<cases for arguments>>=
+"-data"      : encode_as_data := 1
+<<refman: options>>=
+\tkoption{E}{data}{Encoding procedures return data}
+Have encoding procedures return data representing instructions at an
+abstract level.  
+This is not the default; the default is for them to emit binary as a
+side effect.
+\endtkoption
+<<*>>=
+global encode_as_data
+@
 \change{17}
 <<usage lines>>=
 "    -debug-bal file   extra debugging info for balancer",
@@ -223,7 +237,7 @@ given exactly once.
 <<cases for arguments>>=
 "-dis"        : disassemblyfilename  := get(args)
 <<refman: options>>=
-\tkoption{D}{disr {\file}}{generate disassembly code on \file}
+\tkoption{D}{dis {\file}}{generate disassembly code on \file}
 Generate code for disassembly on \file.
 In flux right now.
 \endtkoption
@@ -329,6 +343,31 @@ written in Icon.  Not really supported.
 \endtkoption
 @
 <<usage lines>>=
+"    -icon-dag  file   write Icon representation of matching-statement dags",
+<<cases for arguments>>=
+"-icon-dag" : icon_dag := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{icon-dag  \file}
+   {write an Icon representation of matching DAGs}
+Writes on {\file} an Icon representation of the DAGs used to 
+implement matching statements.
+This code can be used to create a CGI program that lets you browse trees
+with Netscape.
+\endtkoption
+@
+<<usage lines>>=
+"    -icon-tree file   write Icon representation of matching-statement trees",
+<<cases for arguments>>=
+"-icon-tree" : icon_tree := openfile(get(args),"w")
+<<refman: options>>=
+\tkoption{d}{icon-tree \file}
+   {write an Icon representation of decision trees used to build matching DAGs}
+Writes on {\file} an Icon representation of the decision trees before
+they are converted to DAGs.
+Most people will use {\tt -icon-dag} instead.
+\endtkoption
+@
+<<usage lines>>=
 "    -impossible       force errors to stop with stack trace",
 <<cases for arguments>>=
 "-impossible" : error := stop := impossible
@@ -359,6 +398,16 @@ holding procedure pointers.
 (If \optarg{type} is omitted, we reuse \optarg{name}.)
 Useful for avoiding name clashes or for having multiple sets of encoding
 procedures in a single application.
+\endtkoption
+@
+<<usage lines>>=
+"    -instype name     name of abstract instruction datatype",
+<<cases for arguments>>=
+"-instype"   : instructionctype.name := get(args)
+<<refman: options>>=
+\tkoption{E}{instype \optarg{name}}{Use \optarg{name} to refer to instructions}
+When return instructions as abstract data (instead of emitting bits)
+use \optarg{name} to refer to instructions.
 \endtkoption
 @
 <<usage lines>>=
@@ -485,6 +534,20 @@ This might be a cheap way to get compatibility with other tools.
 <<*>>=
 global no_asm_ws
 @
+<<usage lines>>=
+"    -no-pp            don't prettyprint output; use $ escapes",
+<<cases for arguments>>=
+"-no-pp" : { PPxwrite := PPwrite; PPxwrites := PPwrites }
+<<refman: options>>=
+\tkoption{E}{no-pp}{don't prettyprint output; use \$\ escapes}
+This turns of the toolkit's internal prettyprinter; instead, it writes
+output that has a bunch of \texttt{\char`\$} escapes indicating how it should
+be printed.
+This is useful only if you intend to run the output through another prettyprinter.
+\endtkoption
+<<*>>=
+global no_asm_ws
+@
 %%<usage lines>>=
 %%"    -no-fits-cond     don't use fits conditions to decide branches",
 %%<cases for arguments>>=
@@ -498,8 +561,18 @@ global no_asm_ws
 %%branches, and the fields had just better fit or the encode will be aborted.
 %%Not recommended.
 %%\endtkoption
+@
+<<usage lines>>=
+"    -no-reloc         make all relocatable addresses integers",
+<<cases for arguments>>=
+"-no-reloc" : no_reloc := 1
+<<refman: options>>=
+\tkoption{DE}{no-reloc}{make all relocatable addresses integers}
+Forces all relocatable operands to be integers.
+Useful when generating encoding procedures to be called from a disassembler.
+\endtkoption
 <<*>>=
-global no_asm_ws
+global no_reloc
 @
 <<usage lines>>=
 "    -nowarn           no warnings",
@@ -533,6 +606,19 @@ For disassembly or for assembly-language encoding, put opcode
 \endtkoption
 <<*>>=
 global postfix
+@
+<<usage lines>>=
+"    -symdis file      put symbolic disassembler on file.[mh]",
+<<cases for arguments>>=
+"-symdis" : symdisfilename := get(args)
+<<refman: options>>=
+\tkoption{E}{symdis \file}{put symbolic disassmbler on \file.m and \file.h}
+To  {\tt\file.h}, write type declarations of a symbolic representation 
+of instructions. 
+To {\tt\file.c}, write a disassembler that returns that representation.
+\endtkoption
+<<*>>=
+global symdisfilename
 @
 <<usage lines>>=
 "    -token-closures  use one closure per token",
@@ -654,7 +740,10 @@ procedure main(args)
       Gcomment("Generated by the New Jersey Machine-Code Toolkit, version " ||version),
       Gcomment("command line: " || command_line)]
 
+<<*>>=
     Generate_C()	# default
+    instructionctype := constype("instruction", set())
+
     while args[1][1:2] == "-" & *args[1] > 1 do
         case a := get(args) of {
             <<cases for arguments>>
@@ -666,6 +755,7 @@ procedure main(args)
     init_parser()
     init_tests()        # see code.nw
 
+<<*>>=
     if /quiet then write(&errout, "Parsing...")
     if *args > 0 then
         every consume(openfile(filename := !args,"r"))
@@ -674,9 +764,11 @@ procedure main(args)
 
     if /quiet then write(&errout, "Done parsing.")
 
+<<*>>=
     if \no_asm_ws then every strip_asm_whitespace(kept_constructors())
     emit_encoding(\encoderfilename)
     emit_assembly(\asmencoderfilename)
+    emit_symbolic_disassembler(\symdisfilename)
     emit_asm_grammar(\asmgrammarfilename)
     emit_disassembler(\disassemblyfilename)
     emit_fieldnames(\fieldnamesbase)
@@ -693,13 +785,27 @@ P_CodeFile()
 x := super_simplify(genheader(codeheader))
 PPxwrite(PPnew(\decoderout), pretty(x))
 every resolve_case_patterns(!matching_stmts)
+<<emit header for Icon trees>>
 every t := tree(cs := !matching_stmts) do { <<manipulate decision tree [[t]]>> }
+<<emit trailer for Icon trees>>
 <<*>>=
 global showpnf
 <<*>>=
+global real_lex
+procedure noisylex(k)
+  local x
+  x := real_lex(k)
+  write(&errout, "Lexed ", image(x), " (", image(tval), ")")
+  return x
+end
+
 procedure consume(input)
+    real_lex := lex
+    # lex := noisylex
     lex(input)
+    pushtrace("PARSE")
     P_Spec()
+    poptrace()
     <<if tokens are left over, complain>>
     return
 end
@@ -718,14 +824,28 @@ write(\dotfile,"/ledgertray setpapertraybyname")
 <<manipulate decision tree [[t]]>>=
 checktree(t, cs)
 outtree(\ascii_tree, t)
-if \dotfile | \ascii_dag | \decoderout | \alt then {
+icontree(PPnew(\icon_tree), t)
+if \dotfile | \ascii_dag | \icon_dag | \decoderout | \alt then {
     d := tree2dag(t)
     outtree(\ascii_dag, d)
+    icontree(PPnew(\icon_dag), d)
     dotouttree(\dotfile, d)
     PPxwrite(PPnew(\decoderout), pretty(super_simplify(gencase(cs, d))))
     printalternates(\alt, d)
     write(\alt,"\n", repl("=", 50))
 }
+@ 
+<<emit header for Icon trees>>=
+every write(\icon_tree | \icon_dag, 
+  "procedure tree(n)" |
+  "  static trees" |
+  "  initial {" |
+  "    trees := []")
+<<emit trailer for Icon trees>>=
+every write(\icon_tree | \icon_dag,
+  "  }" |
+  "  return trees[n]" |
+  "end")
 <<*>>=
 record alternator(constraints, thennode, elsenode)
 

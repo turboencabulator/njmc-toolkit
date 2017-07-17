@@ -1,0 +1,14 @@
+\section{The PDP-8}
+
+This description of the Digital Programmed Data Processor-8 (PDP-8) is
+taken from the 1967 edition of the Digital Small Computer Handbook.
+
+
+<<pdp8.spec>>=
+fields of instruction (12)
+  opcode 0:2 indirect 3 memory_page 4 address 5:11
+  device 3:8 iop4pulse 9 iop2pulse 10 iop1pulse 11
+patterns 
+  memory is any of
+    [and tad isz dca jms jmp], which is opcode = {0 to 5}
+
