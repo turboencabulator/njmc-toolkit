@@ -634,7 +634,7 @@ local
         end               
 <<local declarations>>=
     | ctype (BOOLEAN) = C.INT
-    | ctype (STRING) = C.POINTER C.CHAR
+    | ctype (STRING) = C.POINTER (C.CONST C.CHAR)
     | ctype (CHAR) =  C.CHAR
     | ctype (RELOCATABLE (INTEGER {signed=false,...})) = C.NAMED "RAddr"
     | ctype (RELOCATABLE (INTEGER {signed=true, ...})) = C.NAMED "RAddr_signed"
