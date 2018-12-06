@@ -438,7 +438,7 @@ fun exp(U.VAR s) = textatom (mangle s)
   | exp(U.TRUE) = textatom "1"
   | exp(U.FALSE) = textatom "0"
   | exp(U.STRING(S)) = textatom ("\"" ^ String.toCString S ^ "\"")
-  | exp(U.MISSING_STRING) = textatom "(char *)0"
+  | exp(U.MISSING_STRING) = textatom "NULL"
   | exp(U.CHAR c) = textatom ("'" ^ String.toCString (str c) ^ "'")
 @ 
 Note the former treatment of the program counter, which we don't
