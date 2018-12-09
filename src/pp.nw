@@ -133,7 +133,6 @@ structure PP : PP = struct
     | flatten (BREAK {break=_, pre, post, none}) = none
     | flatten (TEXT s)  = s
     | flatten (LIST l)  = String.concat(map flatten l)
-  val synch = LIST [Short.nl, TEXT "#line 999 \"generated-code\"", Short.nl]
   val synch = SYNCH
   fun textMap sigma = 
     let fun m (TEXT s)  = TEXT (sigma s)

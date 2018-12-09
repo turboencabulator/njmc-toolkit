@@ -881,7 +881,8 @@ fun resynch {fileName, line, column} =
   pp.te (String.concat ["#line ", Int.toString line, " \"", fileName, "\""])
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
-      pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines, PP.synch]
+      pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines,
+             pp.nl, resynch {fileName="generated-code", line=999, column=NONE}, pp.nl]
 fun rawCode (smap, (lines,region)) = numberLines(smap, region, pp.li (map pp.te lines))
 @ 
 \subsection{Utilities}
