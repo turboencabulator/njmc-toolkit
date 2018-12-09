@@ -1215,28 +1215,28 @@ fun lexGen(infile) =
 	 sayln "\tval {fin,trans} = Vector.sub(Internal.tab, s)";
 	 sayln "\tval NewAcceptingLeaves = fin::AcceptingLeaves";
 	 sayln "\tin if l = !yybl then";
-	 sayln "\t     if trans = #trans(Vector.sub(Internal.tab,0))";
-	 sayln "\t       then action(l,NewAcceptingLeaves";
-	 if !UsesTrailingContext then say ",nil" else ();
-         say ") else";
-	 sayln "\t    let val newchars= if !yydone then \"\" else yyinput 1024";
-	 sayln "\t    in if (size newchars)=0";
+	 sayln "\t    if trans = #trans(Vector.sub(Internal.tab,0))";
+	 say "\t      then action(l,NewAcceptingLeaves";
+	 if !UsesTrailingContext then sayln ",nil)" else sayln ")";
+	 sayln "\t      else";
+	 sayln "\t\tlet val newchars= if !yydone then \"\" else yyinput 1024";
+	 sayln "\t\tin if (size newchars)=0";
 	 sayln "\t\t  then (yydone := true;";
 	 say "\t\t        if (l=i0) then UserDeclarations.eof (!yygone+i0)";
 	 sayln (case !ArgCode of NONE => "" | SOME _ => " yyarg");
-	 say   "\t\t                  else action(l,NewAcceptingLeaves";
+	 say "\t\t                  else action(l,NewAcceptingLeaves";
 	 if !UsesTrailingContext then
 	    sayln ",nil))" else sayln "))";
-	 sayln "\t\t  else (if i0=l then ";
+	 say "\t\t  else (if i0=l then ";
 	 if !UsesPrevNewLine then 
-	     say "(yyprev := substring(!yyb, !yybl-1, 1); yyb := newchars)"
-         else
-	     say "yyb := newchars";
+	     sayln "(yyprev := substring(!yyb, !yybl-1, 1); yyb := newchars)"
+	 else
+	     sayln "yyb := newchars";
 	 sayln "\t\t     else yyb := substring(!yyb,i0,l-i0)^newchars;";
 	 sayln "\t\t     yygone := !yygone+i0;";
 	 sayln "\t\t     yybl := size (!yyb);";
 	 sayln "\t\t     scan (s,AcceptingLeaves,l-i0,0))";
-	 sayln "\t    end";
+	 sayln "\t\tend";
 	 sayln "\t  else let val NewChar = Char.ord(String.sub(!yyb,l))";
 	   say "\t\tval NewState = ";
 	   case (!CharFormat,!CharSetSize)
@@ -1247,7 +1247,7 @@ fun lexGen(infile) =
 	 say "\t\tin if NewState=0 then action(l,NewAcceptingLeaves";
 	 if !UsesTrailingContext then sayln ",nil)" else sayln ")";
 	 sayln "\t\telse scan(NewState,NewAcceptingLeaves,l+1,i0)";
-	 sayln "\tend";
+	 sayln "\t\tend";
 	 sayln "\tend";
 	 if !UsesPrevNewLine then () else sayln "(*";
 	 sayln "\tval prevchar = if !yybufpos=0 then !yyprev else \
