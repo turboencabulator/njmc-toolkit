@@ -721,7 +721,7 @@ Opname    : IdentRgn  /* idcode ii1 */ | StringRgn /* strcode ii1 */;
 fun idcode  (name, rgn) = (OPCODE         name, rgn)
 fun strcode (name, rgn) = (LITERAL_opcode name, rgn)
 fun mkopcode((firstop, firstreg), rest) =
-  let val region  = foldr (fn ((s, r), r') => SourceMap.span(r, r')) firstreg rest
+  let val region  = foldl (fn ((s, r), r') => SourceMap.span(r', r)) firstreg rest
       val opnames = firstop :: map fst rest
   in  (opnames, region)
   end

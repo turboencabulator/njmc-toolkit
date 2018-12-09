@@ -129,7 +129,7 @@ type sourceloc = {fileName:string, line:int, column:int}
 <<toplevel>>=
 fun span ((0,0), r) = r
   | span (r, (0,0)) = r
-  | span ((l1, h1), (l2, h2)) = if l1 < h2 then (l1, h2) else (l2, h1)
+  | span ((l1, h1), (l2, h2)) = (Int.min(l1, l2), Int.max(h1, h2))
 @
 The representation is a pair of lists.
 [[linePos]] records line numbers for newlines \emph{and}
