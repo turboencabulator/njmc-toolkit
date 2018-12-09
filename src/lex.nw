@@ -228,7 +228,7 @@ decoding is done.
 <CASEARM>^{ws}*"endmatch"\n   => (posteol(yypos, yytext); YYBEGIN CODE; (R'ENDMATCH, yyrgn));
 <CASEARM>.{0} => (YYBEGIN CASETAIL; continue());
 <CASETAIL>.*\n => (posteol(yypos, yytext); YYBEGIN CASEARM; (CODELINE yytext, yyrgn));
-<CASEEMPTY>.{0} => (YYBEGIN CASEARM; (CODELINE yytext, (yypos-1, yypos-1)));
+<CASEEMPTY>.{0} => (YYBEGIN CASEARM; (CODELINE "\n", (yypos-1, yypos)));
 @ [[CASETAIL]] is a dreadful hack to work around the longest-match
 rule.
 This way, unless we hit one of the three specials, we can just match
