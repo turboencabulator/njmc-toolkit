@@ -15,7 +15,7 @@
             /* op*rd*op3*rs1*i*simm13 at 0 */ == 0x81C7E008) { 
       nextPC = 4 + MATCH_p; 
       
-      #line 3 "tests/sret.m"
+      #line 2 "tests/sret.m"
       
 
               lc = nextPC;
