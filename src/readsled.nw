@@ -20,8 +20,7 @@ structure ReadSLED : READ_SLED = struct
   type token = Token.token
 
   fun tokens {matcher} filename = 
-    let val sourcemap = SourceMap.newmap (2, {fileName=filename, line=1, column=1})
-				(* yes, yypos is initially 2 *)
+    let val sourcemap = SourceMap.newmap (0, {fileName=filename, line=1, column=1})
         val stream = TextIO.openIn filename
         fun read n = TextIO.inputN(stream, n)
         val lexer = Mlex.makeLexer read
@@ -35,8 +34,7 @@ structure ReadSLED : READ_SLED = struct
     end
 
   fun parse (initialToken, xform, isMatch) filename =
-    let val sourcemap = SourceMap.newmap (2, {fileName=filename, line=1, column=1})
-				(* yes, yypos is initially 2 *)
+    let val sourcemap = SourceMap.newmap (0, {fileName=filename, line=1, column=1})
         val stream = TextIO.openIn filename
         fun read n = TextIO.inputN(stream, n)
         val lexarg = Mlex.UserDeclarations.lexarg (sourcemap, isMatch, Impossible.impossible)

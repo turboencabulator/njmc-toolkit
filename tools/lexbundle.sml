@@ -1229,7 +1229,7 @@ fun lexGen(infile) =
 	    sayln ",nil))" else sayln "))";
 	 say "\t\t  else (if i0=l then ";
 	 if !UsesPrevNewLine then 
-	     sayln "(yyprev := substring(!yyb, !yybl-1, 1); yyb := newchars)"
+	     sayln "(yyprev := substring(!yyb,l-1,1); yyb := newchars)"
 	 else
 	     sayln "yyb := newchars";
 	 sayln "\t\t     else yyb := substring(!yyb,i0,l-i0)^newchars;";
@@ -1316,7 +1316,7 @@ fun lexGen(infile) =
 	      "\tval yyprev = ref \"\"\t\t(*character preceding buffer, if any *)\n"
 	      else ();
 	  say "\tval yybufpos = ref 1\t\t(* location of next character to use *)\n\
-	  \\tval yygone = ref 1\t\t(* position in file of beginning of buffer *)\n\
+	  \\tval yygone = ref ~1\t\t(* position in file of beginning of buffer *)\n\
 	  \\tval yydone = ref false\t\t(* eof found yet? *)\n\
 	  \\tval yybegin = ref 1\t\t(*Current 'start state' for lexer *)\n\
   	  \\n\tval YYBEGIN = fn (Internal.StartStates.STARTSTATE x) =>\n\
