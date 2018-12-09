@@ -133,7 +133,7 @@ fun encoding c i (sm, ?) =
   val printers as (_, {match=ppMatch, ...}) = EmitC.printers {hex=false, pcUnit=8}
 
   local structure pp = PP.Short in
-    fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
+    fun pplines l = pp.li (map pp.te l)
   end
 
 
