@@ -1064,11 +1064,11 @@ fun knownCase(tests, known, unknown) =
 @ 
 <<local declarations>>=
 fun resynch {fileName, line, column} =
-  pp.te (String.concat ["(*#line ", Int.toString line, " \"", fileName, "\"*)"])
+  pp.te (String.concat ["\n(*#line ", Int.toString line, " \"", fileName, "\"*)\n"])
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
-      pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines,
-             pp.nl, resynch {fileName="generated-code", line=999, column=NONE}, pp.nl]
+      pp.li [resynch (SourceMap.filepos smap first), lines,
+             resynch {fileName="generated-code", line=999, column=NONE}]
 fun rawCode (smap, (lines,region)) = numberLines(smap, region, pp.li (map pp.te lines))
 @ 
 \subsection{Utilities}
