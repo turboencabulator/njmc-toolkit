@@ -1344,7 +1344,7 @@ fun lexGen(infile) =
 	    sayln ",nil))" else sayln "))";
 	 say   "\t\t  else (if i0=l then ";
 	 if !UsesPrevNewLine
-	     then sayln "(yyprev := String.substring(!yyb, !yybl-1, 1); yyb := newchars)"
+	     then sayln "(yyprev := String.substring(!yyb,l-1,1); yyb := newchars)"
 	     else sayln "yyb := newchars";
 	 sayln "\t\t     else yyb := String.substring(!yyb,i0,l-i0)^newchars;";
 	 sayln "\t\t     yygone := !yygone+i0;";
@@ -1424,7 +1424,7 @@ fun lexGen(infile) =
 	  say "action tried *)\n";
 	  say "end\n\n";
 	  say (if (!PosArg) then "fun makeLexer (yyinput,yygone0:int) =\nlet\n"
-		else "fun makeLexer yyinput =\nlet\tval yygone0=1\n");
+		else "fun makeLexer yyinput =\nlet\tval yygone0 = ~1\n");
 	  if !CountNewLines then say "\tval yylineno = ref 0\n\n" else ();
 	  say "\tval yyb = ref \"\\n\" \t\t(* buffer *)\n\
 	  \\tval yybl = ref 1\t\t(*buffer length *)\n";
