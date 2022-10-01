@@ -19,7 +19,7 @@ structure StringCaseKey : ORD_KEY = struct
        | diff => diff
 end
 <<stringdict.sml>>=
-structure StringMap = ExistsMapFun(BinaryMapFn(StringKey))
+structure StringMap = BinaryMapFn(StringKey)
 structure StringListMap = ListMapFn(StringKey)
 structure StringCaseMap = BinaryMapFn(StringCaseKey)
 structure StringCaseListMap = ListMapFn(StringCaseKey)
@@ -39,22 +39,8 @@ structure IntKey : ORD_KEY = struct
   val compare = Int.compare
 end
 @ 
-<<existsmap.sml>>=
-signature EXISTS_MAP = sig
-  include ORD_MAP
-  val exists : ('a -> bool) -> 'a map -> bool
-end
-
-functor ExistsMapFun(M : ORD_MAP) : EXISTS_MAP = struct
-  open M
-  exception Found
-  fun exists p m =
-    ( M.app (fn x => if p x then raise Found else ()) m
-    ; false
-    ) handle Found => true
-end
 <<intdict.sml>>=
-structure IntMap = ExistsMapFun(BinaryMapFn(IntKey))
+structure IntMap = BinaryMapFn(IntKey)
 <<intset.sml>>=
 structure IntSet = BinarySetFn(IntKey)
 <<util.sml>>=

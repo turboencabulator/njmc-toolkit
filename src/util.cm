@@ -12,7 +12,6 @@ group is
   rangeset.nw
   rangeset.nw (range.sml)
 
-  util.nw (existsmap.sml)
   util.nw (stringdict.sml)
   util.nw (stringset.sml)
   util.nw (stringkey.sig)
