@@ -2,23 +2,15 @@
 % $Id: printexn.nw,v 1.3 1998/11/11 21:59:22 nr Exp $
 <<printexn.sml>>=
 structure PrintExn = struct
-  local 
-    open Compiler
-  in
-    fun printExn (Compile.TopLevelException e) = printExn e
-      | printExn Compile.SilentException = ()
-      | printExn exn = let
-        fun showhist [s] = print (concat ["  raised at: ", s, "\n"])
-          | showhist (s :: r) =
-            (showhist r; print (concat["             ", s, "\n"]))
-          | showhist [] = ()
-        val exnMsg = (case exn
-                          of (Compile.Compile s) =>
-                              concat ["Compile: \"", s, "\""]
-                        | _ => General.exnMessage exn)
+  fun printExn exn =
+    let
+      fun showhist [s] = print (concat ["  raised at: ", s, "\n"])
+        | showhist (s :: r) =
+          (showhist r; print (concat["             ", s, "\n"]))
+        | showhist [] = ()
+      val exnMsg = (General.exnMessage exn)
     in
-        print (concat ["\n****************** uncaught exception ", exnMsg, "\n"]);
-        showhist (SMLofNJ.exnHistory exn)
+      print (concat ["\n****************** uncaught exception ", exnMsg, "\n"]);
+      showhist (SMLofNJ.exnHistory exn)
     end
-  end
 end
