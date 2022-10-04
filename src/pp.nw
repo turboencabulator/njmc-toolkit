@@ -518,10 +518,9 @@ The tester uses the C preprocessor rule for synchronization.
 structure PPTest = struct
   fun readPP' stream =
     let fun get r = 
-          let val l = TextIO.inputLine stream
-          in  if size l = 0 then PP.LIST (rev r)
-              else get(PP.Short.$ l :: r)
-          end
+          case TextIO.inputLine stream
+            of NONE => PP.LIST (rev r)
+             | SOME l => get(PP.Short.$ l :: r)
     in  get []
     end
   fun readPP filename =
