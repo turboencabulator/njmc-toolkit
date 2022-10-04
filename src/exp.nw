@@ -251,7 +251,7 @@ fun bigConst n =
                            handle Overflow =>
                              let val k' = IntInf.log2 (IntInf.abs n) div 2
                                  val d = IntInf.pow(IntInf.fromInt 2, k')
-                                 val (q, r) = IntInf.divmod(n, d)
+                                 val (q, r) = IntInf.divMod(n, d)
                              in  at(q, k+k', at(r, k, tail))
                              end
       fun orb [x] = x
