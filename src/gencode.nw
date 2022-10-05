@@ -379,7 +379,7 @@ val armsInvocations = Vector.tabulate(Vector.length armsvector, invokeArm)
 <<bind [[armsTab]] to table of codes for arms used more than once>>=
 fun addArms (i, arm, tab) = 
    if Vector.sub(armsUses, i) = 1 then tab else IntMap.insert(tab, i, arm)
-val armsTab = Vector.foldli addArms IntMap.empty (armsCodes, 0, NONE)
+val armsTab = Vector.foldli addArms IntMap.empty armsCodes
 @
 To split edges, we sort them by their ranges.
 <<function [[normalSplit]] for switch and if>>=

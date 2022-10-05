@@ -75,7 +75,7 @@ struct
               app "leaf" [app "name" [sxopt leafname name],
                           shortArms(armid, Vector.sub(arms, armid))]
 	and edge (D.EDGE {range=r, node}) = app "in" [rangeSet r, dag node]
-        val sxarms = Vector.mapi addArm (arms, 0, NONE)
+        val sxarms = Vector.mapi addArm arms
         val sxarrays = map arrayImage arrays
     in  app "dag" [app "arrays" sxarrays, app "tree" [dag node],
                    app "arms" (Vector.foldr op :: [] sxarms)]

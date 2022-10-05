@@ -592,7 +592,7 @@ struct
 	    pp.li [pp.nl, pp.li [pp.$ "${in $3${${", rangeSet r,
 				 pp.$ "$b$} $c$}=> $t$c${", dag node, pp.$ "$}$b$}"]]
         val ppnode = [dag node, pp.nl, pp.nl]
-        val pparms = Vector.foldri addArm ppnode (arms, 0, NONE)
+        val pparms = Vector.foldri addArm ppnode arms
         val pparrays = foldr addArray pparms arrays
     in  pp.li pparrays
     end
