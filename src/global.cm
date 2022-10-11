@@ -1,5 +1,5 @@
-; $Id: global.cm,v 1.3 1999/09/06 16:02:54 nr Exp $
-; module util
+(* $Id: global.cm,v 1.3 1999/09/06 16:02:54 nr Exp $ *)
+(* module util *)
 group is
   global.sml@global.nw
   fieldinfo.cm

@@ -1,5 +1,5 @@
-; $Id: toolkit.cm,v 1.7 1999/09/06 16:03:02 nr Exp $
-; module link
+(* $Id: toolkit.cm,v 1.7 1999/09/06 16:03:02 nr Exp $ *)
+(* module link *)
 group is
   runmodules.cm
   error.cm

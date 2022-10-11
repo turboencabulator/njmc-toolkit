@@ -1,4 +1,4 @@
-; module semantic
+(* module semantic *)
 group is
   error.cm
   encode.cm

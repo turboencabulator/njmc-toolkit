@@ -1,6 +1,6 @@
-; $Id: solve.cm,v 1.3 1999/09/06 16:03:00 nr Exp $
+(* $Id: solve.cm,v 1.3 1999/09/06 16:03:00 nr Exp $ *)
 (* should be split further, into toolkit-dependent and -independent parts *)
-; module code
+(* module code *)
 group is
   exp.cm
   smlnj-lib.cm

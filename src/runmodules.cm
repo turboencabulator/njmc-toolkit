@@ -1,6 +1,6 @@
-; modules used to run things -- very near main
+(* modules used to run things -- very near main *)
 
-; module link
+(* module link *)
 group is
   smlnj-lib.cm
   ast.cm
@@ -23,8 +23,7 @@ group is
 
   readsled.nw
   rundecoder.nw
-  link1.sml@link.nw 
-  link2.sml@link.nw 
-  link3.sml@link.nw 
-  link4.sml@link.nw 
-
+  link1.sml@link.nw
+  link2.sml@link.nw
+  link3.sml@link.nw
+  link4.sml@link.nw

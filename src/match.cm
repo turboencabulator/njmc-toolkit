@@ -1,8 +1,8 @@
-; $Id: match.cm,v 1.6 1999/09/06 16:02:55 nr Exp $
+(* $Id: match.cm,v 1.6 1999/09/06 16:02:55 nr Exp $ *)
 (* support for matching statements *)
     (* could be split into elaboration part and codegen part,
        by analogy with sledspec/elaborate *)
-; module match
+(* module match *)
 group is
   code.cm
   sledspec.cm
@@ -20,4 +20,3 @@ group is
   tree.nw
   dag.nw
   gencode.nw
-

@@ -1,4 +1,4 @@
-; module match
+(* module match *)
 group is
   pattern.cm
   util.cm

@@ -1,12 +1,12 @@
-; module -none
-group 
+(* module -none *)
+group
   structure ToolkitExport
   signature CODE
   signature GENCODE
   signature RUN_DECODER
   signature TOOLKIT_EXPORT_EXP
   structure Type
-is 
+is
   runmodules.cm
   export.nw
   error.cm

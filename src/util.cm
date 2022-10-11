@@ -1,5 +1,5 @@
-; $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $
-; module util
+(* $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $ *)
+(* module util *)
 group is
   impossible.sml@impossible.nw
   printexn.sml@printexn.nw

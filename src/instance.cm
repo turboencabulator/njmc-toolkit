@@ -1,4 +1,4 @@
-; module encoding
+(* module encoding *)
 group is
   encode.cm
 

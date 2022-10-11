@@ -1,5 +1,5 @@
-; $Id: exp.cm,v 1.5 1999/09/06 16:00:24 nr Exp $
-; module code
+(* $Id: exp.cm,v 1.5 1999/09/06 16:00:24 nr Exp $ *)
+(* module code *)
 group is
   ast.cm
   util.cm

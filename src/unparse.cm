@@ -1,5 +1,5 @@
-; $Id: unparse.cm,v 1.5 1999/09/06 16:03:03 nr Exp $
-; module emit
+(* $Id: unparse.cm,v 1.5 1999/09/06 16:03:03 nr Exp $ *)
+(* module emit *)
 group is
   unparse.nw
   assoc.sml@unparse.nw

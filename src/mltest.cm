@@ -1,4 +1,4 @@
-; module -none
+(* module -none *)
 group is
   ml-lib.cm
   small.spec.sig

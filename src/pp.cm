@@ -1,12 +1,12 @@
-; $Id: pp.cm,v 1.4 1999/09/06 16:02:58 nr Exp $
-; module emit
+(* $Id: pp.cm,v 1.4 1999/09/06 16:02:58 nr Exp $ *)
+(* module emit *)
 group is
   pp.nw
   ppdyn.sml@pp.nw
   ppdyn.sig@pp.nw
   ppnormal.sml@pp.nw
   prettyprinter.sig@pp.nw
-;  unparse-pp.sml@pp.nw
+  (*unparse-pp.sml@pp.nw*)
   pptest.sml@pp.nw
   pputil.nw
   util.cm

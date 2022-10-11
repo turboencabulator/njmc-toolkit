@@ -1,5 +1,5 @@
-; $Id: emit.cm,v 1.5 1999/09/06 15:59:28 nr Exp $
-; module emit
+(* $Id: emit.cm,v 1.5 1999/09/06 15:59:28 nr Exp $ *)
+(* module emit *)
 (* code emission *)
 group is
   code.cm
@@ -8,7 +8,7 @@ group is
   unparse-pp.cm
   decoder.cm
   smlnj-lib.cm
-   (* note error NOT imported --- should never get user error here *)
+  (* note error NOT imported --- should never get user error here *)
 
   emit-c.nw
   emit-ml.nw

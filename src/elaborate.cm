@@ -1,5 +1,5 @@
-; $Id: elaborate.cm,v 1.4 1999/09/06 15:59:42 nr Exp $
-; module elaborate
+(* $Id: elaborate.cm,v 1.4 1999/09/06 15:59:42 nr Exp $ *)
+(* module elaborate *)
 (* how to produce an elaborated specification *)
 group is
   ast.cm
@@ -9,6 +9,5 @@ group is
   elabexp.cm
   fieldexps.cm
 
-  elaborate.nw  
+  elaborate.nw
   elabexp.sml@elabexp.nw
-

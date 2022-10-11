@@ -1,5 +1,5 @@
-; $Id: test.cm,v 1.5 1999/09/06 16:03:02 nr Exp $
-; module -none
+(* $Id: test.cm,v 1.5 1999/09/06 16:03:02 nr Exp $ *)
+(* module -none *)
 (* to run test code *)
 group is
   toolkit.cm

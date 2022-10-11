@@ -1,4 +1,4 @@
-; module link
+(* module link *)
 group
   structure UGencode
   structure AllDataEncoders
