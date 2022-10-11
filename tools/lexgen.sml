@@ -1337,8 +1337,8 @@ fun lexGen(infile) =
 	 sayln "\t    let val newchars= if !yydone then \"\" else yyinput 1024";
 	 sayln "\t    in if (String.size newchars)=0";
 	 sayln "\t\t  then (yydone := true;";
-	 say "\t\t        if (l=i0) then UserDeclarations.eof ";
-	 sayln (case !ArgCode of NONE => "()" | SOME _ => "yyarg");
+	 say "\t\t        if (l=i0) then UserDeclarations.eof (!yygone+i0)";
+	 sayln (case !ArgCode of NONE => "" | SOME _ => " yyarg");
 	 say   "\t\t                  else action(l,NewAcceptingLeaves";
 	 if !UsesTrailingContext then
 	    sayln ",nil))" else sayln "))";
