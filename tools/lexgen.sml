@@ -226,7 +226,7 @@ structure LexGen: LEXGEN =
 	  | LP | RP | CARAT | DOLLAR | SLASH | STATE of string list
 	  | REPS of int * int | ID of string | ACTION of string
 	  | BOF | EOF | ASSIGN | SEMI | ARROW | LEXMARK | LEXSTATES
-	  | COUNT | REJECT | FULLCHARSET | STRUCT | HEADER | ARG | POSARG
+	  | COUNT | REJECT | FULLCHARSET | STRUCT | HEADER | ARG | INNER | POSARG
 
    datatype exp = EPS | CLASS of bool array * int | CLOSURE of exp
 		| ALT of exp * exp | CAT of exp * exp | TRAIL of int
@@ -257,6 +257,7 @@ structure LexGen: LEXGEN =
    val HeaderCode = ref ""
    val HeaderDecl = ref false
    val ArgCode = ref (NONE: string option)
+   val InnerCode = ref (NONE: string option)
    val StrDecl = ref false
 
    val ResetFlags = fn () => (CountNewLines := false; HaveReject := false;
@@ -264,7 +265,7 @@ structure LexGen: LEXGEN =
 			      UsesTrailingContext := false;
 			       CharSetSize := 129; StrName := "Mlex";
 				HeaderCode := ""; HeaderDecl:= false;
-				ArgCode := NONE;
+				ArgCode := NONE; InnerCode := NONE;
 				StrDecl := false)
 
    val LexOut = ref(TextIO.stdOut)
@@ -488,6 +489,7 @@ fun AdvanceTok () : unit = let
 				  | "structure" => STRUCT
 				  | "header" => HEADER
 				  | "arg"    => ARG
+				  | "inner"  => INNER
 				  | "posarg" => POSARG
 			          | _ => prErr "unknown % operator "
 			       end
@@ -835,6 +837,15 @@ fun parse() : (string * (int list * exp) list * ((string,string) dictionary)) = 
 				(case !ArgCode
 				   of SOME _ => prErr "duplicate %arg declarations"
 				    | NONE => ArgCode := SOME s;
+				 LexState := 0;
+				 ParseDefs())
+				| _ => raise SyntaxError)
+		| INNER => (LexState := 2; AdvanceTok();
+			     case GetTok()
+			     of ACTION s =>
+				(case !InnerCode
+				   of SOME _ => prErr "duplicate %inner declarations"
+				    | NONE => InnerCode := SOME s;
 				 LexState := 0;
 				 ParseDefs())
 				| _ => raise SyntaxError)
@@ -1273,9 +1284,15 @@ fun lexGen(infile) =
     let val sayln = fn x => (say x; say "\n")
      in case !ArgCode
 	 of NONE => (sayln "fun lex () : Internal.result =";
-		     sayln "let fun continue() = lex() in")
+		     say "let ";
+		     case !InnerCode of NONE => () | SOME c => (sayln c; say "    ");
+		     sayln "fun continue() = lex() in")
 	  | SOME s => (say "fun lex "; say "(yyarg as ("; say s; sayln ")) =";
-		       sayln "let fun continue() : Internal.result = ");
+		       say "let ";
+		       case !InnerCode of NONE => () | SOME c => (sayln c; say "    ");
+		          (* this spot gives access to %arg and so on, but we only
+		             create closures once *)
+		       sayln "fun continue() : Internal.result = ");
 	 say "  let fun scan (s,AcceptingLeaves : Internal.yyfinstate";
 	 sayln " list list,l,i0) =";
 	 if !UsesTrailingContext
