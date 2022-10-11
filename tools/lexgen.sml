@@ -1342,7 +1342,10 @@ fun lexGen(infile) =
 	 say   "\t\t                  else action(l,NewAcceptingLeaves";
 	 if !UsesTrailingContext then
 	    sayln ",nil))" else sayln "))";
-	 sayln "\t\t  else (if i0=l then yyb := newchars";
+	 say   "\t\t  else (if i0=l then ";
+	 if !UsesPrevNewLine
+	     then sayln "(yyprev := String.substring(!yyb, !yybl-1, 1); yyb := newchars)"
+	     else sayln "yyb := newchars";
 	 sayln "\t\t     else yyb := String.substring(!yyb,i0,l-i0)^newchars;";
 	 sayln "\t\t     yygone := !yygone+i0;";
 	 sayln "\t\t     yybl := String.size (!yyb);";
@@ -1362,8 +1365,8 @@ fun lexGen(infile) =
 	 sayln "\tend";
 	 sayln "\tend";
 	 if !UsesPrevNewLine then () else sayln "(*";
-	 sayln "\tval start= if String.substring(!yyb,!yybufpos-1,1)=\"\\n\"";
-	 sayln "then !yybegin+1 else !yybegin";
+	 sayln "\tval prevchar = if !yybufpos=0 then !yyprev else String.substring(!yyb,!yybufpos-1,1)";
+	 sayln "\tval start= if prevchar=\"\\n\" then !yybegin+1 else !yybegin";
 	 if !UsesPrevNewLine then () else sayln "*)";
 	 say "\tin scan(";
 	 if !UsesPrevNewLine then say "start"
@@ -1424,8 +1427,11 @@ fun lexGen(infile) =
 		else "fun makeLexer yyinput =\nlet\tval yygone0=1\n");
 	  if !CountNewLines then say "\tval yylineno = ref 0\n\n" else ();
 	  say "\tval yyb = ref \"\\n\" \t\t(* buffer *)\n\
-	  \\tval yybl = ref 1\t\t(*buffer length *)\n\
-	  \\tval yybufpos = ref 1\t\t(* location of next character to use *)\n\
+	  \\tval yybl = ref 1\t\t(*buffer length *)\n";
+	  if !UsesPrevNewLine
+	      then say "\tval yyprev = ref \"\"\t\t(* character preceding buffer, if any *)\n"
+	      else ();
+	  say "\tval yybufpos = ref 1\t\t(* location of next character to use *)\n\
 	  \\tval yygone = ref yygone0\t(* position in file of beginning of buffer *)\n\
 	  \\tval yydone = ref false\t\t(* eof found yet? *)\n\
 	  \\tval yybegin = ref 1\t\t(*Current 'start state' for lexer *)\n\
