@@ -16,7 +16,7 @@ structure TygenTool = struct
       ("check",      SOME "sml",            Fn.id) *)
     ]
 
-    val cmd = "tygen"
+    val cmd = "../tools/tygen"
     val opts = []
     val template = SOME "%c %s"
   in

@@ -8,8 +8,8 @@ structure LexPlusTool = struct
       ("sml", SOME "sml", Fn.id)
     ]
 
-    val cmd = "ml-lex+"
-    val opts = []
+    val cmd = "sml"
+    val opts = ["@SMLload=../tools/ml-lex+"]
     val template = NONE
   in
     val _ = Tools.registerStdShellCmdTool {

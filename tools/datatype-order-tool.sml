@@ -8,7 +8,7 @@ structure DTOrderTool = struct
       ("sml", SOME "sml", Fn.id)
     ]
 
-    val cmd = "dt-order"
+    val cmd = "../tools/dt-order"
     val opts = []
     val template = SOME "%c %s > %t"
   in

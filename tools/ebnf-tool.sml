@@ -9,7 +9,7 @@ structure EBNFTool = struct
       ("tab", SOME "sml", Fn.id)
     ]
 
-    val cmd = "ebnf"
+    val cmd = "../tools/ebnf"
     val opts = ["-picky", "-ml", "-flatten", "-parser"]
     val template = SOME "%c %u %s > %1t && mv ii.tab.sml %2t"
   in
