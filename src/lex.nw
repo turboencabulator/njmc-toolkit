@@ -248,11 +248,11 @@ that line numbers will be OK.
 <SPEC,CASEPAT>[1-9]{digits}* => ((T_INT(intval yytext), yyrgn));
 <SPEC,CASEPAT>0b{bindigits}+ => ((T_INT(intval yytext), yyrgn));
 <SPEC,CASEPAT>{alpha}{alphanum}* => (
-	 case reserved yytext 
+        (case reserved yytext
            of SOME R'ADDRESS => R'ADDRESS (* grammar hack did not suffice *)
             | SOME t => (ignore_newlines(); t)
-            | NONE   => T_IDENT yytext,
-	 yyrgn);
+            | NONE   => T_IDENT yytext
+        , yyrgn));
 <SPEC,CASEPAT>"!=" => ((R'BANG_EQ, yyrgn));
 <SPEC,CASEPAT>"<=" => ((R'LE, yyrgn));
 <SPEC,CASEPAT>">=" => ((R'GE, yyrgn));
