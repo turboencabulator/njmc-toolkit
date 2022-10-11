@@ -66,7 +66,7 @@ echo "################ building Icon tools" 1>&2
 
 echo "################ building special lexer generator" 1>&2
 
-if (cd tools; sml < lexbundle.sml; mv ml-lex+.* $MLHEAP); then
+if (cd tools; ml-build ml-lex+.cm ExportLexGen.lexGen; mv ml-lex+.* $MLHEAP); then
   : ok
 else
   echo "Could not move lexer heap image into $MLHEAP" 1>&2; exit 1
