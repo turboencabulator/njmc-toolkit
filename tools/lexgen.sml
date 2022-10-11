@@ -1308,7 +1308,8 @@ fun lexGen(infile) =
 	 sayln "\t\tcase node of";
 	 sayln "\t\t    Internal.N yyk => ";
 	 sayln "\t\t\t(let fun yymktext() = String.substring(!yyb,i0,i-i0)\n\
-	       \\t\t\t     val yypos = i0+ !yygone";
+	       \\t\t\t     val yypos = i0+ !yygone\n\
+	       \\t\t\t     val yyrgn = (yypos, i + !yygone)";
 	 if !CountNewLines
 	    then (sayln "\t\t\tval _ = yylineno := CharVectorSlice.foldli";
 	  	  sayln "\t\t\t\t(fn (_,#\"\\n\", n) => n+1 | (_,_, n) => n) (!yylineno) (CharVectorSlice.slice (!yyb,i0,SOME(i-i0)))")
