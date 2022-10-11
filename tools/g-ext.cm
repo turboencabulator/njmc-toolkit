@@ -1,0 +1,4 @@
+library
+  structure EBNFTool
+is
+  ebnf-tool.cm

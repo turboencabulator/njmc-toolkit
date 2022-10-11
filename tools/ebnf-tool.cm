@@ -1,0 +1,7 @@
+library
+  structure EBNFTool
+is
+  $/basis.cm
+  $smlnj/cm/tools.cm
+  $/noweb-tool.cm
+  ebnf-tool.sml

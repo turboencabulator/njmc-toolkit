@@ -1,0 +1,12 @@
+operator-specification-tool.cm ../tools
+ty-ext.cm ../tools
+
+ebnf-tool.cm ../tools
+g-ext.cm ../tools
+
+datatype-order-tool.cm ../tools
+ord-ext.cm ../tools
+
+mllex+-tool.cm ../tools
+lex+-ext.cm ../tools
+l+-ext.cm ../tools

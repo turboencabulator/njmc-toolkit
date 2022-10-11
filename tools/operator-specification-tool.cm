@@ -1,0 +1,7 @@
+library
+  structure TygenTool
+is
+  $/basis.cm
+  $smlnj/cm/tools.cm
+  $/noweb-tool.cm
+  operator-specification-tool.sml

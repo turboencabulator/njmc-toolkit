@@ -1,0 +1,7 @@
+library
+  structure DTOrderTool
+is
+  $/basis.cm
+  $smlnj/cm/tools.cm
+  (*$/noweb-tool.cm*)
+  datatype-order-tool.sml

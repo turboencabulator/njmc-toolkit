@@ -1,0 +1,6 @@
+library
+  structure LexPlusTool
+is
+  $/basis.cm
+  $smlnj/cm/tools.cm
+  mllex+-tool.sml
