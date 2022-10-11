@@ -4,5 +4,5 @@ group is
   unparse.cm
   parser.cm
 
-  infix.sml@unparse.nw
-  unparse-test.sml@unparse.nw
+  unparse.nw (infix.sml)
+  unparse.nw (unparse-test.sml)

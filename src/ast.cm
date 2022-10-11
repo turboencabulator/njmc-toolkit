@@ -4,5 +4,5 @@ group is
   util.cm (* imported for order *)
   sourcemap.cm
 
-  ast.sig@ast.nw
-  ast.ord@ast.nw
+  ast.nw (ast.sig)
+  ast.nw (ast.ord)

@@ -4,5 +4,5 @@ group is
   sledspec.cm
   pp.cm
 
-  denotable-image.sig@images.nw
-  images.sig@images.nw
+  images.nw (denotable-image.sig)
+  images.nw (images.sig)

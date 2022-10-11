@@ -17,13 +17,13 @@ group is
   size.cm
   std-instance.cm
 
-  tree-image.sml@images.nw
+  images.nw (tree-image.sml)
   sxtree.nw
   ppsx.nw
 
   readsled.nw
   rundecoder.nw
-  link1.sml@link.nw
-  link2.sml@link.nw
-  link3.sml@link.nw
-  link4.sml@link.nw
+  link.nw (link1.sml)
+  link.nw (link2.sml)
+  link.nw (link3.sml)
+  link.nw (link4.sml)

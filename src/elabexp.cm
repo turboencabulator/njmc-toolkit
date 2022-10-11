@@ -5,4 +5,4 @@ group is
   sledspec.cm
   error.cm
 
-  elabexp.sig@elabexp.nw
+  elabexp.nw (elabexp.sig)

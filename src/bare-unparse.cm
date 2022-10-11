@@ -2,4 +2,4 @@
 (* module -none *)
 group is
   unparse.nw
-  assoc.sml@unparse.nw
+  unparse.nw (assoc.sml)

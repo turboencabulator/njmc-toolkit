@@ -5,5 +5,5 @@ group is
   unparse-pp.cm
 
   images.nw
-  denotable-image.sig@images.nw
-  denotable-image.sml@images.nw
+  images.nw (denotable-image.sig)
+  images.nw (denotable-image.sml)

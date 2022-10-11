@@ -7,9 +7,9 @@ group is
   error.cm
 
   pattern.nw
-  patbasics.sig@pattern.nw
-  patbasics.sml@pattern.nw
+  pattern.nw (patbasics.sig)
+  pattern.nw (patbasics.sml)
 
   (*unparse-pp.cm*)
   (*pp.cm*)
-  (*ximage.sml@ximage.nw*)
+  (*ximage.nw (ximage.sml)*)

@@ -3,6 +3,6 @@
 group is
   ast.cm
 
-  grammar.g@grammar.nw
-  tokenstring.sml@token.nw
-  lex.lex+@lex.nw (* requires ml-lex+ *)
+  grammar.nw (grammar.g)
+  token.nw (tokenstring.sml)
+  lex.nw (lex.lex+) (* requires ml-lex+ *)

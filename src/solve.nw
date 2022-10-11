@@ -3088,17 +3088,17 @@ structure Impossible = struct
 end
 <<solve.cm>>=
 group is
-  solve.sig@solve.nw
-  solve.sml@solve.nw
-  eliminator.sig@solve.nw
-  inteliminator.sml@solve.nw
-  balance.sml@solve.nw
-  balance.sig@solve.nw
-  balancer.sml@solve.nw
-  fresh.sig@solve.nw
-  fresh.sml@solve.nw
-  solve-util.sml@solve.nw
-  solve-impossible.sml@solve.nw
+  solve.nw (solve.sig)
+  solve.nw (solve.sml)
+  solve.nw (eliminator.sig)
+  solve.nw (inteliminator.sml)
+  solve.nw (balance.sml)
+  solve.nw (balance.sig)
+  solve.nw (balancer.sml)
+  solve.nw (fresh.sig)
+  solve.nw (fresh.sml)
+  solve.nw (solve-util.sml)
+  solve.nw (solve-impossible.sml)
 
   smlnj-lib.cm
 @

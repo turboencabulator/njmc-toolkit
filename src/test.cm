@@ -7,9 +7,9 @@ group is
 
   unparse-test.cm
 
-  solvertest.sml@solve.nw
-  simptest.sml@simplify.nw
+  solve.nw (solvertest.sml)
+  simplify.nw (simptest.sml)
 
-  cc.sml@usercode.nw
-  piazza.sml@usercode.nw
-  xs.sml@usercode.nw
+  usercode.nw (cc.sml)
+  usercode.nw (piazza.sml)
+  usercode.nw (xs.sml)

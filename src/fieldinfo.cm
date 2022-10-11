@@ -7,5 +7,5 @@ group is
   smlnj-lib.cm
   error.cm
 
-  fieldmap.sml@fieldinfo.nw
+  fieldinfo.nw (fieldmap.sml)
   fieldinfo.nw

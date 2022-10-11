@@ -1,29 +1,29 @@
 (* $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $ *)
 (* module util *)
 group is
-  impossible.sml@impossible.nw
-  printexn.sml@printexn.nw
+  impossible.nw (impossible.sml)
+  printexn.nw (printexn.sml)
 
-  order.sml@order.nw
+  order.nw (order.sml)
 
   rangeset.nw
-  range.sml@rangeset.nw
+  rangeset.nw (range.sml)
 
-  existsmap.sml@util.nw
-  stringdict.sml@util.nw
-  stringset.sml@util.nw
-  stringkey.sig@util.nw
-  stringcasekey.sml@util.nw
-  intdict.sml@util.nw
-  intset.sml@util.nw
-  intkey.sig@util.nw
-  util.sml@util.nw
-  wildcard.sml@util.nw
-  constypeutil.ord@util.nw
-  stringutil.sml@util.nw
+  util.nw (existsmap.sml)
+  util.nw (stringdict.sml)
+  util.nw (stringset.sml)
+  util.nw (stringkey.sig)
+  util.nw (stringcasekey.sml)
+  util.nw (intdict.sml)
+  util.nw (intset.sml)
+  util.nw (intkey.sig)
+  util.nw (util.sml)
+  util.nw (wildcard.sml)
+  util.nw (constypeutil.ord)
+  util.nw (stringutil.sml)
 
-  relop.sig@relop.nw
-  relop.ord@relop.nw
+  relop.nw (relop.sig)
+  relop.nw (relop.ord)
 
   polytab.nw
 

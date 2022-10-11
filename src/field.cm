@@ -3,5 +3,5 @@
 group is
   smlnj-lib.cm
 
-  field.sig@pattern.nw
-  field.ord@pattern.nw
+  pattern.nw (field.sig)
+  pattern.nw (field.ord)

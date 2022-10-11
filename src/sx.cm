@@ -8,5 +8,5 @@ is
   (*/usr/local/asdlGen/lib/asdlGen/sml/asdl-base.cm*)
 
   sx.nw
-  sxutil.sig@sx.nw
-  sxutil.sml@sx.nw
+  sx.nw (sxutil.sig)
+  sx.nw (sxutil.sml)

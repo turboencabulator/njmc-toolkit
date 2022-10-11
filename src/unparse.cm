@@ -2,6 +2,6 @@
 (* module emit *)
 group is
   unparse.nw
-  assoc.sml@unparse.nw
+  unparse.nw (assoc.sml)
   precedence.nw
   util.cm

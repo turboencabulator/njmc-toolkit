@@ -5,5 +5,5 @@ group is
   pattern.cm
   error.cm
 
-  fieldexps.sig@encode.nw
-  fieldexps.sml@encode.nw
+  encode.nw (fieldexps.sig)
+  encode.nw (fieldexps.sml)

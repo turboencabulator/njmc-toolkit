@@ -6,4 +6,4 @@ group is
   error.cm
 
   constructor.nw
-  conskey.sml@constructor.nw
+  constructor.nw (conskey.sml)

@@ -8,17 +8,17 @@ group is
   error.cm (* used to report overlapping slices *)
   global.cm (* used to get to debugging control *)
 
-  solve.sig@solve.nw
-  solve.sml@solve.nw
-  eliminator.sig@solve.nw
-  inteliminator.sml@solve.nw
-  balance.sml@solve.nw
-  balance.sig@solve.nw
-  balancer.sml@solve.nw
-  fresh.sig@solve.nw
-  fresh.sml@solve.nw
-  balance-debug.sig@solve.nw
-  balancers.sml@solve.nw
-  link-balancers.sml@solve.nw
-  mal-solve.sml@solve.nw
-  pp-solve.sml@solve.nw
+  solve.nw (solve.sig)
+  solve.nw (solve.sml)
+  solve.nw (eliminator.sig)
+  solve.nw (inteliminator.sml)
+  solve.nw (balance.sml)
+  solve.nw (balance.sig)
+  solve.nw (balancer.sml)
+  solve.nw (fresh.sig)
+  solve.nw (fresh.sml)
+  solve.nw (balance-debug.sig)
+  solve.nw (balancers.sml)
+  solve.nw (link-balancers.sml)
+  solve.nw (mal-solve.sml)
+  solve.nw (pp-solve.sml)

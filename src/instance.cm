@@ -2,4 +2,4 @@
 group is
   encode.cm
 
-  instance-gen.sig@instance.nw
+  instance.nw (instance-gen.sig)

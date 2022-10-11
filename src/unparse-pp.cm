@@ -4,4 +4,4 @@ group is
   unparse.cm
   pp.cm
 
-  unparse-pp.sml@pp.nw
+  pp.nw (unparse-pp.sml)

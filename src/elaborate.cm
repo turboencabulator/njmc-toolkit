@@ -10,4 +10,4 @@ group is
   fieldexps.cm
 
   elaborate.nw
-  elabexp.sml@elabexp.nw
+  elabexp.nw (elabexp.sml)

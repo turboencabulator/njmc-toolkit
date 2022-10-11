@@ -7,11 +7,11 @@ group is
   smlnj-lib.cm
   sx.cm
 
-  ty.ty@ty.nw
-  ty.ord@ty.nw
-  exp.sig@exp.nw
-  exp-set.sig@exp.nw
-  unified.sml@exp.nw
-  boolsetexp.sml@exp.nw
-  unifiedbasics.sml@exp.nw
-  exptest.sml@exp.nw
+  ty.nw (ty.ty)
+  ty.nw (ty.ord)
+  exp.nw (exp.sig)
+  exp.nw (exp-set.sig)
+  exp.nw (unified.sml)
+  exp.nw (boolsetexp.sml)
+  exp.nw (unifiedbasics.sml)
+  exp.nw (exptest.sml)

@@ -5,5 +5,5 @@ group is
   error.cm
   smlnj-lib.cm
 
-  main1.sml@main.nw
-  main2.sml@main.nw
+  main.nw (main1.sml)
+  main.nw (main2.sml)

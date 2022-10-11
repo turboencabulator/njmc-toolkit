@@ -13,10 +13,10 @@ group is
   util.cm
 
   match.nw
-  consord.sig@ffusion.nw
-  consord.sml@ffusion.nw
+  ffusion.nw (consord.sig)
+  ffusion.nw (consord.sml)
   ffusion.nw
-  absfield.sml@match.nw
+  match.nw (absfield.sml)
   tree.nw
   dag.nw
   gencode.nw

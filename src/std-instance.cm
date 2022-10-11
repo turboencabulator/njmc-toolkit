@@ -2,4 +2,4 @@
 group is
   encode.cm
 
-  std-instance.sml@instance.nw
+  instance.nw (std-instance.sml)

@@ -1,14 +1,14 @@
 group is
-  solve.sig@solve.nodebug.nw
-  solve.sml@solve.nodebug.nw
-  eliminator.sig@solve.nodebug.nw
-  inteliminator.sml@solve.nodebug.nw
-  balance.sml@solve.nodebug.nw
-  balance.sig@solve.nodebug.nw
-  balancer.sml@solve.nodebug.nw
-  fresh.sig@solve.nodebug.nw
-  fresh.sml@solve.nodebug.nw
-  solve-util.sml@solve.nodebug.nw
-  solve-impossible.sml@solve.nodebug.nw
+  solve.nodebug.nw (solve.sig)
+  solve.nodebug.nw (solve.sml)
+  solve.nodebug.nw (eliminator.sig)
+  solve.nodebug.nw (inteliminator.sml)
+  solve.nodebug.nw (balance.sml)
+  solve.nodebug.nw (balance.sig)
+  solve.nodebug.nw (balancer.sml)
+  solve.nodebug.nw (fresh.sig)
+  solve.nodebug.nw (fresh.sml)
+  solve.nodebug.nw (solve-util.sml)
+  solve.nodebug.nw (solve-impossible.sml)
 
   smlnj-lib.cm

@@ -13,7 +13,7 @@ group is
   emit-c.nw
   emit-ml.nw
   xform-c.nw
-  ccontrol.sml@control.nw
-  mlcontrol.sml@control.nw
+  control.nw (ccontrol.sml)
+  control.nw (mlcontrol.sml)
   c-code.nw
   mangle.nw

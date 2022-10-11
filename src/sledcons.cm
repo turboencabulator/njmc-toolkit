@@ -3,7 +3,7 @@ group is
   newcons.cm
   pattern.cm
 
-  conskey.sml@newcons.nw
-  sledcons.sig@newcons.nw
-  sledcons.sml@newcons.nw
+  newcons.nw (conskey.sml)
+  newcons.nw (sledcons.sig)
+  newcons.nw (sledcons.sml)
   smlnj-lib.cm

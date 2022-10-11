@@ -8,5 +8,5 @@ group is
   error.cm
 
   sledspec.nw
-  denotable.sig@sledspec.nw
-  denotable.sml@sledspec.nw
+  sledspec.nw (denotable.sig)
+  sledspec.nw (denotable.sml)
