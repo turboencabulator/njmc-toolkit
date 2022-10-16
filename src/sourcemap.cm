@@ -1,4 +1,6 @@
 (* $Id: sourcemap.cm,v 1.3 1999/09/06 16:03:00 nr Exp $ *)
 (* module parser *)
 group is
+  $/basis.cm
+
   sourcemap.nw

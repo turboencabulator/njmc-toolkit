@@ -1,7 +1,8 @@
 (* $Id: fieldexps.cm,v 1.1 1999/09/06 16:02:08 nr Exp $ *)
 (* module elaborate *)
-
 group is
+  $/basis.cm
+
   pattern.cm
   error.cm
 

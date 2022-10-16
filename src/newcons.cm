@@ -1,5 +1,7 @@
 (* module semantic *)
 group is
+  $/basis.cm
+
   error.cm
   util.cm
   sourcemap.cm

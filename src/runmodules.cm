@@ -1,8 +1,9 @@
 (* modules used to run things -- very near main *)
-
 (* module link *)
 group is
-  smlnj-lib.cm
+  $/basis.cm
+  $/smlnj-lib.cm
+
   ast.cm
   emit.cm
   emitcode.cm

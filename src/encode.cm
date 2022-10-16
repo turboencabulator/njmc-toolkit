@@ -1,6 +1,8 @@
 (* $Id: encode.cm,v 1.4 1999/09/06 16:00:23 nr Exp $ *)
 (* module encoding *)
 group is
+  $/basis.cm
+
   sledspec.cm
   code.cm
   error.cm

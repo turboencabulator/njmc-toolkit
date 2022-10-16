@@ -1,6 +1,8 @@
 (* $Id: code.cm,v 1.4 1999/09/06 15:59:27 nr Exp $ *)
 (* module code *)
 group is
+  $/basis.cm
+
   exp.cm
   pp.cm (* used in block comments *)
   sledcons.cm (* regrettable -- confines utility to toolkit *)

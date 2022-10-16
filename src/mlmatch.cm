@@ -1,4 +1,6 @@
 group is
+  $/basis.cm
+
   error.cm
   match.cm
   runmodules.cm

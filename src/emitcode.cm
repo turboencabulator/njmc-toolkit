@@ -1,5 +1,7 @@
 (* module emit *)
 group is
+  $/basis.cm
+
   pp.cm
   error.cm
 

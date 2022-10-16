@@ -3060,6 +3060,9 @@ structure Impossible = struct
 end
 <<solve.cm>>=
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   solve.nw (solve.sig)
   solve.nw (solve.sml)
   solve.nw (eliminator.sig)
@@ -3071,8 +3074,6 @@ group is
   solve.nw (fresh.sml)
   solve.nw (solve-util.sml)
   solve.nw (solve-impossible.sml)
-
-  smlnj-lib.cm
 @
 \ifhtml
 \section{Index of identifiers}

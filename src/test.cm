@@ -2,6 +2,8 @@
 (* module -none *)
 (* to run test code *)
 group is
+  $/basis.cm
+
   toolkit.cm
   error.cm
 

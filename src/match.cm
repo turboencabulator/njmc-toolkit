@@ -4,10 +4,12 @@
        by analogy with sledspec/elaborate *)
 (* module match *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   code.cm
   sledspec.cm
   error.cm
-  smlnj-lib.cm
   elabexp.cm
   solve.cm
   util.cm

@@ -2,6 +2,8 @@
 (* module elaborate *)
 (* how to produce an elaborated specification *)
 group is
+  $/basis.cm
+
   ast.cm
   sledspec.cm
   solve.cm

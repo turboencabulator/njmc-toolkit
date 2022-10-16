@@ -1,4 +1,7 @@
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   solve.nodebug.nw (solve.sig)
   solve.nodebug.nw (solve.sml)
   solve.nodebug.nw (eliminator.sig)
@@ -10,5 +13,3 @@ group is
   solve.nodebug.nw (fresh.sml)
   solve.nodebug.nw (solve-util.sml)
   solve.nodebug.nw (solve-impossible.sml)
-
-  smlnj-lib.cm

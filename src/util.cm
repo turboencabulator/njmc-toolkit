@@ -1,6 +1,9 @@
 (* $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $ *)
 (* module util *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   impossible.nw (impossible.sml)
   printexn.nw (printexn.sml)
 
@@ -26,5 +29,3 @@ group is
   relop.nw (relop.ord)
 
   polytab.nw
-
-  smlnj-lib.cm

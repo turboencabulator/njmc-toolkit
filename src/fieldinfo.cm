@@ -1,10 +1,12 @@
 (* $Id: fieldinfo.cm,v 1.3 1999/09/06 16:02:53 nr Exp $ *)
 (* module semantic *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   ast.cm
   util.cm
   field.cm
-  smlnj-lib.cm
   error.cm
 
   fieldinfo.nw (fieldmap.sml)

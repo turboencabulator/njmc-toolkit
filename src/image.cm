@@ -1,6 +1,8 @@
 (* $Id: image.cm,v 1.4 1999/09/06 16:02:55 nr Exp $ *)
 (* module emit *)
 group is
+  $/basis.cm
+
   sledspec.cm
   unparse-pp.cm
 

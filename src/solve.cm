@@ -2,8 +2,10 @@
 (* should be split further, into toolkit-dependent and -independent parts *)
 (* module code *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   exp.cm
-  smlnj-lib.cm
   pp.cm (* used for debugging, which should be split off *)
   error.cm (* used to report overlapping slices *)
   global.cm (* used to get to debugging control *)

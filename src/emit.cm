@@ -2,12 +2,14 @@
 (* module emit *)
 (* code emission *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   code.cm
   unparse.cm
   pp.cm
   unparse-pp.cm
   decoder.cm
-  smlnj-lib.cm
   (* note error NOT imported --- should never get user error here *)
 
   emit-c.nw

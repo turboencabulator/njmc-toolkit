@@ -1,5 +1,7 @@
 (* module match *)
 group is
+  $/basis.cm
+
   pattern.cm
   util.cm
   match.cm

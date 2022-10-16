@@ -1,5 +1,7 @@
 (* module encoding *)
 group is
+  $/basis.cm
+
   encode.cm
 
   instance.nw (std-instance.sml)

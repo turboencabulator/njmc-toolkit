@@ -1,6 +1,8 @@
 (* $Id: pattern.cm,v 1.4 1999/09/06 16:02:57 nr Exp $ *)
 (* module semantic *)
 group is
+  $/basis.cm
+
   exp.cm
   field.cm
   global.cm (* includes fieldinfo and therefore field *)

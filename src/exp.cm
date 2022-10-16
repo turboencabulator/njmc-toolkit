@@ -1,10 +1,12 @@
 (* $Id: exp.cm,v 1.5 1999/09/06 16:00:24 nr Exp $ *)
 (* module code *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   ast.cm
   util.cm
   field.cm (* imported to handle the AFIELD expression *)
-  smlnj-lib.cm
   sx.cm
 
   ty.nw (ty.ty)

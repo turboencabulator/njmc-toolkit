@@ -1,6 +1,8 @@
 (* $Id: parse.cm,v 1.3 1999/09/06 16:02:57 nr Exp $ *)
 (* module parser *)
 group is
+  $/basis.cm
+
   ast.cm
 
   grammar.nw (grammar.g)

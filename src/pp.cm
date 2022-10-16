@@ -1,6 +1,8 @@
 (* $Id: pp.cm,v 1.4 1999/09/06 16:02:58 nr Exp $ *)
 (* module emit *)
 group is
+  $/basis.cm
+
   pp.nw
   pp.nw (ppdyn.sml)
   pp.nw (ppdyn.sig)

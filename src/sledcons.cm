@@ -1,9 +1,11 @@
 (* module semantic *)
 group is
+  $/basis.cm
+  $/smlnj-lib.cm
+
   newcons.cm
   pattern.cm
 
   newcons.nw (conskey.sml)
   newcons.nw (sledcons.sig)
   newcons.nw (sledcons.sml)
-  smlnj-lib.cm
