@@ -32,7 +32,6 @@ signature MATCH = sig
 
   val map : ('a -> 'b) -> 'a match -> 'b match
 end
-functor FooM(structure ? : MATCH) = struct val d = 3 end
 @ 
 A matching statement has a {\em value}, a sequence
 of {\em arms}, and a {\em trailer}.
