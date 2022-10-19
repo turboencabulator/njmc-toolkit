@@ -2,6 +2,8 @@ group is
   $/basis.cm
   $/smlnj-lib.cm
 
+  pp.cm
+
   solve.nodebug.nw (solve.sig)
   solve.nodebug.nw (solve.sml)
   solve.nodebug.nw (eliminator.sig)
@@ -11,5 +13,6 @@ group is
   solve.nodebug.nw (balancer.sml)
   solve.nodebug.nw (fresh.sig)
   solve.nodebug.nw (fresh.sml)
+  solve.nodebug.nw (balance-debug.sig)
   solve.nodebug.nw (solve-util.sml)
   solve.nodebug.nw (solve-impossible.sml)

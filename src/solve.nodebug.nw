@@ -3063,6 +3063,8 @@ group is
   $/basis.cm
   $/smlnj-lib.cm
 
+  pp.cm
+
   solve.nw (solve.sig)
   solve.nw (solve.sml)
   solve.nw (eliminator.sig)
@@ -3072,6 +3074,7 @@ group is
   solve.nw (balancer.sml)
   solve.nw (fresh.sig)
   solve.nw (fresh.sml)
+  solve.nw (balance-debug.sig)
   solve.nw (solve-util.sml)
   solve.nw (solve-impossible.sml)
 @

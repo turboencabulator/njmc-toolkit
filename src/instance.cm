@@ -2,4 +2,6 @@
 group is
   encode.cm
 
+  decoder.nw (decoder.sig)
+  match.nw (match.sig)
   instance.nw (instance-gen.sig)
