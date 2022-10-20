@@ -50,8 +50,7 @@ signature ENCODING_GENERATOR = sig
   structure Code : CODE
   structure Instance : INSTANCE
     sharing Instance.Code = Code
-  structure Control : ENCODING_CONTROL 
-    sharing type Code.ty = Control.ty
+  structure Control : ENCODING_CONTROL where type ty = Code.ty
 
   type emitter = Code.exp * {width:int} -> Code.statement
     (* ability to emit token of given width *)
