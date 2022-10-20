@@ -144,7 +144,7 @@ signature SLED_CONSTRUCTOR = sig
   include CONSTRUCTOR
   structure Patterns : PATTERNS
   structure Pattern : PATTERN
-  sharing type Patterns.Latent.pattern = Pattern.pattern
+    where type pattern = Patterns.Latent.pattern
   sharing Pattern.Exp = Patterns.Exp
   type disjunct = (Patterns.field, Patterns.latent) Patterns.cons_or_label
                        Patterns.sequence Patterns.disjunct'

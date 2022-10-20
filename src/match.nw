@@ -101,7 +101,8 @@ functor MatchFun (structure ElabExp : ELAB_EXP
 		      sharing SledSpec.Denotable = ElabExp.Denotable
                   structure Solver : MAL_SOLVER
                   structure Absolute : ABSOLUTE_PATTERN
-		      sharing Absolute = SledSpec.Patterns.Absolute
+		      where type pattern = SledSpec.Patterns.Absolute.pattern
+		      where type proto_pattern = SledSpec.Patterns.Absolute.proto_pattern
                   val simplify : Absolute.pattern -> Absolute.pattern
                   val superSimplify : Absolute.Exp.exp -> Absolute.Exp.exp
                   sharing type ElabExp.Denotable.Patterns.Exp.exp = Solver.Exp.exp
