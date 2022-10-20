@@ -24,7 +24,6 @@ signature SIMPLIFIER = sig
   include SIMPLIFY
   structure Super : SIMPLIFY where type Code.Exp.exp = Code.exp
   sharing type Code.statement = Super.Code.statement
-      and type Code.pattern = Code.pattern
 end
 <<simplify.sml>>=
 functor TrivialSimplifyFun (Code : CODE) : SIMPLIFY = struct
