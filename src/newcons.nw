@@ -180,10 +180,8 @@ signature SLED_CONSTRUCTOR = sig
        guarded by conditions on "instances", with latent labels.
        First arg is instance, which must be Exp.var, Exp.instance,
        or Exp.bindingInstance. *)
-  structure Set : ORD_SET
-  sharing type Set.Key.ord_key = constructor
-  structure Map : ORD_MAP
-  sharing type Map.Key.ord_key = constructor
+  structure Set : ORD_SET where type Key.ord_key = constructor
+  structure Map : ORD_MAP where type Key.ord_key = constructor
 end
 @
 \section{Implementing constructors}

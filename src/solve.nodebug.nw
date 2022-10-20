@@ -1619,8 +1619,7 @@ If [[e1 = e2]], then \mbox{[[varFor e1 = varFor e2]]}.
 <<fresh.sig>>=
 signature FRESH = sig
   structure Exp : SOLVER_EXP
-  structure ExpMap : ORD_MAP 
-    sharing type ExpMap.Key.ord_key = Exp.exp
+  structure ExpMap : ORD_MAP where type Key.ord_key = Exp.exp
   type state
   val new : StringSet.set -> state
   val var2exp : state * string -> Exp.exp

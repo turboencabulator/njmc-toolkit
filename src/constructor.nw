@@ -154,8 +154,7 @@ end
 
 signature CONSTRUCTOR_SET = sig
   include CONSTRUCTOR
-  structure Set : ORD_SET
-  sharing type Set.Key.ord_key = constructor
+  structure Set : ORD_SET where type Key.ord_key = constructor
 end
 <<constructor.sml>>=
 functor ConstructorFun
