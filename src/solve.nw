@@ -2976,10 +2976,11 @@ signature MAL_SOLVER = sig
          }
 end
 <<mal-solve.sml>>=
-functor MalSolverFun(structure Solver : SOLVER
-		     val simplify : Solver.Exp.exp -> Solver.Exp.exp
-		     structure Exp : EXP_SET 
-                     sharing type Solver.Exp.exp = Solver.Exp.condition = Exp.exp)
+functor MalSolverFun(structure Exp : EXP_SET
+		     structure Solver : SOLVER
+		       where type Exp.exp = Exp.exp
+		       where type Exp.condition = Exp.exp
+		     val simplify : Solver.Exp.exp -> Solver.Exp.exp)
   (*: MAL_SOLVER*) =
 struct
   structure Exp = struct

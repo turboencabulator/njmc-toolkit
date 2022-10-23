@@ -1,7 +1,7 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
 % $Id: link.nw,v 1.43 1999/11/23 16:25:58 nr Exp $
 <<link1.sml>>=
-functor LinkFun(structure BasicExp : EXP where type exp = UnifiedExp.exp) = struct
+functor LinkFun(structure BasicExp : EXP) = struct
   structure Exp = BoolSetFun(structure Exp = BasicExp)
   structure Patterns = PatternsFun(Exp)
   structure FieldExpressions = FieldExpressionsFun(Patterns)

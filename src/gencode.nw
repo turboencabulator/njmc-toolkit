@@ -9,7 +9,6 @@ for a matching statement.
 signature GENCODE = sig
   structure Dag : DAG
   structure Code : CODE
-    sharing type Dag.Tree.Match.Patterns.Exp.exp = Code.Exp.exp
     sharing Dag.Tree.Match.SledSpec.Denotable.Constructor = Code.Constructor
   type templates = { addressType : Type.ty
                    , addressAdd : {address : Code.exp, pcUnits : int} -> Code.exp
@@ -27,8 +26,6 @@ end
 <<gencode.sml>>=
 functor GencodeFun(structure Dag : DAG
                    structure Code : CODE
-		     where type Exp.exp = UnifiedExp.exp
-                     sharing type Dag.Tree.Match.Patterns.Exp.exp = Code.Exp.exp
                      sharing
                        Dag.Tree.Match.SledSpec.Denotable.Constructor = Code.Constructor
 		   val simplify : Code.exp -> Code.exp

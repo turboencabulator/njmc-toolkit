@@ -96,17 +96,15 @@ If [[succptr]] wasn't requested, [[patlen]] is [[NONE]].
 @
 <<match.sml>>=
 functor MatchFun (structure ElabExp : ELAB_EXP
-		      where type Denotable.Patterns.Exp.exp = UnifiedExp.exp
 		  structure SledSpec : SLED_SPEC
 		      sharing SledSpec.Denotable = ElabExp.Denotable
                   structure Solver : MAL_SOLVER
+		      where type Exp.exp = ElabExp.Denotable.Patterns.Exp.exp
                   structure Absolute : ABSOLUTE_PATTERN
 		      where type pattern = SledSpec.Patterns.Absolute.pattern
 		      where type proto_pattern = SledSpec.Patterns.Absolute.proto_pattern
                   val simplify : Absolute.pattern -> Absolute.pattern
                   val superSimplify : Absolute.Exp.exp -> Absolute.Exp.exp
-                  sharing type ElabExp.Denotable.Patterns.Exp.exp = Solver.Exp.exp
-                             = Absolute.Exp.exp
                   sharing type ElabExp.Denotable.Patterns.Exp.Set.set
 		             = Solver.Exp.Set.set
                              = Absolute.Exp.Set.set

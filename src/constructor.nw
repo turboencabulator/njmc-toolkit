@@ -158,7 +158,7 @@ signature CONSTRUCTOR_SET = sig
 end
 <<constructor.sml>>=
 functor ConstructorFun
-  (Patterns : PATTERNS where type Exp.exp = UnifiedExp.exp) : CONSTRUCTOR = 
+  (Patterns : PATTERNS) : CONSTRUCTOR =
 struct
   structure Patterns = Patterns
   structure Pattern = Patterns.Latent

@@ -60,8 +60,8 @@ Cbracket("$c" || s, "app", precedence) || ";$b"
 The overall functor sets up the name space the way I want it.
 <<emit-c.sml>>=
 functor EmitCFun(
-  structure Control : C_CONTROL where type Code.Exp.exp = UnifiedExp.exp
-  structure Exp : EXP where type exp = UnifiedExp.exp
+  structure Control : C_CONTROL
+  structure Exp : EXP
   val alwaysSatisfied : Control.Code.Exp.exp -> bool (* is it a tautology? *)
   val instanceType : Control.Code.Constructor.constype -> Control.Code.ty
 		        (* how are instances represented? *)

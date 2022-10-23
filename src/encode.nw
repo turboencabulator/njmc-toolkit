@@ -1024,7 +1024,7 @@ end
 <<encode.sml>>=
 functor EncodeFun(
   structure Simplify : SIMPLIFIER
-  structure Code : CODE where type Exp.exp = UnifiedExp.exp
+  structure Code : CODE
   structure FieldExpressions : FIELD_EXPRESSIONS
   sharing Code = Simplify.Code
   sharing FieldExpressions.Patterns = Code.Constructor.Patterns

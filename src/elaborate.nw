@@ -20,9 +20,9 @@ functor ElaborateFun
            structure SledSpec : SLED_SPEC
               sharing SledSpec.Denotable = ElabExp.Denotable
 	   structure Solve : MAL_SOLVER
+	      where type Exp.exp = ElabExp.Denotable.Patterns.Exp.exp
            structure FieldExpressions : FIELD_EXPRESSIONS
            sharing FieldExpressions.Patterns = ElabExp.Denotable.Patterns
-           sharing type Solve.Exp.exp = ElabExp.Denotable.Patterns.Exp.exp
 	   sharing type Solve.Exp.Set.set = ElabExp.Denotable.Patterns.Exp.Set.set) : ELABORATE = 
 struct
   type error_stream = TextIO.outstream

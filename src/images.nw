@@ -25,7 +25,6 @@ end
 @ 
 <<images.sml>>=
 functor ImagesFun (structure Constructor : SLED_CONSTRUCTOR
-		     where type Pattern.Exp.exp = UnifiedExp.exp
 		   structure Unparser : UNPARSE_PP
                      where type Unparser.Atom.Precedence.precedence = int
                    val anonymousTypeName : string
@@ -44,7 +43,6 @@ struct
 end
 <<denotable-image.sml>>=
 functor DenotableImageFun (structure Denotable : DENOTABLE
-			     where type Patterns.Exp.exp = UnifiedExp.exp
 			   structure Unparser : UNPARSE_PP
                              where type Unparser.Atom.Precedence.precedence = int
 			   val anonymousTypeName : string

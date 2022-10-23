@@ -145,7 +145,6 @@ In C, if an interface imports another interface, it should stand for
 signature CODE = sig
   structure Constructor : SLED_CONSTRUCTOR
   structure Exp : EXP
-  sharing type Constructor.Patterns.Pure.Exp.exp = Exp.exp
   type exp = Exp.exp
   type pattern = Constructor.Patterns.Pure.pattern
   type constructor = Constructor.constructor
@@ -161,7 +160,6 @@ end
 <<code.sml>>=
 functor CodeFun (structure Constructor : SLED_CONSTRUCTOR
                  structure Exp : EXP
-		 sharing type Constructor.Patterns.Pure.Exp.exp = Exp.exp
                 ) = struct
   structure Constructor = Constructor
   structure Exp = Exp

@@ -22,7 +22,7 @@ end
 
 signature SIMPLIFIER = sig
   include SIMPLIFY
-  structure Super : SIMPLIFY where type Code.Exp.exp = Code.exp
+  structure Super : SIMPLIFY
   sharing type Code.statement = Super.Code.statement
 end
 <<simplify.sml>>=
@@ -46,7 +46,6 @@ signature EXPRESSION_SIMPLIFY = sig
 end
 
 functor UnifiedExpSimpFun (structure Exp : EXP_WALKERS_EXTENDED
-			   where type exp = UnifiedExp.exp
 			   structure Constructor : SLED_CONSTRUCTOR
 			   val expstring : Exp.exp -> string) =
 struct
@@ -71,15 +70,12 @@ struct
   end
 end
 
-signature UNIFIED_SIMPLIFY =
-  SIMPLIFY where type Code.Constructor.Pattern.Exp.exp = UnifiedExp.exp
+signature UNIFIED_SIMPLIFY = SIMPLIFY
 
 
-signature UNIFIED_SIMPLIFIER = 
-  SIMPLIFIER where type Code.Exp.exp = UnifiedExp.exp
-	   (*  and   type Super.Code.Exp.exp = UnifiedExp.exp -- redundant *)
+signature UNIFIED_SIMPLIFIER = SIMPLIFIER
 
-functor UnifiedSimplifyFun (structure Code : CODE where type Exp.exp = UnifiedExp.exp
+functor UnifiedSimplifyFun (structure Code : CODE
 			    structure ES : EXPRESSION_SIMPLIFY
 				sharing Code.Constructor = ES.Constructor)
     : UNIFIED_SIMPLIFY =
@@ -100,7 +96,7 @@ struct
 end
 
 functor UnifiedSimplifierFun
-    (structure Code : CODE where type Exp.exp = UnifiedExp.exp
+    (structure Code : CODE
      val expstring : Code.Exp.exp -> string) : UNIFIED_SIMPLIFIER =
 struct
   structure Simps = UnifiedExpSimpFun(structure Exp = UnifiedComplete

@@ -355,7 +355,7 @@ fun constructors' (FAM {constructors=c, ...}) = !c
 \section{Implementing SLED constructors}
 <<sledcons.sml>>=
 functor SledConstructorFun
-  (structure Patterns : PATTERNS where type Exp.exp = UnifiedExp.exp
+  (structure Patterns : PATTERNS
    structure Constructor : CONSTRUCTOR
   ) : SLED_CONSTRUCTOR = 
 struct

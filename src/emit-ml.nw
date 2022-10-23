@@ -35,8 +35,8 @@ end
 The overall functor sets up the name space the way I want it.
 <<emit-ml.sml>>=
 functor EmitMLFun(
-  structure Control : ML_CONTROL where type Code.Exp.exp = UnifiedExp.exp
-  structure Exp : EXP_SET where type exp = UnifiedExp.exp
+  structure Control : ML_CONTROL
+  structure Exp : EXP_SET
   structure ExpMap : ORD_MAP where type Key.ord_key = UnifiedExp.exp
   val alwaysSatisfied : Control.Code.Exp.exp -> bool (* is it a tautology? *)
   val instanceType : Control.Code.Constructor.constype -> Control.Code.ty

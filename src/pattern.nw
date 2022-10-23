@@ -1134,7 +1134,7 @@ functor PatternInternalFun (Seq : SEQUENT_BASICS) = struct
 end
 @ 
 <<pattern.sml>>=
-functor PatternsFun(Exp: EXP_SET where type exp = UnifiedExp.exp) : PATTERNS = 
+functor PatternsFun(Exp: EXP_SET) : PATTERNS =
 struct
   structure Exp = Exp
   <<common functions>>

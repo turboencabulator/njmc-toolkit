@@ -202,7 +202,7 @@ end
 [[tagName]] transforms the name of a union member into the name of a
 tag in an enumeration type.
 <<xform-c.sml>>=
-functor XformCFun(structure Code : CODE where type Exp.exp = UnifiedExp.exp
+functor XformCFun(structure Code : CODE
                   val tagName : string -> string) : REWRITER = struct
   structure UU = UnsafeUnionFun(Code)
   structure Code = UU.Code

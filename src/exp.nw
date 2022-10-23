@@ -30,7 +30,7 @@ Here are the basic properties of expressions that are hand-implemented
 in either representation:
 <<exp.sig>>=
 signature EXP_BASICS = sig
-  type exp
+  type exp = UnifiedExp.exp
   type number = int
   type big_number = IntInf.int
   (* leaf expressions *)

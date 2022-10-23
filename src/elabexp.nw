@@ -12,7 +12,6 @@ the result is that we use [[FORCE]] even when implementing matching statements.
 <<elabexp.sig>>=
 signature ELAB_EXP = sig
   structure Denotable : DENOTABLE
-                          where type Constructor.Pattern.Exp.exp = UnifiedExp.exp
   <<exported types>>
   <<exported values>>
   datatype context = ENCODING | MATCHING (* context for patterns *)
@@ -37,7 +36,6 @@ end
 to do it over just to detect more errors faster in bad specifications.
 <<elabexp.sml>>=
 functor ElabExpFun (structure Denotable : DENOTABLE
-                          where type Constructor.Pattern.Exp.exp = UnifiedExp.exp
                     val simplify : Denotable.Constructor.Pattern.Exp.exp ->
                                    Denotable.Constructor.Pattern.Exp.exp
                     val image : Denotable.Constructor.Pattern.Exp.exp -> PP.pretty
