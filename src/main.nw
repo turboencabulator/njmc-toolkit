@@ -1,26 +1,22 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
 % $Id: main.nw,v 1.44 1998/12/02 00:35:58 nr Exp $
 <<main1.sml>>=
-structure Main = MainFun(structure Gencode = UGencode open OriginalEncoders)
-structure DataMain = MainFun(structure Gencode = UGencode open AllDataEncoders)
+structure Main = MainFun(open OriginalEncoders)
+structure DataMain = MainFun(open AllDataEncoders)
 <<main2.sml>>=
 functor MainFun (structure EncodingInterface : ENCODING_GENERATOR
-                     where Code.Constructor = ULinked.Constructor
-                     where type Code.defined   = UGencode.Code.defined
-                     where type Code.statement = UGencode.Code.statement
+                   where Code = ULinked.Code
                  structure EmitC : CODE_GENERATOR
-                     where type Code.interface_spec = UGencode.Code.interface_spec
-                     where type Code.defined        = UGencode.Code.defined
-                     where type Code.statement      = UGencode.Code.statement
+                   where Code = ULinked.Code
                  structure SizeInterface : SIZE_GENERATOR
+                   where Code = ULinked.Code
                  structure EmitML : CODE_GENERATOR
+                   where Code = ULinked.Code
                  structure XformC : REWRITER
+                   where Code = ULinked.Code
                  structure Instance : INSTANCE
-                 val stdInstance : Instance.definition
-                 sharing
-                   EmitC.Code = EmitML.Code = EncodingInterface.Code = XformC.Code
-                   = SizeInterface.Code = Instance.Code
-                     ) = 
+                   where Code = ULinked.Code
+                 val stdInstance : Instance.definition) =
 struct
 
 
