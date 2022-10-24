@@ -783,7 +783,6 @@ floating-point numbers or on integers.
 <<solve.sml>>=
 functor SolverFun(structure Elim : ELIMINATOR where type Exp.number = int
 		  structure Balancer : BALANCER
-		  sharing Balancer.Exp = Elim.Exp
 		  <<debug: debugging argument to solver functor>>
 		 ) : SOLVER =
 struct
@@ -795,8 +794,8 @@ struct
 end
 <<debug: debugging argument to solver functor>>=
 structure Debug : BALANCER_DEBUGGING
-sharing type Debug.exp = Elim.Exp.exp
-sharing type Debug.condition = Elim.Exp.condition
+sharing type Debug.exp = Balancer.Exp.exp = Elim.Exp.exp
+sharing type Debug.condition = Balancer.Exp.condition = Elim.Exp.condition
 <<debug: general debugging support>>=
 open Debug
 structure pp = PP.Short

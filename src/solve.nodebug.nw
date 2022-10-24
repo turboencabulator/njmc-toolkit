@@ -783,7 +783,8 @@ floating-point numbers or on integers.
 <<solve.sml>>=
 functor SolverFun(structure Elim : ELIMINATOR where type Exp.number = int
                   structure Balancer : BALANCER
-                  sharing Balancer.Exp = Elim.Exp
+                  sharing type Balancer.Exp.exp = Elim.Exp.exp
+                  sharing type Balancer.Exp.condition = Elim.Exp.condition
                  ) : SOLVER =
 struct
   structure Exp = Elim.Exp
