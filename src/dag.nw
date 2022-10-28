@@ -149,7 +149,7 @@ We update the list of arrays for a field by adding bindings to the
 first usable array.
 <<name-array functions>>=
 fun bindName(f, {lo, hi}, name, (amap, cnt)) =
-  let fun next n = TargetWord.+ (n, TargetWord.fromInt 1)
+  let fun next n = TargetWord.+ (n, TargetWord.one)
       fun usableAt(NAME_ARRAY {tbl, ...}, n) = getOpt(TWMap.find(tbl, n), name) = name
       fun usable(na, lo, hi) = if lo = hi then true 
 			       else usableAt(na, lo) andalso usable(na, next lo, hi)

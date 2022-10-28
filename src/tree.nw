@@ -548,7 +548,7 @@ fun intervalsIntersect ({lo=lo1, hi=hi1}, {lo=lo2, hi=hi2}) =
 fun findOrInventConstraint(f, P.DIS(name, conds, (constraints, _, _))) =
   case List.find (fn (f', r) => f = f') constraints
     of SOME (f, range) => range
-     | NONE => {lo=TW.fromInt 0, hi=Field.afmax f}
+     | NONE => {lo=TW.zero, hi=Field.afmax f}
 @ 
 <<tree.sml>>=
 functor TreeFun (structure Match : MATCH

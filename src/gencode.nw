@@ -96,7 +96,7 @@ fun gencase {addressType, addressAdd, addressToPC, fetch, noMatch}
 <<support for name arrays>>=
 local
   val arrayType = Type.ARRAY (Type.STRING, NONE)
-  fun maxIndex tbl = TW.toInt (TWMap.foldli (fn (i, _, _) => i) (TW.fromInt 0) tbl)
+  fun maxIndex tbl = TW.toInt (TWMap.foldli (fn (i, _, _) => i) TW.zero tbl)
   fun elems(~1, tbl, a) = Exp.array a
     | elems( i, tbl, a) =
         let val elem = case TWMap.find(tbl, TW.fromInt i) of NONE => Exp.missingString
@@ -145,7 +145,7 @@ I use rational numbers to compute costs.
 <<paths>>=
 type rat = {num:int, den:int}
 fun rlt({num=n1, den=d1}:rat, {num=n2, den=d2}) = n1 * d2 < n2 * d1
-fun rangeCost {lo, hi} = if TW.+ (lo, TW.fromInt 1) = hi then 1 else 2
+fun rangeCost {lo, hi} = if TW.+ (lo, TW.one) = hi then 1 else 2
 fun addSetCost (ranges, c) =
   RangeSet.foldr (fn (r, cost) => cost + rangeCost r) c ranges
 fun addCost (PATH l, cost) =
@@ -417,7 +417,7 @@ contain more than one element.
 <<if [[other]]'s range has one element, exchange it with [[single]]>>=
 val (single, other) =
   case RangeSet.listItems (edgeRange other)
-    of [{lo, hi}] => if TW.+(lo,TW.fromInt 1) = hi then (other, single)
+    of [{lo, hi}] => if TW.+(lo,TW.one) = hi then (other, single)
                      else (single, other)
      | _ => (single, other)
 @

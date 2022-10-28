@@ -63,7 +63,7 @@ local
 (*   fun fieldmax ({range={lo,hi},...}:field) = Util.twoRaised(hi-lo) *)
   val fieldmax = Field.fmax
   val (op >=, op <) = (TW.>=, TW.<)
-  fun ok(f, x) = x >= TW.fromInt 0 andalso x < fieldmax f
+  fun ok(f, x) = x >= TW.zero andalso x < fieldmax f
   <<mapping functions>>
 in
   fun setAllNames (f, l, i) = bindSpec(f, allSpec (f, l), i)
@@ -95,7 +95,7 @@ fun someSpec(f : field, pairs) =
 <<mapping functions>>=
 fun allSpec (f : field, names) =
   let fun bind(name::names, x, tab) =
-             bind(names, TW.+(x, TW.fromInt 1),
+             bind(names, TW.+(x, TW.one),
                   case StringMap.find(tab, name)
                     of NONE => StringMap.insert(tab, name, x)
                      | SOME _ => E.errorl ["Duplicate definitions for value ", name,
@@ -104,7 +104,7 @@ fun allSpec (f : field, names) =
 	    if limit = fieldmax f then tab
 	    else E.errorl ["Field ", #name f, " has ", TW.toString(fieldmax f),
                            " values, but spec gave ", TW.toString limit, " names"]
-  in  (bind(names, TW.fromInt 0, StringMap.empty), true)
+  in  (bind(names, TW.zero, StringMap.empty), true)
   end
 @
 \section{Emitting field names}
