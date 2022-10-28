@@ -884,7 +884,7 @@ fun outputBindings warning ((class, fbs, rcs), conds) =
                if TW.+(lo, TW.one) = hi then
                  (FieldMap.insert(map, f, Exp.const (TW.toInt lo)), conds)
                else
-                 let val mid = TW.toInt (TW.>>(TW.+(lo, hi), TW.one))
+                 let val mid = TW.toInt (TW.>>(TW.+(lo, hi), Word.fromInt 1))
                  in  warning ["Field ", #name f, " is underconstrained by ",
                               TW.toString lo, " <= ", #name f, " < ", TW.toString hi,
                               "; emitting ", Int.toString mid]

@@ -1114,7 +1114,7 @@ end
 structure Field : FIELD = struct
   <<field types>>
   fun fwidth ({range={lo,hi}, ...} : field) = hi - lo
-  fun fmax f = TargetWord.<<(TargetWord.fromInt 1, TargetWord.fromInt (fwidth f))
+  fun fmax f = TargetWord.<<(TargetWord.fromInt 1, Word.fromInt (fwidth f))
   fun afmax (f, n) = fmax f
 %%
   <<field types>>

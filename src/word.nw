@@ -11,15 +11,18 @@ signature TARGET_WORD = sig
     eqtype word
     val wordSize : int
 (*
-    val toLargeWord : word -> Word32.word
-    val toLargeWordX : word -> Word32.word
-    val fromLargeWord : Word32.word -> word
+    val toLarge : word -> LargeWord.word
+    val toLargeX : word -> LargeWord.word
+    val toLargeWord : word -> LargeWord.word
+    val toLargeWordX : word -> LargeWord.word
+    val fromLarge : LargeWord.word -> word
+    val fromLargeWord : LargeWord.word -> word
 *)
     val toReal : word -> real (* may lose precision, but not magnitude *)
 (*
-    val toLargeInt : word -> Int32.int
-    val toLargeIntX : word -> Int32.int
-    val fromLargeInt : Int32.int -> word
+    val toLargeInt : word -> LargeInt.int
+    val toLargeIntX : word -> LargeInt.int
+    val fromLargeInt : LargeInt.int -> word
 *)
     val toInt : word -> int
     val toIntX : word -> int
@@ -31,11 +34,12 @@ signature TARGET_WORD = sig
     val xorb : word * word -> word
     val andb : word * word -> word
     val notb : word -> word
+    val ~ : word -> word
 *)
-    val << : word * word -> word
-    val >> : word * word -> word
+    val << : word * Word.word -> word
+    val >> : word * Word.word -> word
 (*
-    val ~>> : word * word -> word
+    val ~>> : word * Word.word -> word
 *)
     val + : word * word -> word
     val - : word * word -> word
@@ -78,8 +82,6 @@ structure TargetWord :> TARGET_WORD = struct
   val zero = fromInt 0
   val one  = fromInt 1
   val compare'word = compare
-  fun << (a, b) = Word32.<<(a, Word31.fromLargeWord b)
-  fun >> (a, b) = Word32.>>(a, Word31.fromLargeWord b)
   fun toReal n = 
       Real.fromLargeInt (toLargeInt n)
       handle Overflow =>

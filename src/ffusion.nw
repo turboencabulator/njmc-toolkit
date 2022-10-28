@@ -101,7 +101,7 @@ To implement this, apply [[f]] to each new constraint and to~[[z]].
 [[f]]~is guaranteed to be applied at least once.
 <<field fusion>>=
 fun foldFusedConstraints {msf, lsf = (f2, _)} =
-  let val n2 = TW.fromInt (Field.fwidth f2)
+  let val n2 = Word.fromInt (Field.fwidth f2)
       fun twoN k = TW.<<(k, n2)
       fun fold f z cpair =
         let fun fuse (NONE, NONE) = Impossible.impossible "missing fusion constraints"
@@ -351,9 +351,9 @@ width of field~$f_l$.  I call $2^n$~[[lfactor]].
 <<field fusion>>=
 fun costEstimate extract ({msf, lsf}, patterns) =
   let val lwidth = fwidth lsf
-      val lfactor = TW.toInt(TW.<<(TW.one, TW.fromInt lwidth))
+      val lfactor = TW.toInt(TW.<<(TW.one, Word.fromInt lwidth))
       val mwidth = fwidth msf
-      val mfactor = TW.toInt(TW.<<(TW.one, TW.fromInt mwidth))
+      val mfactor = TW.toInt(TW.<<(TW.one, Word.fromInt mwidth))
       <<define [[addCost]] to add cost of one disjunct>>
   in  foldAbs extract addCost { cost = FINITE 0, benefit = 0 } patterns
   end
