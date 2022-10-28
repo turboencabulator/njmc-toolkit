@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: elaborate.nw,v 1.38 1999/09/06 16:05:28 nr Exp $
+% $Id: elaborate.nw,v 1.39 2000/08/04 23:07:19 nr Exp $
 
 % l2h let htmlcontents tableofcontents
 @
@@ -211,8 +211,8 @@ errormsg region (concat ["size of token (", Int.toString size,
 We always use little-endian numbering internally.
 To make zero the most significant bit, we just renumber.
 <<bit numbering>>=
-fun keep_numbering (size, {lo,hi}) = {lo=lo, hi=hi} : Patterns.range
-fun flip_numbering (size, {lo,hi}) = {lo=size-hi, hi=size-lo} : Patterns.range
+fun keep_numbering (size, {lo,hi}) = {lo=lo, hi=hi} : Patterns.brange
+fun flip_numbering (size, {lo,hi}) = {lo=size-hi, hi=size-lo} : Patterns.brange
 
 fun useBitNumbering ({make_0_lsb,set,used}:SledSpec.bit_numbering) =
   { make_0_lsb = make_0_lsb, used = true, set = set } : SledSpec.bit_numbering
@@ -276,15 +276,15 @@ let open FieldInfo
       let fun bind(A.CHECKING c, info) = setChecking(f, c, info)
             | bind(A.FIELDNAME (A.DENSE_NAMES  l), info) = setAllNames(f, l, info)
             | bind(A.FIELDNAME (A.SPARSE_NAMES l), info) =
-                 let fun int e = Error.emap
-                                 (insistInt o ElabExp.insistSingle)
-                                 (elabInt e)
-                     fun ok (n, OK x) = OK (n, x)
-                       | ok (n, ERROR) = ERROR
-                 in  case Error.errorList (map (fn (n, e) => ok (n, int e)) l)
-                       of OK l  => setSomeNames(f, l, info)
-                        | ERROR => info
-                 end
+                let fun int e = Error.emap
+                                (TargetWord.fromInt o insistInt o ElabExp.insistSingle)
+                                (elabInt e)
+                    fun ok (n, OK x) = OK (n, x)
+                      | ok (n, ERROR) = ERROR
+                in  case Error.errorList (map (fn (n, e) => ok (n, int e)) l)
+                      of OK l  => setSomeNames(f, l, info)
+                       | ERROR => info
+                end
       in  foldl bind info
       end
     fun elabName (fname, info) = case lookup fname
@@ -1027,6 +1027,9 @@ fun lookupConstructor name = unOpt(name, StringMap.find(constructors, name))
 @
 \begin{rcslog}
 $Log: elaborate.nw,v $
+Revision 1.39  2000/08/04 23:07:19  nr
+use TargetWord arithmetic in range constraints
+
 Revision 1.38  1999/09/06 16:05:28  nr
 check for field overlap earlier
 

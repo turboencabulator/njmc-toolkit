@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: encode.nw,v 1.33 1999/09/06 16:06:57 nr Exp $
+% $Id: encode.nw,v 1.34 2000/08/04 23:07:19 nr Exp $
 % l2h ignore bug {
 % l2h ignore change {
 @
@@ -881,13 +881,15 @@ fun outputBindings warning ((class, fbs, rcs), conds) =
         case FieldMap.find(map, f)
           of SOME e => (map, insertConstraintConditions(conds, f, e, range))
            | NONE =>
-               if lo + 1 = hi then
-                 (FieldMap.insert(map, f, Exp.const lo), conds)
+               if TW.+(lo, TW.one) = hi then
+                 (FieldMap.insert(map, f, Exp.const (TW.toInt lo)), conds)
                else
-                 (warning ["Field ", #name f, " is underconstrained by ",
-                           Int.toString lo, " <= ", #name f, " < ", Int.toString hi,
-                           "; emitting ", Int. toString ((lo+hi) div 2)]
-                 ; (FieldMap.insert(map, f, Exp.const ((lo+hi) div 2)), conds))
+                 let val mid = TW.toInt (TW.>>(TW.+(lo, hi), TW.one))
+                 in  warning ["Field ", #name f, " is underconstrained by ",
+                              TW.toString lo, " <= ", #name f, " < ", TW.toString hi,
+                              "; emitting ", Int.toString mid]
+                     ; (FieldMap.insert(map, f, Exp.const mid), conds)
+                 end                     
       val (map, conds) =
         foldl addConstraint (foldl addBinding FieldMap.empty fbs, conds) rcs
   in  (class, map, conds)
@@ -898,15 +900,16 @@ constraint, the constraint becomes conditions, which eventually govern
 encoding with the rest.
 [[e]] is the value of field~[[f]], which must fit in the half-open
 interval $[ [[lo]], [[hi]])$.
+Conditions should really be represented with target words, but we're
+not ready to convert [[Exp.const]] to use target words.
 <<[[fun insertConstraintConditions =]] \ldots>>=
 fun insertConstraintConditions (conds, f, e, {lo, hi}) =
-  let fun cmp (e, relop, n) = Exp.condition(e, relop, Exp.const n)
+  let fun cmp (e, relop, n) = Exp.condition(e, relop, Exp.const (TW.toInt n))
       val limit = Field.fmax f
-      val hi' = Word.fromInt hi
-      val conds = if lo > 0      then P.Exp.Set.add(conds, cmp(e, Relop.GE, lo))
-                  else conds
-      val conds = if hi' < limit then P.Exp.Set.add(conds, cmp(e, Relop.LT, hi))
-                  else conds
+      val conds = if lo = TW.zero then conds
+                  else P.Exp.Set.add(conds, cmp(e, Relop.GE, lo))
+      val conds = if hi = limit then conds
+                  else P.Exp.Set.add(conds, cmp(e, Relop.LT, hi))
   in  conds
   end
 @
@@ -950,7 +953,9 @@ fun token ((class : PS.token_class, map), offset) =
   let val _ = FE.mapOverlapCheck map
       fun addBinding(f, e, parts) =
         let val x = case Exp.unConst e
-                      of SOME n => if 0 <= n andalso Word.fromInt n < F.fmax f then
+                      of SOME n => if 0 <= n andalso
+                                      TargetWord.< (TargetWord.fromInt n, F.fmax f)
+                                   then
                                      e
                                    else
                                      (<<warn of bad range constraint>>;
@@ -969,17 +974,17 @@ fun token ((class : PS.token_class, map), offset) =
 <<function to check for overlapping fields in [[map]]>>=
 fun mapOverlapCheck map =
   let fun overlapCheck(f, _, (overlaps, fields)) =
-        if RangeSet.overlaps(overlaps, #range f) then
+        if BRangeSet.overlaps(overlaps, #range f) then
           <<issue error message about overlapping fields>>
         else
-          (RangeSet.insert(#range f, overlaps), FieldSet.add(fields, f))
-  in  ( FieldMap.foldli overlapCheck (RangeSet.empty, FieldSet.empty) map
+          (BRangeSet.insert(#range f, overlaps), FieldSet.add(fields, f))
+  in  ( FieldMap.foldli overlapCheck (BRangeSet.empty, FieldSet.empty) map
       ; ()
       )
   end
 <<issue error message about overlapping fields>>=
 let fun complain (g:Field.field) =
-      if RangeSet.rangesOverlap (#range g, #range f) then
+      if BRangeSet.rangesOverlap (#range g, #range f) then
         Error.errorl ["Cannot use overlapping fields ", #name f, " and ", #name g,
                       " in the same token"]
       else ()
@@ -1017,6 +1022,7 @@ functor FieldExpressionsFun(P : PATTERNS) = struct
   type conditions = P.Exp.Set.set 
   type constraints = Patterns.field Patterns.constraints
   type exp = Patterns.Exp.exp
+  structure TW = TargetWord
   <<sanitation>>
   <<function to check for overlapping fields in [[map]]>>
 end
@@ -1040,6 +1046,7 @@ struct
   structure Pattern = Constructor.Patterns.Pure
   structure Exp = Pattern.Exp
   structure FE = FieldExpressions
+
   type emitter = Code.exp * {width:int} -> Code.statement
   type disjunct =
       Code.Constructor.Patterns.field

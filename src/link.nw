@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: link.nw,v 1.43 1999/11/23 16:25:58 nr Exp $
+% $Id: link.nw,v 1.44 2000/08/04 23:07:19 nr Exp $
 <<link1.sml>>=
 functor LinkFun(structure BasicExp : EXP) = struct
   structure Exp = BoolSetFun(structure Exp = BasicExp)
@@ -226,7 +226,7 @@ structure UGencode = GencodeFun
    structure Code = ULinked.Code
    val simplify = USimplify.Super.exp  
    val codeSimp = USimplify.Super.code 
-   val maxRange = 32
+   val maxRange = TargetWord.fromInt 32
 )
 
 structure UMatchFusion = 

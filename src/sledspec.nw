@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: sledspec.nw,v 1.7 1998/11/11 21:59:24 nr Exp $
+% $Id: sledspec.nw,v 1.8 2000/08/04 23:07:20 nr Exp $
 
 % l2h let htmlcontents tableofcontents
 \htmlcontents
@@ -231,7 +231,7 @@ I therefore represent the current bit numbering as a function that
 takes a word size and a bit range and converts to the internal form.
 <<type [[espec]] and friends>>=
 type bit_numbering = 
-  { make_0_lsb : int * Patterns.range -> Patterns.range  
+  { make_0_lsb : int * Patterns.brange -> Patterns.brange  
                                                 (* convert to internal numbering *)
   , used : bool                                 (* did we use the numbering? *)    
   , set : bool                                  (* did we set the numbering? *)

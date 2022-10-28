@@ -1,10 +1,11 @@
-(* $Id: util.cm,v 1.8 1999/09/06 16:03:04 nr Exp $ *)
+(* $Id: util.cm,v 1.9 2000/08/04 23:07:20 nr Exp $ *)
 (* module util *)
 group is
   $/basis.cm
   $/smlnj-lib.cm
 
-  impossible.nw (impossible.sml)
+  word.cm
+
   printexn.nw (printexn.sml)
 
   order.nw (order.sml)
@@ -12,6 +13,7 @@ group is
   rangeset.nw
   rangeset.nw (range.sml)
 
+  util.nw (wordutil.sml)
   util.nw (stringdict.sml)
   util.nw (stringset.sml)
   util.nw (stringkey.sig)

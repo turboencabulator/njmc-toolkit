@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: util.nw,v 1.21 1998/11/11 21:54:36 nr Exp $
+% $Id: util.nw,v 1.22 2000/08/04 23:07:20 nr Exp $
 <<stringkey.sig>>=
 structure StringKey : ORD_KEY = struct
   type ord_key = string
@@ -74,11 +74,11 @@ structure Util = struct
   <<utilities>>
 end
 <<utilities>>=
-fun stringInInterval (s, {lo, hi}) =
-  if lo + 1 = hi then
-    String.concat [                         s, " == ", Int.toString lo]
+fun stringInInterval (s, r as {lo, hi}) =
+  if Range.isSingleton r then
+    String.concat [                                s, " == ", TargetWord.toString lo]
   else
-    String.concat [Int.toString lo, " <= ", s, "  < ", Int.toString lo]
+    String.concat [TargetWord.toString lo, " <= ", s, "  < ", TargetWord.toString lo]
 @ 
 <<utilities>>=
 fun noisyLookup lookup s =
@@ -167,3 +167,10 @@ structure StringUtil = struct
     in  String.implode (rev (cap ([], String.explode s)))
     end
 end
+<<wordutil.sml>>=
+structure TWKey : ORD_KEY = struct
+  type ord_key = TargetWord.word
+  val compare = TargetWord.compare
+end
+structure TWSet = BinarySetFn(TWKey)
+structure TWMap = BinaryMapFn(TWKey)

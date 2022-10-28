@@ -1,0 +1,9 @@
+group
+  structure Impossible
+  structure TargetWord
+  structure TWInfix
+is
+  $/basis.cm
+
+  word.nw
+  impossible.nw (impossible.sml)

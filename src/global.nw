@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: global.nw,v 1.9 1998/12/02 00:34:10 nr Exp $
+% $Id: global.nw,v 1.10 2000/08/04 23:07:19 nr Exp $
 % l2h ignore change {
 <<global.sml>>=
 structure GlobalState = struct
@@ -19,7 +19,7 @@ structure GlobalState = struct
   end
 
   structure Match = struct
-    val fuse = ref true   (* fuse disjuncts and fields *)
+    val fuse = ref true   (* fuse disjuncts, and maybe also fields *)
     datatype field_strategy (* which field to test next in the decision tree *)
       = BEST         (* try to find the best field overall *)
       | LR_TOKENS    (* read tokens left to right, look for best field in token *)

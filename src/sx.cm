@@ -6,6 +6,7 @@ group
   signature SX_UTIL
 is
   (*/usr/local/asdlGen/lib/asdlGen/sml/asdl-base.cm*)
+  word.cm
 
   sx.nw
   sx.nw (sxutil.sig)

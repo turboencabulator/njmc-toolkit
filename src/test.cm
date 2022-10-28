@@ -1,4 +1,4 @@
-(* $Id: test.cm,v 1.5 1999/09/06 16:03:02 nr Exp $ *)
+(* $Id: test.cm,v 1.6 2000/08/04 23:07:20 nr Exp $ *)
 (* module -none *)
 (* to run test code *)
 group is
@@ -15,3 +15,5 @@ group is
   usercode.nw (cc.sml)
   usercode.nw (piazza.sml)
   usercode.nw (xs.sml)
+
+  test.nw (sparcret.sml)

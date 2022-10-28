@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: emit-ml.nw,v 1.28 1999/11/23 16:25:56 nr Exp $
+% $Id: emit-ml.nw,v 1.29 2000/08/04 23:07:19 nr Exp $
 % l2h ignore change {
 \chapter{Emitting ML code}
 
@@ -46,6 +46,7 @@ struct
   structure Code = Control.Code
   structure C = Code
   structure Prec = PrecedenceFun()
+  structure TW = TargetWord
   structure Unparser = Unparser.Unparser
   structure U = UnifiedExp
   <<functions>>
@@ -633,6 +634,10 @@ fun ppcon' n = pp.te (
   if hex orelse n > Control.maxDecimal then "0wx" ^ Int.fmt StringCvt.HEX n
   else "0w" ^ Int.toString n)
 val ppcon = Unparser.ATOM o ppcon'
+fun pptw' n = pp.te (
+  if hex orelse TW.>(n, TW.fromInt Control.maxDecimal) then "0wx" ^ TW.fmt StringCvt.HEX n
+  else "0w" ^ TW.toString n)
+val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.
 The extra case for [[U.ADD]] fixes some awkwardness with the ordering invariant.
@@ -737,9 +742,9 @@ val impossible = Impossible.impossible
   | exp(U.NOSIMP(e)) = exp e
   | exp(U.ORB [])= ppcon 0
   | exp(U.ORB(exps)) = Util.joinl (bincall "Word.orb") (map exp exps)
-  | exp(U.INRANGE(e, {lo, hi})) =
-      if lo + 1 = hi then exp e /=/ ppcon lo
-      else ppcon lo /<=/ exp e /&&/ exp e /</ ppcon hi
+  | exp(U.INRANGE(e, r as {lo, hi})) =
+      if Range.isSingleton r then exp e /=/ pptw lo
+      else pptw lo /<=/ exp e /&&/ exp e /</ pptw hi
   | exp(U.ANDALSO []) = ppcon 1
   | exp(U.ANDALSO(exps)) = Util.joinl op /&&/ (map exp exps)
        (* it's possible exps should be sorted to avoid gratuitous differences *)
@@ -1032,12 +1037,17 @@ fun knownCase(tests, known, unknown) =
 	  end
     in  ML.ppcase(exp instance, map mkMatch arms, SOME (exp instance))
     end
+@ 
+It's possible I'm using the wrong range set here.
 <<stmt>>=
 | INTCASE (value, arms) => 
-    let fun r(head, lo, hi, cases) = 
-          if hi < lo then (head, cases)
-	  else r(" | ", lo, hi-1, pp.te head :: pp.int hi :: pp.$ "=> $o" :: cases)
-	fun addRange ({lo, hi}, (head, cases)) = r(head, lo, hi-1, cases)
+    let fun pptw n = pp.int (TW.toIntX n)
+                     handle Overflow => pp.te ("0wx" ^ TW.toString n)
+        fun r(head, lo, hi, cases) = 
+          if TW.<(hi, lo) then (head, cases)
+	  else r(" | ", lo, TW.-(hi, TW.one),
+                 pp.te head :: pptw hi :: pp.$ "=> $o" :: cases)
+	fun addRange ({lo, hi}, (head, cases)) = r(head, lo, TW.-(hi, TW.one), cases)
 	fun addArm ((ranges, arm), (head, s)) = 
 	  let val body = stmt arm :: s
 	      val (head, body) = RangeSet.foldr addRange (head, body) ranges

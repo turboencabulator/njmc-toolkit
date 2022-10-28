@@ -101,18 +101,19 @@ To implement this, apply [[f]] to each new constraint and to~[[z]].
 [[f]]~is guaranteed to be applied at least once.
 <<field fusion>>=
 fun foldFusedConstraints {msf, lsf = (f2, _)} =
-  let val n2 = Word.fromInt (Field.fwidth f2)
-      fun twoN k = Word.toInt (Word.<<(Word.fromInt k, n2))
+  let val n2 = TW.fromInt (Field.fwidth f2)
+      fun twoN k = TW.<<(k, n2)
       fun fold f z cpair =
         let fun fuse (NONE, NONE) = Impossible.impossible "missing fusion constraints"
               | fuse (SOME {lo, hi}, NONE) = f ({lo = twoN lo, hi = twoN hi}, z)
-              | fuse (NONE, SOME c) = loop(0, Word.toInt (Field.afmax msf), c, z)
+              | fuse (NONE, SOME c) = loop(TW.zero, Field.afmax msf, c, z)
               | fuse (SOME {lo, hi}, SOME c) = loop(lo, hi, c, z)
             and loop (k1, limit, r2 as {lo, hi}, z) = 
               if k1 = limit then z
               else
-                let val c = {lo = twoN k1 + #lo r2, hi = twoN k1 + #hi r2}
-                in  loop(k1+1, limit, r2, f(c, z))
+                let val op + = TW.+
+                    val c = {lo = twoN k1 + #lo r2, hi = twoN k1 + #hi r2}
+                in  loop(k1+TW.one, limit, r2, f(c, z))
                 end
         in  fuse cpair
         end
@@ -123,8 +124,8 @@ The current code can only fuse adjacent fields, because the later
 stages (match compilation) expect ``the thing tested'' to be an
 absolute field.  This restriction would be fairly easy to lift.
 <<field fusion>>=
-fun fuseFields {msf=({name=n1, range=r1 : Field.range, class=c1}, k1),
-                lsf=({name=n2, range=r2 : Field.range, class=c2}, k2)} =
+fun fuseFields {msf=({name=n1, range=r1 : Field.brange, class=c1}, k1),
+                lsf=({name=n2, range=r2 : Field.brange, class=c2}, k2)} =
   if c1 <> c2 orelse k1 <> k2 orelse #lo r1 <> #hi r2 then
     Impossible.impossible "attempted to fuse non-adjacent fields"
   else
@@ -339,6 +340,7 @@ functor FieldFusionFun(ConstraintOrder : CONSTRAINT_ORDER) : FIELD_FUSION = stru
   structure AFM = AbsoluteFieldMap
   structure AFS = AbsoluteFieldSet
   structure CO = ConstraintOrder
+  structure TW = TargetWord
   <<folding over absolute patterns>>
   <<utilities>>
   <<field fusion>>
@@ -349,9 +351,9 @@ width of field~$f_l$.  I call $2^n$~[[lfactor]].
 <<field fusion>>=
 fun costEstimate extract ({msf, lsf}, patterns) =
   let val lwidth = fwidth lsf
-      val lfactor = Word.toInt(Word.<<(0w1, Word.fromInt lwidth))
+      val lfactor = TW.toInt(TW.<<(TW.one, TW.fromInt lwidth))
       val mwidth = fwidth msf
-      val mfactor = Word.toInt(Word.<<(0w1, Word.fromInt mwidth))
+      val mfactor = TW.toInt(TW.<<(TW.one, TW.fromInt mwidth))
       <<define [[addCost]] to add cost of one disjunct>>
   in  foldAbs extract addCost { cost = FINITE 0, benefit = 0 } patterns
   end
@@ -374,16 +376,19 @@ and we note the improvement in the number of tests.
 <<define [[addCost]] to add cost of one disjunct>>=
 fun addCost (D constraints, { cost=c, benefit=b }) =
   let fun constraint f = Option.map #2 (List.find (fn (f', r) => f = f') constraints)
+      fun diff hi lo = TW.toIntX (TW.- (hi, lo)) 
+                       (* N.B. Overflow handled at use below *)
   in  case (constraint msf, constraint lsf)
         of (NONE,          NONE) => { cost = c, benefit = b }
-         | (SOME {hi, lo}, NONE) => { cost = c ++ (lfactor - 1) * (hi - lo)
+         | (SOME {hi, lo}, NONE) => { cost = c ++ (lfactor - 1) * diff hi lo
                                     , benefit = b
                                     }
-         | (NONE, SOME {hi, lo}) => { cost = c ++ (mfactor - 1) * (hi - lo)
+         | (NONE, SOME {hi, lo}) => { cost = c ++ (mfactor - 1) * diff hi lo
                                     , benefit = b
                                     }
          | (SOME _, SOME _)      => { cost = c, benefit = b + 1 }
   end
+  handle Overflow => { cost = INFINITY, benefit = b }
 @ 
 We need field width and addition of weird numbers.
 <<utilities>>=

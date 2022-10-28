@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: sml-mode -*-
-% $Id: simplify.nw,v 1.21 1998/11/11 21:51:30 nr Exp $
+% $Id: simplify.nw,v 1.22 2000/08/04 23:07:20 nr Exp $
 % l2h ignore bug {
 % l2h ignore change {
 \section{Simplifier}
@@ -51,6 +51,8 @@ functor UnifiedExpSimpFun (structure Exp : EXP_WALKERS_EXTENDED
 struct
   structure Constructor = Constructor
   structure U = UnifiedExp
+  structure TW = TargetWord
+  open TWInfix; infix 4 |<=| |<| |>=| |>|
   <<bitwise operators>>
   <<utilities>>
   fun rewrite {old=old as U.NOSIMP _,new} = old
@@ -142,7 +144,8 @@ I simplify equations involving constants.
            | (es, k)  => Exp.orb(U.CONST k :: es)
     end    
 <<rewrite rules>>=
-| exp (U.INRANGE (U.CONST n, {lo, hi})) = injectBool (lo <= n andalso n < hi)
+| exp (U.INRANGE (U.CONST n, {lo, hi})) = 
+    let val n = TW.fromInt n in injectBool (lo |<=| n andalso n |<| hi) end
 <<rewrite rules>>=
 | exp (U.ANDALSO args) = 
     let exception False
@@ -343,7 +346,7 @@ fun exactlog2 n =
 | stmt (st as C.TAGCASE (instance, ty, arms)) = 
     C.TAGCASE(exp instance, ty, map (fn (c, s) => (c, stmt s)) arms)
 | stmt (st as C.INTCASE (U.CONST n, arms)) = 
-    (case List.find (fn (r, s) => RangeSet.overlaps(r, {lo=n, hi=n+1})) arms
+    (case List.find (fn (r, s) => RangeSet.overlaps(r, Range.singleton n)) arms
        of SOME (_, arm) => stmt arm
 	| NONE => C.FAIL ("INTCASE statement has no matching range", []))
 | stmt (st as C.INTCASE (value, arms)) = 
