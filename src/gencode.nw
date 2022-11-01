@@ -145,7 +145,7 @@ I use rational numbers to compute costs.
 <<paths>>=
 type rat = {num:int, den:int}
 fun rlt({num=n1, den=d1}:rat, {num=n2, den=d2}) = n1 * d2 < n2 * d1
-fun rangeCost {lo, hi} = if TW.+ (lo, TW.one) = hi then 1 else 2
+fun rangeCost r = if Range.isSingleton r then 1 else 2
 fun addSetCost (ranges, c) =
   RangeSet.foldr (fn (r, cost) => cost + rangeCost r) c ranges
 fun addCost (PATH l, cost) =
@@ -417,8 +417,8 @@ contain more than one element.
 <<if [[other]]'s range has one element, exchange it with [[single]]>>=
 val (single, other) =
   case RangeSet.listItems (edgeRange other)
-    of [{lo, hi}] => if TW.+(lo,TW.one) = hi then (other, single)
-                     else (single, other)
+    of [r] => if Range.isSingleton r then (other, single)
+              else (single, other)
      | _ => (single, other)
 @
 We use a stylized [[wordname]] to refer to the word containing a particular

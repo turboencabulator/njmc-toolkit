@@ -881,7 +881,7 @@ fun outputBindings warning ((class, fbs, rcs), conds) =
         case FieldMap.find(map, f)
           of SOME e => (map, insertConstraintConditions(conds, f, e, range))
            | NONE =>
-               if TW.+(lo, TW.one) = hi then
+               if Range.isSingleton range then
                  (FieldMap.insert(map, f, Exp.const (TW.toInt lo)), conds)
                else
                  let val mid = TW.toInt (TW.>>(TW.+(lo, hi), Word.fromInt 1))
