@@ -437,7 +437,7 @@ fun afieldExp (f as ({range={lo, hi}, name, ...}, offset) : P.absolute_field) =
 @ 
 <<functions to add if arms or case edges (conditionally)>>=
 fun addEdge(e, arms) =
-  let val ranges = RangeSet.filter (fn {lo, hi} => TW.- (hi, lo) |<=| maxRange)
+  let val ranges = RangeSet.filter (fn r => Range.width r |<=| maxRange)
                                    (edgeRange e)
   in  if RangeSet.isEmpty ranges then
         arms
@@ -446,7 +446,7 @@ fun addEdge(e, arms) =
   end
 <<functions to add if arms or case edges (conditionally)>>=
 fun addIfArm(e, arms) = 
-  let val ranges = RangeSet.filter (fn {lo, hi} => TW.- (hi, lo) |>| maxRange)
+  let val ranges = RangeSet.filter (fn r => Range.width r |>| maxRange)
                                    (edgeRange e)
   in  if RangeSet.isEmpty ranges then
         arms

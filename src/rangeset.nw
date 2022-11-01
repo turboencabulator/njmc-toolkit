@@ -159,4 +159,5 @@ structure Range = struct
     {lo = TargetWord.max(lo, lo'), hi = TargetWord.min(hi, hi')}
   fun singleton n = {lo=TargetWord.fromInt n, hi=TargetWord.fromInt (n+1)}
   fun isSingleton {lo, hi} = TargetWord.+(lo, TargetWord.one) = hi
+  fun width {lo, hi} = TargetWord.- (hi, lo)
 end

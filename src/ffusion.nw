@@ -112,7 +112,7 @@ fun foldFusedConstraints {msf, lsf = (f2, _)} =
               if k1 = limit then z
               else
                 let val op + = TW.+
-                    val c = {lo = twoN k1 + #lo r2, hi = twoN k1 + #hi r2}
+                    val c = {lo = twoN k1 + lo, hi = twoN k1 + hi}
                 in  loop(k1+TW.one, limit, r2, f(c, z))
                 end
         in  fuse cpair
@@ -376,17 +376,17 @@ and we note the improvement in the number of tests.
 <<define [[addCost]] to add cost of one disjunct>>=
 fun addCost (D constraints, { cost=c, benefit=b }) =
   let fun constraint f = Option.map #2 (List.find (fn (f', r) => f = f') constraints)
-      fun diff hi lo = TW.toIntX (TW.- (hi, lo)) 
-                       (* N.B. Overflow handled at use below *)
+      fun diff r = TW.toIntX (Range.width r)
+                   (* N.B. Overflow handled at use below *)
   in  case (constraint msf, constraint lsf)
-        of (NONE,          NONE) => { cost = c, benefit = b }
-         | (SOME {hi, lo}, NONE) => { cost = c ++ (lfactor - 1) * diff hi lo
-                                    , benefit = b
-                                    }
-         | (NONE, SOME {hi, lo}) => { cost = c ++ (mfactor - 1) * diff hi lo
-                                    , benefit = b
-                                    }
-         | (SOME _, SOME _)      => { cost = c, benefit = b + 1 }
+        of (NONE,   NONE)   => { cost = c, benefit = b }
+         | (SOME r, NONE)   => { cost = c ++ (lfactor - 1) * diff r
+                               , benefit = b
+                               }
+         | (NONE,   SOME r) => { cost = c ++ (mfactor - 1) * diff r
+                               , benefit = b
+                               }
+         | (SOME _, SOME _) => { cost = c, benefit = b + 1 }
   end
   handle Overflow => { cost = INFINITY, benefit = b }
 @ 

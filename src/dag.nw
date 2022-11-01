@@ -128,7 +128,7 @@ fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
 structure Arrays = struct
   val MAXRANGE = 32
   structure TW = TargetWord
-  fun tooBig {lo, hi} = TW.> (TW.- (hi, lo), TW.fromInt MAXRANGE)
+  fun tooBig r = TW.> (Range.width r, TW.fromInt MAXRANGE)
   type arrays = name_array list AbsoluteFieldMap.map * int
   val empty = (AbsoluteFieldMap.empty, 0)
   <<name-array functions>>
