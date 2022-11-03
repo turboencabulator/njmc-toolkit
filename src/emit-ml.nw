@@ -1041,8 +1041,7 @@ fun knownCase(tests, known, unknown) =
 It's possible I'm using the wrong range set here.
 <<stmt>>=
 | INTCASE (value, arms) => 
-    let fun pptw n = pp.int (TW.toIntX n)
-                     handle Overflow => pp.te ("0wx" ^ TW.toString n)
+    let fun pptw n = pp.te ("0w" ^ TW.fmt StringCvt.DEC n)
         fun r(head, lo, hi, cases) = 
           if TW.<(hi, lo) then (head, cases)
 	  else r(" | ", lo, TW.-(hi, TW.one),

@@ -13,8 +13,7 @@ structure PPSx : PP_SX = struct
 
   fun ? (Sx.NIL)   = pp.te "nil"
     | ? (Sx.INT n) = pp.int n
-    | ? (Sx.WORD n) = (pp.int (TargetWord.toIntX n)
-                       handle Overflow => pp.te ("0x" ^ TargetWord.toString n))
+    | ? (Sx.WORD n) = pp.te (TargetWord.fmt StringCvt.DEC n)
     | ? (Sx.ATOM v) = pp.te v
     | ? (Sx.STRING v) = pp.te ("\"" ^ String.toCString v ^ "\"")
     | ? (Sx.CONS(car, cdr))  = 

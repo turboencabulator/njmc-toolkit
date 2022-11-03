@@ -415,9 +415,11 @@ fun ppcon' n = pp.te (
   else
     Int.toString n)
 val ppcon = Unparser.ATOM o ppcon'
-fun pptw' n = 
-  ppcon' (TW.toIntX n) handle Overflow =>
-  pp.te ("0x" ^ TW.fmt StringCvt.HEX n)
+fun pptw' n = pp.te (
+  if hex orelse TW.>(n, TW.fromInt Control.maxDecimal) then
+    "0x" ^ TW.fmt StringCvt.HEX n
+  else
+    TW.fmt StringCvt.DEC n)
 val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.
@@ -805,8 +807,7 @@ block or an emission.
     end
 <<stmt>>=
 | INTCASE (value, arms) => 
-    let fun pptw n = pp.int (TW.toIntX n)
-                     handle Overflow => pp.te ("0x" ^ TW.toString n)
+    let fun pptw n = pp.te (TW.fmt StringCvt.DEC n)
         fun r(lo, hi, cases) = 
           if TW.<(hi, lo) then cases 
 	  else r(lo, TW.-(hi, TW.one), pp.$ "case " :: pptw hi :: pp.$ ": $o" :: cases)

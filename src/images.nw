@@ -194,8 +194,7 @@ infix  9 dot
 <<[[exp]] auxiliaries>>=
 fun ppcon' n = pp.te (Int.toString n)
 val ppcon = Unparser.ATOM o ppcon'
-fun pptw' n = ppcon' (TargetWord.toIntX n) 
-              handle Overflow => pp.te ("0x"^ TargetWord.toString n)
+fun pptw' n = pp.te (TargetWord.fmt StringCvt.DEC n)
 val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.
