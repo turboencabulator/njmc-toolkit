@@ -77,7 +77,7 @@ fun stringInInterval (s, r as {lo, hi}) =
   if Range.isSingleton r then
     String.concat [                                s, " == ", TargetWord.toString lo]
   else
-    String.concat [TargetWord.toString lo, " <= ", s, "  < ", TargetWord.toString lo]
+    String.concat [TargetWord.toString lo, " <= ", s, "  < ", TargetWord.toString hi]
 @ 
 <<utilities>>=
 fun noisyLookup lookup s =
