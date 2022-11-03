@@ -546,13 +546,11 @@ struct
     pp.te (if lo+1 = hi then Int.toString lo
 	   else String.concat [Int.toString lo, "-", Int.toString (hi-1)])
   fun stdRange (r as {lo, hi}) =
-    bitRange {lo = TargetWord.toIntX lo, hi = TargetWord.toIntX hi}
-    handle Overflow =>
-      pp.te (if Range.isSingleton r then
-               TargetWord.fmt StringCvt.DEC lo
-             else
-               String.concat [TargetWord.fmt StringCvt.DEC lo, "-",
-                              TargetWord.fmt StringCvt.DEC (TargetWord.-(hi, TargetWord.one))])
+    pp.te (if Range.isSingleton r then
+             TargetWord.fmt StringCvt.DEC lo
+           else
+             String.concat [TargetWord.fmt StringCvt.DEC lo, "-",
+                            TargetWord.fmt StringCvt.DEC (TargetWord.-(hi, TargetWord.one))])
 
   fun tree smap =
     let fun tree (T.NODE {field=(f, n), children}) =
