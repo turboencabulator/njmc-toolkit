@@ -89,6 +89,6 @@ local
 in 
   fun showEdge (e, c) = 
     app (app print) [["Fusing fields "], edgeStrings e, [" at "], cost c,
-                     spaceGain (e, c), ["\n"]]
+                     (*spaceGain (e, c),*) ["\n"]]
 end
   
