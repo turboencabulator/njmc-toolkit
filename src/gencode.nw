@@ -96,13 +96,15 @@ fun gencase {addressType, addressAdd, addressToPC, fetch, noMatch}
 <<support for name arrays>>=
 local
   val arrayType = Type.ARRAY (Type.STRING, NONE)
-  fun maxIndex tbl = TW.toInt (TWMap.foldli (fn (i, _, _) => i) TW.zero tbl)
-  fun elems(~1, tbl, a) = Exp.array a
-    | elems( i, tbl, a) =
-        let val elem = case TWMap.find(tbl, TW.fromInt i) of NONE => Exp.missingString
-                                                           | SOME s => Exp.string s
-        in  elems(i-1, tbl, elem :: a)
-	end
+  fun numKeys tbl = TWMap.foldli (fn (i, _, _) => TW.+ (i, TW.one)) TW.zero tbl
+  fun elems(i, tbl, a) =
+        if i = TW.zero then Exp.array a
+        else
+          let val i = TW.- (i, TW.one)
+              val elem = case TWMap.find(tbl, i) of NONE => Exp.missingString
+                                                  | SOME s => Exp.string s
+          in  elems(i, tbl, elem :: a)
+          end
 in  
   fun arrayNumbered i = 
      case List.find (fn Dag.NAME_ARRAY { uid, ... } => uid = i) namearrays
@@ -111,7 +113,7 @@ in
   fun arrayName (Dag.NAME_ARRAY { field = (f, _), uid, ...}) =
     String.concat ["MATCH_name_", #name f, "_", Int.toString uid]
   fun addArrayDefn (a as Dag.NAME_ARRAY { field = (f, _), tbl, uid}, defns) =
-    (arrayName a, Code.VAR (SOME arrayType, SOME (elems (maxIndex tbl, tbl, []))))
+    (arrayName a, Code.VAR (SOME arrayType, SOME (elems (numKeys tbl, tbl, []))))
     :: defns
 end
 @ 

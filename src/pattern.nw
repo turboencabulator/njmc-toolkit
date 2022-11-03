@@ -380,7 +380,7 @@ val error = Error.error
 <<mutators>>
 fun rangeConstraints (f, relop, n) = (* result should be disjoined *)
   let val max = Field.fmax f
-      fun range(lo, hi) = [(f, {lo=TW.fromInt lo, hi=TW.fromInt hi})]
+      fun range(lo, hi) = [(f, {lo=lo, hi=hi})]
       fun bad relop n =
         Error.errorl ["Impossible constraint ", #name f, " ", relop, " ", Int.toString n]
       fun large relop n =
@@ -388,35 +388,33 @@ fun rangeConstraints (f, relop, n) = (* result should be disjoined *)
       fun small relop n =
         Error.errorl ["Constraint value too small in ", #name f, " ", relop, " ", Int.toString n]
   in  case relop
-	of Relop.EQ => range(n, n+1)
+        of Relop.EQ => range(TW.fromInt n, TW.fromInt (n+1))
          | Relop.LT => if n <= 0 then
                          bad "<" n
                        else if TW.fromInt n |>=| max then
                          large "<" n
-                       else range(0, n)
+                       else range(TW.zero, TW.fromInt n)
          | Relop.LE => if n < 0 then
                          bad "<=" n
                        else if TW.fromInt (n+1) |>=| max then
                          large "<=" n
-                       else range(0, n+1)
+                       else range(TW.zero, TW.fromInt (n+1))
          | Relop.GT => if TW.fromInt (n+1) |>=| max then
                          bad ">" n
                        else if n < 0 then
                          small ">" n
-                       else range(n+1, TW.toInt max) 
+                       else range(TW.fromInt (n+1), max)
          | Relop.GE => if TW.fromInt n |>=| max then
                          bad ">=" n
                        else if n <= 0 then
                          small ">=" n
-                       else range(n, TW.toInt max)
-         | Relop.NE => let val gt = range(n+1, TW.toInt max)
-                           val lt = range(0, n)
+                       else range(TW.fromInt n, max)
+         | Relop.NE => let val gt = range(TW.fromInt (n+1), max)
+                           val lt = range(TW.zero, TW.fromInt n)
                        in  if n = 0 then gt
                            else if TW.fromInt (n+1) = max then lt
                            else lt @ gt
                        end
-        handle Overflow =>
-          Error.unimp "range constraints spanning more than 31 signed bits"
   end
 fun constraint (f, relop, e) =
   let fun static n =
