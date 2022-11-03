@@ -60,10 +60,8 @@ local
     case FieldMap.find(names, f)
       of SOME _ => E.error ("Field names for field " ^ #name f ^ " already specified")
        | NONE => {names=FieldMap.insert(names, f, spec), checking=checking} : info
-(*   fun fieldmax ({range={lo,hi},...}:field) = Util.twoRaised(hi-lo) *)
-  val fieldmax = Field.fmax
   val (op >=, op <) = (TW.>=, TW.<)
-  fun ok(f, x) = x >= TW.zero andalso x < fieldmax f
+  fun ok(f, x) = x >= TW.zero andalso x < Field.fmax f
   <<mapping functions>>
 in
   fun setAllNames (f, l, i) = bindSpec(f, allSpec (f, l), i)
@@ -100,9 +98,9 @@ fun allSpec (f : field, names) =
                     of NONE => StringMap.insert(tab, name, x)
                      | SOME _ => E.errorl ["Duplicate definitions for value ", name,
                                            " of field ", #name f])
-	| bind([], limit, tab) =
-	    if limit = fieldmax f then tab
-	    else E.errorl ["Field ", #name f, " has ", TW.toString(fieldmax f),
+        | bind([], limit, tab) =
+            if limit = Field.fmax f then tab
+            else E.errorl ["Field ", #name f, " has ", TW.toString(Field.fmax f),
                            " values, but spec gave ", TW.toString limit, " names"]
   in  (bind(names, TW.zero, StringMap.empty), true)
   end

@@ -51,7 +51,6 @@ structure Util = struct
                 | p => let val half = exp {base = base * base, power = power div 2} 
                        in  case power mod 2 of 0 => half | _ => base * half
                        end
-  fun twoRaised n = Word.toInt (Word.<< (0w1, Word.fromInt n))
  
   fun lookup tab name = StringMap.find(tab, name)
  

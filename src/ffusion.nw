@@ -350,10 +350,8 @@ Fusing fields $f_m$ and $f_l$ gives $2^n f_m + f_l$, where $n$ is the
 width of field~$f_l$.  I call $2^n$~[[lfactor]].
 <<field fusion>>=
 fun costEstimate extract ({msf, lsf}, patterns) =
-  let val lwidth = fwidth lsf
-      val lfactor = TW.toInt(TW.<<(TW.one, Word.fromInt lwidth))
-      val mwidth = fwidth msf
-      val mfactor = TW.toInt(TW.<<(TW.one, Word.fromInt mwidth))
+  let val lfactor = TW.toInt (Field.afmax lsf)
+      val mfactor = TW.toInt (Field.afmax msf)
       <<define [[addCost]] to add cost of one disjunct>>
   in  foldAbs extract addCost { cost = FINITE 0, benefit = 0 } patterns
   end
@@ -390,9 +388,8 @@ fun addCost (D constraints, { cost=c, benefit=b }) =
   end
   handle Overflow => { cost = INFINITY, benefit = b }
 @ 
-We need field width and addition of weird numbers.
+We need addition of weird numbers.
 <<utilities>>=
-fun fwidth ({name, range={hi, lo}, class}, _) = hi - lo
 infix 6 ++
 fun (FINITE n) ++ m = (FINITE (n + m) handle Overflow => INFINITY)
   | INFINITY   ++ _ = INFINITY
