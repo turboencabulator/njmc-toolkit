@@ -176,84 +176,76 @@ functor CodeFun (structure Constructor : SLED_CONSTRUCTOR
 end
 @ 
 <<substitution>>=
-local
-  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
-in
-  fun subst sigma =
-    let fun stmt (STATEMENT' (smap, rgn, s)) = STATEMENT' (smap, rgn, stmt s)
-          | stmt SKIP = SKIP
-          | stmt (st as BLOCK_COMMENT _) = st
-          | stmt (st as COMMENTED_STMT (s, c)) = COMMENTED_STMT(stmt s, c)
-          | stmt (st as RESYNCH_STMT _) = st
-          | stmt (st as EMIT tokens) =
-              EMIT (map (fn {value, width, offset} =>
-			       {value=sigma value, width=width, offset=offset}) tokens)
-          | stmt (st as BLOCK (defns, stmts)) = 
-              BLOCK (map (fn (n, d) => (n, defn d)) defns, map stmt stmts)
-          | stmt (st as IF arms) = 
-	      IF (map (fn(e, s) => (sigma e, stmt s)) arms)
-          | stmt (st as TAGCASE (instance, ty, arms)) = 
-              TAGCASE(sigma instance, ty, map (fn (c, s) => (c, stmt s)) arms)
-          | stmt (st as INTCASE (value, arms)) = 
-              INTCASE(sigma value, map (fn (r, s) => (r, stmt s)) arms)
-          | stmt (st as FAIL (msg, args)) = FAIL(msg, map sigma args)
-          | stmt (st as ALLOC_CLOSURE _) = st
-          | stmt (st as RETURN e) = RETURN (sigma e)
-          | stmt (st as ASGN (l, r)) = ASGN(sigma l, sigma r)
-          | stmt (st as EVAL e) = EVAL (sigma e)
-          | stmt (st as METHOD_CALL (obj, method, args)) =
-                            METHOD_CALL(sigma obj, method, map sigma args)
-          | stmt (st as RAISE (exn, args)) = RAISE (sigma exn, map sigma args)
-          | stmt (st as ARM _) = st
-          | stmt (st as RAW _) = st
-          | stmt (MATCH {defns, decider, arms}) =
-              MATCH { defns = map (fn (n, d) => (n, defn d)) defns
-                    , decider = stmt decider
-                    , arms = IntMap.map stmt arms
-                    }
-	and defn (VAR (t, e)) = VAR (t, optmap sigma e)
-          | defn (CONST (e, t)) = CONST (sigma e, t)
-          | defn (d as TYPEDEF _) = d
-          | defn (d as EXCEPTION _) = d
-          | defn (FUNCTION (f, body)) = FUNCTION (f, stmt body)
-   in  stmt
-   end
-end
+fun subst sigma =
+  let fun stmt (STATEMENT' (smap, rgn, s)) = STATEMENT' (smap, rgn, stmt s)
+        | stmt SKIP = SKIP
+        | stmt (st as BLOCK_COMMENT _) = st
+        | stmt (st as COMMENTED_STMT (s, c)) = COMMENTED_STMT(stmt s, c)
+        | stmt (st as RESYNCH_STMT _) = st
+        | stmt (st as EMIT tokens) =
+            EMIT (map (fn {value, width, offset} =>
+                             {value=sigma value, width=width, offset=offset}) tokens)
+        | stmt (st as BLOCK (defns, stmts)) =
+            BLOCK (map (fn (n, d) => (n, defn d)) defns, map stmt stmts)
+        | stmt (st as IF arms) =
+            IF (map (fn(e, s) => (sigma e, stmt s)) arms)
+        | stmt (st as TAGCASE (instance, ty, arms)) =
+            TAGCASE(sigma instance, ty, map (fn (c, s) => (c, stmt s)) arms)
+        | stmt (st as INTCASE (value, arms)) =
+            INTCASE(sigma value, map (fn (r, s) => (r, stmt s)) arms)
+        | stmt (st as FAIL (msg, args)) = FAIL(msg, map sigma args)
+        | stmt (st as ALLOC_CLOSURE _) = st
+        | stmt (st as RETURN e) = RETURN (sigma e)
+        | stmt (st as ASGN (l, r)) = ASGN(sigma l, sigma r)
+        | stmt (st as EVAL e) = EVAL (sigma e)
+        | stmt (st as METHOD_CALL (obj, method, args)) =
+                          METHOD_CALL(sigma obj, method, map sigma args)
+        | stmt (st as RAISE (exn, args)) = RAISE (sigma exn, map sigma args)
+        | stmt (st as ARM _) = st
+        | stmt (st as RAW _) = st
+        | stmt (MATCH {defns, decider, arms}) =
+            MATCH { defns = map (fn (n, d) => (n, defn d)) defns
+                  , decider = stmt decider
+                  , arms = IntMap.map stmt arms
+                  }
+      and defn (VAR (t, e)) = VAR (t, Option.map sigma e)
+        | defn (CONST (e, t)) = CONST (sigma e, t)
+        | defn (d as TYPEDEF _) = d
+        | defn (d as EXCEPTION _) = d
+        | defn (FUNCTION (f, body)) = FUNCTION (f, stmt body)
+  in  stmt
+  end
 <<expression search>>=
-local
-  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
-in
-  fun existsExp p =
-    let fun stmt (STATEMENT' (_, _, s)) = stmt s
-          | stmt SKIP = false
-          | stmt (BLOCK_COMMENT _) = false
-          | stmt (COMMENTED_STMT (s, c)) = stmt s
-          | stmt (RESYNCH_STMT _) = false
-          | stmt (EMIT tokens) = List.exists (p o #value) tokens
-          | stmt (BLOCK (defns, stmts)) =
-              List.exists (defn o #2) defns orelse List.exists stmt stmts
-          | stmt (IF arms) = List.exists (fn(e, s) => p e orelse stmt s) arms
-          | stmt (TAGCASE (instance, ty, arms)) =
-              p instance orelse List.exists (stmt o #2) arms
-          | stmt (INTCASE (value, arms)) = 
-              p value    orelse List.exists (stmt o #2) arms
-          | stmt (FAIL (msg, args)) = List.exists p args
-          | stmt (ALLOC_CLOSURE _) = false
-          | stmt (RETURN e) = p e
-          | stmt (ASGN (l, r)) = p l orelse p r
-          | stmt (EVAL e) = p e
-          | stmt (METHOD_CALL (obj, method, args)) = p obj orelse List.exists p args
-          | stmt (RAISE (exn, args)) = p exn orelse List.exists p args
-          | stmt (ARM _) = false
-          | stmt (RAW _) = false
-          | stmt (MATCH {defns, decider, arms}) =
-              List.exists (defn o #2) defns orelse stmt decider orelse
-              IntMap.exists stmt arms
-	and defn (VAR (t, e)) = (case e of SOME e => p e | NONE => false)
-          | defn (CONST (e, t)) = p e
-          | defn (d as TYPEDEF _) = false
-          | defn (d as EXCEPTION _) = false
-          | defn (FUNCTION (f, body)) = stmt body
-   in  stmt
-   end
-end
+fun existsExp p =
+  let fun stmt (STATEMENT' (_, _, s)) = stmt s
+        | stmt SKIP = false
+        | stmt (BLOCK_COMMENT _) = false
+        | stmt (COMMENTED_STMT (s, c)) = stmt s
+        | stmt (RESYNCH_STMT _) = false
+        | stmt (EMIT tokens) = List.exists (p o #value) tokens
+        | stmt (BLOCK (defns, stmts)) =
+            List.exists (defn o #2) defns orelse List.exists stmt stmts
+        | stmt (IF arms) = List.exists (fn(e, s) => p e orelse stmt s) arms
+        | stmt (TAGCASE (instance, ty, arms)) =
+            p instance orelse List.exists (stmt o #2) arms
+        | stmt (INTCASE (value, arms)) =
+            p value    orelse List.exists (stmt o #2) arms
+        | stmt (FAIL (msg, args)) = List.exists p args
+        | stmt (ALLOC_CLOSURE _) = false
+        | stmt (RETURN e) = p e
+        | stmt (ASGN (l, r)) = p l orelse p r
+        | stmt (EVAL e) = p e
+        | stmt (METHOD_CALL (obj, method, args)) = p obj orelse List.exists p args
+        | stmt (RAISE (exn, args)) = p exn orelse List.exists p args
+        | stmt (ARM _) = false
+        | stmt (RAW _) = false
+        | stmt (MATCH {defns, decider, arms}) =
+            List.exists (defn o #2) defns orelse stmt decider orelse
+            IntMap.exists stmt arms
+      and defn (VAR (t, e)) = (case e of SOME e => p e | NONE => false)
+        | defn (CONST (e, t)) = p e
+        | defn (d as TYPEDEF _) = false
+        | defn (d as EXCEPTION _) = false
+        | defn (FUNCTION (f, body)) = stmt body
+  in  stmt
+  end

@@ -244,8 +244,6 @@ fun genNode (Dag.NODE {field=f, children}, tokensSet) =
 	    TokenSet.foldr (fn (t, s) => assignToken t :: s) stmts tokensNeeded
       in  Code.BLOCK ([], addTokens (addName [Vector.sub(armsInvocations, armsid)]))
       end
-<<utilities>>=
-fun optmap f = fn NONE => NONE | SOME x => SOME (f x)	        
 <<new node generation>>=
 fun edgeNode  (EDGE { node,  ...}) = node
 fun edgeRange (EDGE { range, ...}) = range

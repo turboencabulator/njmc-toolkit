@@ -87,7 +87,6 @@ struct
   val pattern = Code.Constructor.Patterns.Pure.subst exp
   structure C = Code
   structure U = UnifiedExp
-  fun optmap f NONE = NONE | optmap f (SOME x) = SOME (f x)
   fun stmt C.SKIP = C.SKIP
       <<stmt rules>>
   and consStmt (C.BLOCK ([], body), ss) = foldr consStmt ss body
@@ -384,7 +383,7 @@ in  case arms
        | _ => C.IF arms
 end
 <<[[and defn]]\ldots>>=
-and defn (C.VAR (t, e)) = C.VAR (t, optmap exp e)
+and defn (C.VAR (t, e)) = C.VAR (t, Option.map exp e)
   | defn (C.CONST (e, t)) = C.CONST (exp e, t)
   | defn (d as C.TYPEDEF _) = d
   | defn (d as C.EXCEPTION _) = d

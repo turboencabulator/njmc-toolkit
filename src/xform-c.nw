@@ -254,10 +254,8 @@ This is actually remarkably easy; we just put together machinery
 defined elsewhere.
 <<defn>>=
 and defn (*Gamma*) (name, d) = 
-  let fun optMap f NONE = NONE
-	| optMap f (SOME x) = SOME (f x)
-      fun defn(VAR (t, e))  = VAR (optMap UU.unsafeUnion t, optMap exp e)
-        | defn(CONST(e, t)) = CONST (exp e, optMap UU.unsafeUnion t)
+  let fun defn(VAR (t, e))  = VAR (Option.map UU.unsafeUnion t, Option.map exp e)
+        | defn(CONST(e, t)) = CONST (exp e, Option.map UU.unsafeUnion t)
         | defn(TYPEDEF ty)  = TYPEDEF (UU.unsafeUnion ty)
         | defn(FUNCTION (f, body)) = FUNCTION (function f, stmt body)
         | defn(EXCEPTION e) = EXCEPTION e

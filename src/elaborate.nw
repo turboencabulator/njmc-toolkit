@@ -398,8 +398,7 @@ constructor.
 <<elaborate constructor [[(opcode, operands, tyname, branches)]]>>=
     fun elabInterp (f, x, (syntax, operands), ty, branches) lookup (name, rho) =
       let <<rebind [[rho]] to include bindings for the operands>>
-          fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
-          val sigma = Exp.multiSubst (optmap D.projectIntE o Util.lookup rho)
+          val sigma = Exp.multiSubst (Option.map D.projectIntE o Util.lookup rho)
           (* now elaborate each branch under that interpretation *)
           fun elabBranch((conds, eqnrho), pat)  = 
               let val patLabels = ElabExp.patternLabels pat

@@ -121,8 +121,6 @@ datatype name_array =
 type 'a dag = node * name_array list * 'a Tree.Match.arm list vector
 @ The fields [[codename]] and [[storageclass]] can be defaulted (to a
 gensym'ed name and to [[static]], respectively).
-<<name arrays>>=
-fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
 @
 <<structure for name arrays>>=
 structure Arrays = struct
@@ -243,7 +241,6 @@ If edge merging results in a single each, the node is replaced by
 its child, provided the edge really covers all possible values
 of the field.
 <<functions>>=
-<<name arrays>>
 fun node2dag({ field, children }, arrays, armtab) =
   let val _ = () (*  outtree(\ascii_dag, n) *)
       val (children, arrays, armtab) = combineChildren (field, children, arrays,armtab)
@@ -276,7 +273,7 @@ fun tree2dag(T.NODE nspec) =
       in  (node, arrays, armvec) : 'a dag
       end
   | tree2dag(T.LEAF {name, arms}) = 
-      (LEAF {name=optmap STRING name, arms=0}, [], #[arms])
+      (LEAF {name=Option.map STRING name, arms=0}, [], #[arms])
 @
 Here's where I check coverage.
 Only success or failure of [[covers]] is meaningful, not

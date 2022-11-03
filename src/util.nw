@@ -117,7 +117,6 @@ structure Wildcard = struct
   end
 end
 <<utilities>>=
-fun optmap f = fn NONE => NONE | SOME x => SOME (f x)
 fun vectorMap f v = Vector.tabulate (Vector.length v, fn i => f (Vector.sub (v, i)))
 @ 
 <<utilities>>=

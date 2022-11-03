@@ -157,7 +157,7 @@ fun elaborate
 			       { original = originalElse, answers = StringMap.empty,
 				 name = NONE, code = elsearm, patRegion = rgn elsearm, 
 			         conditions = Absolute.Exp.Set.empty,
-			         patlen = optmap (fn _ => 0) succptr })]
+			         patlen = Option.map (fn _ => 0) succptr })]
 		     end
 <<function [[elaborate]]>>=
 	    val (emap, strip, errorList) = (Error.emap, Error.strip, Error.errorList)
@@ -179,8 +179,6 @@ fun elaborate
 		    end
   in  Error.emap (fn ms => (header, ms)) (Error.errorList (map match matches))
   end
-<<aux functions>>=
-fun optmap f (SOME x) = SOME (f x) | optmap f NONE = NONE
 <<utilities>>=
 fun armRegion (e, eqns, armName, code as (lines, region)) =
   SourceMap.span(Ast.expRegion e, region)
@@ -475,7 +473,7 @@ fun fieldbindingsToSoln ((P.DIS(name, conds, (ccs, labels, len)), bbs), inputs) 
 	  result
       val result = StringMap.foldli addLabel StringMap.empty labels
       fun cvt x =
-	superSimplify (Exp.multiSubst (optmap Exp.afield o AFV.fieldFor varstate) x)
+        superSimplify (Exp.multiSubst (Option.map Exp.afield o AFV.fieldFor varstate) x)
       fun addVar (v, result) =
          let val answer = getOpt(StringMap.find(answers, v),
 				 Exp.var ("could not solve for " ^ v))
