@@ -1042,11 +1042,13 @@ It's possible I'm using the wrong range set here.
 <<stmt>>=
 | INTCASE (value, arms) => 
     let fun pptw n = pp.te ("0w" ^ TW.fmt StringCvt.DEC n)
-        fun r(head, lo, hi, cases) = 
-          if TW.<(hi, lo) then (head, cases)
-	  else r(" | ", lo, TW.-(hi, TW.one),
-                 pp.te head :: pptw hi :: pp.$ "=> $o" :: cases)
-	fun addRange ({lo, hi}, (head, cases)) = r(head, lo, TW.-(hi, TW.one), cases)
+        fun addRange ({lo, hi}, (head, cases)) =
+          if lo = hi then (head, cases)
+          else
+            let val hi = TW.-(hi, TW.one)
+                val cases = pp.te head :: pptw hi :: pp.$ "=> $o" :: cases
+            in  addRange ({lo=lo, hi=hi}, (" | ", cases))
+            end
 	fun addArm ((ranges, arm), (head, s)) = 
 	  let val body = stmt arm :: s
 	      val (head, body) = RangeSet.foldr addRange (head, body) ranges
