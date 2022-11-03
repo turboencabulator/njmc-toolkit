@@ -382,32 +382,32 @@ fun rangeConstraints (f, relop, n) = (* result should be disjoined *)
   let val max = Field.fmax f
       fun range(lo, hi) = [(f, {lo=TW.fromInt lo, hi=TW.fromInt hi})]
       fun bad relop n =
-	Error.errorl ["Impossible constraint ", #name f, " ",relop," ", Int.toString n]
+        Error.errorl ["Impossible constraint ", #name f, " ", relop, " ", Int.toString n]
+      fun large relop n =
+        Error.errorl ["Constraint value too large in ", #name f, " ", relop, " ", Int.toString n]
+      fun small relop n =
+        Error.errorl ["Constraint value too small in ", #name f, " ", relop, " ", Int.toString n]
   in  case relop
 	of Relop.EQ => range(n, n+1)
          | Relop.LT => if n <= 0 then
                          bad "<" n
                        else if TW.fromInt n |>=| max then
-                         error("Constraint value too large in " ^
-                               #name f ^ " < " ^ Int.toString n)
+                         large "<" n
                        else range(0, n)
          | Relop.LE => if n < 0 then
                          bad "<=" n
-                       else if TW.fromInt n |>=| max then
-                         error("Constraint value too large in " ^
-                               #name f ^ " <= " ^ Int.toString n)
+                       else if TW.fromInt (n+1) |>=| max then
+                         large "<=" n
                        else range(0, n+1)
          | Relop.GT => if TW.fromInt (n+1) |>=| max then
                          bad ">" n
-                       else if n < ~1 then
-                         error("Constraint value too small in " ^
-                               #name f ^ " > " ^ Int.toString n)
+                       else if n < 0 then
+                         small ">" n
                        else range(n+1, TW.toInt max) 
          | Relop.GE => if TW.fromInt n |>=| max then
                          bad ">=" n
-                       else if n < 0 then
-                         error("Constraint value too small in " ^
-                               #name f ^ " >= " ^ Int.toString n)
+                       else if n <= 0 then
+                         small ">=" n
                        else range(n, TW.toInt max)
          | Relop.NE => let val gt = range(n+1, TW.toInt max)
                            val lt = range(0, n)
