@@ -503,7 +503,7 @@ fun flookup field lookup =
   end                                
 <<warn of [[n]] hiding>>=
 ErrorMsg.warning sourcemap (region, 
-  ["value ", n, " = ", TargetWord.toString k, " of field ", #name field,
+  ["value ", n, " = ", TargetWord.fmt StringCvt.DEC k, " of field ", #name field,
    " hides integer ", n, " in outer scope (source coordinates may be off)"])
 @ 
 

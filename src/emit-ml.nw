@@ -636,7 +636,7 @@ fun ppcon' n = pp.te (
 val ppcon = Unparser.ATOM o ppcon'
 fun pptw' n = pp.te (
   if hex orelse TW.>(n, TW.fromInt Control.maxDecimal) then "0wx" ^ TW.fmt StringCvt.HEX n
-  else "0w" ^ TW.toString n)
+  else "0w" ^ TW.fmt StringCvt.DEC n)
 val pptw = Unparser.ATOM o pptw'
 @
 We begin with the basics of arithmetic.

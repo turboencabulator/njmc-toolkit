@@ -86,7 +86,7 @@ fun someSpec(f : field, pairs) =
 	     | SOME _ => Error.errorl ["Duplicate definitions for value ", name,
 				       " of field ", #name f]
 	else
-	  E.errorl ["Value ", TW.toString x, " won't fit in field ", #name f]
+	  E.errorl ["Value ", TW.fmt StringCvt.DEC x, " won't fit in field ", #name f]
   in   (foldl bindName StringMap.empty pairs, false)
   end
 @
@@ -100,8 +100,8 @@ fun allSpec (f : field, names) =
                                            " of field ", #name f])
         | bind([], limit, tab) =
             if limit = Field.fmax f then tab
-            else E.errorl ["Field ", #name f, " has ", TW.toString(Field.fmax f),
-                           " values, but spec gave ", TW.toString limit, " names"]
+            else E.errorl ["Field ", #name f, " has ", TW.fmt StringCvt.DEC (Field.fmax f),
+                           " values, but spec gave ", TW.fmt StringCvt.DEC limit, " names"]
   in  (bind(names, TW.zero, StringMap.empty), true)
   end
 @

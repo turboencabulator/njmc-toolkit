@@ -593,7 +593,7 @@ structure Img = struct
     in  pp.li o m
     end
   fun int n = pp.te (Int.toString n)
-  fun tw  n = pp.te (TW.toString  n)
+  fun tw  n = pp.te (TW.fmt StringCvt.DEC n)
   fun field (f : Field.field, n) = 
     pp.te (String.concat ["{", #name f, " at ", Int.toString n, "}"])
   fun constraint (f, r as {lo, hi}) =

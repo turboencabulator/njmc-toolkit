@@ -550,10 +550,10 @@ struct
     bitRange {lo = TargetWord.toIntX lo, hi = TargetWord.toIntX hi}
     handle Overflow =>
       pp.te (if Range.isSingleton r then
-               TargetWord.toString lo
+               TargetWord.fmt StringCvt.DEC lo
              else
-               String.concat [TargetWord.toString lo, "-",
-                              TargetWord.toString (TargetWord.-(hi, TargetWord.one))])
+               String.concat [TargetWord.fmt StringCvt.DEC lo, "-",
+                              TargetWord.fmt StringCvt.DEC (TargetWord.-(hi, TargetWord.one))])
 
   fun tree smap =
     let fun tree (T.NODE {field=(f, n), children}) =
