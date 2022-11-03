@@ -60,8 +60,6 @@ local
     case FieldMap.find(names, f)
       of SOME _ => E.error ("Field names for field " ^ #name f ^ " already specified")
        | NONE => {names=FieldMap.insert(names, f, spec), checking=checking} : info
-  val (op >=, op <) = (TW.>=, TW.<)
-  fun ok(f, x) = x >= TW.zero andalso x < Field.fmax f
   <<mapping functions>>
 in
   fun setAllNames (f, l, i) = bindSpec(f, allSpec (f, l), i)
@@ -80,7 +78,7 @@ We might wind up exporting these functions to the assemby-emitting stuff.
 <<mapping functions>>=
 fun someSpec(f : field, pairs) =
   let fun bindName((name, x), tab) =
-        if ok(f, x) then
+        if TW.<(x, Field.fmax f) then
 	  case StringMap.find(tab, name)
 	    of NONE => StringMap.insert(tab, name, x)
 	     | SOME _ => Error.errorl ["Duplicate definitions for value ", name,
