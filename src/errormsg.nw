@@ -116,10 +116,7 @@ end  (* structure ErrorMsg *)
 val verbosity = ref true   (* will be false eventually *)
 fun verbose msg =
   if !verbosity then
-    let open TextIO
-        fun shout s = (output (stdErr, s); flushOut stdErr) 
-    in  app shout msg; shout "\n"
-    end
+    (app TextIO.print msg; TextIO.print "\n")
   else ()
 
 fun verboseWithBody msg body =
