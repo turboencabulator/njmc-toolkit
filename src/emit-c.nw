@@ -722,7 +722,8 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
 @
 \subsection{Statements}
 <<stmt>>=
-  STATEMENT' (smap, rgn, s) => numberLines(smap, rgn, stmt s)
+  STATEMENT' (smap, rgn, s as RAW _) => numberLines(smap, rgn, stmt s)
+| STATEMENT' (smap, rgn, s) => stmt s
 @
 To do block comments right, I need to change a pp to remove comment
 markers.  The best we to do this would be to make it possible to

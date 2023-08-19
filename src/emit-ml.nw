@@ -936,7 +936,8 @@ and argMatch [] = pp.te "()"
 @
 \subsection{Statements}
 <<stmt>>=
-  STATEMENT' (smap, rgn, s) => numberLines (smap, rgn, stmt s)
+  STATEMENT' (smap, rgn, s as RAW _) => numberLines(smap, rgn, stmt s)
+| STATEMENT' (smap, rgn, s) => stmt s
 <<stmt>>=
 | BLOCK_COMMENT s =>
     let val wid = 68

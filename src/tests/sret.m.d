@@ -1,7 +1,5 @@
 #define sign_extend(N,SIZE) (((int)((N) << (sizeof(unsigned)*8-(SIZE)))) >> (sizeof(unsigned)*8-(SIZE)))
 #include <assert.h>
-
-#line 1 "tests/sret.m"
 { 
   dword MATCH_p = 
     
@@ -43,4 +41,3 @@
   MATCH_finished_a: (void)0; /*placeholder for label*/
   
 }
-
