@@ -3,9 +3,9 @@
 { 
   dword MATCH_p = 
     
-    #line 1 "tests/sret.m"
-    lc
-    
+#line 1 "tests/sret.m"
+lc
+
     ;
   unsigned MATCH_w_32_0;
   { 
@@ -14,21 +14,21 @@
             /* op*rd*op3*rs1*i*simm13 at 0 */ == 0x81C7E008) { 
       nextPC = 4 + MATCH_p; 
       
-      #line 2 "tests/sret.m"
-      
-              lc = nextPC;
-              return true;
-      
+#line 2 "tests/sret.m"
+
+        lc = nextPC;
+        return true;
+
       
       
     } /*opt-block*//*opt-block+*/
     else { 
       nextPC = MATCH_p; 
       
-      #line 5 "tests/sret.m"
-      
-              return false;
-      
+#line 5 "tests/sret.m"
+
+        return false;
+
       
       
     } /*opt-block*//*opt-block+*/

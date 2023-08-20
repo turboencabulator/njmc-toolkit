@@ -27,7 +27,7 @@ datatype pretty = BEGIN
                 | TEXT of string 
                 | LIST of pretty list
                 | SYNCH
-withtype break_info = {break: break, pre:string, post:string, none:string}
+withtype break_info = {break: break, pre:string, post:string, none:string, indent:bool}
 @ Indentation is an absolute quantity, not realtive.
 [[LIST]] is a grouping mechanism only; we work with the flattened sequence.
 @
@@ -41,6 +41,7 @@ signature PP = sig
     val i  : int -> pretty
     val ou : pretty
     val nl : pretty
+    val br : pretty
     val on : pretty
     val cn : pretty
     val te : string -> pretty
@@ -72,9 +73,10 @@ structure PP : PP = struct
     val en = END
     val i  = INDENT
     val ou = OUTDENT
-    val nl = BREAK {break=FORCED, pre="", post="", none=""}
-    val on = BREAK {break=OPTIONAL, pre="", post="", none=""}
-    val cn = BREAK {break=CONNECTED, pre="", post="", none=""}
+    val nl = BREAK {break=FORCED, pre="", post="", none="", indent=true}
+    val br = BREAK {break=FORCED, pre="", post="", none="", indent=false}
+    val on = BREAK {break=OPTIONAL, pre="", post="", none="", indent=true}
+    val cn = BREAK {break=CONNECTED, pre="", post="", none="", indent=true}
     val te = TEXT
     val li = LIST
     val sy = SYNCH
@@ -89,6 +91,7 @@ structure PP : PP = struct
             | e(#"$" :: #"t" :: s, r, inserts) =  r ::: i 2 :: e(s, [], inserts)
             | e(#"$" :: #"b" :: s, r, inserts) =  r ::: ou  :: e(s, [], inserts)
             | e(#"$" :: #"n" :: s, r, inserts) =  r ::: nl  :: e(s, [], inserts)
+            | e(#"$" :: #"N" :: s, r, inserts) =  r ::: br  :: e(s, [], inserts)
             | e(#"$" :: #"o" :: s, r, inserts) =  r ::: on  :: e(s, [], inserts)
             | e(#"$" :: #"c" :: s, r, inserts) =  r ::: cn  :: e(s, [], inserts)
             | e(#"$" :: #"#" :: s, r, inserts) =  r ::: sy  :: e(s, [], inserts)
@@ -128,9 +131,9 @@ structure PP : PP = struct
     | flatten END       = ""
     | flatten (INDENT _)= ""
     | flatten OUTDENT   = ""
-    | flatten (BREAK {break=FORCED, pre, post, none}) = pre ^ "\n" ^ post
+    | flatten (BREAK {break=FORCED, pre, post, ...}) = pre ^ "\n" ^ post
     | flatten SYNCH = "\n"
-    | flatten (BREAK {break=_, pre, post, none}) = none
+    | flatten (BREAK {none, ...}) = none
     | flatten (TEXT s)  = s
     | flatten (LIST l)  = String.concat(map flatten l)
   val synch = LIST [Short.nl, TEXT "#line 999 \"generated-code\"", Short.nl]
@@ -378,7 +381,7 @@ fun setSolid (l, remaining) =
             end
       and addString(N.TEXT s, (r, revline)) = text(s, (r, revline))
         | addString(N.BREAK (_, {break=PP.FORCED, ...}), _) = raise CannotSetSolid
-        | addString(N.BREAK (_, {none,...}), (r, revline)) = text(none, (r, revline))
+        | addString(N.BREAK (_, {none, ...}), (r, revline)) = text(none, (r, revline))
         | addString(N.SYNCH _, _) = raise CannotSetSolid
         | addString(N.BLOCK b, (r, l)) = addString(N.TEXT (setSolid (b, r)), (r, l))
       val (_, revline) = foldl addString (remaining, []) l
@@ -403,7 +406,7 @@ local
           indent = i, revline = [], remaining = width - i, prev = PREV best }
   fun append(N.TEXT s :: tail, depth, candidates) = 
         append(tail, depth, newCandidates s candidates)
-    | append(N.BREAK (i, {break, pre, post, none}) :: tail, depth, candidates) =
+    | append(N.BREAK (i, {break, pre, post, none, ...}) :: tail, depth, candidates) =
         let val forced = case break of PP.CONNECTED => true
                                      | PP.FORCED => true
                                      | PP.OPTIONAL => false
@@ -496,7 +499,7 @@ let fun ppfold f zero (PP.LIST l) = foldl (fn (p, z) => ppfold f z p) zero l
             | n (PP.OUTDENT)  = (case stack
                                    of n::t => ({size=size-n,stack=t}, waiting, current)
                                     | [] => addError "unmatched outdent")
-            | n(PP.BREAK b)   = add (BREAK(#size indent, b))
+            | n(PP.BREAK b)   = add (BREAK(if #indent b then #size indent else 0, b))
             | n(PP.SYNCH)     = add (SYNCH (#size indent))
             | n(PP.TEXT t)    = add (TEXT t)
             | n(PP.LIST _)    = Impossible.impossible "can't happen -- bad ppfold"

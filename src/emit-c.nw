@@ -750,7 +750,7 @@ better prettyprinter.
 	    pp.te (/**/ comment), pp.ou, pp.en ]
 <<stmt>>=
 | RESYNCH_STMT (file, line) =>
-     pp.li [ pp.nl, pp.te ("#line " ^ Int.toString line ^ " \"" ^ file ^ "\""), pp.nl ]
+    pp.li [ pp.br, pp.te ("#line " ^ Int.toString line ^ " \"" ^ file ^ "\""), pp.br ]
 <<stmt>>=
 | EMIT tokens => stmt (doEmit tokens)
 <<emission>>=
@@ -893,8 +893,8 @@ fun resynch {fileName, line, column} =
   pp.te (String.concat ["#line ", Int.toString line, " \"", fileName, "\""])
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
-      pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines, PP.synch]
-fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
+      pp.li [pp.br, resynch (SourceMap.filepos smap first), pp.br, lines, PP.synch]
+fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.br :: t) [] l)
 fun rawCode (smap, (lines,region)) = numberLines(smap, region, pplines lines)
 @ 
 \subsection{Utilities}
