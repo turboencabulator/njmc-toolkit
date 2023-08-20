@@ -145,10 +145,10 @@ fun eol pos =
      | SOME(file, line) => 
          (SourceMap.resynch sourcemap (pos+1, {fileName=file, line=line, column=NONE});
           resynch := NONE)
-fun posteol(pos, yytext) =
-  let val n = size yytext 
+fun posteol (yypos, yytext) =
+  let val n = size yytext - 1
       exception Impossible
-  in  if n > 0 andalso substring(yytext, n-1, 1) = "\n" then eol (pos + n - 1)
+  in  if n >= 0 andalso String.sub (yytext, n) = #"\n" then eol (yypos + n)
       else raise Impossible
   end
 <<lex arg init>>=
