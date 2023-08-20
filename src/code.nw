@@ -57,7 +57,7 @@ datatype statement
   | METHOD_CALL of exp * string * exp list (* should be an exp *)
   | RAISE of exp * exp list
   | ARM of int (* invoke arm list with given index (only inside matching statements) *)
-  | RAW of PP.pretty (* raw code, e.g., inside a matching statement *)
+  | RAW of string list (* raw code, e.g., inside a matching statement *)
   | MATCH of matcher
 and defined
   = VAR of  ty option * exp option

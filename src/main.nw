@@ -128,10 +128,6 @@ fun encoding c i (sm, ?) =
    (* totally bogus ``fetch templates'' *)
   val printers as (_, {match=ppMatch, ...}) = EmitC.printers {hex=false, pcUnit=8}
 
-  local structure pp = PP.Short in
-    fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
-  end
-
 
   structure RunDecoder = URunDecoder
 
@@ -163,7 +159,7 @@ fun encoding c i (sm, ?) =
               val trees = map tree matchers
               val dags  = Util.timed "dag building" (map (Dag.tree2dag o #1)) trees
               fun compile (lines, rgn) =
-                Code.STATEMENT' (codemap, rgn, Code.RAW (pplines lines))
+                Code.STATEMENT' (codemap, rgn, Code.RAW lines)
               val gencase = 
                 Gencode.gencase templates {optimizeTwoLeaves=opt, compile=compile}
               fun gen ((m, trailer), dag) = (gencase (m, dag), trailer)

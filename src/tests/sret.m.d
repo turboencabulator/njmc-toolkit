@@ -5,6 +5,7 @@
     
     #line 1 "tests/sret.m"
     lc
+    
     ;
   unsigned MATCH_w_32_0;
   { 
@@ -15,11 +16,8 @@
       
       #line 2 "tests/sret.m"
       
-
               lc = nextPC;
-
               return true;
-
       
       
       
@@ -30,7 +28,6 @@
       #line 5 "tests/sret.m"
       
               return false;
-
       
       
       

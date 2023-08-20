@@ -151,6 +151,10 @@ fun posteol (yypos, yytext) =
   in  if n >= 0 andalso String.sub (yytext, n) = #"\n" then eol (yypos + n)
       else raise Impossible
   end
+fun codeline (yypos, yytext) =
+  let val n = size yytext - 1 (* assume last char is always #"\n" *)
+  in  (Token.CODELINE (substring (yytext, 0, n)), (yypos, yypos + n))
+  end
 <<lex arg init>>=
 , sourcemap = sourcemap
 , resynch   = ref NONE 
@@ -172,7 +176,7 @@ To govern the start state:
 	posteol (yypos, yytext);
 	YYBEGIN CASEPAT; 
         (CASELINE (parseCaseline(false, yypos, explode yytext, impossible)), yyrgn));
-<CODE>.*\n => (posteol (yypos, yytext); (CODELINE yytext, yyrgn));
+<CODE>.*\n => (posteol (yypos, yytext); codeline (yypos, yytext));
 <<,arg fields>>=
 , impossible : string -> unit  (* must not return *)
 <<lex arg init>>=
@@ -227,7 +231,7 @@ decoding is done.
 <CASEARM>^{ws}*"else"\n       => (posteol(yypos, yytext); YYBEGIN CASEEMPTY; (R'ELSE, yyrgn));
 <CASEARM>^{ws}*"endmatch"\n   => (posteol(yypos, yytext); YYBEGIN CODE; (R'ENDMATCH, yyrgn));
 <CASEARM>.{0} => (YYBEGIN CASETAIL; continue());
-<CASETAIL>.*\n => (posteol(yypos, yytext); YYBEGIN CASEARM; (CODELINE yytext, yyrgn));
+<CASETAIL>.*\n => (posteol (yypos, yytext); YYBEGIN CASEARM; codeline (yypos, yytext));
 <CASEEMPTY>.{0} => (YYBEGIN CASEARM; (CODELINE yytext, (yypos-1, yypos-1)));
 @ [[CASETAIL]] is a dreadful hack to work around the longest-match
 rule.

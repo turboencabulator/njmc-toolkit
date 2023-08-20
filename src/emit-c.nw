@@ -837,7 +837,7 @@ block or an emission.
 | EVAL e => pp.li [ exp e, pp.te "; " ]
 | METHOD_CALL (obj, method, args) => stmt (Control.methodCall (obj, method, args))
 | RAISE (e, args) => Impossible.unimp "raising exceptions in C"
-| RAW raw => raw
+| RAW raw => pplines raw
 | ARM i => armsNumbered i
 @ 
 <<stmt>>=
@@ -894,7 +894,8 @@ fun resynch {fileName, line, column} =
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
       pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines, PP.synch]
-fun rawCode (smap, (lines,region)) = numberLines(smap, region, pp.li (map pp.te lines))
+fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
+fun rawCode (smap, (lines,region)) = numberLines(smap, region, pplines lines)
 @ 
 \subsection{Utilities}
 [[Cimage]] attempts to write a C string literal that maps back into

@@ -1070,7 +1070,7 @@ It's possible I'm using the wrong range set here.
 | EVAL e =>  exp e
 | METHOD_CALL (obj, method, args) => stmt (Control.methodCall (obj, method, args))
 | RAISE (e, args) => pp.li [pp.te "raise ", exp (Exp.call (e::args))]
-| RAW raw => raw
+| RAW raw => pplines raw
 | ARM i => Impossible.unimp "dagging of ML matchers"
 | MATCH _ => Impossible.unimp "code emission for ML matchers"
 @ 
@@ -1080,7 +1080,8 @@ fun resynch {fileName, line, column} =
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
       pp.li [pp.nl, resynch (SourceMap.filepos smap first), pp.nl, lines, PP.synch]
-fun rawCode (smap, (lines,region)) = numberLines(smap, region, pp.li (map pp.te lines))
+fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.nl :: t) [] l)
+fun rawCode (smap, (lines,region)) = numberLines(smap, region, pplines lines)
 @ 
 \subsection{Utilities}
 @
