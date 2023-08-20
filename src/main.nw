@@ -140,16 +140,16 @@ fun encoding c i (sm, ?) =
 
   fun matcher' templates opt specfiles =
     let val espec = Util.timed "elaborating specifications" ReadSLED.elabFiles specfiles
-        fun match mfile =
+        fun match (mfile, outfile) =
           let val (codemap, codefile) = ReadSLED.parseMatch mfile
               val match = Error.emap
                           (Util.timed "match elaboration" (Match.elaborate codemap))
                           (Error.epair (codefile, espec))
               val match = Error.strip match
-          in  Error.emap (fn m => (codemap, m, mfile)) match
+          in  Error.emap (fn m => (codemap, m, outfile)) match
           end handle Option =>
               (print "Uncaught exception Option in match elaboration\n"; Error.ERROR)
-        fun massage (codemap, (header, matchers), mfile) =
+        fun massage (codemap, (header, matchers), outfile) =
           let fun tree (match, trailer) = 
                 let val match =
                       if !fuse then Util.timed "match fusion" UMatchFusion.fuseMatch match
@@ -172,13 +172,13 @@ fun encoding c i (sm, ?) =
                 Util.timed "code generation" (map gen) (ListPair.zip(matchers, dags))
               val matchFile = {header=header, sourcemap=codemap, matchers=codes}
                 : Gencode.Code.match_file
-              val _ = writeMatcher (mfile ^ ".d") matchFile
+              val _ = writeMatcher outfile matchFile
           in  (codemap, (header, matchers), tree, trees, dags, codes)
           end
     in  Error.emap massage o match
     end
 
-  fun matcher x = matcher' RunDecoder.defaultTemplates true x
+  fun matcher specfiles = matcher' RunDecoder.defaultTemplates true specfiles
 
   <<decoder>>
   <<field fusion>>

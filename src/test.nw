@@ -4,7 +4,7 @@ Test for losing MSB in SPARC return instruction.
 structure SparcRet = struct
   fun run _ = 
     let val m = CC.matcher ["tests/sparc.spec"]
-    in  m "tests/sret.m"
+    in  m ("tests/sret.m", "tests/sret.m.d")
     end
   val _ = run 0
 end

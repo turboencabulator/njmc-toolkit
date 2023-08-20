@@ -34,8 +34,8 @@ structure CC = struct
   val addressType = if true then #addressType templates else #addressType templates'
   val fetch = if true then #fetch templates else #fetch templates'
   val noMatch = if true then #noMatch templates else #noMatch templates'
-  fun matcher  x = Main.matcher' templates true x
-  fun matcher' x = Main.matcher' templates' true x
+  fun matcher  specfiles = Main.matcher' templates true specfiles
+  fun matcher' specfiles = Main.matcher' templates' true specfiles
 end
 @ 
 and for Rich Piazza.
@@ -54,8 +54,8 @@ structure Piazza = struct
 		end
     , noMatch = Code.COMMENTED_STMT (call ("assert", [Exp.false']), "no match")
     }
-  fun matcher x = Main.matcher' templates true x
-  fun test () = matcher ["../piazza/big/big.spec"] "../piazza/big/big.m";
+  fun matcher specfiles = Main.matcher' templates true specfiles
+  fun test () = matcher ["../piazza/big/big.spec"] ("../piazza/big/big.m", "../piazza/big/big.m.d");
 end
 @ 
 And for the xs example.
@@ -75,10 +75,10 @@ structure Xs = struct
     , noMatch = Code.COMMENTED_STMT (Code.EVAL (call ("assert", [Exp.false'])),
                                      "no match")
     }
-  fun matcher x = Main.matcher' templates true x
+  fun matcher specfiles = Main.matcher' templates true specfiles
   val tkroot = "../../../toolkit/www"
   fun test () = matcher [tkroot ^ "/examples/xs/xs.spec"] 
-                        (tkroot ^ "/examples/xs/xs.m");
+                        (tkroot ^ "/examples/xs/xs.m", tkroot ^ "/examples/xs/xs.m.d");
 end
 @ 
 
