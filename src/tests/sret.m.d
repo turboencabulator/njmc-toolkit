@@ -6,6 +6,7 @@
 #line 1 "tests/sret.m"
 lc
 
+#line 10 "tests/sret.m.d"
     ;
   unsigned MATCH_w_32_0;
   { 
@@ -19,6 +20,7 @@ lc
         lc = nextPC;
         return true;
 
+#line 24 "tests/sret.m.d"
       
       
     } /*opt-block*//*opt-block+*/
@@ -29,6 +31,7 @@ lc
 
         return false;
 
+#line 35 "tests/sret.m.d"
       
       
     } /*opt-block*//*opt-block+*/

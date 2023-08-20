@@ -128,6 +128,11 @@ fun encoding c i (sm, ?) =
    (* totally bogus ``fetch templates'' *)
   val printers as (_, {match=ppMatch, ...}) = EmitC.printers {hex=false, pcUnit=8}
 
+  fun writeMatcher filename matchFile =
+    let val pp = Util.timed "matcher prettyprinting" ppMatch matchFile
+    in  EC.ppWrite EC.csynch 78 filename pp
+    end
+
 
   structure RunDecoder = URunDecoder
 
@@ -167,8 +172,7 @@ fun encoding c i (sm, ?) =
                 Util.timed "code generation" (map gen) (ListPair.zip(matchers, dags))
               val matchFile = {header=header, sourcemap=codemap, matchers=codes}
                 : Gencode.Code.match_file
-              val pp = Util.timed "matcher prettyprinting" ppMatch matchFile
-              val _ = EC.ppWrite EC.nosynch 78 (mfile ^ ".d") pp
+              val _ = writeMatcher (mfile ^ ".d") matchFile
           in  (codemap, (header, matchers), tree, trees, dags, codes)
           end
     in  Error.emap massage o match
@@ -182,11 +186,6 @@ end
 @ 
 <<decoder>>=
 
-fun writeMatcher filename matchFile =
-  let val pp = Util.timed "matcher prettyprinting" ppMatch matchFile
-  in  EC.ppWrite EC.nosynch 78 filename pp
-  end
-          
 fun eseq f x = Error.strip (Error.emap f x)
 
 structure RD = RunDecoder
