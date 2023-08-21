@@ -783,7 +783,7 @@ block or an emission.
 	fun shortTest guard = 
           if alwaysSatisfied guard then pp.te "" else test guard
         fun blockArm s = pp.li [stmt s, pp.te " ", pp.te "/*opt-block*/"]
-	fun arm (s as BLOCK ([], [RAW _])) = blockArm s
+	fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
 	  | arm (BLOCK ([], [s])) = pp.li [arm s, pp.te "/*opt-block+*/"]
 	  | arm (s as BLOCK _) = blockArm s 
           | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
