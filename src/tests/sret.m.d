@@ -23,7 +23,7 @@ lc
 #line 24 "tests/sret.m.d"
       
       
-    } /*opt-block*//*opt-block+*/
+    } 
     else { 
       nextPC = MATCH_p; 
       
@@ -34,7 +34,7 @@ lc
 #line 35 "tests/sret.m.d"
       
       
-    } /*opt-block*//*opt-block+*/
+    } 
     
   }goto MATCH_finished_a; 
   

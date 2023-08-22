@@ -779,21 +779,25 @@ There's a couple of hacks to avoid redundant braces if the arm is a
 block or an emission.
 <<stmt>>=
 | IF arms =>
-    let fun test guard = pp.li [ pp.$ "if $t${(", exp guard, pp.$ ")$}$b "]
-	fun shortTest guard = 
-          if alwaysSatisfied guard then pp.te "" else test guard
-        fun blockArm s = pp.li [stmt s, pp.te " ", pp.te "/*opt-block*/"]
-	fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
-	  | arm (BLOCK ([], [s])) = pp.li [arm s, pp.te "/*opt-block+*/"]
-	  | arm (s as BLOCK _) = blockArm s 
+    let fun test guard tail =
+          pp.cn :: pp.te "else " :: pp.$ "if $t${(" :: exp guard :: pp.$ ")$}$b " :: tail
+        fun shortTest guard tail =
+          if alwaysSatisfied guard then pp.cn :: pp.te "else " :: tail else test guard tail
+        fun blockArm s = pp.li [stmt s, pp.te " "]
+        fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
+          | arm (BLOCK ([], [s])) = arm s
+          | arm (s as BLOCK _) = blockArm s
           | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
-	fun addArm ((guard, body), arms) = 
-           let val test = if length arms < 4 then shortTest else test
-	   in  pp.cn :: pp.te "else " :: test guard :: arm body :: arms
-	   end
-	val units = (tl o tl) (foldr addArm [pp.en] arms)
-	            handle Empty => Impossible.impossible "list"
-    in  pp.li (pp.be :: units) 
+        fun addArms [] = Impossible.impossible "no arms"
+          | addArms [(guard, body)] =
+              if alwaysSatisfied guard then stmt body
+              else Impossible.impossible "single arm not always satisfied"
+          | addArms ((guard, body)::t) =
+              let val init = shortTest guard (arm body :: pp.en :: nil)
+                  fun next ((guard, body), tail) = test guard (arm body :: tail)
+              in  pp.li (pp.be :: (tl o tl o foldl next init) t)
+              end
+    in  (addArms o rev) arms
     end
 <<stmt>>=
 | TAGCASE (instance, ty, arms) => 
