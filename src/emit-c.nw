@@ -761,7 +761,7 @@ fun doEmit tokens = Control.emit {pcUnit = pcUnit, tokens = tokens}
 	    (pp.li o map (fn d => pp.li [defn d, pp.$ ";$n"])) defns,
             stmts ss, pp.$ "$b$c}$}" ]
 <<sequence of statements [[ss]]>>=
-(pp.li o map (fn s => pp.li [stmtInSeq s, pp.cn])) ss
+((PPUtil.join pp.cn) o (map stmtInSeq)) ss
 @ If a statement is in a sequence of statements, and if it is a block or
 an emission (which might turn into a block), we can omit redundant braces.
 <<[[s]] in a sequence of statements>>=

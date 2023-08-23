@@ -20,7 +20,6 @@ lc
         return true;
 #line 22 "tests/sret.m.d"
       
-      
     } 
     else { 
       nextPC = MATCH_p; 
@@ -28,11 +27,9 @@ lc
 #line 5 "tests/sret.m"
 
         return false;
-#line 32 "tests/sret.m.d"
-      
+#line 31 "tests/sret.m.d"
       
     } 
-    
   }goto MATCH_finished_a; 
   
   MATCH_finished_a: (void)0; /*placeholder for label*/
