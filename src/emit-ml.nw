@@ -1080,7 +1080,7 @@ fun resynch {fileName, line, column} =
 fun numberLines (smap, region as (0, 0), lines) = lines
   | numberLines (smap, region as (first, last), lines) =
       pp.li [pp.br, resynch (SourceMap.filepos smap first), pp.br, lines, PP.synch]
-fun pplines l = pp.li (foldr (fn (l, t) => pp.te l :: pp.br :: t) [] l)
+val pplines = (PPUtil.join pp.br) o (map pp.te)
 fun rawCode (smap, (lines,region)) = numberLines(smap, region, pplines lines)
 @ 
 \subsection{Utilities}

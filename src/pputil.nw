@@ -9,15 +9,22 @@ signature PP_UTIL = sig
   val lispc :   string * PP.pretty list -> PP.pretty
   val lisp  : PP.pretty -> string * PP.pretty list -> PP.pretty
   val commaSeparate : PP.pretty -> PP.pretty list -> PP.pretty
+  val join : PP.pretty -> PP.pretty list -> PP.pretty
 end
 <<pputil.sml>>=
 structure PPUtil : PP_UTIL = struct
   structure pp = PP.Short
   fun commaSeparate empty =
     let fun c [] = [empty]
-	  | c [x] = [x]
-          | c (h::t) = h :: PP.TEXT ", " :: PP.Short.on :: c t
-    in  PP.LIST o c
+          | c [x] = [x]
+          | c (h::t) = h :: pp.te ", " :: pp.on :: c t
+    in  pp.li o c
+    end
+
+  fun join sep =
+    let fun j [] = []
+          | j l = (tl o foldr (fn (l, t) => sep :: l :: t) []) l
+    in  pp.li o j
     end
 
   local 
