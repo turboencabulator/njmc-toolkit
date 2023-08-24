@@ -854,7 +854,7 @@ block or an emission.
         val uniquePrefix = getPrefix()
         fun labelNumbered n = "MATCH_label_" ^ uniquePrefix ^ Int.toString n
         val finished = "MATCH_finished_" ^ uniquePrefix
-        val finish = pp.li [ pp.te "goto ", pp.te finished, pp.te "; ", pp.cn]
+        val finish = pp.te ("goto " ^ finished ^ ";")
         fun nextLabel (uid, _, (lcount, lmap)) =
           (lcount + 1, IntMap.insert(lmap, uid, labelNumbered lcount))
         val (_, labelmap) = IntMap.foldli nextLabel (0, IntMap.empty) arms
@@ -865,9 +865,9 @@ block or an emission.
           mkLabel (label uid) :: pp.$ "$t ${$c" :: stmt a :: pp.$ " $c"
           :: finish :: pp.$ "$}$b$n" :: tail
         fun armNumbered i = pp.te ("goto " ^ label i ^ "; ")
-        val afterArms = mkLabel finished :: pp.nl :: blockEnd []
+        val afterArms = mkLabel finished :: blockEnd []
     in  (pp.li o blockStart o addDefns)
-        (#stmt (inner armNumbered) decider :: finish :: pp.nl ::
+        (#stmt (inner armNumbered) decider :: pp.cn :: finish :: pp.nl ::
          IntMap.foldri addArmBody afterArms arms)
     end
 @ %

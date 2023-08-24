@@ -30,8 +30,7 @@ lc
 #line 31 "tests/sret.m.d"
       
     } 
-  }goto MATCH_finished_a; 
-  
+  }
+  goto MATCH_finished_a;
   MATCH_finished_a: (void)0; /*placeholder for label*/
-  
 }
