@@ -759,7 +759,7 @@ fun doEmit tokens = Control.emit {pcUnit = pcUnit, tokens = tokens}
             (pp.li o map (fn d => pp.li [defn d, pp.$ ";$n"])) defns,
             stmts ss, pp.$ "$b$c}$}" ]
 <<sequence of statements [[ss]]>>=
-((PPUtil.join pp.cn) o (map stmtInSeq)) ss
+((PPUtil.join pp.cs) o (map stmtInSeq)) ss
 @ If a statement is in a sequence of statements, and if it is a block or
 an emission (which might turn into a block), we can omit redundant braces.
 <<[[s]] in a sequence of statements>>=
@@ -785,7 +785,7 @@ block or an emission.
         fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
           | arm (BLOCK ([], [s])) = arm s
           | arm (s as BLOCK _) = blockArm s
-          | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
+          | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b" ]
         fun addArms [] = Impossible.impossible "no arms"
           | addArms [(guard, body)] =
               if alwaysSatisfied guard then stmt body
@@ -834,11 +834,10 @@ block or an emission.
 | FAIL (fmt, vals) => stmt (Control.fail (fmt, vals))
 | ALLOC_CLOSURE _ => Impossible.unimp "closure allocation"
 (* "Sclosure" : exp(\e.creation) | impossible("creating closure") *)
-| RETURN e => pp.li [ pp.te "return", pp.i 2, pp.be, pp.os, exp e, pp.te "; ",
-		      pp.ou, pp.en ]
+| RETURN e => pp.li [ pp.$ "return$t${$o", exp e, pp.$ ";$b$}" ]
 | ASGN (dst, src) =>
-    pp.li [pp.li (Unparser.unparse (exp' dst /=/ exp' src)), pp.te "; "]
-| EVAL e => pp.li [ exp e, pp.te "; " ]
+    pp.li [pp.li (Unparser.unparse (exp' dst /=/ exp' src)), pp.te ";"]
+| EVAL e => pp.li [ exp e, pp.te ";" ]
 | METHOD_CALL (obj, method, args) => stmt (Control.methodCall (obj, method, args))
 | RAISE (e, args) => Impossible.unimp "raising exceptions in C"
 | RAW raw => pplines raw
@@ -864,7 +863,7 @@ block or an emission.
         fun addArmBody(uid, a, tail) =
           mkLabel (label uid) :: pp.$ "$t${$c" :: stmt a :: pp.cs
           :: finish :: pp.$ "$}$b$n" :: tail
-        fun armNumbered i = pp.te ("goto " ^ label i ^ "; ")
+        fun armNumbered i = pp.te ("goto " ^ label i ^ ";")
         val afterArms = mkLabel finished :: blockEnd []
     in  (pp.li o blockStart o addDefns)
         (#stmt (inner armNumbered) decider :: pp.cn :: finish :: pp.nl ::
