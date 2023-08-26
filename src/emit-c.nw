@@ -568,16 +568,16 @@ In a call, if an argument is broken, I require a line break before it.
 <<[[exp]] auxiliaries>>=
 fun expcall f args =
       let open Unparser Assoc
-	  val f = exp' f
+          val f = exp' f
           val limit = 12 (* max willing indent *)
           <<bind [[fwidth]] to the number of characters [[f]] will use>>
-	  val args = if null args then textatom ""
-		     else NARY((pp.$ ",$}$o${$c", Cprec ",", INFIX NONASSOC), map exp' args)
-	  val args = pp.li (unparse args)
-	  fun call args = BINARY(f, (pp.te "", Cprec "call", INFIX LEFT),
-				 ATOM (pp.li args))
+          val args = if null args then textatom ""
+                     else NARY((pp.$ ",$}$o${$C", Cprec ",", INFIX NONASSOC), map exp' args)
+          val args = pp.li (unparse args)
+          fun call args = BINARY(f, (pp.te "", Cprec "call", INFIX LEFT),
+                                 ATOM (pp.li args))
           val indent = if fwidth < limit then fwidth+1 else 2
-      in  
+      in
           call [pp.$ "(${${", pp.i indent, pp.cn, args, pp.ou, pp.$ "$}$})"]
       end
 <<bind [[fwidth]] to the number of characters [[f]] will use>>=
@@ -705,17 +705,14 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
   | defn(VAR (SOME ty, NONE)) = class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.en ])
   | defn(VAR (SOME (ty as Type.ARRAY (elem, _)), SOME (U.ARRAY elems))) =
       let val elems = PPUtil.join pp.os (map (fn e => pp.li [exp e, pp.te ","]) elems)
-      in  class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = {", pp.i 2, pp.cn, 
-                        pp.be, elems, pp.en, pp.ou, pp.cn, pp.te "}", pp.en ])
+      in  class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.$ " = {$t$c${", elems, pp.$ "$}$b$c}$}" ])
       end
   | defn(VAR (SOME ty, SOME e)) =
-      class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " =", pp.i 2, pp.cs,
-                    exp e, pp.ou, pp.en ])
+      class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.$ " =$t$c", exp e, pp.$ "$b$}" ])
   | defn(CONST(e, ty)) = class (pp.li [pp.te "const ", defn(VAR(ty, SOME e))])
   | defn(TYPEDEF ty) = pp.li [pp.te "typedef ", typeDecl(ty, SOME name), pp.te ";"]
-  | defn(FUNCTION (f as {parms, varargs, return}, body as BLOCK _)) = 
-      class (pp.li [ typeDecl(Type.FUNCTION f, SOME ("${" ^ name)),
-                     pp.$ "$c$}", stmt body, pp.nl ])
+  | defn(FUNCTION (f as {parms, varargs, return}, body as BLOCK _)) =
+      class (pp.li [ typeDecl(Type.FUNCTION f, SOME ("${" ^ name)), pp.$ "$c$}", stmt body, pp.nl ])
   | defn(FUNCTION (f, body)) = defn(FUNCTION (f, BLOCK([], [body])))
   | defn(EXCEPTION _) = Impossible.unimp "how to use exceptions in C"
 @
@@ -778,9 +775,9 @@ block or an emission.
 <<stmt>>=
 | IF arms =>
     let fun test guard tail =
-          pp.cn :: pp.te "else " :: pp.$ "if $t${(" :: exp guard :: pp.$ ")$}$b" :: tail
+          pp.cs :: pp.te "else " :: pp.$ "if $t${(" :: exp guard :: pp.$ ")$}$b" :: tail
         fun shortTest guard tail =
-          if alwaysSatisfied guard then pp.cn :: pp.te "else" :: tail else test guard tail
+          if alwaysSatisfied guard then pp.cs :: pp.te "else" :: tail else test guard tail
         fun blockArm s = pp.li [pp.te " ", stmt s]
         fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
           | arm (BLOCK ([], [s])) = arm s
@@ -822,7 +819,7 @@ block or an emission.
           let val body = pp.$ "$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
               val cases = (pp.li o tl o RangeSet.foldr addRange []) ranges
                           handle Empty => Impossible.impossible "no cases"
-          in  pp.cn :: cases :: body
+          in  pp.cs :: cases :: body
           end
     in  pp.li (
           pp.te "switch (" :: exp value :: pp.$ ") {$t${" ::
@@ -866,7 +863,7 @@ block or an emission.
         fun armNumbered i = pp.te ("goto " ^ label i ^ ";")
         val afterArms = mkLabel finished :: blockEnd []
     in  (pp.li o blockStart o addDefns)
-        (#stmt (inner armNumbered) decider :: pp.cn :: finish :: pp.nl ::
+        (#stmt (inner armNumbered) decider :: pp.cs :: finish :: pp.nl ::
          IntMap.foldri addArmBody afterArms arms)
     end
 @ %
