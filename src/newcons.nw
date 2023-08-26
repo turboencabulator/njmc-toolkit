@@ -810,7 +810,7 @@ procedure emit_original_closure_function_def(pp, name, cl, t)
   every k := key(t) do tt[k] := literal("_c->v." || tt[k])
   tt[the_global_pc] := Eforce(Eclosure_loc())
   PPxwrite(pp, "static void ", name,
-               "_app (RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n",
+               "_app (RClosure c,$oEmitter emitter,$oFailCont fail) {$t$n",
                name, "_Closure _c = (", name, "_Closure) c;$n")
   es := emitterstyle
   emitterstyle := "closure"
@@ -956,7 +956,7 @@ procedure emit_optimized_closure_function(pp, cons, name, cl)
   free := set(); every insert(free, free_variables(clo))
   free := sort(free)
 PPwrite(pp, "/****************")
-PPxwrite(pp, "CLOSURE IS:$t $o", ppexpimage(clo), "$b")
+PPxwrite(pp, "CLOSURE IS:$t$o", ppexpimage(clo), "$b")
 PPwrite(pp, "****************/")
   <<make [[cl.creation]] to create optimized closure [[clo]] and emit placeholder>>
   return
@@ -1038,10 +1038,10 @@ procedure hoist(pp, e, latevars)
     <<generated cases for hoisting>>
     default : impossible("hoisting ", image(type(e)))
   }
-### PPxwrites(pp, "Hoisting ", ppexpimage(e), "$t$ngot $t${$o", ppexpimage(x.e), 
+### PPxwrites(pp, "Hoisting ", ppexpimage(e), "$t$ngot$t${$o", ppexpimage(x.e),
 ###                       "$}$b$nwith")
 ### showsigma(pp, x.sigma)
-### PPxwrite(pp, "$nso, when applied, have $t$o${", 
+### PPxwrite(pp, "$nso, when applied, have$t$o${",
 ###              ppexpimage(apply_subst(x.e, x.sigma)),
 ###                  "$}$b$b$n")
   return x
@@ -1319,7 +1319,7 @@ end
 es := emitterstyle
 emitterstyle := "closure"
 PPxwrite(pp, "static void _clofun_", count, 
-             "(RClosure c,$o Emitter emitter,$o FailCont fail) {$t$n",
+             "(RClosure c,$oEmitter emitter,$oFailCont fail) {$t$n",
              cloty, "_Closure _c = (", cloty, "_Closure) c;$n")
 PPxwrite(pp, pretty(body))
 emitterstyle := es

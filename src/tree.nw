@@ -588,8 +588,8 @@ structure pp = PP.Short
 structure Img = struct
   fun merge rator =
     let fun m [] = [pp.te "??empty-list??"]
-	  | m [x] = [x]
-	  | m (h::t) = h :: pp.te " " :: pp.te rator :: pp.te " " :: pp.on :: m t
+          | m [x] = [x]
+          | m (h::t) = h :: pp.te " " :: pp.te rator :: pp.os :: m t
     in  pp.li o m
     end
   fun int n = pp.te (Int.toString n)
@@ -611,7 +611,7 @@ structure Img = struct
   fun list img xs = 
     let fun l [] = [pp.te "]"]
           | l [x] = [img x, pp.te "]"]
-          | l (h::t) = img h :: pp.te ", " :: pp.on :: l t
+          | l (h::t) = img h :: pp.te "," :: pp.os :: l t
     in  pp.li (pp.te "[" :: l xs)
     end
 end

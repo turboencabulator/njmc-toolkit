@@ -33,7 +33,7 @@ By default, infix operators have spaces, prefix don't.
 <<[[prec]] and [[assoc]]>>
 local
   fun space $ = pp.te (" " ^ $ ^ " ")
-  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.os]
 in
   fun binary' namer $ (l, r) = 
     let val prec = prec $
@@ -96,7 +96,7 @@ in ML~code to create C expressions.
 Note the difference between [[binary]] and [[binopt]]; that
 difference determines the placement of optional line breaks.
 <<unparsing utilities>>=
-val comma  = nary' (fn _ => pp.$ ", $o") ","
+val comma  = nary' (fn _ => pp.$ ",$o") ","
 val /:=/  = binary ":="
 val /||/ = binopt "||"
 val /&&/ = binopt "&&"
@@ -251,7 +251,7 @@ fun constructor name args =
   | exp(U.COMMENTED (e, comment)) = ecomment (exp e, comment)
 <<[[exp]] auxiliaries>>=
 fun ecomment (e, comment) = 
-  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.os,
                          pp.te "/*", pp.te comment, pp.te "*/", pp.ou, pp.en], 
                   prec "hi",
                   Assoc.POSTFIX),

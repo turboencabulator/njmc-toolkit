@@ -73,7 +73,7 @@ local
     | d(FUNCTION {args,    return, varargs}, str) =
 	 let fun arg (NONE, ty) = d(ty, "")
 	       | arg (SOME n, ty) = d(ty, n)
-	     val args = Util.joinl (fn (l, r) => l ^ ", $o" ^ r) (map arg args)
+	     val args = Util.joinl (fn (l, r) => l ^ ",$o" ^ r) (map arg args)
          in  d(return,
 	       String.concat [str, "${$4$c($1", args,
 			      (if varargs then ", ..." else "")^ "$b$b$})"])
@@ -99,7 +99,7 @@ local
     | enum (id, NONE)   = id 
   and enumopt NONE = ""
     | enumopt (SOME []) = "{ /* empty enumeration?? */ }"
-    | enumopt (SOME enums) = " {${$t " ^ Util.joinl (fn (a, b) => a ^ ", $o" ^ b)
+    | enumopt (SOME enums) = " {${$t " ^ Util.joinl (fn (a, b) => a ^ ",$o" ^ b)
                                                          (map enum enums) ^ " $b$c$}}"
 in
   val typestring = d

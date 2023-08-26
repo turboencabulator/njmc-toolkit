@@ -102,8 +102,8 @@ corresponding allocations).
       ppmsg(errConsumer,(locationString source (p1,p2)),severity,msg,body)
 
   fun impossibleWithBody msg body =
-      (defaultConsumer() (P.li [P.te "Error: Toolkit bug: ", P.i 4, P.on,
-				P.te msg, body, P.ou ]);
+      (defaultConsumer() (P.li [P.te "Error: Toolkit bug:", P.i 4, P.os,
+                                P.te msg, body, P.ou ]);
        raise Error)
 
   <<verbosity>>

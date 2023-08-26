@@ -59,7 +59,7 @@ val ppsexp =
         | out (P.PARENSipt (h :: t)) = 
             let val indent = case h of P.PARENSipt (_ :: _) => 2 | x => len x + 2
             in  pp.li ([pp.be, pp.i indent, pp.te "(", out h] @
-                       foldr (fn (x, tail) => pp.$ " $o" :: out x :: tail)
+                       foldr (fn (x, tail) => pp.os :: out x :: tail)
                        [pp.te ")", pp.ou, pp.en] t)
             end
       and len (P.SYMipt s) = size s

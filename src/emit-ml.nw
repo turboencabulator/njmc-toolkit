@@ -413,7 +413,7 @@ By default, infix operators have spaces, prefix don't.
 <<[[MLtyprec]] and [[MLtyassoc]]>>
 local
   fun space $ = pp.te (" " ^ $ ^ " ")
-  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.os]
 in
   fun binary' namer $ (l, r) = 
     let val prec = MLtyprec $
@@ -470,7 +470,7 @@ in ML~code to create C expressions.
 Note the difference between [[binary]] and [[binopt]]; that
 difference determines the placement of optional line breaks.
 <<unparsing utilities>>=
-val comma  = nary' (fn _ => pp.$ ", $o") ","
+val comma  = nary' (fn _ => pp.$ ",$o") ","
 (*
 val of' = binary' (fn _ => pp.$ " of ") "of"
 val /|/ = binary' (fn _ => pp.$ " $c| ") "|"
@@ -497,7 +497,7 @@ structure V = struct (* V for ML Value *)
 
   local
     fun space $ = pp.te (" " ^ $ ^ " ")
-    fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+    fun opt   $ = pp.li [pp.te " ", pp.te $, pp.os]
   in
     fun binary' namer $ (l, r) = 
       let val prec = MLprec $
@@ -515,7 +515,7 @@ structure V = struct (* V for ML Value *)
     fun call (f, args) =
       let open Unparser Assoc
 	  val args = if null args then textatom "()"
-		     else NARY((pp.$ ", $o", MLprec ",", INFIX NONASSOC), args)
+		     else NARY((pp.$ ",$o", MLprec ",", INFIX NONASSOC), args)
 	  fun call args = BINARY(f, (pp.te " ", MLprec "call", INFIX LEFT), args)
       in  
           call args
@@ -560,8 +560,8 @@ in ML~code to create C expressions.
 Note the difference between [[binary]] and [[binopt]]; that
 difference determines the placement of optional line breaks.
 <<ML value utilities>>=
-val comma  = binary' (fn _ => pp.$ ", $o") ","
-val /=/  = binary' (fn _ => pp.$ " = $t$o$b") "="  (* bogus, but could be worse *)
+val comma  = binary' (fn _ => pp.$ ",$o") ","
+val /=/  = binary' (fn _ => pp.$ " =$t$o$b") "="  (* bogus, but could be worse *)
 val /||/ = binopt "orelse"
 val /&&/ = binopt "andalso"
 fun bincall f (a, b) = call (textatom f, [a, b])
@@ -1047,7 +1047,7 @@ It's possible I'm using the wrong range set here.
           if lo = hi then (head, cases)
           else
             let val hi = TW.-(hi, TW.one)
-                val cases = pp.te head :: pptw hi :: pp.$ "=> $o" :: cases
+                val cases = pp.te head :: pptw hi :: pp.$ "=>$o" :: cases
             in  addRange ({lo=lo, hi=hi}, (" | ", cases))
             end
 	fun addArm ((ranges, arm), (head, s)) = 
@@ -1110,7 +1110,7 @@ fun safeComment s = (* make s safe in a comment *)
 <<repl>>=
 fun /**/ s = "(* " ^ safeComment s ^ " *)"
     fun ecomment (e, comment) = 
-      Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+      Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.os,
                              pp.te (/**/ comment), pp.ou, pp.en], 
                       V.MLprec "comment",
                       Assoc.POSTFIX),

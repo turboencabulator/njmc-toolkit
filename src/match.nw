@@ -490,7 +490,7 @@ fun fieldbindingsToSoln ((P.DIS(name, conds, (ccs, labels, len)), bbs), inputs) 
   end
 <<make sure there's an answer for every non-label in [[idents]]>>=
 if (id := !idents, not member(\d.patlabelbindings, id), /soln.answers[id]) then {
-  PPxwrite(PPnew(&errout),"Error: trouble with disjunct ${$t$o", ppexpimage(d), "$b$}")
+  PPxwrite(PPnew(&errout),"Error: trouble with disjunct${$t$o", ppexpimage(d), "$b$}")
   <<make [[l]] list of [[idents]] not in [[soln.answers]]>>
   error("Can't solve for ", commafy(sort(l)), envimage(soln.answers, "soln.answers"))
 }

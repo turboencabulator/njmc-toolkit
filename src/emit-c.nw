@@ -52,8 +52,8 @@ variable [[_c]].
 \end{quote}
 <<closure call to [[emitter]]>>=
 o := if e.offset > 0 then " + " || e.offset else ""
-s := "emitter$t(_c->loc.dest_block, $o_c->loc.dest_lc" || o || ", $o" || 
-     exp(e.x, Cprec[","]) || ", $o" || e.n || ")"
+s := "emitter$t(_c->loc.dest_block,$o_c->loc.dest_lc" || o || ",$o" ||
+     exp(e.x, Cprec[","]) || ",$o" || e.n || ")"
 Cbracket("$c" || s, "app", precedence) || ";$b"
 @ 		    
 \section{Implementation}
@@ -279,7 +279,7 @@ By default, infix operators have spaces, prefix don't.
 <<[[Cprec]] and [[Cassoc]]>>
 local
   fun space $ = pp.te (" " ^ $ ^ " ")
-  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.os]
 in
   fun binary' namer $ (l, r) = 
     let val prec = Cprec $
@@ -295,7 +295,7 @@ in
   (* Note! adding a comment either must not change precedence,
      or comment precedence must be high! *)
   fun ecomment (e, comment) = 
-    Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+    Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.os,
 			   pp.te (/**/ comment), pp.ou, pp.en], 
 		    Cprec "comment",
 		    Assoc.POSTFIX),
@@ -355,8 +355,8 @@ in ML~code to create C expressions.
 Note the difference between [[binary]] and [[binopt]]; that
 difference determines the placement of optional line breaks.
 <<unparsing utilities>>=
-val comma  = binary' (fn _ => pp.$ ", $o") ","
-val /=/  = binary' (fn _ => pp.$ " = $t$o$b") "="  (* bogus, but could be worse *)
+val comma  = binary' (fn _ => pp.$ ",$o") ","
+val /=/  = binary' (fn _ => pp.$ " =$t$o$b") "="  (* bogus, but could be worse *)
 val /||/ = binopt "||"
 val /&&/ = binopt "&&"
 val /|/  = binopt "|"
@@ -572,7 +572,7 @@ fun expcall f args =
           val limit = 12 (* max willing indent *)
           <<bind [[fwidth]] to the number of characters [[f]] will use>>
 	  val args = if null args then textatom ""
-		     else NARY((pp.$ ", $}$o${$c", Cprec ",", INFIX NONASSOC), map exp' args)
+		     else NARY((pp.$ ",$}$o${$c", Cprec ",", INFIX NONASSOC), map exp' args)
 	  val args = pp.li (unparse args)
 	  fun call args = BINARY(f, (pp.te "", Cprec "call", INFIX LEFT),
 				 ATOM (pp.li args))
@@ -704,7 +704,7 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
   | defn(VAR (NONE, SOME e)) = defn(VAR(SOME (inferType e), SOME e))
   | defn(VAR (SOME ty, NONE)) = class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.en ])
   | defn(VAR (SOME (ty as Type.ARRAY (elem, _)), SOME (U.ARRAY elems))) =
-      let fun addElem (e, tail) = exp e :: pp.te ", " :: pp.on :: tail
+      let fun addElem (e, tail) = exp e :: pp.te "," :: pp.os :: tail
       in  class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = {", pp.i 2, pp.cn, 
 		        pp.be, pp.li (foldr addElem [] elems), pp.en,
 			pp.ou, pp.cn, pp.te "}", pp.en ])
@@ -817,7 +817,7 @@ block or an emission.
           if lo = hi then cases
           else
             let val hi = TW.-(hi, TW.one)
-                val cases = pp.$ "case " :: pptw hi :: pp.$ ": $o" :: cases
+                val cases = pp.$ "case " :: pptw hi :: pp.$ ":$o" :: cases
             in  addRange ({lo=lo, hi=hi}, cases)
             end
 	fun addArm ((ranges, arm), s) = 
@@ -834,7 +834,7 @@ block or an emission.
 | FAIL (fmt, vals) => stmt (Control.fail (fmt, vals))
 | ALLOC_CLOSURE _ => Impossible.unimp "closure allocation"
 (* "Sclosure" : exp(\e.creation) | impossible("creating closure") *)
-| RETURN e => pp.li [ pp.te "return ", pp.i 2, pp.be, pp.on, exp e, pp.te "; ",
+| RETURN e => pp.li [ pp.te "return", pp.i 2, pp.be, pp.os, exp e, pp.te "; ",
 		      pp.ou, pp.en ]
 | ASGN (dst, src) =>
     pp.li [pp.li (Unparser.unparse (exp' dst /=/ exp' src)), pp.te "; "]

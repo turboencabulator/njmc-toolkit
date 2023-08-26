@@ -17,7 +17,7 @@ structure PPUtil : PP_UTIL = struct
   fun commaSeparate empty =
     let fun c [] = [empty]
           | c [x] = [x]
-          | c (h::t) = h :: pp.te ", " :: pp.on :: c t
+          | c (h::t) = h :: pp.te "," :: pp.os :: c t
     in  pp.li o c
     end
 
@@ -47,7 +47,7 @@ structure PPUtil : PP_UTIL = struct
   val open' = pp.te "("
   val close = pp.te ")"
   fun lisp break (f, l) = mixin 2 (open', close, break) (pp.te f :: l)
-  val lispo = lisp (pp.$ " $o")     
+  val lispo = lisp pp.os
   val lispc = lisp (pp.$ " $c")     
 
   val newlines = mixin 0 (pp.te "", pp.te "", pp.nl)

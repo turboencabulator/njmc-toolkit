@@ -801,7 +801,7 @@ open Debug
 structure pp = PP.Short
 fun show_inputs inputs = 
   pp.$ "Inputs are: $t$c" ::
-  StringSet.foldr (fn (s, l) => pp.te s :: pp.te " " :: pp.on :: l) [pp.ou] inputs
+  StringSet.foldr (fn (s, l) => pp.te s :: pp.os :: l) [pp.ou] inputs
 fun show_exp msg e = [pp.te msg, pp.te " ", image e]
 fun show_eqn msg (e, e') = [pp.te msg, pp.te " ", image e, pp.te " == ", image e']
 fun show_zero msg z = [pp.te msg, pp.te " ", image (Exp.sum z), pp.te " == 0"]
@@ -1313,9 +1313,9 @@ let fun find p l = case List.find p l of SOME x => x
       let val vl <-- _ = find (fn v <-- e => not (computable v)) left
 	  val vr <-- _ = find (fn v <-- e => not (computable v)) right
       in  [pp.$ "Balance not completed:$4$n",
-	   pp.te vl, pp.te " = ", pp.$ "${$6", valimage vl, pp.$ "$b$} $o",
+	   pp.te vl, pp.te " = ", pp.$ "${$6", valimage vl, pp.$ "$b$}$o",
 	   pp.$ "unknown on left and $n",
-	   pp.te vr, pp.te " = ", pp.$ "${$6", valimage vr, pp.$ "$b$} $o",
+	   pp.te vr, pp.te " = ", pp.$ "${$6", valimage vr, pp.$ "$b$}$o",
 	   pp.$ "unknown on right$b"]
       end
 in  debug show ()

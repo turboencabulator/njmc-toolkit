@@ -1363,8 +1363,8 @@ end
         } else {
             warning("Ignoring duplicate definition of constructor ", cons.name)
 #           PPxwrite(PPnew(&errout), 
-#               "Keeping $t$o", ppexpimage(crhs(constructors[cons.name])), "$b$n",
-#               "Discarding $t$o", ppexpimage(crhs(cons)), "$b")
+#               "Keeping$t$o", ppexpimage(crhs(constructors[cons.name])), "$b$n",
+#               "Discarding$t$o", ppexpimage(crhs(cons)), "$b")
         }
     }
     return

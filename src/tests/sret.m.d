@@ -10,7 +10,7 @@ lc
   unsigned MATCH_w_32_0;
   { 
     MATCH_w_32_0 = getDword(MATCH_p); 
-    if ((MATCH_w_32_0 & 0xffffffff) 
+    if ((MATCH_w_32_0 & 0xffffffff)
             /* op*rd*op3*rs1*i*simm13 at 0 */ == 0x81C7E008) { 
       nextPC = 4 + MATCH_p; 
       

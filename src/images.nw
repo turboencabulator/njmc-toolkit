@@ -78,7 +78,7 @@ By default, infix operators have spaces, prefix don't.
 <<[[prec]] and [[assoc]]>>
 local
   fun space $ = pp.te (" " ^ $ ^ " ")
-  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.te " ", pp.on]
+  fun opt   $ = pp.li [pp.te " ", pp.te $, pp.os]
 in
   fun binary' namer $ (l, r) = 
     let val prec = prec $
@@ -141,7 +141,7 @@ in ML~code to create C expressions.
 Note the difference between [[binary]] and [[binopt]]; that
 difference determines the placement of optional line breaks.
 <<unparsing utilities>>=
-val comma  = nary' (fn _ => pp.$ ", $o") ","
+val comma  = nary' (fn _ => pp.$ ",$o") ","
 val /:=/  = binary ":="
 val /||/ = binopt "||"
 val /&&/ = binopt "&&"
@@ -298,7 +298,7 @@ fun constructor name args =
   | exp(U.COMMENTED (e, comment)) = ecomment (exp e, comment)
 <<[[exp]] auxiliaries>>=
 fun ecomment (e, comment) = 
-  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.te " ", pp.on,
+  Unparser.UNARY((pp.li [pp.be, pp.i 6, pp.os,
                          pp.te "/*", pp.te comment, pp.te "*/", pp.ou, pp.en], 
                   prec "hi",
                   Assoc.POSTFIX),
@@ -358,9 +358,9 @@ double square brackets following its image.
 <<functions>>=
 local
   fun binop ? (a, b) = pp.li [pp.be, a, pp.en, ?, pp.be, b, pp.en ]
-  val op /|/ = binop (pp.li [pp.te " ", pp.on, pp.te "| "])
+  val op /|/ = binop (pp.li [pp.os, pp.te "| "])
   val op /&/ = binop (pp.te " & ")
-  val seq = binop (pp.li [pp.te "; ", pp.on])
+  val seq = binop (pp.li [pp.te ";", pp.os])
   val cvt = pp.li o Unparser.unparse
 
   fun conditions s =
@@ -523,7 +523,7 @@ struct
   fun arm smap (M.ARM (_, {conditions, answers, code=(_, region), ...})) =
     let val body = map pp.te ["code at ", SourceMap.locationString smap region]
         val guarded = if Exp.Set.isEmpty conditions then body
-		      else pp.$ "when ${${$t$o" ::
+		      else pp.$ "when${${$t$o" ::
 			   exp (Exp.andalso' (Exp.Set.listItems conditions)) ::
 			   pp.$ " $}$b$c$}then " :: body
 	fun answer (name, value, tail) = 
@@ -576,7 +576,7 @@ struct
 	   @ TWMap.foldri
 	     (fn (n, s, tail) => pp.te ("0x" ^ TargetWord.toString n) ::
                   pp.te " => " :: 
-	          pp.te s :: (if length tail < 4 then tail else pp.$ ", $o" :: tail))
+	          pp.te s :: (if length tail < 4 then tail else pp.$ ",$o" :: tail))
 	     [pp.$ "$}$b$n"] tbl)
 	                     
   fun dag smap (node, arrays, arms) =

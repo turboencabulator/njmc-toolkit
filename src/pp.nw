@@ -42,6 +42,7 @@ signature PP = sig
     val ou : pretty
     val nl : pretty
     val br : pretty
+    val os : pretty
     val on : pretty
     val cn : pretty
     val te : string -> pretty
@@ -75,6 +76,7 @@ structure PP : PP = struct
     val ou = OUTDENT
     val nl = BREAK {break=FORCED, pre="", post="", none="", indent=true}
     val br = BREAK {break=FORCED, pre="", post="", none="", indent=false}
+    val os = BREAK {break=OPTIONAL, pre="", post="", none=" ", indent=true}
     val on = BREAK {break=OPTIONAL, pre="", post="", none="", indent=true}
     val cn = BREAK {break=CONNECTED, pre="", post="", none="", indent=true}
     val te = TEXT
@@ -92,7 +94,8 @@ structure PP : PP = struct
             | e(#"$" :: #"b" :: s, r, inserts) =  r ::: ou  :: e(s, [], inserts)
             | e(#"$" :: #"n" :: s, r, inserts) =  r ::: nl  :: e(s, [], inserts)
             | e(#"$" :: #"N" :: s, r, inserts) =  r ::: br  :: e(s, [], inserts)
-            | e(#"$" :: #"o" :: s, r, inserts) =  r ::: on  :: e(s, [], inserts)
+            | e(#"$" :: #"o" :: s, r, inserts) =  r ::: os  :: e(s, [], inserts)
+            | e(#"$" :: #"O" :: s, r, inserts) =  r ::: on  :: e(s, [], inserts)
             | e(#"$" :: #"c" :: s, r, inserts) =  r ::: cn  :: e(s, [], inserts)
             | e(#"$" :: #"#" :: s, r, inserts) =  r ::: sy  :: e(s, [], inserts)
             | e(#"$" :: #"$" :: s, r, inserts) = e(s, #"$" :: r, inserts)
