@@ -704,10 +704,9 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
   | defn(VAR (NONE, SOME e)) = defn(VAR(SOME (inferType e), SOME e))
   | defn(VAR (SOME ty, NONE)) = class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.en ])
   | defn(VAR (SOME (ty as Type.ARRAY (elem, _)), SOME (U.ARRAY elems))) =
-      let fun addElem (e, tail) = exp e :: pp.te "," :: pp.os :: tail
+      let val elems = PPUtil.join pp.os (map (fn e => pp.li [exp e, pp.te ","]) elems)
       in  class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = {", pp.i 2, pp.cn, 
-		        pp.be, pp.li (foldr addElem [] elems), pp.en,
-			pp.ou, pp.cn, pp.te "}", pp.en ])
+                        pp.be, elems, pp.en, pp.ou, pp.cn, pp.te "}", pp.en ])
       end
   | defn(VAR (SOME ty, SOME e)) =
       class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " =", pp.i 2, pp.cs,
@@ -816,13 +815,15 @@ block or an emission.
           if lo = hi then cases
           else
             let val hi = TW.-(hi, TW.one)
-                val cases = pp.$ "case " :: pptw hi :: pp.$ ":$o" :: cases
+                val cases = pp.os :: pp.te "case " :: pptw hi :: pp.te ":" :: cases
             in  addRange ({lo=lo, hi=hi}, cases)
             end
-	fun addArm ((ranges, arm), s) = 
-	  let val body = pp.$ "$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
-          in  pp.cn :: RangeSet.foldr addRange body ranges
-	  end
+        fun addArm ((ranges, arm), s) =
+          let val body = pp.$ "$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
+              val cases = (pp.li o tl o RangeSet.foldr addRange []) ranges
+                          handle Empty => Impossible.impossible "no cases"
+          in  pp.cn :: cases :: body
+          end
     in  pp.li (
           pp.te "switch (" :: exp value :: pp.$ ") {$t${" ::
 	  foldr addArm [pp.$ "$cdefault: assert(0);$}$b$c} /* ",
