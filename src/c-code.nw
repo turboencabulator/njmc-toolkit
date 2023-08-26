@@ -91,16 +91,16 @@ local
   and field (id, ty, NONE)   = "$c" ^ d(ty, id) ^ "; "
     | field (id, ty, SOME n) = "$c" ^ d(ty, id) ^ ":" ^ Int.toString n ^ "; "
   and fieldsopt NONE = ""
-    | fieldsopt (SOME fields) = " {${$t " ^ cat field fields ^ " $b$c$}}"
+    | fieldsopt (SOME fields) = " {${$t " ^ cat field fields ^ "$b$c$}}"
   and member (id, ty) = field (id, ty, NONE)
   and membersopt NONE = ""
-    | membersopt (SOME members) = " {${$t " ^ cat member members ^ " $b$c$}}"
+    | membersopt (SOME members) = " {${$t " ^ cat member members ^ "$b$c$}}"
   and enum (id, SOME n) = id ^ "=" ^ Int.toString n
     | enum (id, NONE)   = id 
   and enumopt NONE = ""
     | enumopt (SOME []) = "{ /* empty enumeration?? */ }"
     | enumopt (SOME enums) = " {${$t " ^ Util.joinl (fn (a, b) => a ^ ",$o" ^ b)
-                                                         (map enum enums) ^ " $b$c$}}"
+                                                         (map enum enums) ^ "$b$c$}}"
 in
   val typestring = d
 end

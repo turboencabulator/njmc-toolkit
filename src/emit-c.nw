@@ -453,7 +453,7 @@ but ``the program counter'' always refers to the location of
 the {\em first} token emitted.\change{8}
 <<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>=
 if *e.x > 1 & emitterstyle == "direct" & expwalk(e.x[2:0], equals_pc) then {
-  s ||:= "unsigned ENCODE_pc = cur_pc(); $c"
+  s ||:= "unsigned ENCODE_pc = cur_pc();$c"
   save_pc_override := pc_override
   pc_override := "ENCODE_pc"
 }
@@ -710,13 +710,13 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
 			pp.ou, pp.cn, pp.te "}", pp.en ])
       end
   | defn(VAR (SOME ty, SOME e)) =
-      class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " = ", pp.i 2, pp.cn, 
-		    exp e, pp.ou, pp.en ])
+      class(pp.li [ pp.be, typeDecl(ty, SOME name), pp.te " =", pp.i 2, pp.cs,
+                    exp e, pp.ou, pp.en ])
   | defn(CONST(e, ty)) = class (pp.li [pp.te "const ", defn(VAR(ty, SOME e))])
   | defn(TYPEDEF ty) = pp.li [pp.te "typedef ", typeDecl(ty, SOME name), pp.te ";"]
   | defn(FUNCTION (f as {parms, varargs, return}, body as BLOCK _)) = 
       class (pp.li [ typeDecl(Type.FUNCTION f, SOME ("${" ^ name)),
-		     pp.$ " $c$}", stmt body, pp.nl ])
+                     pp.$ "$c$}", stmt body, pp.nl ])
   | defn(FUNCTION (f, body)) = defn(FUNCTION (f, BLOCK([], [body])))
   | defn(EXCEPTION _) = Impossible.unimp "how to use exceptions in C"
 @
@@ -746,8 +746,7 @@ better prettyprinter.
     end
 <<stmt>>=
 | COMMENTED_STMT (s, comment) =>
-    pp.li [ stmt s, pp.be, pp.i 6, pp.te " ", pp.cn,
-	    pp.te (/**/ comment), pp.ou, pp.en ]
+    pp.li [ stmt s, pp.be, pp.i 6, pp.cs, pp.te (/**/ comment), pp.ou, pp.en ]
 <<stmt>>=
 | RESYNCH_STMT (file, line) =>
     pp.li [ pp.br, pp.te ("#line " ^ Int.toString line ^ " \"" ^ file ^ "\""), pp.br ]
@@ -757,8 +756,8 @@ better prettyprinter.
 fun doEmit tokens = Control.emit {pcUnit = pcUnit, tokens = tokens}
 <<stmt>>=
 | BLOCK (defns, ss) =>
-    pp.li [ pp.$ "{ ${$t$c",
-	    (pp.li o map (fn d => pp.li [defn d, pp.$ ";$n"])) defns,
+    pp.li [ pp.$ "{${$t$c",
+            (pp.li o map (fn d => pp.li [defn d, pp.$ ";$n"])) defns,
             stmts ss, pp.$ "$b$c}$}" ]
 <<sequence of statements [[ss]]>>=
 ((PPUtil.join pp.cn) o (map stmtInSeq)) ss
@@ -787,7 +786,7 @@ block or an emission.
         fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
           | arm (BLOCK ([], [s])) = arm s
           | arm (s as BLOCK _) = blockArm s
-          | arm s = pp.li [ pp.$ " $t$c${", stmt s, pp.$ "$}$b " ]
+          | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
         fun addArms [] = Impossible.impossible "no arms"
           | addArms [(guard, body)] =
               if alwaysSatisfied guard then stmt body
@@ -803,7 +802,7 @@ block or an emission.
 | TAGCASE (instance, ty, arms) => 
     let fun addArm ((cons, arm), s) = 
               pp.$ "$ccase " :: pp.te (#name (Constructor.info cons)) ::
-	      pp.$ "_TAG: $t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
+              pp.$ "_TAG:$t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
     in  pp.li (
           pp.te "switch (" :: exp instance :: pp.$ ".tag) {$t${" ::
                                                    (* should create exp for tag...*)
@@ -846,7 +845,7 @@ block or an emission.
 @ 
 <<stmt>>=
 | MATCH {defns, decider, arms} =>
-    let fun blockStart tail = pp.$ "{ ${$t$c" :: tail
+    let fun blockStart tail = pp.$ "{${$t$c" :: tail
         <<definition of [[exportMatchDefn]]>>
         fun defn d = top_defn ({exported = exportMatchDefn d}, d)
         fun addDefns tail = foldr (fn (d,t) => defn d :: pp.$ ";$n" :: t) tail defns
@@ -862,7 +861,7 @@ block or an emission.
                       handle Option => Impossible.impossible "missing label"
         fun mkLabel l = pp.li [pp.te l, pp.te ": (void)0; /*placeholder for label*/"]
         fun addArmBody(uid, a, tail) =
-          mkLabel (label uid) :: pp.$ "$t ${$c" :: stmt a :: pp.$ " $c"
+          mkLabel (label uid) :: pp.$ "$t${$c" :: stmt a :: pp.cs
           :: finish :: pp.$ "$}$b$n" :: tail
         fun armNumbered i = pp.te ("goto " ^ label i ^ "; ")
         val afterArms = mkLabel finished :: blockEnd []

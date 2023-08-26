@@ -374,9 +374,9 @@ local
                       Util.joinl op /|/ (map disjunct ds) ]
         and disjunct (P.DIS (name, conds, sequents)) =
               let val name   = case name of SOME n => n | NONE => "?noname?"
-		  val isEmpty = P.Exp.Set.isEmpty
+                  val isEmpty = P.Exp.Set.isEmpty
                   val condpp = if isEmpty conds then pp.te ""
-                               else pp.li [ conditions conds, pp.$ " => ${$4$c" ]
+                               else pp.li [ conditions conds, pp.$ " =>${$4$c" ]
               in  pp.li [ pp.te "(", pp.te name, pp.te ") ", condpp, sequence sequents,
                           if isEmpty conds then pp.te "" else pp.$ "$b$}" ]
               end
@@ -393,7 +393,7 @@ local
     let val name   = case name of SOME n => n | NONE => "?noname?"
         val isEmpty = P.Exp.Set.isEmpty
         val condpp = if isEmpty conds then pp.te ""
-                     else pp.li [ conditions conds, pp.$ " => ${$4$c" ]
+                     else pp.li [ conditions conds, pp.$ " =>${$4$c" ]
     in  pp.li [ pp.te "(", pp.te name, pp.te ") ", condpp, sequence sequents,
                 if isEmpty conds then pp.te "" else pp.$ "$b$}" ]
     end
@@ -523,15 +523,14 @@ struct
   fun arm smap (M.ARM (_, {conditions, answers, code=(_, region), ...})) =
     let val body = map pp.te ["code at ", SourceMap.locationString smap region]
         val guarded = if Exp.Set.isEmpty conditions then body
-		      else pp.$ "when${${$t$o" ::
-			   exp (Exp.andalso' (Exp.Set.listItems conditions)) ::
-			   pp.$ " $}$b$c$}then " :: body
-	fun answer (name, value, tail) = 
-          pp.$ " $c" :: pp.te name :: pp.$ " = ${$t$c" :: exp value :: pp.$ "$b$}"
-	  :: tail
-	val answers = if StringMap.numItems answers = 0 then []
-		      else pp.$ "${$t$nwith answers${$t" ::
-			  StringMap.foldli answer [pp.$ "$b$b$}$}"] answers
+                      else pp.$ "when${${$t$o" ::
+                           exp (Exp.andalso' (Exp.Set.listItems conditions)) ::
+                           pp.$ "$}$b$c$}then " :: body
+        fun answer (name, value, tail) =
+          pp.cs :: pp.te name :: pp.$ " =${$t$c" :: exp value :: pp.$ "$b$}" :: tail
+        val answers = if StringMap.numItems answers = 0 then []
+                      else pp.$ "${$t$nwith answers${$t" ::
+                          StringMap.foldli answer [pp.$ "$b$b$}$}"] answers
     in  pp.li (guarded @ answers)
     end
   fun armList smap =
@@ -564,7 +563,7 @@ struct
 	      end
 	and edge (T.EDGE {range=r, node}) =
 	    pp.li [pp.nl, pp.li [pp.$ "${in $3${${", stdRange r,
-				 pp.$ "$b$} $c$}=> $t$c${", tree node, pp.$ "$}$b$}"]]
+	                         pp.$ "$b$}$c$}=>$t$c${", tree node, pp.$ "$}$b$}"]]
     in  fn t => pp.li [tree t, pp.nl, pp.nl]
     end
   fun rangeSet set = 
@@ -572,13 +571,12 @@ struct
       (map stdRange (RangeSet.listItems set))
 
   fun arrayImage (D.NAME_ARRAY { field, tbl, uid }) =
-    pp.li ([pp.te "name array ", pp.te (Int.toString uid), pp.$ ": $t${$c" ] 
-	   @ TWMap.foldri
-	     (fn (n, s, tail) => pp.te ("0x" ^ TargetWord.toString n) ::
-                  pp.te " => " :: 
-	          pp.te s :: (if length tail < 4 then tail else pp.$ ",$o" :: tail))
-	     [pp.$ "$}$b$n"] tbl)
-	                     
+    pp.li ([pp.te "name array ", pp.te (Int.toString uid), pp.$ ":$t${$c" ]
+           @ TWMap.foldri
+             (fn (n, s, tail) => pp.te ("0x" ^ TargetWord.toString n) :: pp.te " => " ::
+                  pp.te s :: (if length tail < 4 then tail else pp.$ ",$o" :: tail))
+             [pp.$ "$}$b$n"] tbl)
+
   fun dag smap (node, arrays, arms) =
     let fun addArray(array, tail) = arrayImage array :: tail
 	fun armsImage [] = pp.te "<NO MATCH>"
@@ -587,8 +585,8 @@ struct
 	  | shortArms (i, M.ARM (_, {code=(_, region), ...}) :: t) =
 	      pp.li (map pp.te ["arm list ", Int.toString i, " (",
 				SourceMap.locationString smap region, ")"])
-	fun addArm(i, a, tail) = 
-           pp.te "Arm list " :: pp.te (Int.toString i) :: pp.$ ": ${$t$c" ::
+	fun addArm(i, a, tail) =
+	   pp.te "Arm list " :: pp.te (Int.toString i) :: pp.$ ":${$t$c" ::
 	   armsImage a :: pp.$ "$b$}$n" :: tail
 	fun dag (D.NODE {field=(f, n), children}) =
 	   pp.li [pp.te "test ", pp.te (#name f), pp.te " at ", pp.te (Int.toString n),
@@ -600,7 +598,7 @@ struct
 		  | NONE => shortArms(armid, Vector.sub(arms, armid)))
 	and edge (D.EDGE {range=r, node}) =
 	    pp.li [pp.nl, pp.li [pp.$ "${in $3${${", rangeSet r,
-				 pp.$ "$b$} $c$}=> $t$c${", dag node, pp.$ "$}$b$}"]]
+	                         pp.$ "$b$}$c$}=>$t$c${", dag node, pp.$ "$}$b$}"]]
         val ppnode = [dag node, pp.nl, pp.nl]
         val pparms = Vector.foldri addArm ppnode arms
         val pparrays = foldr addArray pparms arrays

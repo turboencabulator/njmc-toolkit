@@ -799,8 +799,8 @@ sharing type Debug.condition = Balancer.Exp.condition = Elim.Exp.condition
 <<debug: general debugging support>>=
 open Debug
 structure pp = PP.Short
-fun show_inputs inputs = 
-  pp.$ "Inputs are: $t$c" ::
+fun show_inputs inputs =
+  pp.$ "Inputs are:$t$c" ::
   StringSet.foldr (fn (s, l) => pp.te s :: pp.os :: l) [pp.ou] inputs
 fun show_exp msg e = [pp.te msg, pp.te " ", image e]
 fun show_eqn msg (e, e') = [pp.te msg, pp.te " ", image e, pp.te " == ", image e']
@@ -2830,7 +2830,7 @@ fun checkOverlaps [] = ()
       end
 <<overlap error>>=
 raise Error.Error ("Overlapping slices: ",
-  pp.li [pp.$ "$t${$c${${", image(Exp.slice(e, slice)), pp.$ "$} $b$cand $t$c${",
+  pp.li [pp.$ "$t${$c${${", image(Exp.slice(e, slice)), pp.$ "$}$b$cand$t$c${",
                             image(Exp.slice(e, slice')), pp.$ "$}$}$}$b" ])
 @ 
 TESTING:

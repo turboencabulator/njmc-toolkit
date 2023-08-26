@@ -1,17 +1,17 @@
 #define sign_extend(N,SIZE) (((int)((N) << (sizeof(unsigned)*8-(SIZE)))) >> (sizeof(unsigned)*8-(SIZE)))
 #include <assert.h>
-{ 
-  dword MATCH_p = 
+{
+  dword MATCH_p =
     
 #line 1 "tests/sret.m"
 lc
 #line 9 "tests/sret.m.d"
     ;
   unsigned MATCH_w_32_0;
-  { 
+  {
     MATCH_w_32_0 = getDword(MATCH_p); 
     if ((MATCH_w_32_0 & 0xffffffff)
-            /* op*rd*op3*rs1*i*simm13 at 0 */ == 0x81C7E008) { 
+            /* op*rd*op3*rs1*i*simm13 at 0 */ == 0x81C7E008) {
       nextPC = 4 + MATCH_p; 
       
 #line 2 "tests/sret.m"
@@ -21,7 +21,7 @@ lc
 #line 22 "tests/sret.m.d"
       
     }
-    else { 
+    else {
       nextPC = MATCH_p; 
       
 #line 5 "tests/sret.m"

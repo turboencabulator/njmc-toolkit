@@ -27,11 +27,11 @@ structure PPUtil : PP_UTIL = struct
     in  pp.li o j
     end
 
-  local 
-    val pre  = pp.$ " $t${$c"
-    val post = pp.$ " $b$c$}"
-    val m1 = pp.$ " $b$c"
-    val m2 = pp.$ " $t$c"
+  local
+    val pre  = pp.$ "$t${$c"
+    val post = pp.$ "$b$c$}"
+    val m1 = pp.$ "$b$c"
+    val m2 = pp.$ "$t$c"
     fun tail [(e, kw)] = e :: post :: pp.te kw :: nil
       | tail [] = [post]
       | tail ((e, kw)::t) = e :: m1 :: pp.te kw :: m2 :: tail t
@@ -48,7 +48,7 @@ structure PPUtil : PP_UTIL = struct
   val close = pp.te ")"
   fun lisp break (f, l) = mixin 2 (open', close, break) (pp.te f :: l)
   val lispo = lisp pp.os
-  val lispc = lisp (pp.$ " $c")     
+  val lispc = lisp pp.cs
 
   val newlines = mixin 0 (pp.te "", pp.te "", pp.nl)
 

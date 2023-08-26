@@ -530,9 +530,9 @@ fun unFieldCondition (U.CONDITION(U.AFIELD f, relop, U.CONST n)) = SOME (f, relo
 I should trim the answers that are printed, but for now, I
 leave them alone.
 <<show equations unsolved>>=
-let fun indent pp = PP.Short.li [PP.Short.$ "$t $c${", pp, PP.Short.$ "$}$b"]
+let fun indent pp = PP.Short.li [PP.Short.$ "$t$c${", pp, PP.Short.$ "$}$b"]
 in  raise Error.Error ("Could not solve equations:",
-		       indent (NoisySolver.solverDisplay (eqnsIn, eqnsOut)))
+                       indent (NoisySolver.solverDisplay (eqnsIn, eqnsOut)))
 end
 @ 
 <<aux functions>>=

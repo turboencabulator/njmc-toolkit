@@ -163,24 +163,24 @@ fun alphaConvert freeIn (m, x) =
 val ppmatch = Match.ppmatch
 val pptuple = Match.pptuple
 fun ppcase (value, matches, trailingComment) =
-  let fun addArm head ((match, e), tail) = 
-              pp.cn :: pp.te head :: ppmatch match :: pp.$ " => $5${$c${" ::
-	      e :: pp.$ " $b$c$}$}" :: tail
-	fun laterArms (l, tail) = foldr (addArm " | ") tail l
+  let fun addArm head ((match, e), tail) =
+              pp.cn :: pp.te head :: ppmatch match :: pp.$ " =>$5${$c${" ::
+              e :: pp.$ "$b$c$}$}" :: tail
+        fun laterArms (l, tail) = foldr (addArm " | ") tail l
         fun allArms (h::t, tail) = addArm "of " (h, laterArms(t, tail))
-	  | allArms(l, tail) = laterArms(l, tail)
-	val tail = case trailingComment
-		     of NONE => [] 
-		      | SOME c => [pp.te " (* ", PP.textMap safeComment c, pp.te " *)"]
+          | allArms(l, tail) = laterArms(l, tail)
+        val tail = case trailingComment
+                     of NONE => []
+                      | SOME c => [pp.te " (* ", PP.textMap safeComment c, pp.te " *)"]
     in  pp.li (
           pp.te "(case " :: value :: pp.$ " $3${" ::
-	  allArms(matches, [pp.$ "$}$b$c)"] @ tail))
+          allArms(matches, [pp.$ "$}$b$c)"] @ tail))
     end
 @ 
 <<match support>>=
 fun pppair (n, e) = pp.li [ pp.te n, pp.te " = ", e ]
-fun pptuple  l = PPUtil.mixin 0 (pp.te "( ", pp.$ " $c)", pp.$ "$c, ") l
-fun recordBracket l = PPUtil.mixin 0 (pp.te "{ ", pp.$ " $c}", pp.$ "$c, ") l
+fun pptuple  l = PPUtil.mixin 0 (pp.te "( ", pp.$ "$c)", pp.$ "$c, ") l
+fun recordBracket l = PPUtil.mixin 0 (pp.te "{ ", pp.$ "$c}", pp.$ "$c, ") l
 fun ppmatch m =
     let fun mm (WILD) = pp.te "_" 
 	  | mm (TUPLE l) = pptuple (map mm l)
@@ -341,8 +341,8 @@ Who's to say they won't change?
 | STANDARD_IO => pp.te "(* depends on standard i/o *)"
 | ASM_OUTPUT => pp.te "(* depends on asm output *)"
 | SIGN_EXTENSION => pp.te "(* need to implement sign extension *)"
-            (*      "fun sign_extend(n, size) = $6${$c *)
-| FAIL_LIBRARY	=> pp.te "(* depends on failure library *)"
+            (*      "fun sign_extend(n, size) =$6${$c *)
+| FAIL_LIBRARY => pp.te "(* depends on failure library *)"
 | NAMED_INTERFACE {name, signature'} =>
     if parm then
       imp(name, signature')
@@ -361,7 +361,7 @@ fun export (name, exported) =
 	| e(EXPORTED_CONSTANT (c, SOME ty))  = e(EXPORTED_VARIABLE ty)
 	| e(EXPORTED_CONSTANT (c, NONE)) = e(EXPORTED_VARIABLE (inferType c))
 	| e(EXPORTED_VARIABLE t) =
-             pp.li [pp.$ "${val ", pp.te (mangle name), pp.$ " : $t$c",
+             pp.li [pp.$ "${val ", pp.te (mangle name), pp.$ " :$t$c",
                     ppty t, pp.$ "$b$}"]
 	| e(EXPORTED_FUNCTION f)  = e(EXPORTED_VARIABLE (Type.FUNCTION f))
         | e(EXPORTED_EXCEPTION NONE) = pp.te ("exception " ^ mangle name)
@@ -391,8 +391,8 @@ end
 | STANDARD_IO => pp.te "(* depends on standard i/o *)"
 | ASM_OUTPUT => pp.te "(* depends on asm output *)"
 | SIGN_EXTENSION => pp.te "(* need to implement sign extension *)"
-            (*      "fun sign_extend(n, size) = $6${$c *)
-| FAIL_LIBRARY	=> pp.te "(* depends on failure library *)"
+            (*      "fun sign_extend(n, size) =$6${$c *)
+| FAIL_LIBRARY => pp.te "(* depends on failure library *)"
 | NAMED_INTERFACE {name, signature'} =>
     if parm then
       pp.te (String.concat ["structure ", name, " : ", signature'])
@@ -473,7 +473,7 @@ difference determines the placement of optional line breaks.
 val comma  = nary' (fn _ => pp.$ ",$o") ","
 (*
 val of' = binary' (fn _ => pp.$ " of ") "of"
-val /|/ = binary' (fn _ => pp.$ " $c| ") "|"
+val /|/ = binary' (fn _ => pp.$ "$c| ") "|"
 *)
 val /:/  = binary ":"
 val /->/ = binopt "->"
@@ -670,7 +670,7 @@ but ``the program counter'' always refers to the location of
 the {\em first} token emitted.\change{8}
 <<if direct style and late pc, add [[ENCODE_pc]] declaration to [[s]] and set [[pc_override]]>>=
 if *e.x > 1 & emitterstyle == "direct" & expwalk(e.x[2:0], equals_pc) then {
-  s ||:= "unsigned ENCODE_pc = cur_pc(); $c"
+  s ||:= "unsigned ENCODE_pc = cur_pc();$c"
   save_pc_override := pc_override
   pc_override := "ENCODE_pc"
 }
@@ -879,7 +879,7 @@ in
         let fun cons (name, Type.UNIT) = pp.te (mangle name)
 	      | cons (name, Type.RECORD []) = pp.te (mangle name)
 	      | cons (name, t) =
-	          pp.li [pp.te (mangle name), pp.$ " of ${$4$c", ppty t, pp.$ "$b$}"]
+	          pp.li [pp.te (mangle name), pp.$ " of${$4$c", ppty t, pp.$ "$b$}"]
 	    val tail = foldr (fn (m, pps) => pp.nl :: pp.te "| " :: cons m :: pps)
 	in  
 	    pp.li (pp.te "datatype " :: pp.te name :: pp.i 2 :: pp.be :: pp.cn ::
@@ -918,17 +918,17 @@ fun defn(VAR (NONE, NONE)) = Impossible.impossible "untyped var with no exp"
   | defn(VAR (SOME ty, NONE)) = Impossible.unimp "(* uninitialized var in ML *)"
   | defn(CONST(e, ty)) = defn(VAR(ty, SOME e))
   | defn(TYPEDEF (Type.UNION u)) = datatypeDecl (name, u)
-  | defn(TYPEDEF t) = 
-	   pp.li [pp.te "type ", pp.te name, pp.i 2, pp.be, pp.te "= ", pp.cn,
-		  ppty t, pp.ou, pp.en]
-  | defn(FUNCTION (f as {parms, varargs, return}, body)) = 
-	   pp.li [pp.te "fun ", pp.te name, argMatch parms, pp.$ " = $t$c${",
-		  stmt body, pp.$ "$}$b"]
+  | defn(TYPEDEF t) =
+           pp.li [pp.te "type ", pp.te name, pp.i 2, pp.be, pp.te "=", pp.cs,
+                  ppty t, pp.ou, pp.en]
+  | defn(FUNCTION (f as {parms, varargs, return}, body)) =
+           pp.li [pp.te "fun ", pp.te name, argMatch parms, pp.$ " =$t$c${",
+                  stmt body, pp.$ "$}$b"]
   | defn(EXCEPTION NONE) = pp.te ("exception " ^ name)
   | defn(EXCEPTION (SOME t)) =
-	   pp.li [ pp.te "exception ", pp.te name, pp.te " of ", ppty t]
+           pp.li [ pp.te "exception ", pp.te name, pp.te " of ", ppty t]
 and argMatch [] = pp.te "()"
-  | argMatch l = 
+  | argMatch l =
   let val brackets = if Control.tupleArgs then ("(", ")") else ("{", "}")
       val args = map (fn (s, t) => textatom (mangle s)) l
   in  (pp.li o Unparser.unparse o bracket brackets) (comma args)
@@ -955,8 +955,7 @@ and argMatch [] = pp.te "()"
     end
 <<stmt>>=
 | COMMENTED_STMT (s, comment) =>
-    pp.li [ stmt s, pp.be, pp.i 6, pp.te " ", pp.cn,
-	    pp.te (/**/ comment), pp.ou, pp.en ]
+    pp.li [ stmt s, pp.be, pp.i 6, pp.cs, pp.te (/**/ comment), pp.ou, pp.en ]
 <<stmt>>=
 | RESYNCH_STMT (file, line) =>
     pp.li [ pp.br, pp.te ("(*#line " ^ Int.toString line ^ " \"" ^ file ^ "\"*)") ]
@@ -968,10 +967,10 @@ and argMatch [] = pp.te "()"
     PPUtil.mixin 0 (pp.$ "( $2", pp.$ "$b$n)", pp.$ "$b$b$n; $0$2") (map stmt stmts)
 | BLOCK (defns, stmts) =>
     pp.li [ pp.$ "let ${$4",
-	    Util.joinl (fn (l, r) => pp.li [l, pp.nl, r]) (map defn defns),
-	    pp.$ " $b$cin  $4",
+            Util.joinl (fn (l, r) => pp.li [l, pp.nl, r]) (map defn defns),
+            pp.$ "$b$cin  $4",
             Util.joinl (fn (l, r) => pp.li [l, pp.$ "$n; ", r]) (map stmt stmts),
-            pp.$ "$b $cend$}" ]
+            pp.$ "$b$cend$}" ]
 @ 
 The name of the game here is to turn an if statement into a matching
 statement if all it's doing is checking to see if things are known.
@@ -1022,8 +1021,8 @@ fun knownCase(tests, known, unknown) =
               else
                 case knownTests guard
                   of SOME t => [knownCase(t, arm, IF arms), pp.en]
-                   | NONE =>   [pp.$ "if $t$t${", exp guard, pp.$ "$}$b then $c${",
-                                stmt arm, pp.$ "$} $b$celse "] @ show arms
+                   | NONE =>   [pp.$ "if $t$t${", exp guard, pp.$ "$}$b then$c${",
+                                stmt arm, pp.$ "$}$b$celse "] @ show arms
     in  pp.li (pp.be :: show arms)
     end
 <<stmt>>=

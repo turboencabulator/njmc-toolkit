@@ -270,8 +270,8 @@ fun splitAt f =
   end
 @
 <<if debugging, write about splitting this node>>=
-sdebug (fn _ => [pp.$ "Splitting $t${$c${", Img.arms arms, pp.$ "$}$b $c$}at depth ",
-		 pp.te (Int.toString depth), pp.te " on ", Img.field f])
+sdebug (fn _ => [pp.$ "Splitting$t${$c${", Img.arms arms, pp.$ "$}$b$c$}at depth ",
+                 pp.te (Int.toString depth), pp.te " on ", Img.field f])
 @
 What is the new matching statement that results from applying 
 $\mathtt{lo \le f < hi}$ to [[cs]]?
@@ -327,9 +327,9 @@ fun pmatch(P.PAT (pname, ds), f, lo, hi) =
 @
 <<if debugging, write about results of [[pmatch]]>>=
 if null ds then ()
-else 
+else
   sdebug (fn _ => [pp.te "        ===> ", Img.pat (P.PAT (pname, ds)),
-		   pp.$ "$8$4$c $b$bmatches"])
+                   pp.$ "$8$4$c$b$bmatches"])
 @
 \section{Tree-minimization heuristics}
 First, the boilerplate that takes a heuristic [[h]], candidate

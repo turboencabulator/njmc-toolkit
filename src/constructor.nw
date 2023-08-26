@@ -713,7 +713,7 @@ end
 typedef struct %{name}_closure {$t
 ClosureHeader h;
 ClosureLocation loc;
-struct { $t${%decls $b$c$}} v;$b
+struct { $t${%decls$b$c$}} v;$b
 } *%{name}_Closure;
 <<*>>=
 procedure emit_original_closure_relocfn(pp, name, cons, t)
@@ -1152,11 +1152,11 @@ procedure closure_type(pp, values, addresses)
     insert(closure_types, clname)
     every calls | l := []
     every i := 1 to *addresses do {
-      put(l, " $cRAddr a" || i || ";")
+      put(l, "$cRAddr a" || i || ";")
       put(calls, template_to_list("reloc-call.t", "irec", "v", "input", "a" || i))
     }
     every i := 1 to *values do
-      put(l, " $cunsigned u" || i || ";")
+      put(l, "$cunsigned u" || i || ";")
     emit_template(pp, "closure-type.t", "name", clname, "decls", l)
     emit_template(pp, "constructor-labels.t", "ptrtype", clname || "_Closure",
                                  "name", clname, "calls", calls)
@@ -1206,7 +1206,7 @@ procedure emit_closure_functions_postfix(pp, interfacebasename)
   if *\closure_functions_postfix > 0 then {
     PPxwrite(pp, "/*****************************$t")
     every k := key(\closure_functions_postfix) do
-      PPxwrite(pp, "${", k, " = $t$c", closure_functions_postfix[k], "$b$}")
+      PPxwrite(pp, "${", k, " =$t$c", closure_functions_postfix[k], "$b$}")
     PPxwrite(pp, "$b$n****************/")
   }
   PPxwrites(pp, "ClosurePostfix ", 

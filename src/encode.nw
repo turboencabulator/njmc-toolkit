@@ -613,7 +613,7 @@ fun emitterBody' closureCreation cons =
                  else Code.subst (Exp.multiSubst subst) body
       val body = protectWithInputWidthChecks (cons, [], body)
       val comment = Code.BLOCK_COMMENT (
-                        pp.li [ pp.$ "Emitting pattern $2${$c",
+                        pp.li [ pp.$ "Emitting pattern$2${$c",
                                 patimage bodyPat, pp.$ "$}$b" ])
   in  Simplify.Super.code (Code.BLOCK ([], [comment, body]))
   end
@@ -674,13 +674,13 @@ disjunct, eliminates this extra effort in almost all cases.
 @
 <<warn of redundant disjunct>>=
 let fun dimage disjunct = patimage (PS.PAT(NONE, [disjunct]))
-    fun fitsImage fits = pp.li [pp.$ " $c(fits if ", condsimage fits, pp.te ")"]
+    fun fitsImage fits = pp.li [pp.$ "$c(fits if ", condsimage fits, pp.te ")"]
 in  ErrorMsg.ppwarning sourcemap (region, [
-      pp.on, 
-      pp.te "On right-hand side of constructor ", pp.te consname, 
-      pp.$ " dropping disjunct ${$4$4$c", dimage d', fitsImage fits',
-      pp.$ "$b $cbecause disjunct $4$c",
-      dimage d, fitsImage fits, pp.$ " $b$cwill always be taken first.$b$}$n"])
+      pp.on,
+      pp.te "On right-hand side of constructor ", pp.te consname,
+      pp.$ " dropping disjunct${$4$4$c", dimage d', fitsImage fits',
+      pp.$ "$b$cbecause disjunct$4$c",
+      dimage d, fitsImage fits, pp.$ "$b$cwill always be taken first.$b$}$n"])
 end
 @
 \subsection{Building emitters from disjuncts}
