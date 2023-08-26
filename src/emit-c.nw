@@ -780,14 +780,14 @@ block or an emission.
 <<stmt>>=
 | IF arms =>
     let fun test guard tail =
-          pp.cn :: pp.te "else " :: pp.$ "if $t${(" :: exp guard :: pp.$ ")$}$b " :: tail
+          pp.cn :: pp.te "else " :: pp.$ "if $t${(" :: exp guard :: pp.$ ")$}$b" :: tail
         fun shortTest guard tail =
-          if alwaysSatisfied guard then pp.cn :: pp.te "else " :: tail else test guard tail
-        fun blockArm s = pp.li [stmt s, pp.te " "]
+          if alwaysSatisfied guard then pp.cn :: pp.te "else" :: tail else test guard tail
+        fun blockArm s = pp.li [pp.te " ", stmt s]
         fun arm (s as BLOCK ([], [STATEMENT' (_, _, RAW _)])) = blockArm s
           | arm (BLOCK ([], [s])) = arm s
           | arm (s as BLOCK _) = blockArm s
-          | arm s = pp.li [ pp.$ "$t$c${", stmt s, pp.$ "$}$b " ]
+          | arm s = pp.li [ pp.$ " $t$c${", stmt s, pp.$ "$}$b " ]
         fun addArms [] = Impossible.impossible "no arms"
           | addArms [(guard, body)] =
               if alwaysSatisfied guard then stmt body
@@ -805,7 +805,7 @@ block or an emission.
               pp.$ "$ccase " :: pp.te (#name (Constructor.info cons)) ::
 	      pp.$ "_TAG: $t$c${" :: stmtInSeq arm :: pp.$ "$cbreak;$}$b" :: s
     in  pp.li (
-          pp.te "switch(" :: exp instance :: pp.$ ".tag) {$t${" ::
+          pp.te "switch (" :: exp instance :: pp.$ ".tag) {$t${" ::
                                                    (* should create exp for tag...*)
 	  foldr addArm [pp.$ "$cdefault: assert(0);$}$b$c} /* ",
 			PP.textMap safeComment (exp instance), pp.te "*/"] arms)
@@ -825,7 +825,7 @@ block or an emission.
           in  pp.cn :: RangeSet.foldr addRange body ranges
 	  end
     in  pp.li (
-          pp.te "switch(" :: exp value :: pp.$ ") {$t${" ::
+          pp.te "switch (" :: exp value :: pp.$ ") {$t${" ::
 	  foldr addArm [pp.$ "$cdefault: assert(0);$}$b$c} /* ",
 			PP.textMap safeComment (exp value), pp.te "*/"] arms)
     end
