@@ -126,8 +126,8 @@ local
   fun digit n = String.sub(digits, n)
 in
   fun alphacode n =
-    let fun code (n, pre') = if n < base then String.implode(rev (digit n :: pre'))
-                             else code(n div base, digit (n mod base) :: pre')
+    let fun code (n, pre') = if n < base then String.implode(digit n :: pre')
+                             else code(n div base - 1, digit (n mod base) :: pre')
     in  code(n, [])
     end
 end
