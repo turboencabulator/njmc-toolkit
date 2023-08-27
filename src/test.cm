@@ -9,6 +9,8 @@ group is
 
   unparse-test.cm
 
+  exp.nw (exptest.sml)
+  pp.nw (pptest.sml)
   solve.nw (solvertest.sml)
   simplify.nw (simptest.sml)
 

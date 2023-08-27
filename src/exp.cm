@@ -16,4 +16,3 @@ group is
   exp.nw (unified.sml)
   exp.nw (boolsetexp.sml)
   exp.nw (unifiedbasics.sml)
-  exp.nw (exptest.sml)

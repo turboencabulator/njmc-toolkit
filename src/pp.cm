@@ -9,6 +9,5 @@ group is
   pp.nw (ppnormal.sml)
   pp.nw (prettyprinter.sig)
   (*pp.nw (unparse-pp.sml)*)
-  pp.nw (pptest.sml)
   pputil.nw
   util.cm
