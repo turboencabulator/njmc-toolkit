@@ -231,24 +231,11 @@ end
 | RELOCATABLE_ADDRESSES => pp.te "/* #include <mclib.h> before this file */"
 @ 
 <<match>>=
-let
-(*************** now done via imports
-    fun genFileHeader tail =
-     pp.te "#include <assert.h>\n" ::
-     pp.te "#define sign_extend(N,SIZE) " :: (* no newline after #define *)
-     pp.te  "(((int)((N) @<< (sizeof(unsigned)*8-(SIZE)))) @>> (sizeof(unsigned)*8-(SIZE)))" :: tail
-****************)
-    fun addMatch ((matchingStmt, trailer), tail) = 
-       stmt matchingStmt :: rawCode (sourcemap, trailer) :: tail
-
-(**********************
-    val econtext = (sourcemap, ErrorMsg.defaultConsumer()) 
-    val fail = stmt (Code.FAIL("toolkit error in code generation", []))
-    val addMatch = (fn (m as {region,...}, arg2 as (lcount, t)) =>
-		    ErrorXXX.catch' (lcount, fail::t) econtext region addMatch (m, arg2))
-****************)
-in  pp.li (map importIntoImp matchImports @
-           rawCode (sourcemap, header) :: foldr addMatch [] matchers)
+let fun revAddMatch ((matchingStmt, trailer), tail) =
+      rawCode (sourcemap, trailer) :: stmt matchingStmt :: tail
+    val revHeader =
+      rawCode (sourcemap, header) :: List.revMap importIntoImp matchImports
+in  pp.li (rev (foldl revAddMatch revHeader matchers))
 end
 <<old match>>=
 let fun addMatch ({decider, arms, trailer, region}, tail) = 
