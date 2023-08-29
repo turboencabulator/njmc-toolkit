@@ -174,13 +174,13 @@ fun ppcase (value, matches, trailingComment) =
                       | SOME c => [pp.te " (* ", PP.textMap safeComment c, pp.te " *)"]
     in  pp.li (
           pp.te "(case " :: value :: pp.$ " $3${" ::
-          allArms(matches, [pp.$ "$}$b$c)"] @ tail))
+          allArms(matches, [pp.$ "$}$b$C)"] @ tail))
     end
 @ 
 <<match support>>=
 fun pppair (n, e) = pp.li [ pp.te n, pp.te " = ", e ]
-fun pptuple  l = PPUtil.mixin 0 (pp.te "( ", pp.$ "$c)", pp.$ "$c, ") l
-fun recordBracket l = PPUtil.mixin 0 (pp.te "{ ", pp.$ "$c}", pp.$ "$c, ") l
+fun pptuple  l = PPUtil.mixin 0 (pp.te "( ", pp.$ "$c)", pp.$ "$C, ") l
+fun recordBracket l = PPUtil.mixin 0 (pp.te "{ ", pp.$ "$c}", pp.$ "$C, ") l
 fun ppmatch m =
     let fun mm (WILD) = pp.te "_" 
 	  | mm (TUPLE l) = pptuple (map mm l)
@@ -1017,7 +1017,7 @@ fun knownCase(tests, known, unknown) =
         fun show [] = show [(Exp.true', Code.SKIP)]
           | show ((guard, arm)::arms) =
               if alwaysSatisfied guard then
-                [pp.$ "$t$c", stmt arm, pp.$ "$b$}"]
+                [pp.$ "$t$C", stmt arm, pp.$ "$b$}"]
               else
                 case knownTests guard
                   of SOME t => [knownCase(t, arm, IF arms), pp.en]

@@ -71,13 +71,13 @@ local
     | d(ARRAY(SOME n, ty), str) = d(ty, str ^ "[" ^ Int.toString n ^ "]")
     | d(FUNCTION {args=[], return, varargs}, str) = d(return, str ^ "(void)")
     | d(FUNCTION {args,    return, varargs}, str) =
-	 let fun arg (NONE, ty) = d(ty, "")
-	       | arg (SOME n, ty) = d(ty, n)
-	     val args = Util.joinl (fn (l, r) => l ^ ",$o" ^ r) (map arg args)
+         let fun arg (NONE, ty) = d(ty, "")
+               | arg (SOME n, ty) = d(ty, n)
+             val args = Util.joinl (fn (l, r) => l ^ ",$o" ^ r) (map arg args)
          in  d(return,
-	       String.concat [str, "${$4$c($1", args,
-			      (if varargs then ", ..." else "")^ "$b$b$})"])
-	 end
+               String.concat [str, "${$4$C($1", args,
+                              (if varargs then ", ..." else "")^ "$b$b$})"])
+         end
     | d(STRUCT {tag=tag, fields=fields}, str) =
          "struct" ^ tagopt tag ^ fieldsopt fields ^ spaceopt str
     | d(UNION {tag=tag, members=members}, str) =
@@ -88,13 +88,13 @@ local
     | d(COMMENTED (ty, comment), str) = d(ty, "/* " ^ comment ^ " */" ^ spaceopt str)
   and tagopt NONE = ""
     | tagopt (SOME t) = " " ^ t
-  and field (id, ty, NONE)   = "$c" ^ d(ty, id) ^ "; "
-    | field (id, ty, SOME n) = "$c" ^ d(ty, id) ^ ":" ^ Int.toString n ^ "; "
+  and field (id, ty, NONE)   = "$c" ^ d(ty, id) ^ ";"
+    | field (id, ty, SOME n) = "$c" ^ d(ty, id) ^ ":" ^ Int.toString n ^ ";"
   and fieldsopt NONE = ""
-    | fieldsopt (SOME fields) = " {${$t " ^ cat field fields ^ "$b$c$}}"
+    | fieldsopt (SOME fields) = " {${$t" ^ cat field fields ^ "$b$c$}}"
   and member (id, ty) = field (id, ty, NONE)
   and membersopt NONE = ""
-    | membersopt (SOME members) = " {${$t " ^ cat member members ^ "$b$c$}}"
+    | membersopt (SOME members) = " {${$t" ^ cat member members ^ "$b$c$}}"
   and enum (id, SOME n) = id ^ "=" ^ Int.toString n
     | enum (id, NONE)   = id 
   and enumopt NONE = ""

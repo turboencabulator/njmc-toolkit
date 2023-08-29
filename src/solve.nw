@@ -2829,7 +2829,7 @@ fun checkOverlaps [] = ()
       in  test t; checkOverlaps t
       end
 <<overlap error>>=
-raise Error.Error ("Overlapping slices: ",
+raise Error.Error ("Overlapping slices:",
   pp.li [pp.$ "$t${$c${${", image(Exp.slice(e, slice)), pp.$ "$}$b$cand$t$c${",
                             image(Exp.slice(e, slice')), pp.$ "$}$}$}$b" ])
 @ 
