@@ -331,7 +331,7 @@ after the open parenthesis.
 	  if fwidth < limit then
 	    call [pp.$ "(${", pp.i (fwidth + 1), args, pp.ou, pp.$ "$})"]
 	  else
-	    call [pp.$ "(${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.te "$})"]
+	    call [pp.$ "(${", pp.i 2, pp.be, pp.cn, args, pp.ou, pp.en, pp.$ "$})"]
       end
 <<bind [[fwidth]] to the number of characters [[f]] will use>>=
 val fwidth = (size o PP.flatten o pp.li o Unparser.unparse) 
