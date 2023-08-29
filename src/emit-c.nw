@@ -829,29 +829,32 @@ block or an emission.
 @ 
 <<stmt>>=
 | MATCH {defns, decider, arms} =>
-    let fun blockStart tail = pp.$ "{${$t$c" :: tail
-        <<definition of [[exportMatchDefn]]>>
+    let <<definition of [[exportMatchDefn]]>>
         fun defn d = top_defn ({exported = exportMatchDefn d}, d)
-        fun addDefns tail = foldr (fn (d,t) => defn d :: pp.$ ";$n" :: t) tail defns
-        fun blockEnd tail = pp.$ "$b$c}$}" :: tail
+        fun revAddDefns tail = foldl (fn (d,t) => pp.$ ";$n" :: defn d :: t) tail defns
+        val blockStart = pp.$ "{${$t$c"
+        val blockEnd = pp.$ "$b$c}$}"
+        val armStart = pp.$ "$t${$c"
+        val armEnd = pp.$ "$}$b$n"
         val uniquePrefix = getPrefix()
         fun labelNumbered n = "MATCH_label_" ^ uniquePrefix ^ Int.toString n
         val finished = "MATCH_finished_" ^ uniquePrefix
-        val finish = pp.te ("goto " ^ finished ^ ";")
         fun nextLabel (uid, _, (lcount, lmap)) =
           (lcount + 1, IntMap.insert(lmap, uid, labelNumbered lcount))
         val (_, labelmap) = IntMap.foldli nextLabel (0, IntMap.empty) arms
         fun label i = valOf(IntMap.find(labelmap, i))
                       handle Option => Impossible.impossible "missing label"
         fun mkLabel l = pp.li [pp.te l, pp.te ": (void)0; /*placeholder for label*/"]
-        fun addArmBody(uid, a, tail) =
-          mkLabel (label uid) :: pp.$ "$t${$c" :: stmt a :: pp.cs
-          :: finish :: pp.$ "$}$b$n" :: tail
         fun armNumbered i = pp.te ("goto " ^ label i ^ ";")
-        val afterArms = mkLabel finished :: blockEnd []
-    in  (pp.li o blockStart o addDefns)
-        (#stmt (inner armNumbered) decider :: pp.cs :: finish :: pp.nl ::
-         IntMap.foldri addArmBody afterArms arms)
+        val finish = pp.te ("goto " ^ finished ^ ";")
+        fun revAddArmBody(uid, a, tail) =
+          armEnd :: finish :: pp.cs :: stmt a :: armStart :: mkLabel (label uid) :: tail
+        val revMatch = #stmt (inner armNumbered) decider :: revAddDefns [blockStart]
+        val revMatch =
+          if IntMap.isEmpty arms then blockEnd :: revMatch
+          else blockEnd :: mkLabel finished :: armEnd :: (tl o tl o tl)
+               (IntMap.foldli revAddArmBody (pp.nl :: finish :: pp.cs :: revMatch) arms)
+    in  pp.li (rev revMatch)
     end
 @ %
 What a cheat we have here.

@@ -31,6 +31,4 @@ lc
       
     }
   }
-  goto MATCH_finished_a;
-  MATCH_finished_a: (void)0; /*placeholder for label*/
 }
